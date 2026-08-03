@@ -23,6 +23,11 @@ class PipelineControllerImpl {
     return AudioPipeline.stop(sessionId);
   }
 
+  // Live capture state owned by native (see NativeAudioPipeline.currentSession).
+  async currentSession() {
+    return AudioPipeline.currentSession();
+  }
+
   // Native runs the heavy stages (vad -> asr), persisting each. Then the JS layer runs the
   // deterministic rule-based minutes floor over the transcript (small text work; shared iOS+Android).
   async process(
@@ -37,6 +42,15 @@ class PipelineControllerImpl {
   // Process any meetings captured while the app wasn't in front (e.g. the floating bubble).
   // Called on app open / Library focus so overlay-recorded meetings get transcribed + summarized.
   async processPending(): Promise<void> {
+    // First rescue anything stranded in 'recording' by a mid-capture process kill — those rows
+    // become 'captured' and are picked up by the same pass below. Without this their audio sits
+    // on disk untranscribed forever.
+    try {
+      const n = await AudioPipeline.recoverOrphans();
+      if (n > 0) console.warn(`[pipeline] recovered ${n} interrupted recording(s)`);
+    } catch {
+      // recovery is best-effort; never block normal processing on it
+    }
     const pending = await db.pendingMeetings();
     for (const m of pending) {
       try {

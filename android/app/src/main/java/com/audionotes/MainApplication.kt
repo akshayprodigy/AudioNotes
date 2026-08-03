@@ -23,5 +23,8 @@ class MainApplication : Application(), ReactApplication {
   override fun onCreate() {
     super.onCreate()
     loadReactNative(this)
+    // Auto-show the floating recorder whenever we background mid-recording, so switching apps
+    // never leaves a running meeting with no visible control. See ForegroundTracker.
+    com.audionotes.pipeline.ForegroundTracker.register(this)
   }
 }

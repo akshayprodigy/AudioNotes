@@ -81,3 +81,5 @@ android/app/src/main/assets/*.onnx
 *.bin
 .claude/
 InnoCore_MeetingNoteTaker_PRD_v3.docx
+android/app/build/
+android/app/.cxx/

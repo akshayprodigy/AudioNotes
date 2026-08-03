@@ -15,6 +15,19 @@ export interface Spec extends TurboModule {
   process(meetingId: string, options: { model: 'base' | 'small'; useLLM: boolean }): Promise<void>;
   cancel(meetingId: string): void;
 
+  // Promote meetings stranded in 'recording' (process killed mid-capture) to 'captured'.
+  // Returns how many were recovered. Safe to call at any time; skips a live recording.
+  recoverOrphans(): Promise<number>;
+
+  // Live capture state owned by native. Capture can be started by the floating bubble or outlive
+  // the JS context, so the store must re-read this on resume rather than trust its own flag.
+  currentSession(): Promise<{
+    isRecording: boolean;
+    meetingId: string | null;
+    elapsedMs: number;
+    silenced: boolean;
+  }>;
+
   // Ask the OS to exempt the app from battery optimization (keeps long background recordings alive).
   requestBatteryExemption(): Promise<boolean>;
 

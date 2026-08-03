@@ -84,6 +84,9 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
+        // Lets `./gradlew connectedDebugAndroidTest` exercise the C++ core (VAD/ASR/diarize)
+        // directly on a device, with no UI driving and no dependence on the logcat buffer.
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         externalNativeBuild {
             cmake {
@@ -149,4 +152,8 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:rules:1.6.1")
 }

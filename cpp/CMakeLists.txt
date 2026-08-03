@@ -17,6 +17,28 @@ add_library(audionotes SHARED
   llm/llama_engine.cpp
   jni/audionotes_jni.cpp)
 
+# ---------------------------------------------------------------------------
+# Optimisation for the vendored inference engines.
+#
+# A debug build gets -O0 from the NDK toolchain, and ggml at -O0 is 20-50x slower than at -O3:
+# transcribing 11 s of speech took over ten minutes on a Pixel 7 Pro, which reads as "whisper is
+# hung" rather than "whisper is unoptimised". These are third-party dependencies we never step
+# through, so they are always built optimised regardless of the app's build type.
+#
+# The arch flags matter just as much: baseline armv8-a has no dot-product instructions, and the
+# quantised (q5_1/Q4_K) kernels lean on them heavily. armv8.2-a+fp16+dotprod is the right floor
+# for every 64-bit Android device we target. i8mm/SVE are deliberately NOT enabled — they are
+# armv8.6+ and absent on the Cortex-X1/A78/A55 cores in this class of phone.
+# ---------------------------------------------------------------------------
+function(audionotes_optimize_engine target)
+  if(TARGET ${target})
+    target_compile_options(${target} PRIVATE -O3 -fno-finite-math-only)
+    if(ANDROID_ABI STREQUAL "arm64-v8a")
+      target_compile_options(${target} PRIVATE -march=armv8.2-a+fp16+dotprod)
+    endif()
+  endif()
+endfunction()
+
 target_include_directories(audionotes PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${ORT_INCLUDE})
@@ -28,9 +50,18 @@ if(EXISTS ${WHISPER_DIR}/CMakeLists.txt)
   set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
   set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
   set(WHISPER_BUILD_SERVER OFF CACHE BOOL "" FORCE)
+  # The NDK has no usable libgomp; ggml's OpenMP path fails to link on Android.
+  # whisper is already threaded via wparams.n_threads, so this costs nothing.
+  set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
+  # Link whisper+ggml statically INTO libaudionotes.so so there is exactly one
+  # .so to package and SoLoader has nothing extra to find at runtime.
+  set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
   add_subdirectory(${WHISPER_DIR} ${CMAKE_BINARY_DIR}/whisper_build)
   target_compile_definitions(audionotes PRIVATE HAVE_WHISPER=1)
   target_link_libraries(audionotes whisper)
+  foreach(t whisper ggml ggml-base ggml-cpu)
+    audionotes_optimize_engine(${t})
+  endforeach()
 endif()
 
 # --- sherpa-onnx (diarization) — vendored as a git submodule; built + linked when present ---

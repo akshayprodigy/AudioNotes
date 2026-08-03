@@ -54,11 +54,56 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
 
   // ---- Helpers used by native capture / pipeline ----
 
-  fun insertMeeting(id: String, title: String, createdAt: Long, tier: String) {
+  /**
+   * `audioPath` is written up front, at creation, NOT when capture finishes. The path is
+   * deterministic and known before the service starts, and recording it here is what lets
+   * process() find the audio even if it is called the instant stop() returns — previously
+   * audio_path was only set in RecordingService.onDestroy, which races with stopService().
+   */
+  fun insertMeeting(id: String, title: String, createdAt: Long, tier: String, audioPath: String) {
     db.execSQL(
-      "INSERT INTO meetings(id,title,created_at,status,tier_used) VALUES(?,?,?, 'recording', ?)",
-      arrayOf<Any?>(id, title, createdAt, tier),
+      "INSERT INTO meetings(id,title,created_at,status,tier_used,audio_path) VALUES(?,?,?, 'recording', ?,?)",
+      arrayOf<Any?>(id, title, createdAt, tier, audioPath),
     )
+  }
+
+  /**
+   * Rescue meetings stranded in 'recording'.
+   *
+   * A row only leaves 'recording' in RecordingService.onDestroy. If the process is killed
+   * mid-capture (OEM battery manager, low memory, crash) that never runs, so the meeting sits
+   * in 'recording' forever — and processPending() only looks at 'captured', which means the
+   * audio on disk is never transcribed and the user silently loses the meeting.
+   *
+   * Call on startup, once capture is known to be idle. Rows with real audio are promoted to
+   * 'captured' with the duration derived from the byte count; rows with no usable audio are
+   * marked 'error' so they stop looking like they are still recording.
+   *
+   * @param excludeId the meeting currently being captured, if any. It is legitimately in
+   *   'recording' and must be left alone — promoting it would stop the live meeting from ever
+   *   being finalised properly.
+   * @return number of rows recovered.
+   */
+  fun recoverOrphanedRecordings(excludeId: String?): Int {
+    var recovered = 0
+    val stranded = mutableListOf<Pair<String, String?>>()
+    db.rawQuery("SELECT id, audio_path FROM meetings WHERE status='recording'", null).use { c ->
+      while (c.moveToNext()) {
+        val id = c.getString(0)
+        if (id != excludeId) stranded.add(id to c.getString(1))
+      }
+    }
+    for ((id, path) in stranded) {
+      val bytes = if (path != null) java.io.File(path).length() else 0L
+      // Under ~1s of PCM is not a meeting; treat it as a failed start.
+      if (bytes > 32_000L) {
+        markCaptured(id, bytes / 32L, path!!)
+        recovered++
+      } else {
+        setStatus(id, "error")
+      }
+    }
+    return recovered
   }
 
   fun markCaptured(id: String, durationMs: Long, audioPath: String) {

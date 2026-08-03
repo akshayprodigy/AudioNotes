@@ -131,11 +131,19 @@ class OverlayService : Service() {
 
   private fun toggleRecording() {
     if (CaptureController.isRecording) {
-      CaptureController.stop(applicationContext)
+      // stop() blocks until RecordingService flushes the PCM. This runs from a touch
+      // handler on the UI thread, so it must go to a worker or it ANRs.
+      Thread {
+        CaptureController.stop(applicationContext)
+        bubble?.post { updateLabel() }
+      }.start()
+      // isRecording is cleared synchronously inside stop(), but repaint now so the bubble
+      // reacts to the tap immediately rather than after the flush.
+      bubble?.post { updateLabel() }
     } else {
       CaptureController.start(applicationContext)
+      updateLabel()
     }
-    updateLabel()
   }
 
   private fun updateLabel() {

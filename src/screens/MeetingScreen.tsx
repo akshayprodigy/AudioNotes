@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, SectionList, Pressable, StyleSheet, Alert } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { db } from '../db/queries';
+import { PipelineController } from '../pipeline/PipelineController';
 import FileExport from '../native/NativeFileExport';
 import Icon from '../components/Icon';
 import type { Utterance, Minute, Speaker } from '../pipeline/types';
@@ -19,28 +20,51 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
   const [speechMs, setSpeechMs] = useState(0);
   const [segCount, setSegCount] = useState(0);
+  const [reprocessing, setReprocessing] = useState(false);
+
+  const refresh = useCallback(async () => {
+    const [mins, utts, segs, spk] = await Promise.all([
+      db.minutes(meetingId), db.utterances(meetingId), db.segments(meetingId), db.speakers(meetingId),
+    ]);
+    setMinutes(mins);
+    setUtterances(utts);
+    setSpeakers(spk);
+    setSegCount(segs.length);
+    setSpeechMs(segs.reduce((a, x) => a + (x.end_ms - x.start_ms), 0));
+    return mins.length;
+  }, [meetingId]);
 
   useEffect(() => {
     let cancelled = false;
     let ticks = 0;
     const load = async () => {
-      const [mins, utts, segs, spk] = await Promise.all([
-        db.minutes(meetingId), db.utterances(meetingId), db.segments(meetingId), db.speakers(meetingId),
-      ]);
+      const count = await refresh();
       if (cancelled) return;
-      setMinutes(mins);
-      setUtterances(utts);
-      setSpeakers(spk);
-      setSegCount(segs.length);
-      setSpeechMs(segs.reduce((a, x) => a + (x.end_ms - x.start_ms), 0));
-      if (mins.length === 0 && ticks < 60) {
+      if (count === 0 && ticks < 60) {
         ticks += 1;
         setTimeout(load, 2000);
       }
     };
     load();
     return () => { cancelled = true; };
-  }, [meetingId]);
+  }, [refresh]);
+
+  // Re-run the whole pipeline over the stored audio. The common reason is that a model
+  // (whisper, diarization, Qwen) was installed AFTER this meeting was recorded, so the
+  // first pass stopped early — rather than making the user re-record, re-derive from the
+  // PCM we already kept.
+  const onReprocess = useCallback(async () => {
+    if (reprocessing) return;
+    setReprocessing(true);
+    try {
+      await PipelineController.process(meetingId, { model: 'base', useLLM: true });
+      await refresh();
+    } catch (e: any) {
+      Alert.alert('Could not reprocess', String(e?.message ?? e));
+    } finally {
+      setReprocessing(false);
+    }
+  }, [meetingId, refresh, reprocessing]);
 
   const kindColor = (kind: string): string => {
     if (kind === 'decision') return colors.primary;
@@ -89,6 +113,12 @@ export default function MeetingScreen({ route, navigation }: Props) {
           }>
           <Icon name="share" size={18} color={colors.text} />
           <Text style={s.btnText}>Export</Text>
+        </Pressable>
+        <Pressable style={s.btn} onPress={onReprocess} disabled={reprocessing}>
+          <Icon name="refresh" size={18} color={reprocessing ? colors.textDim : colors.text} />
+          <Text style={[s.btnText, reprocessing && { color: colors.textDim }]}>
+            {reprocessing ? 'Working…' : 'Reprocess'}
+          </Text>
         </Pressable>
       </View>
       <SectionList

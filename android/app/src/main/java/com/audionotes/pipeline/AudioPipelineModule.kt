@@ -71,10 +71,18 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
 
   @ReactMethod
   fun stop(sessionId: String, promise: Promise) {
-    // RecordingService marks the meeting 'captured' (with real duration) in its onDestroy.
+    // CaptureController.stop() blocks until RecordingService has flushed the PCM and marked the
+    // meeting 'captured', so run it off the JS thread. Resolving only after that is what makes
+    // the immediate process() call in RecordScreen safe.
     stopLevelEmitter()
-    CaptureController.stop(ctx)
-    promise.resolve(null)
+    Thread {
+      try {
+        CaptureController.stop(ctx)
+        promise.resolve(null)
+      } catch (e: Exception) {
+        promise.reject("stop_failed", e)
+      }
+    }.start()
   }
 
   /** Ask the OS to exempt us from battery optimization so long meetings aren't killed in the background. */
@@ -161,6 +169,44 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
         Log.e("AudioPipeline", "process failed", e)
         try { AudioDb.get(ctx).setStatus(meetingId, "error") } catch (_: Exception) {}
         promise.reject("process_failed", e)
+      }
+    }.start()
+  }
+
+  /**
+   * The live capture state, straight from CaptureController.
+   *
+   * Capture can be started by the floating bubble or survive the JS context being torn down, so
+   * the JS store cannot assume it knows whether a recording is running — it has to ask on resume.
+   * Without this, coming back into the app during a bubble-started meeting shows an idle Record
+   * screen and tapping the mic starts a *second* meeting.
+   */
+  @ReactMethod
+  fun currentSession(promise: Promise) {
+    promise.resolve(
+      WritableNativeMap().apply {
+        putBoolean("isRecording", CaptureController.isRecording)
+        putString("meetingId", CaptureController.currentMeetingId)
+        putDouble("elapsedMs", CaptureController.elapsedMs().toDouble())
+        putBoolean("silenced", CaptureController.silenced)
+      },
+    )
+  }
+
+  /**
+   * Promote meetings stranded in 'recording' (process killed mid-capture) to 'captured' so the
+   * normal pending-processing pass picks them up. Skips the live meeting if one is running.
+   * Returns how many were recovered.
+   */
+  @ReactMethod
+  fun recoverOrphans(promise: Promise) {
+    Thread {
+      try {
+        val n = AudioDb.get(ctx).recoverOrphanedRecordings(CaptureController.currentMeetingId)
+        if (n > 0) Log.i("AudioPipeline", "recovered $n meeting(s) stranded in 'recording'")
+        promise.resolve(n)
+      } catch (e: Exception) {
+        promise.reject("recover_failed", e)
       }
     }.start()
   }

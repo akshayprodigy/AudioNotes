@@ -1,0 +1,5 @@
+# Vendored inference engines — third-party sources, not ours to lint.
+cpp/third_party/
+node_modules/
+android/
+ios/

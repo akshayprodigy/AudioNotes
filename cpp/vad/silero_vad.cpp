@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <dlfcn.h>
@@ -9,6 +10,13 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+#ifdef __ANDROID__
+#include <android/log.h>
+#define VADLOGI(...) __android_log_print(ANDROID_LOG_INFO, "SileroVad", __VA_ARGS__)
+#else
+#define VADLOGI(...) ((void)0)
+#endif
 
 // Manual init: don't reference OrtGetApiBase from the header, so we don't link libonnxruntime.so
 // at build time. We resolve it at runtime via dlopen (the .so is shipped by the onnxruntime-android
@@ -53,6 +61,20 @@ struct SileroVad::Impl {
   std::vector<float> c;      // v4: [2,1,64]
   std::vector<float> state;  // v5: [2,1,128]
 
+  /**
+   * v5 only: the last 64 samples of the previous frame, prepended to the next one.
+   *
+   * Silero v5 is trained on 576-sample inputs at 16 kHz (64 samples of context + a 512-sample
+   * hop), and the ONNX graph's sample axis is dynamic — so feeding a bare 512 does NOT error,
+   * it just silently produces meaningless probabilities. That reads as "no speech anywhere".
+   * v4 has no context input and is fed the raw 512.
+   */
+  std::vector<float> context;
+  static constexpr size_t kContext16k = 64;
+
+  /** Highest probability seen in the last process() run — used for diagnostics. */
+  float max_prob = 0.0f;
+
   Impl(const std::string& model_path, int sr)
       : sample_rate(sr),
         env(ORT_LOGGING_LEVEL_WARNING, "audionotes-vad"),
@@ -62,7 +84,8 @@ struct SileroVad::Impl {
         sr_val(sr),
         h(2 * 1 * 64, 0.0f),
         c(2 * 1 * 64, 0.0f),
-        state(2 * 1 * 128, 0.0f) {
+        state(2 * 1 * 128, 0.0f),
+        context(kContext16k, 0.0f) {
     opts.SetIntraOpNumThreads(1);
     opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
     session = Ort::Session(env, model_path.c_str(), opts);
@@ -85,12 +108,24 @@ struct SileroVad::Impl {
     std::fill(h.begin(), h.end(), 0.0f);
     std::fill(c.begin(), c.end(), 0.0f);
     std::fill(state.begin(), state.end(), 0.0f);
+    std::fill(context.begin(), context.end(), 0.0f);
+    max_prob = 0.0f;
   }
 
   // Run one frame; returns speech probability and advances the recurrent state.
   // Works for both Silero v4 (input/sr/h/c -> output/hn/cn) and v5 (input/state/sr -> output/stateN).
   float infer(std::vector<float>& frame) {
-    const int64_t in_dims[2] = {1, static_cast<int64_t>(frame.size())};
+    // v5: prepend the previous frame's tail so the model sees the 576 samples it expects.
+    std::vector<float> buf;
+    if (v5) {
+      buf.reserve(context.size() + frame.size());
+      buf.insert(buf.end(), context.begin(), context.end());
+      buf.insert(buf.end(), frame.begin(), frame.end());
+      context.assign(frame.end() - std::min(frame.size(), kContext16k), frame.end());
+    }
+    std::vector<float>& in = v5 ? buf : frame;
+
+    const int64_t in_dims[2] = {1, static_cast<int64_t>(in.size())};
     const int64_t sr_dims[1] = {1};
     const int64_t hc_dims[3] = {2, 1, 64};
     const int64_t st_dims[3] = {2, 1, 128};
@@ -99,7 +134,7 @@ struct SileroVad::Impl {
     inputs.reserve(input_names.size());
     for (const auto& name : input_names) {
       if (name == "input") {
-        inputs.push_back(Ort::Value::CreateTensor<float>(mem, frame.data(), frame.size(), in_dims, 2));
+        inputs.push_back(Ort::Value::CreateTensor<float>(mem, in.data(), in.size(), in_dims, 2));
       } else if (name == "sr") {
         inputs.push_back(Ort::Value::CreateTensor<int64_t>(mem, &sr_val, 1, sr_dims, 1));
       } else if (name == "h") {
@@ -124,6 +159,7 @@ struct SileroVad::Impl {
       const float* d = outputs[i].GetTensorData<float>();
       if (nm == "output") {
         prob = d[0];
+        if (prob > max_prob) max_prob = prob;
       } else if (nm == "hn") {
         std::copy(d, d + h.size(), h.begin());
       } else if (nm == "cn") {
@@ -157,6 +193,7 @@ std::vector<Segment> SileroVad::process(const std::string& pcm_path, const VadCo
   const int64_t pad = static_cast<int64_t>(cfg.speech_pad_ms) * sr / 1000;
 
   impl_->reset();
+  VADLOGI("model=%s window=%d threshold=%.2f", impl_->v5 ? "v5(state)" : "v4(h/c)", window, cfg.threshold);
 
   std::vector<int16_t> raw(window);
   std::vector<float> frame(window);
@@ -209,6 +246,8 @@ std::vector<Segment> SileroVad::process(const std::string& pcm_path, const VadCo
       out.push_back(Segment{s.first * 1000 / sr, s.second * 1000 / sr});
     }
   }
+  VADLOGI("scanned %.1fs, peak speech prob %.3f -> %zu segment(s)",
+          static_cast<double>(cursor) / sr, impl_->max_prob, out.size());
   return out;
 }
 
