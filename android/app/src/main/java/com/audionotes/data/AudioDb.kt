@@ -1,0 +1,237 @@
+package com.audionotes.data
+
+import android.content.Context
+import net.zetetic.database.sqlcipher.SQLiteDatabase
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
+import java.util.UUID
+
+/**
+ * Single shared handle to the encrypted (SQLCipher) database. Both the RN Storage module and
+ * the native capture/pipeline code write through this, so there is exactly one DB connection
+ * and one canonical schema. Key comes from [KeystoreKeyManager].
+ *
+ * This Kotlin schema is the source of truth; src/db/schema.ts mirrors it for the JS layer.
+ */
+class AudioDb private constructor(private val db: SQLiteDatabase) {
+
+  fun rawQueryJson(sql: String, args: Array<String?>): String {
+    val trimmed = sql.trimStart()
+    if (!trimmed.regionMatches(0, "SELECT", 0, 6, ignoreCase = true)) {
+      db.execSQL(sql, args)
+      return "[]"
+    }
+    val out = JSONArray()
+    db.rawQuery(sql, args).use { c ->
+      val cols = c.columnNames
+      while (c.moveToNext()) {
+        val row = JSONObject()
+        for (i in cols.indices) {
+          when (c.getType(i)) {
+            android.database.Cursor.FIELD_TYPE_NULL -> row.put(cols[i], JSONObject.NULL)
+            android.database.Cursor.FIELD_TYPE_INTEGER -> row.put(cols[i], c.getLong(i))
+            android.database.Cursor.FIELD_TYPE_FLOAT -> row.put(cols[i], c.getDouble(i))
+            else -> row.put(cols[i], c.getString(i))
+          }
+        }
+        out.put(row)
+      }
+    }
+    return out.toString()
+  }
+
+  fun searchJson(term: String): String {
+    val sql =
+      "SELECT meeting_id AS meeting_id, text AS snippet " +
+        "FROM meetings_fts WHERE meetings_fts MATCH ? LIMIT 50"
+    return try {
+      rawQueryJson(sql, arrayOf(term))
+    } catch (_: Exception) {
+      "[]"
+    }
+  }
+
+  // ---- Helpers used by native capture / pipeline ----
+
+  fun insertMeeting(id: String, title: String, createdAt: Long, tier: String) {
+    db.execSQL(
+      "INSERT INTO meetings(id,title,created_at,status,tier_used) VALUES(?,?,?, 'recording', ?)",
+      arrayOf<Any?>(id, title, createdAt, tier),
+    )
+  }
+
+  fun markCaptured(id: String, durationMs: Long, audioPath: String) {
+    db.execSQL(
+      "UPDATE meetings SET status='captured', duration_ms=?, audio_path=? WHERE id=?",
+      arrayOf<Any?>(durationMs, audioPath, id),
+    )
+  }
+
+  fun setStatus(id: String, status: String) {
+    db.execSQL("UPDATE meetings SET status=? WHERE id=?", arrayOf<Any?>(status, id))
+  }
+
+  fun getAudioPath(id: String): String? {
+    db.rawQuery("SELECT audio_path FROM meetings WHERE id=?", arrayOf(id)).use { c ->
+      return if (c.moveToFirst()) c.getString(0) else null
+    }
+  }
+
+  /** Replace the transcript for a meeting from a JSON array of {start_ms,end_ms,text}. Returns count. */
+  fun replaceUtterancesJson(meetingId: String, json: String): Int {
+    val arr = JSONArray(json)
+    db.beginTransaction()
+    try {
+      db.execSQL("DELETE FROM utterances WHERE meeting_id=?", arrayOf<Any?>(meetingId))
+      db.execSQL("DELETE FROM meetings_fts WHERE meeting_id=?", arrayOf<Any?>(meetingId))
+      for (i in 0 until arr.length()) {
+        val o = arr.getJSONObject(i)
+        val text = o.getString("text")
+        db.execSQL(
+          "INSERT INTO utterances(id,meeting_id,start_ms,end_ms,speaker_id,text) VALUES(?,?,?,?,NULL,?)",
+          arrayOf<Any?>(UUID.randomUUID().toString(), meetingId, o.getLong("start_ms"), o.getLong("end_ms"), text),
+        )
+        db.execSQL(
+          "INSERT INTO meetings_fts(meeting_id,text) VALUES(?,?)",
+          arrayOf<Any?>(meetingId, text),
+        )
+      }
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
+    return arr.length()
+  }
+
+  /**
+   * Assign a speaker to each utterance from diarization output. Creates one speaker row per cluster
+   * and picks, per utterance, the cluster with the greatest temporal overlap. Arrays are parallel:
+   * diar segment i is [starts[i], ends[i]] with cluster clusters[i] (all in ms).
+   */
+  fun assignSpeakers(meetingId: String, starts: LongArray, ends: LongArray, clusters: IntArray) {
+    if (starts.isEmpty()) return
+    db.beginTransaction()
+    try {
+      db.execSQL("DELETE FROM speakers WHERE meeting_id=?", arrayOf<Any?>(meetingId))
+
+      // One speaker row per distinct cluster.
+      val idFor = HashMap<Int, String>()
+      var n = 1
+      for (cl in clusters.toSortedSet()) {
+        val sid = UUID.randomUUID().toString()
+        idFor[cl] = sid
+        db.execSQL(
+          "INSERT INTO speakers(id,meeting_id,cluster_label,display_name) VALUES(?,?,?,?)",
+          arrayOf<Any?>(sid, meetingId, "S$cl", "Speaker $n"),
+        )
+        n++
+      }
+
+      // Read utterance timings, then assign by max overlap.
+      data class U(val id: String, val s: Long, val e: Long)
+      val utts = ArrayList<U>()
+      db.rawQuery(
+        "SELECT id,start_ms,end_ms FROM utterances WHERE meeting_id=? ORDER BY start_ms",
+        arrayOf(meetingId),
+      ).use { c ->
+        while (c.moveToNext()) utts.add(U(c.getString(0), c.getLong(1), c.getLong(2)))
+      }
+
+      for (u in utts) {
+        val overlapByCluster = HashMap<Int, Long>()
+        for (i in starts.indices) {
+          val ov = minOf(u.e, ends[i]) - maxOf(u.s, starts[i])
+          if (ov > 0) overlapByCluster[clusters[i]] = (overlapByCluster[clusters[i]] ?: 0L) + ov
+        }
+        val best = overlapByCluster.maxByOrNull { it.value }?.key ?: continue
+        val sid = idFor[best] ?: continue
+        db.execSQL(
+          "UPDATE utterances SET speaker_id=? WHERE id=?",
+          arrayOf<Any?>(sid, u.id),
+        )
+      }
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
+  }
+
+  fun upsertModel(id: String, name: String, kind: String, path: String, sha256: String, size: Long, installedAt: Long) {
+    db.execSQL(
+      "INSERT OR REPLACE INTO models(id,name,kind,path,sha256,size_bytes,installed_at) VALUES(?,?,?,?,?,?,?)",
+      arrayOf<Any?>(id, name, kind, path, sha256, size, installedAt),
+    )
+  }
+
+  fun deleteModel(id: String) {
+    db.execSQL("DELETE FROM models WHERE id=?", arrayOf<Any?>(id))
+  }
+
+  /** Replace VAD segments for a meeting. [segments] is flat [start0,end0,start1,end1,...] in ms. */
+  fun replaceSegments(meetingId: String, segments: LongArray) {
+    db.beginTransaction()
+    try {
+      db.execSQL("DELETE FROM segments WHERE meeting_id=?", arrayOf<Any?>(meetingId))
+      var i = 0
+      while (i + 1 < segments.size) {
+        db.execSQL(
+          "INSERT INTO segments(meeting_id,start_ms,end_ms) VALUES(?,?,?)",
+          arrayOf<Any?>(meetingId, segments[i], segments[i + 1]),
+        )
+        i += 2
+      }
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
+  }
+
+  companion object {
+    @Volatile private var instance: AudioDb? = null
+
+    private val SCHEMA = arrayOf(
+      """CREATE TABLE IF NOT EXISTS meetings(
+           id TEXT PRIMARY KEY, title TEXT NOT NULL, created_at INTEGER NOT NULL,
+           duration_ms INTEGER NOT NULL DEFAULT 0, language TEXT,
+           status TEXT NOT NULL DEFAULT 'recording', tier_used TEXT NOT NULL DEFAULT 'free',
+           audio_path TEXT, audio_retained INTEGER NOT NULL DEFAULT 1);""",
+      """CREATE TABLE IF NOT EXISTS utterances(
+           id TEXT PRIMARY KEY,
+           meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+           start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL,
+           speaker_id TEXT, text TEXT NOT NULL);""",
+      """CREATE TABLE IF NOT EXISTS speakers(
+           id TEXT PRIMARY KEY,
+           meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+           cluster_label TEXT NOT NULL, display_name TEXT NOT NULL);""",
+      """CREATE TABLE IF NOT EXISTS minutes(
+           id TEXT PRIMARY KEY,
+           meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+           kind TEXT NOT NULL, content_json TEXT NOT NULL, source TEXT NOT NULL);""",
+      """CREATE TABLE IF NOT EXISTS segments(
+           meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+           start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL);""",
+      """CREATE TABLE IF NOT EXISTS models(
+           id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, version TEXT,
+           path TEXT, sha256 TEXT, size_bytes INTEGER, installed_at INTEGER);""",
+      "CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT);",
+      "CREATE VIRTUAL TABLE IF NOT EXISTS meetings_fts USING fts5(meeting_id UNINDEXED, text);",
+    )
+
+    fun get(context: Context): AudioDb =
+      instance ?: synchronized(this) {
+        instance ?: open(context.applicationContext).also { instance = it }
+      }
+
+    private fun open(context: Context): AudioDb {
+      System.loadLibrary("sqlcipher")
+      val file = File(context.filesDir, "audionotes.db")
+      val pass = KeystoreKeyManager.getOrCreatePassphrase(context)
+      val db = SQLiteDatabase.openOrCreateDatabase(file, pass, null, null)
+      db.execSQL("PRAGMA foreign_keys=ON;")
+      SCHEMA.forEach { db.execSQL(it) }
+      return AudioDb(db)
+    }
+  }
+}
