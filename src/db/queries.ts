@@ -16,6 +16,9 @@ export const db = {
   getMeeting: (id: string) =>
     run<Meeting>('SELECT * FROM meetings WHERE id = ?', [id]).then(r => r[0]),
 
+  setTitle: (id: string, title: string) =>
+    run('UPDATE meetings SET title = ? WHERE id = ?', [title, id]),
+
   utterances: (meetingId: string) =>
     run<Utterance>(
       'SELECT id, meeting_id AS meetingId, start_ms AS startMs, end_ms AS endMs, ' +

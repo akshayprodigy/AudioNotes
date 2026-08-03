@@ -1,7 +1,11 @@
 package com.audionotes.pipeline
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
@@ -30,6 +34,8 @@ class OverlayService : Service() {
   companion object {
     const val ACTION_SHOW = "com.audionotes.overlay.SHOW"
     const val ACTION_HIDE = "com.audionotes.overlay.HIDE"
+    private const val CHANNEL_ID = "audionotes.overlay"
+    private const val NOTIF_ID = 43
   }
 
   private var wm: WindowManager? = null
@@ -48,10 +54,64 @@ class OverlayService : Service() {
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     when (intent?.action) {
-      ACTION_HIDE -> { removeBubble(); stopSelf() }
-      else -> showBubble()
+      ACTION_HIDE -> {
+        removeBubble()
+        stopForegroundCompat()
+        stopSelf()
+        return START_NOT_STICKY
+      }
+      else -> {
+        // Run in the foreground so the bubble survives memory pressure. As a plain started
+        // service it was among the first things the system reclaimed, and losing the bubble
+        // mid-meeting means losing the only on-screen way to stop the recording.
+        //
+        // FGS type is specialUse, not microphone: this service draws a window, it does not
+        // capture audio (RecordingService owns the mic). Claiming `microphone` here would be
+        // a second, false mic-usage signal to the user and to Play review.
+        startAsForeground()
+        showBubble()
+      }
     }
     return START_STICKY
+  }
+
+  private fun startAsForeground() {
+    createChannel()
+    val notif = Notification.Builder(this, CHANNEL_ID)
+      .setContentTitle("AudioNotes recorder")
+      .setContentText("Floating recorder is available")
+      .setSmallIcon(android.R.drawable.ic_menu_view)
+      .setOngoing(true)
+      .build()
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        startForeground(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+      } else {
+        startForeground(NOTIF_ID, notif)
+      }
+    } catch (e: Exception) {
+      // If the OS refuses (background-start restrictions), the bubble still works for as long
+      // as the process lives — it just is not protected from being reclaimed.
+      android.util.Log.w("OverlayService", "could not start in foreground", e)
+    }
+  }
+
+  private fun stopForegroundCompat() {
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        stopForeground(STOP_FOREGROUND_REMOVE)
+      } else {
+        @Suppress("DEPRECATION")
+        stopForeground(true)
+      }
+    } catch (_: Exception) {}
+  }
+
+  private fun createChannel() {
+    val mgr = getSystemService(NotificationManager::class.java)
+    val channel = NotificationChannel(CHANNEL_ID, "Floating recorder", NotificationManager.IMPORTANCE_MIN)
+    channel.description = "Keeps the floating recorder bubble alive while it is showing"
+    mgr.createNotificationChannel(channel)
   }
 
   private fun showBubble() {

@@ -19,6 +19,10 @@ export interface Spec extends TurboModule {
   // Returns how many were recovered. Safe to call at any time; skips a live recording.
   recoverOrphans(): Promise<number>;
 
+  // Delete a meeting's raw PCM once transcribed (BUILD_PLAN 4.7 retention promise).
+  // Returns bytes reclaimed. The transcript and minutes live on in the encrypted DB.
+  discardAudio(meetingId: string): Promise<number>;
+
   // Live capture state owned by native. Capture can be started by the floating bubble or outlive
   // the JS context, so the store must re-read this on resume rather than trust its own flag.
   currentSession(): Promise<{

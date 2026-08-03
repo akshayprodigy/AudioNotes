@@ -113,6 +113,14 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     )
   }
 
+  /** Track whether the raw PCM still exists, so the UI can offer/hide Reprocess honestly. */
+  fun setAudioRetained(id: String, retained: Boolean) {
+    db.execSQL(
+      "UPDATE meetings SET audio_retained=? WHERE id=?",
+      arrayOf<Any?>(if (retained) 1 else 0, id),
+    )
+  }
+
   fun setStatus(id: String, status: String) {
     db.execSQL("UPDATE meetings SET status=? WHERE id=?", arrayOf<Any?>(status, id))
   }

@@ -59,8 +59,14 @@ struct LlamaEngine::Impl {
 #ifdef HAVE_LLAMA
     if (!ready) return out;
 
-    // Independent calls: clear the KV cache so positions reset each generation.
-    llama_kv_self_clear(ctx);
+    // Independent calls: clear the KV cache so token positions reset each generation.
+    // Map/reduce summarisation issues many unrelated generations against one loaded model;
+    // without this each one would continue the previous context and drift.
+    //
+    // API note: this was llama_kv_self_clear(ctx) until llama.cpp moved cache control behind
+    // the memory API. Pinned at tag b10240 — if you bump the submodule and this stops
+    // compiling, the replacement is whatever llama.h now exposes under "Memory".
+    llama_memory_clear(llama_get_memory(ctx), /*data=*/true);
 
     const std::string text =
         "<|im_start|>user\n" + prompt + "<|im_end|>\n<|im_start|>assistant\n";

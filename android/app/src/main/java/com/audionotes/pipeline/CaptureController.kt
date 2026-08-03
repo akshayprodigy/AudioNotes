@@ -55,7 +55,7 @@ object CaptureController {
     val dir = File(context.filesDir, "meetings/$meetingId").apply { mkdirs() }
     val audioPath = File(dir, "audio.pcm").absolutePath
 
-    AudioDb.get(context).insertMeeting(meetingId, "Meeting", createdAt, tier, audioPath)
+    AudioDb.get(context).insertMeeting(meetingId, defaultTitle(createdAt), createdAt, tier, audioPath)
 
     val intent = Intent(context, RecordingService::class.java).apply {
       putExtra(RecordingService.EXTRA_MEETING_ID, meetingId)
@@ -100,5 +100,26 @@ object CaptureController {
   /** Called by RecordingService.onDestroy once the PCM is flushed and the row is updated. */
   fun onCaptureFinished() {
     stopLatch?.countDown()
+  }
+
+  /**
+   * A meeting's starting title: "Morning meeting · Mon 3 Aug, 14:05".
+   *
+   * Every row used to be the literal string "Meeting", which made the Library a wall of identical
+   * entries with nothing to tell them apart. The time of day is the cheapest thing that actually
+   * distinguishes them; once a transcript exists the pipeline replaces this with the first line of
+   * what was said (see PipelineController.buildMinutes).
+   */
+  fun defaultTitle(createdAt: Long): String {
+    val cal = java.util.Calendar.getInstance().apply { timeInMillis = createdAt }
+    val part = when (cal.get(java.util.Calendar.HOUR_OF_DAY)) {
+      in 5..11 -> "Morning"
+      in 12..16 -> "Afternoon"
+      in 17..20 -> "Evening"
+      else -> "Late"
+    }
+    val stamp = java.text.SimpleDateFormat("EEE d MMM, HH:mm", java.util.Locale.getDefault())
+      .format(java.util.Date(createdAt))
+    return "$part meeting · $stamp"
   }
 }

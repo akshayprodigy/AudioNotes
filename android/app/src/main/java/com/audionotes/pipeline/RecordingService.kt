@@ -3,6 +3,7 @@ package com.audionotes.pipeline
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -53,6 +54,9 @@ class RecordingService : Service() {
     const val END_NORMAL = "normal"
     const val END_DISK_FULL = "disk_full"
     const val END_MIC_LOST = "mic_lost"
+
+    /** Sent by the notification's Stop button. */
+    const val ACTION_STOP = "com.audionotes.action.STOP_RECORDING"
   }
 
   @Volatile private var recording = false
@@ -66,6 +70,7 @@ class RecordingService : Service() {
   @Volatile private var silenced = false
 
   private var audioRecord: AudioRecord? = null
+  private var notifTicker: java.util.Timer? = null
   private var audioManager: AudioManager? = null
   private var recordingCallback: AudioManager.AudioRecordingCallback? = null
   private var deviceCallback: AudioDeviceCallback? = null
@@ -76,6 +81,14 @@ class RecordingService : Service() {
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    // Stop button in the notification. Route it through CaptureController (off the main thread,
+    // since stopping blocks until the PCM is flushed) so it behaves exactly like the in-app and
+    // bubble stop paths — one code path, one source of truth for "is a meeting running".
+    if (intent?.action == ACTION_STOP) {
+      Thread { CaptureController.stop(applicationContext) }.start()
+      return START_NOT_STICKY
+    }
+
     val id = intent?.getStringExtra(EXTRA_MEETING_ID)
     val path = intent?.getStringExtra(EXTRA_AUDIO_PATH)
     if (id == null || path == null) {
@@ -91,6 +104,7 @@ class RecordingService : Service() {
     startInForeground()
     acquireWakeLock()
     if (!recording) startCapture(path)
+    startNotificationTicker()
     // REDELIVER (not STICKY): if the process is killed, Android restarts us with THIS intent, so
     // meetingId/audioPath survive and capture actually resumes. With START_STICKY the intent comes
     // back null and the service would run without ever calling startCapture().
@@ -271,6 +285,7 @@ class RecordingService : Service() {
 
   override fun onDestroy() {
     recording = false
+    stopNotificationTicker()
     worker?.join(2000)
     worker = null
     unregisterAudioWatchers()
@@ -320,14 +335,65 @@ class RecordingService : Service() {
     } catch (_: Exception) {}
   }
 
-  private fun buildNotification(): Notification =
-    Notification.Builder(this, CHANNEL_ID)
-      .setContentTitle("AudioNotes")
+  /** Refresh the elapsed time in the notification once a minute while recording. */
+  private fun startNotificationTicker() {
+    stopNotificationTicker()
+    // Once a minute, not once a second: the notification only shows whole minutes, and waking
+    // to redraw it every second during a two-hour meeting is a pointless battery cost.
+    notifTicker = java.util.Timer("audionotes-notif", true).also {
+      it.scheduleAtFixedRate(
+        object : java.util.TimerTask() {
+          override fun run() { if (recording) updateNotification() }
+        },
+        60_000L, 60_000L,
+      )
+    }
+  }
+
+  private fun stopNotificationTicker() {
+    notifTicker?.cancel()
+    notifTicker = null
+  }
+
+  private fun elapsedText(): String {
+    val min = CaptureController.elapsedMs() / 60_000
+    return when {
+      min < 1L -> "less than a minute"
+      min == 1L -> "1 minute"
+      else -> "$min minutes"
+    }
+  }
+
+  /**
+   * The recording notification is the only control the user has while another app is in front and
+   * the bubble is off, so it carries a Stop action and opens the app when tapped. Previously it
+   * was inert text: no way to stop without finding the app again.
+   */
+  private fun buildNotification(): Notification {
+    val open = PendingIntent.getActivity(
+      this, 0,
+      Intent(this, com.audionotes.MainActivity::class.java)
+        .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK),
+      PendingIntent.FLAG_IMMUTABLE,
+    )
+    val stop = PendingIntent.getService(
+      this, 1,
+      Intent(this, RecordingService::class.java).apply { action = ACTION_STOP },
+      PendingIntent.FLAG_IMMUTABLE,
+    )
+    return Notification.Builder(this, CHANNEL_ID)
+      .setContentTitle(if (silenced) "AudioNotes — mic unavailable" else "AudioNotes — recording")
       .setContentText(
-        if (silenced) "Paused — the mic is in use by another app"
-        else "Recording — everything stays on this device",
+        if (silenced) "Another app is using the mic; nothing is being captured"
+        else "${elapsedText()} · everything stays on this device",
       )
       .setSmallIcon(android.R.drawable.ic_btn_speak_now)
       .setOngoing(true)
+      .setUsesChronometer(false)
+      .setContentIntent(open)
+      .addAction(
+        Notification.Action.Builder(null as android.graphics.drawable.Icon?, "Stop", stop).build(),
+      )
       .build()
+  }
 }

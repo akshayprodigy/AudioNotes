@@ -43,6 +43,41 @@ target_include_directories(audionotes PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${ORT_INCLUDE})
 
+# ---------------------------------------------------------------------------
+# ggml ownership — read this before reordering anything below.
+#
+# whisper.cpp and llama.cpp each vendor their own copy of ggml, and both add it with the SAME
+# CMake target names (ggml, ggml-base, ggml-cpu). Only one may build it. Both upstreams guard
+# with `if (NOT TARGET ggml)`, so whichever is added FIRST owns ggml and the other reuses it.
+#
+# llama.cpp is added first deliberately: ggml lives in the llama.cpp repo and whisper.cpp syncs
+# from it, so llama's copy is always the newer superset. With whisper first, llama failed to
+# compile against whisper v1.9.1's older ggml (`use of undeclared identifier GGML_TYPE_Q2_0`).
+# The reverse direction works because whisper only uses long-stable ggml APIs.
+#
+# If you bump either submodule and hit missing GGML_* symbols, it is this version skew — bump
+# the other one to a contemporaneous release rather than trying to patch the engine sources.
+# ---------------------------------------------------------------------------
+
+# --- llama.cpp (LLM) — vendored as a git submodule; built + linked when present ---
+#   git submodule add https://github.com/ggml-org/llama.cpp cpp/third_party/llama.cpp
+set(LLAMA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/llama.cpp)
+if(EXISTS ${LLAMA_DIR}/CMakeLists.txt)
+  set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
+  set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+  set(LLAMA_CURL OFF CACHE BOOL "" FORCE)
+  set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
+  set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+  add_subdirectory(${LLAMA_DIR} ${CMAKE_BINARY_DIR}/llama_build)
+  target_compile_definitions(audionotes PRIVATE HAVE_LLAMA=1)
+  target_link_libraries(audionotes llama)
+  foreach(t llama ggml ggml-base ggml-cpu)
+    audionotes_optimize_engine(${t})
+  endforeach()
+endif()
+
 # --- whisper.cpp (ASR) — vendored as a git submodule; built + linked when present ---
 #   git submodule add https://github.com/ggerganov/whisper.cpp cpp/third_party/whisper.cpp
 set(WHISPER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/whisper.cpp)
@@ -79,19 +114,6 @@ if(EXISTS ${SHERPA_DIR}/CMakeLists.txt)
   target_compile_definitions(audionotes PRIVATE HAVE_SHERPA=1)
   target_include_directories(audionotes PRIVATE ${SHERPA_DIR})
   target_link_libraries(audionotes sherpa-onnx-c-api)
-endif()
-
-# --- llama.cpp (LLM) — vendored as a git submodule; built + linked when present ---
-#   git submodule add https://github.com/ggerganov/llama.cpp cpp/third_party/llama.cpp
-set(LLAMA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/llama.cpp)
-if(EXISTS ${LLAMA_DIR}/CMakeLists.txt)
-  set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-  set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-  set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
-  set(LLAMA_CURL OFF CACHE BOOL "" FORCE)
-  add_subdirectory(${LLAMA_DIR} ${CMAKE_BINARY_DIR}/llama_build)
-  target_compile_definitions(audionotes PRIVATE HAVE_LLAMA=1)
-  target_link_libraries(audionotes llama)
 endif()
 
 find_library(log-lib log)

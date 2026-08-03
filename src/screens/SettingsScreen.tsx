@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, NativeEventEmitter, NativeModules } from 'react-native';
 import ModelManager from '../native/NativeModelManager';
+import { db } from '../db/queries';
 import Icon from '../components/Icon';
 import { useTheme, spacing, radius, type Colors, type ThemeMode } from '../theme';
 
@@ -11,8 +12,19 @@ export default function SettingsScreen() {
   const s = useMemo(() => makeStyles(colors), [colors]);
   const [models, setModels] = useState<Model[]>([]);
   const [progress, setProgress] = useState<Record<string, number>>({});
+  const [keepAudio, setKeepAudio] = useState(false);
 
   const refresh = () => ModelManager.list().then(r => setModels(JSON.parse(r)));
+
+  useEffect(() => {
+    db.getSetting('keepAudio').then(v => setKeepAudio(v === '1')).catch(() => {});
+  }, []);
+
+  const onToggleKeepAudio = async () => {
+    const next = !keepAudio;
+    setKeepAudio(next);
+    await db.setSetting('keepAudio', next ? '1' : '0');
+  };
 
   useEffect(() => {
     refresh();
@@ -62,7 +74,7 @@ export default function SettingsScreen() {
         const downloading = pct !== undefined && !m.installed;
         return (
           <View key={m.id} style={s.row}>
-            <View style={{ flex: 1 }}>
+            <View style={s.rowFill}>
               <Text style={s.name}>{m.name}</Text>
               <Text style={s.meta}>{downloading ? `Downloading ${pct}%` : `${(m.sizeBytes / 1e6).toFixed(0)} MB`}</Text>
             </View>
@@ -80,6 +92,19 @@ export default function SettingsScreen() {
       })}
 
       <Text style={s.section}>Privacy</Text>
+      <Pressable style={s.row} onPress={onToggleKeepAudio}>
+        <View style={s.rowFill}>
+          <Text style={s.name}>Keep the audio after transcribing</Text>
+          <Text style={s.meta}>
+            {keepAudio
+              ? 'Recordings stay on the device (~115 MB/hour) so a meeting can be reprocessed later.'
+              : 'Recordings are deleted once transcribed. The transcript and minutes are kept, encrypted.'}
+          </Text>
+        </View>
+        <View style={[s.switch, keepAudio && s.switchOn]}>
+          <View style={[s.knob, keepAudio && s.knobOn]} />
+        </View>
+      </Pressable>
       <View style={s.privacy}>
         <Icon name="shield" size={20} color={colors.success} />
         <Text style={s.privacyText}>All processing is on-device. No third-party AI. No account required.</Text>
@@ -91,6 +116,11 @@ export default function SettingsScreen() {
 function makeStyles(c: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: c.bg },
+    rowFill: { flex: 1, paddingRight: spacing.md },
+    switch: { width: 46, height: 28, borderRadius: 14, backgroundColor: c.border, padding: 3, justifyContent: 'center' },
+    switchOn: { backgroundColor: c.primary },
+    knob: { width: 22, height: 22, borderRadius: 11, backgroundColor: c.surface },
+    knobOn: { alignSelf: 'flex-end' },
     section: { color: c.textDim, fontWeight: '800', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: spacing.lg, marginBottom: spacing.sm },
     segment: { flexDirection: 'row', backgroundColor: c.surfaceAlt, borderRadius: radius.md, padding: 4, gap: 4 },
     segBtn: { flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.sm, borderRadius: radius.sm },

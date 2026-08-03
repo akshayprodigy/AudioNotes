@@ -28,6 +28,9 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
 
   private var levelTimer: java.util.Timer? = null
 
+  /** Meetings for which cancel() was requested; checked at each pipeline stage boundary. */
+  private val cancelled = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
   override fun getName() = "AudioPipeline"
 
   // Push the live mic level to JS ~20x/s while recording, for the animated meter.
@@ -107,6 +110,7 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
 
   @ReactMethod
   fun process(meetingId: String, options: ReadableMap, promise: Promise) {
+    cancelled.remove(meetingId) // a fresh run is never pre-cancelled
     Thread {
       try {
         val db = AudioDb.get(ctx)
@@ -120,6 +124,7 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
         db.setStatus(meetingId, "vad")
         emitProgress(meetingId, "vad", 1, 1)
         Log.i("AudioPipeline", "VAD produced ${segments.size / 2} speech segments for $meetingId")
+        if (checkCancelled(meetingId)) { promise.resolve(null); return@Thread }
 
         // ---- ASR (whisper.cpp) over the VAD spans, if the chosen model is installed ----
         val modelName = if (options.hasKey("model")) options.getString("model") ?: "base" else "base"
@@ -138,6 +143,7 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
           emitProgress(meetingId, "asr", 1, 1)
           transcribed = count > 0
           Log.i("AudioPipeline", "ASR produced $count utterances for $meetingId")
+          if (checkCancelled(meetingId)) { promise.resolve(null); return@Thread }
         } else {
           Log.i("AudioPipeline", "ASR skipped for $meetingId (no whisper model installed yet)")
         }
@@ -164,11 +170,15 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
           Log.i("AudioPipeline", "Diarization skipped for $meetingId (no diar models installed yet)")
         }
 
+        emitComplete(meetingId, "done")
         promise.resolve(null)
       } catch (e: Exception) {
         Log.e("AudioPipeline", "process failed", e)
         try { AudioDb.get(ctx).setStatus(meetingId, "error") } catch (_: Exception) {}
+        emitComplete(meetingId, "error", e.message ?: e.toString())
         promise.reject("process_failed", e)
+      } finally {
+        cancelled.remove(meetingId)
       }
     }.start()
   }
@@ -211,9 +221,63 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
     }.start()
   }
 
+  /**
+   * Cooperatively cancel a running pipeline.
+   *
+   * The native stages (VAD/ASR/diarize) are long single JNI calls that cannot be interrupted
+   * part-way, so this marks the meeting cancelled and process() checks between stages. A cancel
+   * therefore takes effect at the next stage boundary rather than instantly — which is the right
+   * trade: killing a thread mid-inference would leak the model and could corrupt the transcript
+   * write. The audio and any completed stages are kept, so Reprocess can resume later.
+   */
   @ReactMethod
   fun cancel(meetingId: String) {
-    // TODO(milestone 2+): cooperative cancel of the running pipeline.
+    cancelled.add(meetingId)
+    Log.i("AudioPipeline", "cancel requested for $meetingId (applies at the next stage boundary)")
+  }
+
+  /**
+   * Delete a meeting's raw audio once it has been transcribed.
+   *
+   * BUILD_PLAN 4.7 promises audio is either encrypted at rest or removed after transcription.
+   * It was neither: raw 16 kHz PCM sat unencrypted in filesDir indefinitely (~115 MB/hour),
+   * which is both the largest privacy exposure in the app and the main consumer of storage.
+   * Deleting is the stronger guarantee and the cheaper one — the transcript is already in the
+   * encrypted database, and the audio's only remaining use is Reprocess.
+   *
+   * Returns the number of bytes reclaimed.
+   */
+  @ReactMethod
+  fun discardAudio(meetingId: String, promise: Promise) {
+    Thread {
+      try {
+        val db = AudioDb.get(ctx)
+        val path = db.getAudioPath(meetingId)
+        var freed = 0L
+        if (path != null) {
+          val f = File(path)
+          freed = f.length()
+          if (f.exists() && !f.delete()) {
+            Log.w("AudioPipeline", "could not delete audio for $meetingId")
+            freed = 0L
+          }
+        }
+        db.setAudioRetained(meetingId, false)
+        Log.i("AudioPipeline", "discarded audio for $meetingId (${freed / 1024}KB)")
+        promise.resolve(freed.toDouble())
+      } catch (e: Exception) {
+        promise.reject("discard_failed", e)
+      }
+    }.start()
+  }
+
+  /** True if cancel() was called for this meeting; clears the flag so the next run is clean. */
+  private fun checkCancelled(meetingId: String): Boolean {
+    if (!cancelled.contains(meetingId)) return false
+    cancelled.remove(meetingId)
+    Log.i("AudioPipeline", "pipeline cancelled for $meetingId")
+    emitComplete(meetingId, "cancelled")
+    return true
   }
 
   @ReactMethod fun addListener(eventName: String) {}
@@ -234,6 +298,30 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
       throw IllegalStateException(
         "silero_vad.onnx not found — place it in assets/ or have ModelManager download it (milestone 2)",
       )
+    }
+  }
+
+  /**
+   * Terminal event for a pipeline run. The JS layer previously had no way to learn that
+   * processing finished or failed — it polled the database on a timer instead, which meant a
+   * failed run looked identical to a slow one.
+   *
+   * @param outcome one of: done | cancelled | error
+   */
+  private fun emitComplete(meetingId: String, outcome: String, message: String? = null) {
+    val map = WritableNativeMap().apply {
+      putString("meetingId", meetingId)
+      putString("outcome", outcome)
+      if (message != null) putString("message", message)
+    }
+    emit(if (outcome == "error") "onError" else "onStageComplete", map)
+  }
+
+  private fun emit(event: String, map: WritableNativeMap) {
+    try {
+      ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java).emit(event, map)
+    } catch (_: Exception) {
+      // No JS context (app killed while processing continues) — events are advisory only.
     }
   }
 
