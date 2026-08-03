@@ -3,6 +3,46 @@ apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
 /**
+ * Path to libonnxruntime.so for the build ABI, extracted from the onnxruntime-android AAR.
+ *
+ * sherpa-onnx needs a real .so to link against and cannot fetch one for Android itself. Rather
+ * than downloading a second ONNX Runtime — which would put two different builds of it in one
+ * process — we reuse the exact library Gradle already packages into the APK.
+ *
+ * Returns "" when the AAR is not in the cache yet; cpp/CMakeLists.txt then skips diarization with
+ * a warning rather than failing the build.
+ */
+ext.ortVersion = "1.19.2"
+
+String ortSharedLibPath() {
+    def abi = (project.findProperty("reactNativeArchitectures") ?: "arm64-v8a").split(",")[0].trim()
+    def out = new File(project.layout.buildDirectory.get().asFile, "ort-extracted/${abi}/libonnxruntime.so")
+    if (out.exists() && out.length() > 0) return out.absolutePath
+
+    // Locate the AAR on disk rather than resolving a configuration: this runs while
+    // defaultConfig is being evaluated, and resolving there locks the dependency set before
+    // the dependencies {} block has been read ("Cannot mutate the dependencies of
+    // configuration ':app:implementation' after ... was resolved").
+    def cacheDir = new File(project.gradle.gradleUserHomeDir,
+        "caches/modules-2/files-2.1/com.microsoft.onnxruntime/onnxruntime-android/${project.ext.ortVersion}")
+    if (!cacheDir.isDirectory()) return ""
+    def aar = null
+    cacheDir.eachFileRecurse { if (it.name.endsWith(".aar")) aar = it }
+    if (aar == null) return ""
+
+    out.parentFile.mkdirs()
+    def found = false
+    new java.util.zip.ZipFile(aar).withCloseable { zip ->
+        def entry = zip.getEntry("jni/${abi}/libonnxruntime.so")
+        if (entry != null) {
+            out.withOutputStream { os -> zip.getInputStream(entry).withCloseable { it.transferTo(os) } }
+            found = true
+        }
+    }
+    return found ? out.absolutePath : ""
+}
+
+/**
  * This is the configuration block to customize your React Native Android app.
  * By default you don't need to apply any configuration, just uncomment the lines you need.
  */
@@ -91,6 +131,12 @@ android {
         externalNativeBuild {
             cmake {
                 cppFlags "-std=c++17"
+                // sherpa-onnx cannot download an ONNX Runtime for Android (its
+                // download_onnxruntime() fatal-errors on anything but Linux/macOS/Windows), so we
+                // hand it the exact libonnxruntime.so that ships in the APK. Resolved lazily:
+                // the AAR is only unzipped when a build actually runs, and if sherpa-onnx is not
+                // vendored this stays empty and CMake simply skips diarization.
+                arguments "-DORT_AAR_SO=" + ortSharedLibPath()
             }
         }
         ndk {
@@ -143,7 +189,7 @@ dependencies {
 
     // AudioNotes milestone 1
     implementation("androidx.core:core-ktx:1.13.1")
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.2") // Silero VAD (MIT), prefab
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:${project.ext.ortVersion}") // Silero VAD (MIT), prefab
     implementation("net.zetetic:sqlcipher-android:4.6.1")                  // encrypted storage
     implementation("androidx.sqlite:sqlite:2.4.0")
 

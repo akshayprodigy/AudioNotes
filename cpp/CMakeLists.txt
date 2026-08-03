@@ -103,17 +103,47 @@ endif()
 #   git submodule add https://github.com/k2-fsa/sherpa-onnx cpp/third_party/sherpa-onnx
 set(SHERPA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/sherpa-onnx)
 if(EXISTS ${SHERPA_DIR}/CMakeLists.txt)
-  set(SHERPA_ONNX_ENABLE_C_API ON CACHE BOOL "" FORCE)
-  set(SHERPA_ONNX_ENABLE_PYTHON OFF CACHE BOOL "" FORCE)
-  set(SHERPA_ONNX_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
-  set(SHERPA_ONNX_ENABLE_PORTAUDIO OFF CACHE BOOL "" FORCE)
-  set(SHERPA_ONNX_ENABLE_BINARY OFF CACHE BOOL "" FORCE)
-  set(SHERPA_ONNX_ENABLE_WEBSOCKET OFF CACHE BOOL "" FORCE)
-  set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-  add_subdirectory(${SHERPA_DIR} ${CMAKE_BINARY_DIR}/sherpa_build)
-  target_compile_definitions(audionotes PRIVATE HAVE_SHERPA=1)
-  target_include_directories(audionotes PRIVATE ${SHERPA_DIR})
-  target_link_libraries(audionotes sherpa-onnx-c-api)
+  # -------------------------------------------------------------------------
+  # ONNX Runtime for sherpa-onnx.
+  #
+  # sherpa's own download_onnxruntime() FATAL_ERRORs on Android ("Only support Linux, macOS and
+  # Windows"), so its pre-installed path is the only way in. It reads two ENVIRONMENT variables
+  # at configure time, hence set(ENV{...}) rather than plain cache variables.
+  #
+  # We point it at the SAME runtime the app already ships — the libonnxruntime.so inside the
+  # com.microsoft.onnxruntime:onnxruntime-android AAR that Gradle packages into the APK. Letting
+  # sherpa fetch its own would put two different ORT builds in one process: duplicate symbols,
+  # two sets of globals, and a large wasted download. The headers are the ones already vendored
+  # under third_party/onnxruntime/include for the Silero VAD path.
+  # -------------------------------------------------------------------------
+  set(ORT_AAR_SO "" CACHE FILEPATH "libonnxruntime.so extracted from the onnxruntime-android AAR")
+  if(NOT ORT_AAR_SO OR NOT EXISTS "${ORT_AAR_SO}")
+    message(WARNING
+      "sherpa-onnx is vendored but ORT_AAR_SO was not provided, so diarization is being SKIPPED. "
+      "app/build.gradle extracts it from the AAR and passes -DORT_AAR_SO=<path>.")
+  else()
+    get_filename_component(ORT_LIB_DIR "${ORT_AAR_SO}" DIRECTORY)
+    set(ENV{SHERPA_ONNXRUNTIME_INCLUDE_DIR} "${ORT_INCLUDE}")
+    set(ENV{SHERPA_ONNXRUNTIME_LIB_DIR} "${ORT_LIB_DIR}")
+    set(SHERPA_ONNX_USE_PRE_INSTALLED_ONNXRUNTIME_IF_AVAILABLE ON CACHE BOOL "" FORCE)
+
+    set(SHERPA_ONNX_ENABLE_C_API ON CACHE BOOL "" FORCE)
+    set(SHERPA_ONNX_ENABLE_PYTHON OFF CACHE BOOL "" FORCE)
+    set(SHERPA_ONNX_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+    set(SHERPA_ONNX_ENABLE_PORTAUDIO OFF CACHE BOOL "" FORCE)
+    set(SHERPA_ONNX_ENABLE_BINARY OFF CACHE BOOL "" FORCE)
+    set(SHERPA_ONNX_ENABLE_WEBSOCKET OFF CACHE BOOL "" FORCE)
+    set(SHERPA_ONNX_ENABLE_JNI OFF CACHE BOOL "" FORCE)
+    # We only use offline speaker diarization; leaving TTS on drags in espeak-ng and friends
+    # for no benefit and a large binary cost.
+    set(SHERPA_ONNX_ENABLE_TTS OFF CACHE BOOL "" FORCE)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    add_subdirectory(${SHERPA_DIR} ${CMAKE_BINARY_DIR}/sherpa_build)
+    target_compile_definitions(audionotes PRIVATE HAVE_SHERPA=1)
+    target_include_directories(audionotes PRIVATE ${SHERPA_DIR})
+    target_link_libraries(audionotes sherpa-onnx-c-api)
+    audionotes_optimize_engine(sherpa-onnx-core)
+  endif()
 endif()
 
 find_library(log-lib log)

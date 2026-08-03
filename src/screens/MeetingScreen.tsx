@@ -21,6 +21,8 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const [speechMs, setSpeechMs] = useState(0);
   const [segCount, setSegCount] = useState(0);
   const [reprocessing, setReprocessing] = useState(false);
+  const [stage, setStage] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const [mins, utts, segs, spk] = await Promise.all([
@@ -49,6 +51,21 @@ export default function MeetingScreen({ route, navigation }: Props) {
     return () => { cancelled = true; };
   }, [refresh]);
 
+  // Live stage progress, and the terminal event. Polling alone could not distinguish "still
+  // working" from "failed and will never produce anything", which left the screen blank forever.
+  useEffect(() => {
+    const offProgress = PipelineController.onProgress(p => {
+      if (p.meetingId === meetingId) setStage(p.stage);
+    });
+    const offComplete = PipelineController.onComplete(e => {
+      if (e.meetingId !== meetingId) return;
+      setStage(null);
+      if (e.outcome === 'error') setFailure(e.message ?? 'Processing failed');
+      refresh();
+    });
+    return () => { offProgress(); offComplete(); };
+  }, [meetingId, refresh]);
+
   // Re-run the whole pipeline over the stored audio. The common reason is that a model
   // (whisper, diarization, Qwen) was installed AFTER this meeting was recorded, so the
   // first pass stopped early — rather than making the user re-record, re-derive from the
@@ -56,6 +73,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const onReprocess = useCallback(async () => {
     if (reprocessing) return;
     setReprocessing(true);
+    setFailure(null);
     try {
       await PipelineController.process(meetingId, { model: 'base', useLLM: true });
       await refresh();
@@ -94,6 +112,21 @@ export default function MeetingScreen({ route, navigation }: Props) {
           <Text style={s.vadText}>
             {segCount} speech segment{segCount === 1 ? '' : 's'} · {(speechMs / 1000).toFixed(1)}s speech
           </Text>
+        </View>
+      )}
+      {stage && (
+        <View style={s.stagePill}>
+          <Text style={s.stageText}>
+            {stage === 'vad' ? 'Finding speech…'
+              : stage === 'asr' ? 'Transcribing…'
+              : stage === 'diarize' ? 'Identifying speakers…'
+              : 'Processing…'}
+          </Text>
+        </View>
+      )}
+      {failure && (
+        <View style={s.failPill}>
+          <Text style={s.failText}>{failure}</Text>
         </View>
       )}
       <View style={s.actions}>
@@ -155,6 +188,10 @@ function makeStyles(c: Colors) {
     vadPill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, alignSelf: 'flex-start', backgroundColor: c.successSoft, paddingHorizontal: spacing.sm, paddingVertical: 6, borderRadius: radius.pill, marginBottom: spacing.sm },
     vadDot: { width: 7, height: 7, borderRadius: 4 },
     vadText: { color: c.success, fontSize: 12, fontWeight: '600' },
+    stagePill: { alignSelf: 'flex-start', backgroundColor: c.primarySoft, paddingHorizontal: spacing.sm, paddingVertical: 6, borderRadius: radius.pill, marginBottom: spacing.sm },
+    stageText: { color: c.primary, fontSize: 12, fontWeight: '700' },
+    failPill: { backgroundColor: c.dangerSoft, padding: spacing.sm, borderRadius: radius.md, marginBottom: spacing.sm },
+    failText: { color: c.danger, fontSize: 12, fontWeight: '600' },
     actions: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
     btn: { flex: 1, flexDirection: 'row', gap: spacing.xs, backgroundColor: c.surface, borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: c.border },
     btnText: { color: c.text, fontWeight: '700' },
