@@ -91,8 +91,11 @@ android {
             }
         }
         ndk {
-            // Keep APK size sane; add/remove ABIs as needed for your test devices.
-            abiFilters "arm64-v8a", "armeabi-v7a", "x86_64"
+            // Driven by `reactNativeArchitectures` in gradle.properties. The C++ core
+            // (whisper/sherpa/llama) is compiled once per ABI, so building only the
+            // ABI of your test device cuts native build time roughly 3x. Override for
+            // a release build:  ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a,x86_64
+            abiFilters(*project.property("reactNativeArchitectures").split(",").collect { it.trim() })
         }
     }
 
