@@ -10,11 +10,22 @@ async function run<T>(sql: string, params: unknown[] = []): Promise<T[]> {
 export const db = {
   init: () => Storage.open(),
 
+  // Columns are aliased to the camelCase the TS types declare. `SELECT *` returned raw snake_case,
+  // so meeting.createdAt / .durationMs / .tierUsed were silently undefined everywhere.
   listMeetings: () =>
-    run<Meeting>('SELECT * FROM meetings ORDER BY created_at DESC'),
+    run<Meeting>(
+      'SELECT id, title, created_at AS createdAt, duration_ms AS durationMs, language, ' +
+        'status, tier_used AS tierUsed, audio_retained AS audioRetained ' +
+        'FROM meetings ORDER BY created_at DESC',
+    ),
 
   getMeeting: (id: string) =>
-    run<Meeting>('SELECT * FROM meetings WHERE id = ?', [id]).then(r => r[0]),
+    run<Meeting>(
+      'SELECT id, title, created_at AS createdAt, duration_ms AS durationMs, language, ' +
+        'status, tier_used AS tierUsed, audio_retained AS audioRetained ' +
+        'FROM meetings WHERE id = ?',
+      [id],
+    ).then(r => r[0]),
 
   setTitle: (id: string, title: string) =>
     run('UPDATE meetings SET title = ? WHERE id = ?', [title, id]),

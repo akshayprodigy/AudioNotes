@@ -27,10 +27,13 @@ class WhisperAsr {
   bool ok() const;  // false if whisper is not compiled in or the model failed to load
 
   // pcm_path: 16 kHz mono PCM16. segments: VAD speech spans (ms). Returns utterances in ms.
+  // `threads` <= 0 selects the automatic big.LITTLE-aware default (see asrThreadCount).
+  // Exposed so a benchmark can sweep it and so tiers can trade speed for battery later.
   std::vector<Utterance> transcribe(
       const std::string& pcm_path,
       const std::vector<Segment>& segments,
       int sample_rate,
+      int threads = 0,
       const AsrProgressFn& progress = nullptr);
 
  private:

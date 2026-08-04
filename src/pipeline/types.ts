@@ -21,6 +21,8 @@ export interface Meeting {
   language: string | null;
   status: MeetingStatus;
   tierUsed: 'free' | 'pro';
+  /** 0 once the raw audio has been discarded post-transcription (see Settings > Keep the audio). */
+  audioRetained: number;
 }
 
 export interface Utterance {

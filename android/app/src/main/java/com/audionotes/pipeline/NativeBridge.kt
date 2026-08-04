@@ -20,12 +20,14 @@ object NativeBridge {
    * segStarts/segEnds are parallel arrays (ms). Returns a JSON array string of
    * {start_ms, end_ms, text} utterances with timestamps re-anchored to the meeting timeline.
    */
+  /** @param threads 0 = automatic (big.LITTLE-aware default); >0 pins the count, for benchmarks. */
   external fun nativeTranscribe(
     pcmPath: String,
     modelPath: String,
     sampleRate: Int,
     segStarts: LongArray,
     segEnds: LongArray,
+    threads: Int = 0,
   ): String
 
   /**

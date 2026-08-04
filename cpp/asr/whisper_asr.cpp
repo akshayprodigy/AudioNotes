@@ -38,13 +38,9 @@ constexpr int64_t kChunkMs = 30000;  // combine VAD spans up to ~30s per whisper
  * whisper base runs at roughly 1x realtime here, so this is the difference between a 30-minute
  * meeting taking ~19 minutes and considerably longer.
  *
- * Override at runtime with the AUDIONOTES_ASR_THREADS env var when benchmarking.
+ * Callers may override via the `threads` argument to transcribe() (0 = use this default).
  */
 int asrThreadCount() {
-  if (const char* env = std::getenv("AUDIONOTES_ASR_THREADS")) {
-    const int n = std::atoi(env);
-    if (n > 0) return n;
-  }
   const int hw = static_cast<int>(std::thread::hardware_concurrency());
   if (hw <= 2) return 1;
   if (hw <= 4) return hw - 1;
@@ -113,6 +109,7 @@ std::vector<Utterance> WhisperAsr::transcribe(
     const std::string& pcm_path,
     const std::vector<Segment>& segments,
     int sample_rate,
+    int threads_override,
     const AsrProgressFn& progress) {
   std::vector<Utterance> utts;
 #ifdef HAVE_WHISPER
@@ -120,7 +117,7 @@ std::vector<Utterance> WhisperAsr::transcribe(
 
   const auto chunks = makeChunks(segments);
   const int total = static_cast<int>(chunks.size());
-  const int threads = asrThreadCount();
+  const int threads = threads_override > 0 ? threads_override : asrThreadCount();
   ASRLOGI("transcribing %d chunk(s) with %d threads", total, threads);
 
   for (int ci = 0; ci < total; ++ci) {

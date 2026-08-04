@@ -78,7 +78,7 @@ Java_com_audionotes_pipeline_NativeBridge_nativeVad(
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_audionotes_pipeline_NativeBridge_nativeTranscribe(
     JNIEnv* env, jobject /*thiz*/, jstring jPcmPath, jstring jModelPath, jint sampleRate,
-    jlongArray jStarts, jlongArray jEnds) {
+    jlongArray jStarts, jlongArray jEnds, jint threads) {
   const std::string pcm = jstr(env, jPcmPath);
   const std::string model = jstr(env, jModelPath);
 
@@ -98,7 +98,7 @@ Java_com_audionotes_pipeline_NativeBridge_nativeTranscribe(
   std::string json = "[";
   try {
     audionotes::WhisperAsr asr(model);
-    auto utts = asr.transcribe(pcm, segs, static_cast<int>(sampleRate));
+    auto utts = asr.transcribe(pcm, segs, static_cast<int>(sampleRate), static_cast<int>(threads));
     for (size_t i = 0; i < utts.size(); ++i) {
       if (i) json += ",";
       std::string esc;

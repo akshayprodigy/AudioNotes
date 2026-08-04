@@ -136,7 +136,7 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
           val starts = LongArray(n) { segments[it * 2] }
           val ends = LongArray(n) { segments[it * 2 + 1] }
           val json = NativeBridge.nativeTranscribe(
-            audioPath, asrFile.absolutePath, RecordingService.SAMPLE_RATE, starts, ends,
+            audioPath, asrFile.absolutePath, RecordingService.SAMPLE_RATE, starts, ends, 0,
           )
           val count = db.replaceUtterancesJson(meetingId, json)
           db.setStatus(meetingId, "asr")
