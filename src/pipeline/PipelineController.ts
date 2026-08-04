@@ -60,9 +60,30 @@ class PipelineControllerImpl {
     }
   }
 
-  // Process any meetings captured while the app wasn't in front (e.g. the floating bubble).
-  // Called on app open / Library focus so overlay-recorded meetings get transcribed + summarized.
-  async processPending(): Promise<void> {
+  /**
+   * Process any meeting that still owes work — captured via the floating bubble, or abandoned
+   * part-way by a process kill. Called on app open and on Library focus.
+   *
+   * Re-entrancy is the thing to be careful about here. LibraryScreen runs this on mount AND on
+   * every focus, and a single pass can take tens of minutes, so without a guard two passes
+   * overlap and transcribe the same meeting twice concurrently — double the CPU, and two racing
+   * writers for one meeting's rows. `sweeping` collapses concurrent callers onto one pass;
+   * `inFlight` additionally keeps the resumable-status query (which cannot distinguish "stalled
+   * in vad" from "in vad right now") from re-entering a meeting this session is already doing.
+   */
+  private sweeping: Promise<void> | null = null;
+  private inFlight = new Set<string>();
+
+  processPending(): Promise<void> {
+    if (!this.sweeping) {
+      this.sweeping = this.sweep().finally(() => {
+        this.sweeping = null;
+      });
+    }
+    return this.sweeping;
+  }
+
+  private async sweep(): Promise<void> {
     // First rescue anything stranded in 'recording' by a mid-capture process kill — those rows
     // become 'captured' and are picked up by the same pass below. Without this their audio sits
     // on disk untranscribed forever.
@@ -74,10 +95,14 @@ class PipelineControllerImpl {
     }
     const pending = await db.pendingMeetings();
     for (const m of pending) {
+      if (this.inFlight.has(m.id)) continue;
+      this.inFlight.add(m.id);
       try {
         await this.process(m.id, { model: 'base', useLLM: true });
       } catch {
-        // leave it 'captured' to retry next time
+        // leave the status as-is so the next sweep retries it
+      } finally {
+        this.inFlight.delete(m.id);
       }
     }
   }
@@ -85,7 +110,20 @@ class PipelineControllerImpl {
   // Rule-based minutes — the Free-tier floor. Runs whenever a transcript exists.
   async buildMinutes(meetingId: string): Promise<void> {
     const utterances = await db.utterances(meetingId);
-    if (utterances.length === 0) return; // ASR skipped (no whisper model yet)
+    if (utterances.length === 0) {
+      // No transcript. Whether that is terminal depends on WHY, and getting this wrong is costly
+      // in both directions: mark a recoverable meeting terminal and its audio is never
+      // transcribed; leave a hopeless one pending and every Library focus re-runs a full VAD
+      // pass over it forever, since the resumable-status sweep will keep picking it back up.
+      //
+      // VAD spans are the discriminator. Spans but no utterances means ASR could not run —
+      // typically the whisper model is still downloading — so leave it for the next sweep. No
+      // spans at all means the recording genuinely contains no speech; re-running VAD on the
+      // same silent audio will produce the same nothing, so stop and say so.
+      const spans = await db.segments(meetingId);
+      if (spans.length === 0) await db.setStatus(meetingId, 'error');
+      return;
+    }
     const speakers = await db.speakers(meetingId);
     const minutes = extractMinutes(utterances, speakers);
     await db.replaceMinutes(meetingId, minutes);

@@ -279,7 +279,19 @@ class RecordingService : Service() {
     }
     if (count == 0) return prev * 0.85f
     val rms = Math.sqrt(sum / count) / 32768.0
-    val target = Math.min(1.0, rms * 3.5).toFloat() // gain so normal speech fills the meter
+    if (rms <= 0.0) return prev * 0.8f
+
+    // Map dBFS, not raw amplitude. Loudness is perceived logarithmically, and a linear `rms * k`
+    // meter spends almost its whole range on sounds too loud to occur in a meeting: measured on
+    // device, a clearly-audible voice in a normal room peaked at rms 0.008 (-42 dBFS), which the
+    // old `rms * 3.5` rendered as 0.03 — below the visualiser's floor, so the bars sat flat and
+    // the recorder looked broken while it was in fact transcribing that audio perfectly well.
+    //
+    // -55 dBFS maps to 0 and -10 dBFS to 1. Against the levels actually measured on this device
+    // that puts room tone at ~0.07 (at the visualiser's floor, so it still reads as silence) and
+    // speech across 0.30-0.90, which is the range where the meter has somewhere to move.
+    val db = 20.0 * Math.log10(rms)
+    val target = Math.max(0.0, Math.min(1.0, (db + 55.0) / 45.0)).toFloat()
     return if (target > prev) target else prev * 0.8f + target * 0.2f // fast up, slow down
   }
 

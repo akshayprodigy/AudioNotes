@@ -41,6 +41,17 @@ class PipelineBenchmark {
     return out
   }
 
+  /**
+   * Android's thermal pressure level (0 = none, higher = throttling). Printed alongside every
+   * measurement so a reader can tell a real result from one taken on a cooking phone.
+   */
+  private fun thermalStatus(): Int = try {
+    val pm = ctx.getSystemService(android.os.PowerManager::class.java)
+    pm.currentThermalStatus
+  } catch (e: Exception) {
+    -1
+  }
+
   private fun fmt(ms: Long, audioMs: Long) =
     "%6d ms  (%.2fx realtime)".format(ms, ms.toDouble() / audioMs)
 
@@ -58,6 +69,7 @@ class PipelineBenchmark {
     println("AudioNotes pipeline benchmark")
     println("  device      : ${android.os.Build.MODEL} (${android.os.Build.SOC_MODEL}), $cores cores")
     println("  fixture     : ${audioMs / 1000}s of audio")
+    println("  thermal     : ${thermalStatus()} (0 = unthrottled)")
     println("=".repeat(72))
 
     // ---- VAD ----
@@ -73,21 +85,46 @@ class PipelineBenchmark {
     val ends = LongArray(n) { spans[it * 2 + 1] }
 
     // ---- ASR thread sweep ----
-    // ggml barriers per graph node, so the pass runs at the speed of the slowest thread. More
-    // threads is not monotonically better once the scheduler starts using little cores.
-    println("\nASR (whisper base q5_1) — cost is per SPEECH second, silence is skipped:")
-    var best = Int.MAX_VALUE
-    var bestThreads = 0
-    for (threads in listOf(2, 4, 6, 8)) {
-      if (threads > cores) continue
-      t = System.currentTimeMillis()
-      NativeBridge.nativeTranscribe(pcm.absolutePath, asr!!.absolutePath, 16000, starts, ends, threads)
-      val ms = (System.currentTimeMillis() - t).toInt()
-      val factor = ms.toDouble() / speechMs
-      println("  %d threads   %6d ms  (%.2fx per speech-second)".format(threads, ms, factor))
-      if (ms < best) { best = ms; bestThreads = threads }
+    //
+    // METHODOLOGY. A single pass per thread count is worthless on a phone. Sustained inference
+    // heats the SoC into thermal throttling within a couple of minutes, so a sequential sweep
+    // measures "how hot was the device by then" at least as much as it measures thread scaling —
+    // an early first run looks fast and the last one looks catastrophic no matter what value it
+    // was testing. (An earlier sequential 2/4/6/8 sweep here produced exactly that artefact:
+    // 8 threads appeared 5.5x slower than 4, purely because it ran last at 92 C.)
+    //
+    // So: several REPS, thread counts round-robined within each rep, and the MEDIAN reported.
+    // Interleaving spreads any thermal drift evenly across all the candidates instead of
+    // loading it onto whichever ran last. Thermal status is printed per rep, because a run
+    // conducted entirely under throttling tells you about a hot phone, not about thread scaling.
+    val candidates = listOf(2, 4, 6, 8).filter { it <= cores }
+    val samples = candidates.associateWith { mutableListOf<Long>() }
+    val reps = 3
+
+    println("\nASR (whisper base q5_1) — $reps reps, interleaved; cost per SPEECH second:")
+    for (rep in 1..reps) {
+      for (threads in candidates) {
+        val before = thermalStatus()
+        t = System.currentTimeMillis()
+        NativeBridge.nativeTranscribe(pcm.absolutePath, asr!!.absolutePath, 16000, starts, ends, threads)
+        val ms = System.currentTimeMillis() - t
+        samples.getValue(threads).add(ms)
+        println("  rep $rep  %d threads  %6d ms  (%.2fx)  thermal=%d->%d"
+          .format(threads, ms, ms.toDouble() / speechMs, before, thermalStatus()))
+      }
     }
-    println("  best: $bestThreads threads")
+
+    println("\n  median of $reps reps:")
+    var best = Long.MAX_VALUE
+    var bestThreads = 0
+    for (threads in candidates) {
+      val med = samples.getValue(threads).sorted()[reps / 2]
+      val spread = samples.getValue(threads).max() - samples.getValue(threads).min()
+      println("    %d threads  %6d ms  (%.2fx per speech-second)  spread %d ms"
+        .format(threads, med, med.toDouble() / speechMs, spread))
+      if (med < best) { best = med; bestThreads = threads }
+    }
+    println("  best: $bestThreads threads (median ${best}ms)")
 
     // ---- Diarization ----
     val seg = ModelCatalog.fileFor(ctx, "diar-seg")?.takeIf { it.exists() }

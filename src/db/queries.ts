@@ -69,9 +69,23 @@ export const db = {
   setStatus: (meetingId: string, status: string) =>
     run('UPDATE meetings SET status = ? WHERE id = ?', [status, meetingId]),
 
-  // Meetings captured (e.g. via the floating bubble) but not yet processed.
+  /**
+   * Meetings that still owe work: captured but never started, OR abandoned part-way through.
+   *
+   * The intermediate statuses matter as much as 'captured'. Processing a meeting takes tens of
+   * minutes, so being killed mid-pipeline is routine rather than exotic — and a row left in
+   * 'vad'/'asr'/'diarized' was previously matched by nothing: recoverOrphans() only rescues
+   * 'recording', and this query only looked for 'captured'. Such meetings had their audio on
+   * disk and were never touched again.
+   *
+   * A meeting genuinely in progress right now is also in one of these states, so the caller
+   * must skip whatever it already has in flight (see PipelineController.processPending).
+   */
   pendingMeetings: () =>
-    run<{ id: string }>("SELECT id FROM meetings WHERE status = 'captured' ORDER BY created_at"),
+    run<{ id: string }>(
+      "SELECT id FROM meetings WHERE status IN ('captured','vad','asr','diarized') " +
+        'ORDER BY created_at',
+    ),
 
   // Simple key/value settings (onboarding flag, prefs).
   getSetting: (key: string) =>

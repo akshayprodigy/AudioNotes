@@ -145,7 +145,10 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
           Log.i("AudioPipeline", "ASR produced $count utterances for $meetingId")
           if (checkCancelled(meetingId)) { promise.resolve(null); return@Thread }
         } else {
-          Log.i("AudioPipeline", "ASR skipped for $meetingId (no whisper model installed yet)")
+          // Two very different reasons to land here; saying "no model" for both sent me hunting
+          // for a missing file when the real answer was that the recording had no speech in it.
+          val why = if (segments.isEmpty()) "no speech detected" else "whisper model not installed"
+          Log.i("AudioPipeline", "ASR skipped for $meetingId ($why)")
         }
 
         // ---- Diarization (sherpa-onnx), if the models are installed and we have a transcript ----

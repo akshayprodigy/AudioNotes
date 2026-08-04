@@ -16,15 +16,22 @@ namespace audionotes {
  * adding a slow core does not add throughput, it adds a stall that every other thread waits on.
  *
  * Measured on a Pixel 7 Pro (Tensor G2: 4x A55 @1.80GHz, 2x A78 @2.35GHz, 2x X1 @2.85GHz),
- * transcribing 154s of speech with whisper base:
+ * transcribing 108s of speech with whisper base. MEDIAN of 3 reps, thread counts interleaved
+ * within each rep, started from thermal status 0 (see PipelineBenchmark for why that matters):
  *
- *     2 threads    ~104 s     <- fastest cluster only (both X1)
- *     4 threads     112 s
- *     6 threads     115 s
- *     8 threads     622 s     <- 5.5x SLOWER; every barrier waits on an A55
+ *     2 threads      91.6 s   spread 13.5 s   <- fastest cluster only (both X1)
+ *     4 threads     102.6 s   spread 27.8 s
+ *     6 threads      94.3 s   spread 15.7 s
+ *     8 threads     564.8 s   spread 17.8 s   <- 5.2x SLOWER; every barrier waits on an A55
  *
- * The naive `hardware_concurrency() - 2` would pick 6 here, and "use every core" would pick the
- * catastrophic 8. Hence: group cores by max frequency and use only the top group.
+ * Read that honestly: 2, 4 and 6 are within 11% of each other with overlapping spreads, so this
+ * function's choice of 2 is only "tied best, and coolest" — not measurably faster than 6. The one
+ * result the data does support strongly is the cliff at 8, which is far outside the noise and
+ * reproduced on both a hot and a cooled device.
+ *
+ * That cliff is the whole point: "use every core" picks the catastrophic 8, and the naive
+ * `hardware_concurrency() - 2` picks 6 by luck rather than by reason. Grouping cores by max
+ * frequency and using only the top group gets there deliberately.
  *
  * Falls back to a conservative half-of-cores if sysfs is unreadable (some devices restrict it).
  */
@@ -56,7 +63,8 @@ inline int inferenceThreadCount() {
 
   // A homogeneous CPU reports every core as "fastest"; leave one for the UI and the foreground
   // service rather than saturating the device. Cap at 6 — beyond that ggml's barrier overhead
-  // outweighs the extra arithmetic even when the cores are identical.
+  // is assumed to outweigh the extra arithmetic even when the cores are identical. UNMEASURED:
+  // the only device benchmarked here is big.LITTLE, where this branch never runs.
   if (fast == hw) fast = std::max(1, hw - 1);
   return std::clamp(fast, 1, 6);
 }
