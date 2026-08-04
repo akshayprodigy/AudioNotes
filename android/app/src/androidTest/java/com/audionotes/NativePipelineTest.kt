@@ -98,6 +98,84 @@ class NativePipelineTest {
     assertTrue("transcript did not contain the expected words: $text", text.contains("country"))
   }
 
+  /**
+   * First execution of the diarization path, and the real point of this test is not accuracy —
+   * it is that sherpa-onnx and the Silero VAD share ONE ONNX Runtime without blowing up.
+   *
+   * Silero resolves ORT lazily via dlopen with ORT_API_MANUAL_INIT, while sherpa links
+   * libonnxruntime.so at load time. Both end up touching the same Ort::Global api pointer, so if
+   * that arrangement is wrong it fails here (or crashes the process) rather than in front of a
+   * user. Running VAD first is deliberate: it forces the manual-init path to happen before
+   * sherpa's first call.
+   *
+   * Speaker COUNT is not asserted — the fixture is a single speaker and clustering thresholds are
+   * a tuning question for real multi-party audio, not a correctness gate.
+   */
+  @Test
+  fun diarization_runs_and_shares_the_onnx_runtime_with_vad() {
+    val vad = vadModel()
+    val seg = ModelCatalog.fileFor(ctx, "diar-seg")?.takeIf { it.exists() }
+    val emb = ModelCatalog.fileFor(ctx, "diar-emb")?.takeIf { it.exists() }
+    assumeTrue("silero_vad.onnx not installed", vad != null)
+    assumeTrue("diarization models not installed", seg != null && emb != null)
+
+    val pcm = fixturePcm()
+    val totalMs = pcm.length() / 32
+
+    // Touch the dlopen/manual-init path first, then hand ORT to sherpa.
+    NativeBridge.nativeVad(pcm.absolutePath, vad!!.absolutePath, 16000)
+
+    val started = System.currentTimeMillis()
+    val tri = NativeBridge.nativeDiarize(
+      pcm.absolutePath, seg!!.absolutePath, emb!!.absolutePath, 16000, /*numSpeakers=*/0,
+    )
+    val elapsed = System.currentTimeMillis() - started
+
+    val n = tri.size / 3
+    val speakers = (0 until n).map { tri[it * 3 + 2] }.toSortedSet()
+    println("DIAR: $n segment(s), ${speakers.size} speaker(s), ${elapsed}ms for ${totalMs}ms audio")
+
+    assertTrue("diarization returned no segments for audio containing speech", n > 0)
+    for (i in 0 until n) {
+      val s = tri[i * 3]
+      val e = tri[i * 3 + 1]
+      assertTrue("segment $i has end before start ($s..$e)", e >= s)
+      assertTrue("segment $i runs past the end of the audio ($e > $totalMs)", e <= totalMs + 2000)
+    }
+  }
+
+  /**
+   * First execution of the on-device LLM. Loads the Qwen GGUF once and generates against it,
+   * mirroring how the map/reduce summariser drives it.
+   *
+   * Asserts only that generation produces text: summary QUALITY from a 1.5B model is exactly why
+   * the rule-based minutes are the guaranteed floor and the LLM is best-effort enhancement.
+   */
+  @Test
+  fun llm_loads_and_generates() {
+    val gguf = ModelCatalog.fileFor(ctx, "llm-qwen")?.takeIf { it.exists() }
+    assumeTrue("Qwen GGUF not installed", gguf != null)
+
+    val loaded = System.currentTimeMillis()
+    val handle = NativeBridge.nativeLlmLoad(gguf!!.absolutePath, /*nCtx=*/2048, /*nThreads=*/4)
+    val loadMs = System.currentTimeMillis() - loaded
+    assertTrue("llama failed to load the model (handle=0)", handle != 0L)
+
+    try {
+      val started = System.currentTimeMillis()
+      val out = NativeBridge.nativeLlmGenerate(
+        handle,
+        "Reply with exactly one short sentence: what is a meeting agenda for?",
+        /*maxTokens=*/48,
+      )
+      val genMs = System.currentTimeMillis() - started
+      println("LLM: loaded in ${loadMs}ms, generated ${out.length} chars in ${genMs}ms -> \"${out.trim()}\"")
+      assertTrue("llama returned no text", out.isNotBlank())
+    } finally {
+      NativeBridge.nativeLlmFree(handle)
+    }
+  }
+
   @Test
   fun transcript_timestamps_stay_on_the_meeting_timeline() {
     val vad = vadModel()
