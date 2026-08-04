@@ -30,13 +30,26 @@ import java.io.File
  *                               metadata of its own, so WE must ship pyannote's notice in an
  *                               in-app attributions screen. That screen does not exist yet.
  *   diar-emb      Apache-2.0    3D-Speaker CAM++ (Alibaba), bilingual zh+en.
- *                               TRAINING-DATA CAVEAT: trained on VoxCeleb + CNCeleb +
- *                               3D-Speaker. VoxCeleb's own terms are self-contradictory —
- *                               Oxford VGG distributes it "for research purposes" under
- *                               CC-BY-4.0 while mirrors state academic/non-commercial only —
- *                               and whether weights inherit a training set's terms is unsettled.
- *                               Every English-capable candidate shares this; the Mandarin-only
- *                               model this replaced was the sole VoxCeleb-free option.
+ *                               TRAINING-DATA CAVEAT — ACCEPTED AS KNOWN DEBT, 2026-08-04.
+ *                               Trained on VoxCeleb + CNCeleb + 3D-Speaker. VoxCeleb's own terms
+ *                               are self-contradictory: Oxford VGG distributes it "for research
+ *                               purposes" under CC-BY-4.0, while mirrors state academic /
+ *                               non-commercial only. Whether model weights inherit a training
+ *                               set's terms is unsettled law. The model CODE (3D-Speaker) is
+ *                               Apache-2.0 and clean; only the data provenance is in question.
+ *
+ *                               Every English-capable embedding model carries this — WeSpeaker,
+ *                               NeMo TitaNet and all 3D-Speaker English variants are VoxCeleb-
+ *                               trained. The Mandarin-only model this replaced was the sole
+ *                               VoxCeleb-free option, and using it in an English-first product
+ *                               was the worse trade.
+ *
+ *                               Decision: ship it. The exposure is private licensing, not
+ *                               regulatory, and the realistic surface is IP diligence or an
+ *                               enterprise customer asking for a model bill-of-materials — which
+ *                               can happen while we still own the product, not only on a sale.
+ *                               Revisit if that comes up. Reverting is this one ModelSpec: no
+ *                               code depends on which embedding model is used.
  *   llm-qwen      Apache-2.0    Qwen2.5-1.5B-Instruct
  */
 data class ModelSpec(
