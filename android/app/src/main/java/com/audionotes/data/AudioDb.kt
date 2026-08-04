@@ -204,6 +204,35 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
           arrayOf<Any?>(sid, u.id),
         )
       }
+
+      // Drop clusters that ended up owning no speech, then renumber what is left.
+      //
+      // Clustering runs with an automatic speaker count, and on real room audio it over-splits:
+      // a two-person conversation recorded through the mic produced SIX clusters, of which only
+      // two ever won an utterance. Keeping the empty ones is not harmless — the meeting header
+      // claimed "6 speakers" for a two-person call, and the Speakers screen listed four phantom
+      // people with nothing to merge. The transcript was right the whole time; only the roster
+      // was wrong.
+      //
+      // Renumbering matters too: without it the survivors keep their original ordinals, so a
+      // two-speaker meeting shows "Speaker 1" and "Speaker 3" and the missing 2 looks like a bug.
+      db.execSQL(
+        "DELETE FROM speakers WHERE meeting_id=? AND id NOT IN " +
+          "(SELECT speaker_id FROM utterances WHERE meeting_id=? AND speaker_id IS NOT NULL)",
+        arrayOf<Any?>(meetingId, meetingId),
+      )
+      val survivors = ArrayList<String>()
+      db.rawQuery(
+        "SELECT id FROM speakers WHERE meeting_id=? ORDER BY cluster_label",
+        arrayOf(meetingId),
+      ).use { c -> while (c.moveToNext()) survivors.add(c.getString(0)) }
+      survivors.forEachIndexed { i, sid ->
+        db.execSQL(
+          "UPDATE speakers SET display_name=? WHERE id=?",
+          arrayOf<Any?>("Speaker ${i + 1}", sid),
+        )
+      }
+
       db.setTransactionSuccessful()
     } finally {
       db.endTransaction()

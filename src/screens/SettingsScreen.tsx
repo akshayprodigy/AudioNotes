@@ -175,6 +175,10 @@ export default function SettingsScreen() {
         </View>
         {showNotices ? (
           <View style={s.notices}>
+            {/* Stacked rather than name-left / licence-right: side by side, the longest pairs
+                ("3D-Speaker CAM++" with "Alibaba DAMO Academy · Apache-2.0") overflowed and the
+                licence was clipped mid-word — which is the one part that legally has to be
+                readable. */}
             {NOTICES.map(n => (
               <View key={n.name} style={s.notice}>
                 <Txt variant="caption">{n.name}</Txt>
@@ -229,12 +233,7 @@ function makeStyles(c: Colors) {
       padding: spacing.lg,
       marginTop: spacing.md,
     },
-    notices: { marginTop: spacing.md, gap: spacing.sm },
-    notice: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      gap: spacing.md,
-    },
+    notices: { marginTop: spacing.md, gap: spacing.md },
+    notice: { gap: 1 },
   });
 }

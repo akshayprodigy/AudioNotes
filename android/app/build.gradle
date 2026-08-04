@@ -12,11 +12,31 @@ apply plugin: "com.facebook.react"
  * Returns "" when the AAR is not in the cache yet; cpp/CMakeLists.txt then skips diarization with
  * a warning rather than failing the build.
  */
-ext.ortVersion = "1.19.2"
+// 1.20.0 is the FIRST onnxruntime-android release whose native libs are 16 KB page aligned.
+// 1.19.2 shipped LOAD segments aligned to 0x1000, which fails Android's 16 KB compatibility check
+// and is a Play Store blocker (required for apps targeting Android 15+ since Nov 2025). Every
+// other .so in this APK — ours and React Native's — was already 0x4000; onnxruntime was the only
+// offender, so this is the whole fix.
+//
+// Note the symbols are VERSIONED: 1.19.2 exports OrtGetApiBase@@VERS_1.19.2 and 1.20.0 exports
+// @@VERS_1.20.0, so libaudionotes.so must be RELINKED against the new AAR, not just repackaged
+// with it — a swapped .so alone would fail to resolve at load time. Prefab handles that as long
+// as the native build is not served stale from cache.
+//
+// Deliberately the smallest jump that clears the check: the pipeline is validated on 1.19.x, and
+// our vendored headers are ORT_API_VERSION 19, which a 1.20 runtime still serves (ORT keeps
+// older API versions working). Moving further is a separate change with its own validation.
+ext.ortVersion = "1.20.0"
 
 String ortSharedLibPath() {
     def abi = (project.findProperty("reactNativeArchitectures") ?: "arm64-v8a").split(",")[0].trim()
-    def out = new File(project.layout.buildDirectory.get().asFile, "ort-extracted/${abi}/libonnxruntime.so")
+    // Cache path is scoped BY VERSION. It used to be "ort-extracted/${abi}/libonnxruntime.so",
+    // which the early-return below then treated as a valid hit forever — so bumping ortVersion
+    // silently kept linking the previously extracted library. That cost a confusing debugging
+    // round: the new AAR downloaded, the build reported success, and the APK still shipped the
+    // old .so with the old versioned symbols.
+    def out = new File(project.layout.buildDirectory.get().asFile,
+        "ort-extracted/${project.ext.ortVersion}/${abi}/libonnxruntime.so")
     if (out.exists() && out.length() > 0) return out.absolutePath
 
     // Locate the AAR on disk rather than resolving a configuration: this runs while
@@ -116,6 +136,20 @@ android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
+
+    packaging {
+        jniLibs {
+            // Drop the onnxruntime JAVA binding. We drive onnxruntime entirely from C++ — via
+            // dlopen in util/ort_init.cpp and statically-linked sherpa-onnx — and nothing in this
+            // app references ai.onnxruntime, so its .so is loaded by nothing and only adds weight.
+            //
+            // It also happens to be the last library failing Android's 16 KB page-size check:
+            // onnxruntime-android aligned libonnxruntime.so at 1.20.0 but did not align this one
+            // until 1.23. Excluding an unused library beats bumping three more minor versions to
+            // fix code we never call.
+            excludes += ['**/libonnxruntime4j_jni.so']
+        }
+    }
 
     namespace "com.audionotes"
     defaultConfig {

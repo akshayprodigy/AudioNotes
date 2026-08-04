@@ -70,7 +70,12 @@ export default function MicVisualizer({ levelRef, active, onPress, size = 168 }:
     let t = 0;
     const id = setInterval(() => {
       t += 1;
-      const level = Math.max(0, Math.min(1, levelRef.current || 0));
+      const raw = Math.max(0, Math.min(1, levelRef.current || 0));
+      // Expand the mid-range. The capture level is already dBFS-mapped, which puts ordinary
+      // speech around 0.3-0.5 — and feeding that in linearly moved the bars only a third of the
+      // way, so talking normally barely registered. A 0.65 power curve lifts 0.3 to ~0.45 and
+      // 0.5 to ~0.62 while leaving silence at zero, so normal speech uses most of the travel.
+      const level = Math.pow(raw, 0.65);
       bars.forEach((b, i) => {
         const ripple = 1 + 0.3 * Math.sin(t * 0.55 + i * 1.25);
         const target = FLOOR + level * WEIGHT[i] * ripple * (1 - FLOOR);

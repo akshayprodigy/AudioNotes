@@ -19,6 +19,23 @@ const STAGE_TEXT: Record<string, string> = {
   diarize: 'Working out who spoke…',
 };
 
+/**
+ * Avatar initials.
+ *
+ * The obvious "first two letters" gives every auto-named speaker the same "SP", because they are
+ * all called "Speaker N" — a column of identical circles that carries no information at all. For
+ * the generated names the DIGIT is the only distinguishing part, so use it; once a speaker has
+ * been given a real name, fall back to proper initials.
+ */
+function initials(name: string): string {
+  const generated = name.match(/^Speaker\s*(\d+)$/i);
+  if (generated) return generated[1];
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '?';
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+}
+
 /** Minute kinds carry meaning; give each a colour and a word rather than an unlabelled dot. */
 function kindMeta(kind: string, c: Colors): { label: string; color: string; soft: string; icon: IconName } {
   switch (kind) {
@@ -290,7 +307,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
               <View style={s.uttRow}>
                 <View style={[s.avatar, { backgroundColor: tintSoft }]}>
                   <Txt variant="caption" color={tint}>
-                    {u.who.replace(/[^0-9A-Za-z]/g, '').slice(0, 2).toUpperCase() || '?'}
+                    {initials(u.who)}
                   </Txt>
                 </View>
                 <View style={s.rowFill}>
@@ -313,7 +330,19 @@ export default function MeetingScreen({ route, navigation }: Props) {
 function makeStyles(c: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: c.canvas },
-    head: { paddingHorizontal: spacing.xl, paddingTop: spacing.md, gap: spacing.md },
+    // The header is pinned so Export/Redo stay reachable while reading a long transcript, which
+    // means the list scrolls underneath it. An opaque background plus a hairline is what makes
+    // that read as "content passing behind a bar" rather than "text mysteriously cut off".
+    head: {
+      paddingHorizontal: spacing.xl,
+      paddingTop: spacing.md,
+      paddingBottom: spacing.md,
+      gap: spacing.md,
+      backgroundColor: c.canvas,
+      borderBottomWidth: 1,
+      borderBottomColor: c.line,
+      zIndex: 1,
+    },
     rowFill: { flex: 1 },
     workingRow: {
       flexDirection: 'row',
