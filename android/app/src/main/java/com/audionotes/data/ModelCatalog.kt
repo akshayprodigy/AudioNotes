@@ -20,10 +20,23 @@ import java.io.File
  *   whisper base  MIT           ggerganov/whisper.cpp GGML conversions
  *   whisper small MIT           ditto
  *   diar-seg      MIT           sherpa-onnx conversion of pyannote/segmentation-3.0.
- *                               UPSTREAM CAVEAT: the original pyannote checkpoint is gated on
- *                               Hugging Face and its terms are NOT the same as sherpa-onnx's
- *                               Apache-2.0. Confirm this specific redistribution before shipping.
- *   diar-emb      Apache-2.0    3D-Speaker ERes2Net (Alibaba DAMO)
+ *                               pyannote/segmentation-3.0 is MIT and its card states it "will
+ *                               always remain open-source", so commercial use and redistribution
+ *                               are fine. It IS gated on Hugging Face, but a download gate is
+ *                               access control on HF's servers, not a term attached to the
+ *                               weights — and we fetch the ungated csukuangfj conversion, so no
+ *                               account or token is needed at first run. The one real obligation
+ *                               is MIT attribution: the conversion repo carries no licence
+ *                               metadata of its own, so WE must ship pyannote's notice in an
+ *                               in-app attributions screen. That screen does not exist yet.
+ *   diar-emb      Apache-2.0    3D-Speaker CAM++ (Alibaba), bilingual zh+en.
+ *                               TRAINING-DATA CAVEAT: trained on VoxCeleb + CNCeleb +
+ *                               3D-Speaker. VoxCeleb's own terms are self-contradictory —
+ *                               Oxford VGG distributes it "for research purposes" under
+ *                               CC-BY-4.0 while mirrors state academic/non-commercial only —
+ *                               and whether weights inherit a training set's terms is unsettled.
+ *                               Every English-capable candidate shares this; the Mandarin-only
+ *                               model this replaced was the sole VoxCeleb-free option.
  *   llm-qwen      Apache-2.0    Qwen2.5-1.5B-Instruct
  */
 data class ModelSpec(
@@ -54,16 +67,27 @@ object ModelCatalog {
       "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb", 190_085_487L,
     ),
     // Diarization: pyannote segmentation + a speaker-embedding model (both single .onnx).
-    // VERIFY the pyannote-derived checkpoint's license individually before shipping.
     ModelSpec(
       "diar-seg", "Diarization: segmentation", "diar", "diar_segmentation.onnx",
       "https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/resolve/main/model.onnx",
       "220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079", 5_992_913L,
     ),
+    // CAM++ bilingual (zh+en), replacing the Mandarin-only ERes2Net this app shipped first.
+    // Measured on a Pixel 7 Pro over a 189s fixture (DiarEmbeddingBench), each in a fresh process:
+    //
+    //     CAM++ zh_en (this)                  44.0 s   0.23x realtime   27.0 MB
+    //     WeSpeaker CAM++ en                  47.2 s   0.25x            29.3 MB
+    //     ERes2Net zh-cn (previous)           87.7 s   0.46x            37.8 MB
+    //     WeSpeaker ResNet34_LM en           104.1 s   0.55x            25.3 MB
+    //
+    // So this is 2x faster and 10.8 MB smaller than what it replaces, on top of covering the
+    // language the product is actually for. All four scored identically (2 speakers, 100%
+    // consistent) on a synthetic two-voice fixture, which is too easy a case to separate them —
+    // the choice rests on cost and language coverage, NOT on measured diarization accuracy.
     ModelSpec(
       "diar-emb", "Diarization: speaker embedding", "diar", "diar_embedding.onnx",
-      "https://huggingface.co/csukuangfj/speaker-embedding-models/resolve/main/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx",
-      "1a331345f04805badbb495c775a6ddffcdd1a732567d5ec8b3d5749e3c7a5e4b", 39_593_761L,
+      "https://huggingface.co/csukuangfj/speaker-embedding-models/resolve/main/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx",
+      "aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2", 28_281_164L,
     ),
     // On-device LLM for minutes enhancement (Pro). Qwen family is Apache-2.0. Swap to a Qwen3
     // GGUF when you settle on one; Qwen2.5-1.5B-Instruct is a safe, widely available default.

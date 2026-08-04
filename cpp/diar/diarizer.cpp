@@ -1,6 +1,7 @@
 #include "diar/diarizer.h"
 
 #include "util/cpu_topology.h"
+#include "util/ort_init.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -50,9 +51,32 @@ struct Diarizer::Impl {
   const SherpaOnnxOfflineSpeakerDiarization* sd = nullptr;
 #endif
 
+  // sherpa's factory does not tolerate a model path it cannot read: instead of returning null it
+  // dereferences a null internal pointer and takes the whole process down with SIGSEGV. A
+  // truncated download or a file the app has no permission to open is therefore a hard crash
+  // rather than a handled error, so check readability here before handing the paths over.
+  static bool readable(const std::string& path) {
+    FILE* f = std::fopen(path.c_str(), "rb");
+    if (!f) return false;
+    // Guard against a zero-length or truncated file too — an empty .onnx parses no better than
+    // a missing one, and fails just as fatally inside the session builder.
+    std::fseek(f, 0, SEEK_END);
+    const long bytes = std::ftell(f);
+    std::fclose(f);
+    return bytes > 0;
+  }
+
   Impl(const std::string& seg, const std::string& emb, int sr, int ns)
       : sample_rate(sr), num_speakers(ns), seg_model(seg), emb_model(emb) {
 #ifdef HAVE_SHERPA
+    if (!readable(seg_model) || !readable(emb_model)) {
+      ok = false;
+      return;
+    }
+    // sherpa-onnx is statically linked here and uses the same Ort C++ wrapper we do, so it needs
+    // the shared OrtApi pointer set before any of its sessions are built. Do not assume the VAD
+    // has already run: diarization is reachable on its own.
+    ensureOrtApi();
     // Segmentation and embedding both default to 1 thread in sherpa's config, which left
     // diarization single-threaded while covering the WHOLE recording (not just the VAD spans).
     // Thread count cannot change the result here, only how fast it arrives.

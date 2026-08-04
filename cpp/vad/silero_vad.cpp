@@ -24,24 +24,11 @@
 #define ORT_API_MANUAL_INIT
 #include "onnxruntime_cxx_api.h"
 
-namespace audionotes {
+// The bootstrap used to live here as a file-local helper, which quietly made the VAD the only
+// engine that initialised the shared OrtApi — see util/ort_init.h for why that broke diarization.
+#include "util/ort_init.h"
 
-namespace {
-// Load libonnxruntime.so once and hand its OrtApi to the C++ wrapper.
-void ensureOrtApi() {
-  static std::once_flag once;
-  std::call_once(once, [] {
-    void* h = dlopen("libonnxruntime.so", RTLD_NOW | RTLD_GLOBAL);
-    if (!h) throw std::runtime_error(std::string("dlopen libonnxruntime.so failed: ") + dlerror());
-    using GetApiBaseFn = const OrtApiBase* (*)();
-    auto get_base = reinterpret_cast<GetApiBaseFn>(dlsym(h, "OrtGetApiBase"));
-    if (!get_base) throw std::runtime_error("OrtGetApiBase not found in libonnxruntime.so");
-    const OrtApi* api = get_base()->GetApi(ORT_API_VERSION);
-    if (!api) throw std::runtime_error("OrtGetApiBase()->GetApi returned null");
-    Ort::InitApi(api);
-  });
-}
-}  // namespace
+namespace audionotes {
 
 struct SileroVad::Impl {
   int sample_rate;

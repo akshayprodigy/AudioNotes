@@ -35,7 +35,15 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
           .put("id", spec.id)
           .put("name", spec.name)
           .put("kind", spec.kind)
-          .put("installed", f.exists() && f.length() > 0)
+          // Size must MATCH the catalog, not merely be non-zero. Two cases this catches that
+          // "exists and is not empty" does not: a download interrupted part-way leaves a
+          // plausible-looking file that would be loaded as weights, and — the reason this
+          // changed — swapping a model keeps the same filename, so an existing install would
+          // otherwise report the superseded file as installed and never fetch the new one.
+          // Compared against the size rather than the sha256 deliberately: this runs on every
+          // list() call, and hashing the 1.1 GB LLM each time to catch a rare case is not worth
+          // it. The full sha256 is still verified after every download.
+          .put("installed", f.exists() && f.length() == spec.sizeBytes)
           .put("sizeBytes", spec.sizeBytes),
       )
     }

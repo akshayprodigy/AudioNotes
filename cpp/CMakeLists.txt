@@ -11,6 +11,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(ORT_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/onnxruntime/include)
 
 add_library(audionotes SHARED
+  util/ort_init.cpp
   vad/silero_vad.cpp
   asr/whisper_asr.cpp
   diar/diarizer.cpp
