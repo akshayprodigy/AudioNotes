@@ -22,6 +22,9 @@ export type IconName =
   | 'moon'
   | 'shield'
   | 'refresh'
+  | 'clock'
+  | 'alert'
+  | 'edit'
   | 'x';
 
 interface Props {
@@ -175,6 +178,28 @@ function render(name: IconName, c: object, color: string) {
       return <Path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" {...c} />;
     case 'shield':
       return <Path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" {...c} />;
+    case 'clock':
+      return (
+        <>
+          <Circle cx="12" cy="12" r="9" {...c} />
+          <Polyline points="12 7 12 12 15.5 14" {...c} />
+        </>
+      );
+    case 'alert':
+      return (
+        <>
+          <Circle cx="12" cy="12" r="9" {...c} />
+          <Line x1="12" y1="8" x2="12" y2="13" {...c} />
+          <Line x1="12" y1="16.5" x2="12" y2="16.5" {...c} />
+        </>
+      );
+    case 'edit':
+      return (
+        <>
+          <Path d="M12 20h9" {...c} />
+          <Path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" {...c} />
+        </>
+      );
     case 'x':
       return (
         <>

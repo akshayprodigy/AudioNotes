@@ -1,129 +1,237 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Pressable, View, StyleSheet, Easing } from 'react-native';
+import { Animated, Easing, Pressable, StyleSheet, View } from 'react-native';
 import Icon from './Icon';
-import type { Colors } from '../theme';
+import { motion, radius, useTheme } from '../theme';
 
 interface Props {
-  level: Animated.Value; // 0..1, driven by onCaptureLevel while recording
-  levelRef?: { current: number }; // same signal as a plain number, for the scrolling bars
-  active: boolean; // recording?
-  colors: Colors;
+  /** Live 0..1 mic level, sampled on our own clock rather than re-rendering per frame. */
+  levelRef: { current: number };
+  active: boolean;
   onPress: () => void;
   size?: number;
 }
 
+const BARS = 5;
+/** Centre-weighted so the bars form a waveform silhouette rather than a flat block. */
+const WEIGHT = [0.5, 0.78, 1, 0.78, 0.5];
+/** Resting height as a fraction of full — bars stay visible, and silence still reads as calm. */
+const FLOOR = 0.16;
+const TICK_MS = 80;
+
 /**
- * Record button whose pulse rings track the live mic level, above a scrolling waveform.
+ * The record button, with the level meter living INSIDE it.
  *
- * The waveform is a ring buffer, not a single shared value: every ~70 ms the newest level is
- * pushed onto the right and every bar shifts one slot left, so the shape travels across the
- * screen the way it does in Claude's recorder. Driving all bars from one scalar (the previous
- * approach) makes them rise and fall in lockstep, which reads as a pulse and gives no sense of
- * speech rhythm — you cannot see a pause, and you cannot tell a loud room from actual talking.
+ * Previously the button showed a static mic while a separate strip of 27 bars scrolled underneath.
+ * That split the one thing the user looks at into two competing elements, and left a wide band of
+ * chrome doing nothing at all when idle. Now the button IS the meter: at rest it shows a mic icon;
+ * while recording the icon gives way to five bars that move with the voice, and the whole control
+ * stays a single tap target.
+ *
+ * Driving the bars:
+ *  - A timer samples `levelRef` every 80ms. Re-rendering on every level event (20/s) would rebuild
+ *    the tree constantly for something purely visual.
+ *  - Each bar has a fixed centre weight plus a per-bar sine phase, so a steady voice still ripples
+ *    instead of freezing into a flat shape — real meters are never perfectly still.
+ *  - Bars animate `scaleY` only, on the native driver. Animating `height` would relayout five
+ *    views twelve times a second on the JS thread, which is already busy running the pipeline.
+ *    Scale runs entirely on the UI thread, so the meter stays smooth even during transcription.
  */
-const BARS = 27;
-const FRAME_MS = 70;
-const MIN_SCALE = 0.08;
+export default function MicVisualizer({ levelRef, active, onPress, size = 168 }: Props) {
+  const { colors } = useTheme();
 
-export default function MicVisualizer({ level, levelRef, active, colors, onPress, size = 190 }: Props) {
-  const btn = size * 0.52;
-  const fill = active ? colors.danger : colors.primary;
-
-  // One Animated.Value per bar; index 0 is the oldest sample (left), BARS-1 the newest (right).
-  const bars = useRef<Animated.Value[]>(
-    Array.from({ length: BARS }, () => new Animated.Value(MIN_SCALE)),
-  ).current;
-  const history = useRef<number[]>(new Array(BARS).fill(0)).current;
+  const bars = useRef([...Array(BARS)].map(() => new Animated.Value(FLOOR))).current;
+  const halo = useRef(new Animated.Value(0)).current;
+  const press = useRef(new Animated.Value(0)).current;
+  // Cross-fades the mic icon out and the bars in, so the swap reads as one object changing state
+  // rather than two things trading places.
+  const morph = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    Animated.timing(morph, {
+      toValue: active ? 1 : 0,
+      duration: motion.base,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [active, morph]);
+
+  // Sample the level and retarget every bar.
+  useEffect(() => {
     if (!active) {
-      // Collapse back to a flat line when not recording.
-      history.fill(0);
-      Animated.parallel(
-        bars.map(b =>
-          Animated.timing(b, { toValue: MIN_SCALE, duration: 220, useNativeDriver: true }),
-        ),
-      ).start();
+      bars.forEach(b =>
+        Animated.timing(b, {
+          toValue: FLOOR,
+          duration: motion.base,
+          useNativeDriver: true,
+        }).start(),
+      );
       return;
     }
-
+    let t = 0;
     const id = setInterval(() => {
-      // Shift left, append the newest level. A tiny floor keeps silent bars visible.
-      history.shift();
-      history.push(levelRef?.current ?? 0);
-      for (let i = 0; i < BARS; i++) {
-        // Slight taper at the edges so the waveform fades in/out instead of clipping.
-        const edge = Math.min(i, BARS - 1 - i) / 3;
-        const taper = Math.min(1, 0.35 + edge);
-        const target = Math.max(MIN_SCALE, Math.min(1, history[i] * 1.25) * taper);
-        Animated.timing(bars[i], {
-          toValue: target,
-          duration: FRAME_MS,
+      t += 1;
+      const level = Math.max(0, Math.min(1, levelRef.current || 0));
+      bars.forEach((b, i) => {
+        const ripple = 1 + 0.3 * Math.sin(t * 0.55 + i * 1.25);
+        const target = FLOOR + level * WEIGHT[i] * ripple * (1 - FLOOR);
+        Animated.timing(b, {
+          toValue: Math.max(FLOOR, Math.min(1, target)),
+          duration: TICK_MS + 30,
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
         }).start();
-      }
-    }, FRAME_MS);
+      });
+    }, TICK_MS);
     return () => clearInterval(id);
-  }, [active, bars, history, levelRef]);
+  }, [active, bars, levelRef]);
 
-  const ringStyle = (base: number, maxOpacity: number) => ({
-    position: 'absolute' as const,
-    width: size * base,
-    height: size * base,
-    borderRadius: (size * base) / 2,
-    backgroundColor: fill,
-    opacity: active
-      ? level.interpolate({ inputRange: [0, 1], outputRange: [0.04, maxOpacity] })
-      : 0,
-    transform: [{ scale: level.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.15] }) }],
-  });
+  // Slow halo breathing while live — visible from across a table without being a flashing light.
+  useEffect(() => {
+    if (!active) {
+      halo.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(halo, {
+          toValue: 1,
+          duration: 1300,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(halo, {
+          toValue: 0,
+          duration: 1300,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [active, halo]);
 
-  const iconScale = active
-    ? level.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.12] })
-    : 1;
+  const fill = active ? colors.danger : colors.primary;
+  const edge = active ? colors.dangerEdge : colors.primaryEdge;
+
+  const barW = Math.round(size * 0.055);
+  const barH = Math.round(size * 0.42);
+  const gap = Math.round(size * 0.042);
 
   return (
-    <View style={styles.wrap}>
-      <View style={[styles.stage, { width: size, height: size }]}>
-        <Animated.View style={ringStyle(0.92, 0.14)} />
-        <Animated.View style={ringStyle(0.72, 0.22)} />
-        <Pressable
-          onPress={onPress}
-          accessibilityRole="button"
-          accessibilityLabel={active ? 'Stop recording' : 'Start recording'}
+    <View
+      style={{
+        width: size * 1.5,
+        height: size * 1.5,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}>
+      {/* Halo — rendered ONLY while live. The breathing interpolation runs 0.28 -> 0 opacity, so
+          parking the driver at 0 would leave a permanent coral ring around an idle blue button. */}
+      {active && (
+        <Animated.View
+          pointerEvents="none"
           style={[
-            styles.btn,
-            { width: btn, height: btn, borderRadius: btn / 2, backgroundColor: fill },
+            StyleSheet.absoluteFill,
+            {
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: halo.interpolate({ inputRange: [0, 1], outputRange: [0.28, 0] }),
+              transform: [
+                { scale: halo.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.25] }) },
+              ],
+            },
           ]}>
-          <Animated.View style={{ transform: [{ scale: iconScale }] }}>
-            <Icon name={active ? 'stop' : 'mic'} size={btn * 0.42} color={colors.onPrimary} strokeWidth={2.2} />
-          </Animated.View>
-        </Pressable>
-      </View>
-
-      <View style={styles.eq}>
-        {bars.map((b, i) => (
-          <Animated.View
-            key={i}
-            style={[
-              styles.bar,
-              {
-                backgroundColor: active ? colors.primary : colors.border,
-                transform: [{ scaleY: b }],
-              },
-            ]}
+          <View
+            style={{
+              width: size * 1.18,
+              height: size * 1.18,
+              borderRadius: size,
+              backgroundColor: colors.danger,
+            }}
           />
-        ))}
-      </View>
+        </Animated.View>
+      )}
+
+      <Pressable
+        onPress={onPress}
+        onPressIn={() =>
+          Animated.timing(press, {
+            toValue: 1,
+            duration: motion.fast,
+            useNativeDriver: true,
+          }).start()
+        }
+        onPressOut={() =>
+          Animated.timing(press, {
+            toValue: 0,
+            duration: motion.fast,
+            useNativeDriver: true,
+          }).start()
+        }
+        accessibilityRole="button"
+        accessibilityLabel={active ? 'Stop recording' : 'Start recording'}>
+        <View style={{ borderRadius: size, backgroundColor: edge, paddingBottom: 5 }}>
+          <Animated.View
+            style={[
+              styles.btn,
+              {
+                width: size,
+                height: size,
+                borderRadius: size,
+                backgroundColor: fill,
+                transform: [
+                  { translateY: press.interpolate({ inputRange: [0, 1], outputRange: [0, 5] }) },
+                ],
+              },
+            ]}>
+            {/* Mic icon — fades and shrinks away as recording starts. */}
+            <Animated.View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                opacity: morph.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+                transform: [
+                  { scale: morph.interpolate({ inputRange: [0, 1], outputRange: [1, 0.6] }) },
+                ],
+              }}>
+              <Icon name="mic" size={Math.round(size * 0.34)} color={colors.onPrimary} />
+            </Animated.View>
+
+            {/* Bars — the meter, inside the button. */}
+            <Animated.View
+              pointerEvents="none"
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap,
+                height: barH,
+                opacity: morph,
+                transform: [
+                  { scale: morph.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) },
+                ],
+              }}>
+              {bars.map((b, i) => (
+                <Animated.View
+                  key={i}
+                  style={{
+                    width: barW,
+                    height: barH,
+                    borderRadius: radius.pill,
+                    backgroundColor: colors.onPrimary,
+                    // Scales about the centre, which is exactly how a symmetric level meter reads.
+                    transform: [{ scaleY: b }],
+                  }}
+                />
+              ))}
+            </Animated.View>
+          </Animated.View>
+        </View>
+      </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { alignItems: 'center' },
-  stage: { alignItems: 'center', justifyContent: 'center' },
-  btn: { alignItems: 'center', justifyContent: 'center', elevation: 4 },
-  eq: { flexDirection: 'row', alignItems: 'center', height: 56, marginTop: 24 },
-  bar: { width: 4, height: 52, marginHorizontal: 2, borderRadius: 2 },
+  btn: { alignItems: 'center', justifyContent: 'center' },
 });

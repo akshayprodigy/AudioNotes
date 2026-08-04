@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { View, ActivityIndicator, StatusBar } from 'react-native';
-import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
+import { StatusBar, View } from 'react-native';
+import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { useTheme } from '../theme';
+import { font, useTheme } from '../theme';
 import { db } from '../db/queries';
+import Mascot from '../components/Mascot';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import RecordScreen from '../screens/RecordScreen';
 import LibraryScreen from '../screens/LibraryScreen';
@@ -25,7 +26,7 @@ export type RootStackParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootNavigator() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const [initial, setInitial] = useState<keyof RootStackParamList | null>(null);
 
   useEffect(() => {
@@ -40,41 +41,51 @@ export default function RootNavigator() {
   }, []);
 
   const navTheme = {
-    ...(isDark ? DarkTheme : DefaultTheme),
+    ...DefaultTheme,
     colors: {
-      ...(isDark ? DarkTheme : DefaultTheme).colors,
-      background: colors.bg,
-      card: colors.surface,
-      text: colors.text,
-      border: colors.border,
+      ...DefaultTheme.colors,
+      background: colors.canvas,
+      card: colors.canvas,
+      text: colors.ink,
+      border: colors.line,
       primary: colors.primary,
     },
   };
 
   const screenOptions = {
-    headerStyle: { backgroundColor: colors.surface },
-    headerTintColor: colors.text,
-    headerTitleStyle: { fontWeight: '700' as const },
+    // Headers sit on the canvas, not on a separate white bar: the screens already carry their own
+    // padding and cards, and a contrasting header strip cuts the page in two for no benefit.
+    headerStyle: { backgroundColor: colors.canvas },
+    headerTintColor: colors.ink,
+    headerTitleStyle: { fontFamily: font.bold, fontSize: 17, color: colors.ink },
     headerShadowVisible: false,
-    contentStyle: { backgroundColor: colors.bg },
+    headerBackButtonDisplayMode: 'minimal' as const,
+    contentStyle: { backgroundColor: colors.canvas },
   };
 
+  // Brief gate while we read the onboarding flag. Showing the mascot rather than a spinner keeps
+  // the very first frame on-brand instead of a bare grey wheel.
   if (!initial) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color={colors.primary} />
+      <View style={{ flex: 1, backgroundColor: colors.canvas, alignItems: 'center', justifyContent: 'center' }}>
+        <Mascot mood="idle" size={110} />
       </View>
     );
   }
 
   return (
     <>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.surface} />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.canvas} />
       <NavigationContainer theme={navTheme}>
         <Stack.Navigator initialRouteName={initial} screenOptions={screenOptions}>
-          <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="Library" component={LibraryScreen} options={{ title: 'AudioNotes' }} />
-          <Stack.Screen name="Record" component={RecordScreen} options={{ title: 'Record' }} />
+          <Stack.Screen
+            name="Onboarding"
+            component={OnboardingScreen}
+            options={{ headerShown: false }}
+          />
+          {/* Library draws its own large title, so the stack header would only duplicate it. */}
+          <Stack.Screen name="Library" component={LibraryScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Record" component={RecordScreen} options={{ title: '' }} />
           <Stack.Screen name="Meeting" component={MeetingScreen} options={{ title: 'Meeting' }} />
           <Stack.Screen name="Speakers" component={SpeakersScreen} options={{ title: 'Speakers' }} />
           <Stack.Screen name="Search" component={SearchScreen} options={{ title: 'Search' }} />

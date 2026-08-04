@@ -1,43 +1,77 @@
 import React, { useEffect, useMemo } from 'react';
-import { View, Text, FlatList, Pressable, StyleSheet, Alert } from 'react-native';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useLibraryStore } from '../state/libraryStore';
 import { PipelineController } from '../pipeline/PipelineController';
-import Overlay from '../native/NativeOverlay';
 import Icon, { type IconName } from '../components/Icon';
-import { useTheme, spacing, radius, type Colors } from '../theme';
+import Mascot from '../components/Mascot';
+import { Card, Chip, FadeIn, LiveDot, Txt } from '../components/ui';
+import { radius, spacing, useTheme, type Colors } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Library'>;
 
-// "12 Aug, 14:05 · 34 min · done" — the title is now the meeting's opening line, so the row still
-// needs the when/how-long that used to be the only thing distinguishing one "Meeting" from another.
-function describe(m: { createdAt: number; durationMs: number; status: string }): string {
-  const parts: string[] = [];
-  if (m.createdAt) {
-    parts.push(new Date(m.createdAt).toLocaleString(undefined, {
-      day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-    }));
+type Row = { id: string; title: string; createdAt: number; durationMs: number; status: string };
+
+/**
+ * Status is the one thing a row must communicate instantly, so each state gets its own colour,
+ * icon and plain-English label. "Vad"/"Asr"/"Diarized" leaked pipeline vocabulary into the UI —
+ * nobody outside this codebase knows what a VAD is, and "Error" told a user whose recording was
+ * simply silent nothing they could act on.
+ */
+function statusOf(status: string, c: Colors) {
+  switch (status) {
+    case 'done':
+      return { label: 'Ready', color: c.success, soft: c.successSoft, icon: 'check' as IconName };
+    case 'error':
+      return {
+        label: 'No speech found',
+        color: c.inkSoft,
+        soft: c.cardAlt,
+        icon: 'alert' as IconName,
+      };
+    case 'recording':
+      return { label: 'Recording', color: c.danger, soft: c.dangerSoft, icon: 'mic' as IconName };
+    case 'captured':
+      return { label: 'Queued', color: c.warning, soft: c.warningSoft, icon: 'clock' as IconName };
+    default:
+      // vad / asr / diarized — all "we are working on it" as far as the user is concerned.
+      return {
+        label: 'Transcribing',
+        color: c.primary,
+        soft: c.primarySoft,
+        icon: 'clock' as IconName,
+      };
   }
-  if (m.durationMs > 0) {
-    const min = Math.round(m.durationMs / 60000);
-    parts.push(min >= 1 ? `${min} min` : `${Math.round(m.durationMs / 1000)}s`);
-  }
-  parts.push(m.status);
-  return parts.join(' · ');
 }
 
-function statusColor(status: string, c: Colors): string {
-  if (status === 'done') return c.success;
-  if (status === 'error') return c.danger;
-  if (status === 'recording' || status === 'captured') return c.warning;
-  return c.primary; // vad / asr / diarized (processing)
+function when(ts: number): string {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  const yst = new Date(now);
+  yst.setDate(now.getDate() - 1);
+  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  if (sameDay) return `Today, ${time}`;
+  if (d.toDateString() === yst.toDateString()) return `Yesterday, ${time}`;
+  return `${d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}, ${time}`;
+}
+
+function duration(ms: number): string {
+  if (!ms || ms <= 0) return '';
+  const min = Math.round(ms / 60000);
+  return min >= 1 ? `${min} min` : `${Math.max(1, Math.round(ms / 1000))}s`;
 }
 
 export default function LibraryScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
   const { meetings, refresh } = useLibraryStore();
+  // This screen hides the stack header to draw its own large title, which also means nothing is
+  // reserving the status-bar area for it. Without this the title sits under the clock.
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const onFocus = () => {
@@ -48,65 +82,121 @@ export default function LibraryScreen({ navigation }: Props) {
     return navigation.addListener('focus', onFocus);
   }, [navigation, refresh]);
 
-  const enableFloating = async () => {
-    if (!(await Overlay.hasPermission())) {
-      Alert.alert(
-        'Allow floating recorder',
-        'AudioNotes needs "display over other apps" so the recorder bubble can float on top of other apps and keep recording with the screen off.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Open settings', onPress: () => Overlay.requestPermission() },
-        ],
-      );
-      return;
-    }
-    await Overlay.show();
-    Alert.alert('Floating recorder on', 'Tap the bubble to start/stop. Drag to move it.');
-  };
+  const busy = meetings.filter(m => !['done', 'error'].includes(m.status)).length;
 
-  const BarButton = ({ icon, label, onPress, primary }: { icon: IconName; label: string; onPress: () => void; primary?: boolean }) => (
-    <Pressable style={[s.barBtn, primary && s.barBtnPrimary]} onPress={onPress}>
-      <Icon name={icon} size={22} color={primary ? colors.onPrimary : colors.textDim} />
-      <Text style={[s.barText, primary && { color: colors.onPrimary }]}>{label}</Text>
-    </Pressable>
-  );
+  const renderItem = ({ item, index }: { item: Row; index: number }) => {
+    const st = statusOf(item.status, colors);
+    const live = !['done', 'error'].includes(item.status);
+    return (
+      <FadeIn index={index} style={s.rowWrap}>
+        <Card accent={st.color} onPress={() => navigation.navigate('Meeting', { meetingId: item.id })}>
+          <View style={s.rowTop}>
+            <View style={s.rowFill}>
+              <Txt variant="heading" numberOfLines={2}>
+                {item.title || 'Untitled meeting'}
+              </Txt>
+              <View style={s.metaRow}>
+                <Txt variant="caption" color={colors.inkFaint}>
+                  {when(item.createdAt)}
+                </Txt>
+                {duration(item.durationMs) ? (
+                  <>
+                    <View style={s.dot} />
+                    <Txt variant="caption" color={colors.inkFaint}>
+                      {duration(item.durationMs)}
+                    </Txt>
+                  </>
+                ) : null}
+              </View>
+            </View>
+            <Icon name="chevronRight" size={18} color={colors.inkFaint} />
+          </View>
+          <View style={s.chipRow}>
+            {live ? (
+              <View style={[s.liveChip, { backgroundColor: st.soft }]}>
+                <LiveDot color={st.color} size={7} />
+                <Txt variant="caption" color={st.color}>
+                  {st.label}
+                </Txt>
+              </View>
+            ) : (
+              <Chip label={st.label} color={st.color} soft={st.soft} icon={st.icon} />
+            )}
+          </View>
+        </Card>
+      </FadeIn>
+    );
+  };
 
   return (
     <View style={s.root}>
+      <View style={[s.header, { paddingTop: insets.top + spacing.md }]}>
+        <View style={s.rowFill}>
+          <Txt variant="display">Meetings</Txt>
+          <Txt variant="body" color={colors.inkSoft}>
+            {meetings.length === 0
+              ? 'Nothing recorded yet'
+              : busy > 0
+              ? `${meetings.length} saved · ${busy} in progress`
+              : `${meetings.length} saved`}
+          </Txt>
+        </View>
+        <Pressable
+          style={s.iconBtn}
+          onPress={() => navigation.navigate('Search')}
+          accessibilityRole="button"
+          accessibilityLabel="Search meetings">
+          <Icon name="search" size={20} color={colors.inkSoft} />
+        </Pressable>
+        <Pressable
+          style={s.iconBtn}
+          onPress={() => navigation.navigate('Settings')}
+          accessibilityRole="button"
+          accessibilityLabel="Settings">
+          <Icon name="settings" size={20} color={colors.inkSoft} />
+        </Pressable>
+      </View>
+
       <FlatList
-        data={meetings}
+        data={meetings as Row[]}
         keyExtractor={m => m.id}
-        contentContainerStyle={meetings.length === 0 && { flex: 1, justifyContent: 'center' }}
+        renderItem={renderItem}
+        contentContainerStyle={[
+          s.listPad,
+          meetings.length === 0 && { flexGrow: 1, justifyContent: 'center' },
+        ]}
+        showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <View style={s.emptyWrap}>
-            <View style={s.emptyIcon}>
-              <Icon name="mic" size={34} color={colors.primary} />
-            </View>
-            <Text style={s.emptyTitle}>No meetings yet</Text>
-            <Text style={s.empty}>
-              Tap Record to capture your first meeting. Turn on the floating recorder to keep recording
-              while you use other apps or with the screen off.
-            </Text>
-          </View>
+          <FadeIn style={s.empty}>
+            <Mascot mood="asleep" size={150} />
+            <Txt variant="title" style={s.emptyTitle}>
+              No meetings yet
+            </Txt>
+            <Txt variant="body" color={colors.inkSoft} style={s.emptyBody}>
+              Tap record and Pip will listen, write the transcript, and pull out who said what.
+              Everything stays on your phone.
+            </Txt>
+          </FadeIn>
         }
-        renderItem={({ item }) => (
-          <Pressable style={s.row} onPress={() => navigation.navigate('Meeting', { meetingId: item.id })}>
-            <View style={s.rowFill}>
-              <Text style={s.title} numberOfLines={2}>{item.title || 'Untitled meeting'}</Text>
-              <View style={s.statusRow}>
-                <View style={[s.statusDot, { backgroundColor: statusColor(item.status, colors) }]} />
-                <Text style={s.meta}>{describe(item)}</Text>
-              </View>
-            </View>
-            <Icon name="chevronRight" size={20} color={colors.textFaint} />
-          </Pressable>
-        )}
       />
-      <View style={s.bar}>
-        <BarButton icon="search" label="Search" onPress={() => navigation.navigate('Search')} />
-        <BarButton icon="plus" label="Float" onPress={enableFloating} />
-        <BarButton icon="mic" label="Record" primary onPress={() => navigation.navigate('Record')} />
-        <BarButton icon="settings" label="Settings" onPress={() => navigation.navigate('Settings')} />
+
+      {/* One primary action, floating clear of the list. The old bar had four equal-weight buttons
+          including a "Float" toggle the app now handles automatically when you switch away. */}
+      <View
+        style={[s.fabWrap, { bottom: Math.max(insets.bottom, spacing.md) + spacing.md }]}
+        pointerEvents="box-none">
+        <Pressable
+          onPress={() => navigation.navigate('Record')}
+          accessibilityRole="button"
+          accessibilityLabel="Record a meeting"
+          style={s.fabOuter}>
+          <View style={s.fab}>
+            <Icon name="mic" size={22} color={colors.onPrimary} />
+            <Txt variant="label" color={colors.onPrimary}>
+              Record
+            </Txt>
+          </View>
+        </Pressable>
       </View>
     </View>
   );
@@ -114,20 +204,53 @@ export default function LibraryScreen({ navigation }: Props) {
 
 function makeStyles(c: Colors) {
   return StyleSheet.create({
-    root: { flex: 1, padding: spacing.md, backgroundColor: c.bg },
-    rowFill: { flex: 1, paddingRight: spacing.sm },
-    emptyWrap: { alignItems: 'center', paddingHorizontal: spacing.lg, gap: spacing.sm },
-    emptyIcon: { width: 76, height: 76, borderRadius: 38, backgroundColor: c.primarySoft, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
-    emptyTitle: { color: c.text, fontSize: 18, fontWeight: '800' },
-    empty: { color: c.textDim, textAlign: 'center', lineHeight: 21 },
-    row: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1, borderColor: c.border },
-    title: { color: c.text, fontSize: 16, fontWeight: '700' },
-    statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: 6 },
-    statusDot: { width: 8, height: 8, borderRadius: 4 },
-    meta: { color: c.textDim, fontSize: 12, textTransform: 'capitalize' },
-    bar: { flexDirection: 'row', gap: spacing.sm, paddingTop: spacing.sm },
-    barBtn: { flex: 1, backgroundColor: c.surface, borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center', gap: 4, borderWidth: 1, borderColor: c.border },
-    barBtnPrimary: { backgroundColor: c.primary, borderColor: c.primary },
-    barText: { color: c.textDim, fontWeight: '700', fontSize: 11 },
+    root: { flex: 1, backgroundColor: c.canvas },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.xl,
+      paddingTop: spacing.lg,
+      paddingBottom: spacing.md,
+    },
+    rowFill: { flex: 1 },
+    iconBtn: {
+      width: 42,
+      height: 42,
+      borderRadius: radius.md,
+      backgroundColor: c.card,
+      borderWidth: 1,
+      borderColor: c.line,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    listPad: { paddingHorizontal: spacing.xl, paddingBottom: 120 },
+    rowWrap: { marginBottom: spacing.md },
+    rowTop: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+    metaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 3 },
+    dot: { width: 3, height: 3, borderRadius: 2, backgroundColor: c.inkFaint },
+    chipRow: { flexDirection: 'row', marginTop: spacing.md },
+    liveChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 6,
+      borderRadius: radius.pill,
+    },
+    empty: { alignItems: 'center', paddingHorizontal: spacing.lg },
+    emptyTitle: { marginTop: spacing.lg },
+    emptyBody: { textAlign: 'center', marginTop: spacing.sm },
+    fabWrap: { position: 'absolute', left: 0, right: 0, bottom: spacing.xl, alignItems: 'center' },
+    fabOuter: { borderRadius: radius.pill, backgroundColor: c.primaryEdge, paddingBottom: 4 },
+    fab: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      backgroundColor: c.primary,
+      paddingHorizontal: spacing.xxl,
+      paddingVertical: 15,
+      borderRadius: radius.pill,
+    },
   });
 }

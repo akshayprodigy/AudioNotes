@@ -1,14 +1,23 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, Pressable, StyleSheet, PermissionsAndroid, Platform, Animated, NativeEventEmitter, NativeModules, AppState,
+  AppState,
+  NativeEventEmitter,
+  NativeModules,
+  PermissionsAndroid,
+  Platform,
+  StyleSheet,
+  View,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useRecordingStore } from '../state/recordingStore';
 import { PipelineController } from '../pipeline/PipelineController';
+import { db } from '../db/queries';
 import MicVisualizer from '../components/MicVisualizer';
+import Mascot from '../components/Mascot';
 import Icon from '../components/Icon';
-import { useTheme, spacing, radius, type Colors } from '../theme';
+import { Button, Card, FadeIn, LiveDot, Txt } from '../components/ui';
+import { radius, spacing, type, useTheme, type Colors } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Record'>;
 
@@ -31,38 +40,48 @@ export default function RecordScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
   const { isRecording, silenced, startedAt, start, stop, sync } = useRecordingStore();
-  const [consented, setConsented] = useState(false);
+  // null = still loading the stored answer. Rendering the gate before we know would flash it at
+  // someone who already acknowledged it.
+  const [consented, setConsented] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const level = useRef(new Animated.Value(0)).current;
-  // The same signal as a plain number. Animated.Value has no synchronous public getter, and the
-  // waveform needs to sample "the level right now" on its own clock to build its history buffer.
   const levelRef = useRef(0);
+
+  // Consent is acknowledged ONCE, not on every visit to this screen. Re-presenting the same
+  // notice before every recording trains people to dismiss it without reading, which defeats
+  // the point of showing it; the standing reminder below the button carries it from then on.
+  useEffect(() => {
+    db.getSetting('consentAck')
+      .then(v => setConsented(v === '1'))
+      .catch(() => setConsented(false));
+  }, []);
+
+  const acceptConsent = () => {
+    setConsented(true);
+    db.setSetting('consentAck', '1').catch(() => {});
+  };
 
   useEffect(() => {
     const emitter = new NativeEventEmitter(NativeModules.AudioPipeline);
     const sub = emitter.addListener('onCaptureLevel', (e: { level: number }) => {
-      const v = e.level ?? 0;
-      levelRef.current = v;
-      Animated.timing(level, { toValue: v, duration: 70, useNativeDriver: true }).start();
+      levelRef.current = e.level ?? 0;
     });
     return () => sub.remove();
-  }, [level]);
+  }, []);
 
   // Native owns capture state, so re-read it on mount and every time the app comes back to the
   // foreground. A meeting may have been started from the floating bubble, or kept running while
   // the JS context was torn down; without this the screen would show an idle mic mid-meeting.
   useEffect(() => {
     sync();
-    const sub = AppState.addEventListener('change', s => {
-      if (s === 'active') sync();
+    const sub = AppState.addEventListener('change', st => {
+      if (st === 'active') sync();
     });
     return () => sub.remove();
   }, [sync]);
 
   useEffect(() => {
     if (!isRecording) {
-      Animated.timing(level, { toValue: 0, duration: 200, useNativeDriver: true }).start();
       setElapsed(0);
       return;
     }
@@ -72,7 +91,7 @@ export default function RecordScreen({ navigation }: Props) {
     setElapsed(Date.now() - anchor);
     const id = setInterval(() => setElapsed(Date.now() - anchor), 500);
     return () => clearInterval(id);
-  }, [isRecording, startedAt, level]);
+  }, [isRecording, startedAt]);
 
   const onToggle = async () => {
     if (busy) return;
@@ -92,45 +111,65 @@ export default function RecordScreen({ navigation }: Props) {
     }
   };
 
+  if (consented === null) return <View style={s.root} />;
+
   if (!consented) {
     return (
-      <View style={s.root}>
-        <View style={s.card}>
-          <View style={s.shieldWrap}>
-            <Icon name="shield" size={28} color={colors.primary} />
-          </View>
-          <Text style={s.h}>Before you record</Text>
-          <Text style={s.p}>
-            Everything stays on this device — no audio or text is ever sent anywhere. Please make sure
-            everyone present consents to being recorded.
-          </Text>
-          <Pressable style={s.primary} onPress={() => setConsented(true)}>
-            <Text style={s.primaryText}>I understand</Text>
-          </Pressable>
-        </View>
+      <View style={[s.root, s.center]}>
+        <FadeIn>
+          <Mascot mood="idle" size={132} style={s.mascotCenter} />
+        </FadeIn>
+        <FadeIn index={1} style={s.consentWrap}>
+          <Card>
+            <View style={s.shieldWrap}>
+              <Icon name="shield" size={26} color={colors.primary} />
+            </View>
+            <Txt variant="title" style={s.gap}>
+              Before you record
+            </Txt>
+            <Txt variant="body" color={colors.inkSoft} style={s.gapSm}>
+              Everything stays on this device — no audio or text is ever sent anywhere. Please make
+              sure everyone present consents to being recorded.
+            </Txt>
+            <View style={s.consentBtn}>
+              <Button label="I understand" onPress={acceptConsent} full />
+            </View>
+          </Card>
+        </FadeIn>
       </View>
     );
   }
 
   return (
-    <View style={s.root}>
-      <Text style={s.timer}>{fmt(elapsed)}</Text>
-      <Text style={s.hint}>{isRecording ? 'Recording — tap to stop' : 'Tap the mic to start'}</Text>
-      <MicVisualizer
-        level={level}
-        levelRef={levelRef}
-        active={isRecording}
-        colors={colors}
-        onPress={onToggle}
-      />
-      {isRecording && (
+    <View style={[s.root, s.center]}>
+      <FadeIn>
+        <Mascot mood={isRecording ? 'listening' : 'idle'} size={116} />
+      </FadeIn>
+
+      <Txt variant="display" style={s.timer}>
+        {fmt(elapsed)}
+      </Txt>
+      <Txt variant="bodyStrong" color={colors.inkSoft} style={s.hint}>
+        {isRecording ? 'Listening — tap to finish' : 'Tap to start recording'}
+      </Txt>
+
+      <MicVisualizer levelRef={levelRef} active={isRecording} onPress={onToggle} />
+
+      {isRecording ? (
         // The mic being silenced (a call, or another app taking it) is otherwise invisible: the
         // timer keeps counting and the file keeps growing, but only silence is captured. Say so.
-        <View style={[s.livePill, silenced && s.warnPill]}>
-          <View style={[s.liveDot, silenced && s.warnDot]} />
-          <Text style={[s.liveText, silenced && s.warnText]}>
-            {silenced ? 'MIC UNAVAILABLE · not capturing' : 'LIVE · on-device'}
-          </Text>
+        <View style={[s.pill, silenced ? s.warnPill : s.livePill]}>
+          <LiveDot color={silenced ? colors.warning : colors.danger} />
+          <Txt variant="label" color={silenced ? colors.warning : colors.danger}>
+            {silenced ? 'Mic unavailable · not capturing' : 'Recording · on-device'}
+          </Txt>
+        </View>
+      ) : (
+        <View style={s.privacy}>
+          <Icon name="shield" size={14} color={colors.inkFaint} />
+          <Txt variant="caption" color={colors.inkFaint}>
+            Stays on this device. Make sure everyone consents.
+          </Txt>
         </View>
       )}
     </View>
@@ -139,20 +178,41 @@ export default function RecordScreen({ navigation }: Props) {
 
 function makeStyles(c: Colors) {
   return StyleSheet.create({
-    root: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg, backgroundColor: c.bg },
-    card: { backgroundColor: c.surface, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, borderWidth: 1, borderColor: c.border },
-    shieldWrap: { width: 52, height: 52, borderRadius: 26, backgroundColor: c.primarySoft, alignItems: 'center', justifyContent: 'center' },
-    h: { color: c.text, fontSize: 20, fontWeight: '800' },
-    p: { color: c.textDim, fontSize: 14, lineHeight: 21 },
-    primary: { backgroundColor: c.primary, borderRadius: radius.md, padding: spacing.md, alignItems: 'center' },
-    primaryText: { color: c.onPrimary, fontWeight: '800' },
-    timer: { color: c.text, fontSize: 44, fontWeight: '200', letterSpacing: 2, fontVariant: ['tabular-nums'] },
-    hint: { color: c.textDim, fontSize: 14, marginBottom: spacing.xl, marginTop: spacing.xs },
-    livePill: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xl, backgroundColor: c.dangerSoft, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill },
-    liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.danger },
-    liveText: { color: c.danger, fontWeight: '700', fontSize: 12, letterSpacing: 0.5 },
+    root: { flex: 1, backgroundColor: c.canvas, padding: spacing.xl },
+    center: { alignItems: 'center', justifyContent: 'center' },
+    mascotCenter: { alignSelf: 'center' },
+    consentWrap: { width: '100%', marginTop: spacing.lg },
+    shieldWrap: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: c.primarySoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    gap: { marginTop: spacing.md },
+    gapSm: { marginTop: spacing.xs },
+    consentBtn: { marginTop: spacing.lg },
+    timer: {
+      marginTop: spacing.lg,
+      // Overrides the `display` variant Txt already applied — the timer is the largest thing on
+      // the screen and wants more presence than the shared scale gives it.
+      fontSize: 46,
+      lineHeight: 54,
+      // Tabular figures stop the timer jittering as digit widths change every second.
+      fontVariant: ['tabular-nums'],
+    },
+    hint: { marginTop: spacing.xs, marginBottom: spacing.md },
+    pill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.pill,
+    },
+    livePill: { backgroundColor: c.dangerSoft },
     warnPill: { backgroundColor: c.warningSoft },
-    warnDot: { backgroundColor: c.warning },
-    warnText: { color: c.warning },
+    privacy: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing.xl },
   });
 }

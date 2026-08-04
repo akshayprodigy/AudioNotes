@@ -1,15 +1,37 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, SectionList, Pressable, StyleSheet, Alert } from 'react-native';
+import { Alert, Pressable, SectionList, StyleSheet, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { db } from '../db/queries';
 import { PipelineController } from '../pipeline/PipelineController';
 import FileExport from '../native/NativeFileExport';
-import Icon from '../components/Icon';
-import type { Utterance, Minute, Speaker } from '../pipeline/types';
-import { useTheme, spacing, radius, type Colors } from '../theme';
+import Icon, { type IconName } from '../components/Icon';
+import Mascot from '../components/Mascot';
+import { Card, FadeIn, LiveDot, SectionLabel, Txt } from '../components/ui';
+import type { Minute, Speaker, Utterance } from '../pipeline/types';
+import { radius, spacing, useTheme, type Colors } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Meeting'>;
+
+const STAGE_TEXT: Record<string, string> = {
+  vad: 'Finding speech…',
+  asr: 'Writing the transcript…',
+  diarize: 'Working out who spoke…',
+};
+
+/** Minute kinds carry meaning; give each a colour and a word rather than an unlabelled dot. */
+function kindMeta(kind: string, c: Colors): { label: string; color: string; soft: string; icon: IconName } {
+  switch (kind) {
+    case 'action':
+      return { label: 'Action', color: c.warning, soft: c.warningSoft, icon: 'check' };
+    case 'decision':
+      return { label: 'Decision', color: c.primary, soft: c.primarySoft, icon: 'check' };
+    case 'question':
+      return { label: 'Open question', color: c.success, soft: c.successSoft, icon: 'alert' };
+    default:
+      return { label: 'Summary', color: c.inkSoft, soft: c.cardAlt, icon: 'list' };
+  }
+}
 
 export default function MeetingScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
@@ -23,10 +45,14 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const [reprocessing, setReprocessing] = useState(false);
   const [stage, setStage] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const [settled, setSettled] = useState(false);
 
   const refresh = useCallback(async () => {
     const [mins, utts, segs, spk] = await Promise.all([
-      db.minutes(meetingId), db.utterances(meetingId), db.segments(meetingId), db.speakers(meetingId),
+      db.minutes(meetingId),
+      db.utterances(meetingId),
+      db.segments(meetingId),
+      db.speakers(meetingId),
     ]);
     setMinutes(mins);
     setUtterances(utts);
@@ -45,10 +71,14 @@ export default function MeetingScreen({ route, navigation }: Props) {
       if (count === 0 && ticks < 60) {
         ticks += 1;
         setTimeout(load, 2000);
+      } else {
+        setSettled(true);
       }
     };
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [refresh]);
 
   // Live stage progress, and the terminal event. Polling alone could not distinguish "still
@@ -60,16 +90,19 @@ export default function MeetingScreen({ route, navigation }: Props) {
     const offComplete = PipelineController.onComplete(e => {
       if (e.meetingId !== meetingId) return;
       setStage(null);
+      setSettled(true);
       if (e.outcome === 'error') setFailure(e.message ?? 'Processing failed');
       refresh();
     });
-    return () => { offProgress(); offComplete(); };
+    return () => {
+      offProgress();
+      offComplete();
+    };
   }, [meetingId, refresh]);
 
   // Re-run the whole pipeline over the stored audio. The common reason is that a model
-  // (whisper, diarization, Qwen) was installed AFTER this meeting was recorded, so the
-  // first pass stopped early — rather than making the user re-record, re-derive from the
-  // PCM we already kept.
+  // (whisper, diarization, Qwen) was installed AFTER this meeting was recorded, so the first
+  // pass stopped early — rather than making the user re-record, re-derive from the PCM we kept.
   const onReprocess = useCallback(async () => {
     if (reprocessing) return;
     setReprocessing(true);
@@ -84,123 +117,249 @@ export default function MeetingScreen({ route, navigation }: Props) {
     }
   }, [meetingId, refresh, reprocessing]);
 
-  const kindColor = (kind: string): string => {
-    if (kind === 'decision') return colors.primary;
-    if (kind === 'action') return colors.warning;
-    if (kind === 'question') return colors.success;
-    return colors.textDim; // summary
-  };
-
   const nameById = new Map(speakers.map(x => [x.id, x.displayName]));
+  const speakerIndex = new Map(speakers.map((x, i) => [x.id, i]));
+
   const sections = [
     { title: 'Minutes', kind: 'minutes' as const, data: minutes },
     {
       title: 'Transcript',
       kind: 'transcript' as const,
       data: utterances.map(u => ({
-        who: u.speakerId ? nameById.get(u.speakerId) ?? 'Speaker' : '—',
+        who: u.speakerId ? nameById.get(u.speakerId) ?? 'Speaker' : 'Unlabelled',
+        idx: u.speakerId ? speakerIndex.get(u.speakerId) ?? 0 : 0,
         text: u.text,
       })),
     },
   ];
 
+  const working = stage !== null || (!settled && minutes.length === 0);
+  const empty = settled && minutes.length === 0 && utterances.length === 0;
+
+  const Action = ({
+    icon,
+    label,
+    onPress,
+    disabled,
+  }: {
+    icon: IconName;
+    label: string;
+    onPress: () => void;
+    disabled?: boolean;
+  }) => (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={[s.action, disabled && { opacity: 0.45 }]}>
+      <Icon name={icon} size={18} color={colors.ink} />
+      <Txt variant="caption">{label}</Txt>
+    </Pressable>
+  );
+
   return (
     <View style={s.root}>
-      {segCount > 0 && (
-        <View style={s.vadPill}>
-          <View style={[s.vadDot, { backgroundColor: colors.success }]} />
-          <Text style={s.vadText}>
-            {segCount} speech segment{segCount === 1 ? '' : 's'} · {(speechMs / 1000).toFixed(1)}s speech
-          </Text>
+      <View style={s.head}>
+        {working ? (
+          <View style={s.workingRow}>
+            <Mascot mood="thinking" size={54} />
+            <View style={s.rowFill}>
+              <Txt variant="heading">{STAGE_TEXT[stage ?? ''] ?? 'Getting started…'}</Txt>
+              <Txt variant="caption" color={colors.inkSoft}>
+                This runs entirely on your phone, so it takes a moment.
+              </Txt>
+            </View>
+            <LiveDot color={colors.primary} />
+          </View>
+        ) : segCount > 0 ? (
+          <View style={s.statsRow}>
+            <View style={[s.stat, { backgroundColor: colors.successSoft }]}>
+              <Txt variant="heading" color={colors.success}>
+                {segCount}
+              </Txt>
+              <Txt variant="caption" color={colors.success}>
+                segments
+              </Txt>
+            </View>
+            <View style={[s.stat, { backgroundColor: colors.primarySoft }]}>
+              <Txt variant="heading" color={colors.primary}>
+                {(speechMs / 1000).toFixed(0)}s
+              </Txt>
+              <Txt variant="caption" color={colors.primary}>
+                of speech
+              </Txt>
+            </View>
+            <View style={[s.stat, { backgroundColor: colors.warningSoft }]}>
+              <Txt variant="heading" color={colors.warning}>
+                {speakers.length || '—'}
+              </Txt>
+              <Txt variant="caption" color={colors.warning}>
+                {speakers.length === 1 ? 'speaker' : 'speakers'}
+              </Txt>
+            </View>
+          </View>
+        ) : null}
+
+        {failure ? (
+          <Card style={s.failCard}>
+            <View style={s.failRow}>
+              <Icon name="alert" size={18} color={colors.danger} />
+              <Txt variant="bodyStrong" color={colors.danger} style={s.rowFill}>
+                {failure}
+              </Txt>
+            </View>
+          </Card>
+        ) : null}
+
+        <View style={s.actions}>
+          <Action
+            icon="users"
+            label="Speakers"
+            onPress={() => navigation.navigate('Speakers', { meetingId })}
+          />
+          <Action
+            icon="share"
+            label="Export"
+            onPress={() =>
+              Alert.alert('Export minutes', 'Choose a format', [
+                { text: 'Markdown', onPress: () => FileExport.share(meetingId, 'md') },
+                { text: 'Plain text', onPress: () => FileExport.share(meetingId, 'txt') },
+                { text: 'Subtitles (.srt)', onPress: () => FileExport.share(meetingId, 'srt') },
+                { text: 'Cancel', style: 'cancel' },
+              ])
+            }
+          />
+          <Action
+            icon="refresh"
+            label={reprocessing ? 'Working…' : 'Redo'}
+            onPress={onReprocess}
+            disabled={reprocessing}
+          />
         </View>
-      )}
-      {stage && (
-        <View style={s.stagePill}>
-          <Text style={s.stageText}>
-            {stage === 'vad' ? 'Finding speech…'
-              : stage === 'asr' ? 'Transcribing…'
-              : stage === 'diarize' ? 'Identifying speakers…'
-              : 'Processing…'}
-          </Text>
-        </View>
-      )}
-      {failure && (
-        <View style={s.failPill}>
-          <Text style={s.failText}>{failure}</Text>
-        </View>
-      )}
-      <View style={s.actions}>
-        <Pressable style={s.btn} onPress={() => navigation.navigate('Speakers', { meetingId })}>
-          <Icon name="users" size={18} color={colors.text} />
-          <Text style={s.btnText}>Speakers</Text>
-        </Pressable>
-        <Pressable
-          style={s.btn}
-          onPress={() =>
-            Alert.alert('Export minutes', 'Choose a format', [
-              { text: 'Markdown', onPress: () => FileExport.share(meetingId, 'md') },
-              { text: 'Plain text', onPress: () => FileExport.share(meetingId, 'txt') },
-              { text: 'Subtitles (.srt)', onPress: () => FileExport.share(meetingId, 'srt') },
-              { text: 'Cancel', style: 'cancel' },
-            ])
-          }>
-          <Icon name="share" size={18} color={colors.text} />
-          <Text style={s.btnText}>Export</Text>
-        </Pressable>
-        <Pressable style={s.btn} onPress={onReprocess} disabled={reprocessing}>
-          <Icon name="refresh" size={18} color={reprocessing ? colors.textDim : colors.text} />
-          <Text style={[s.btnText, reprocessing && { color: colors.textDim }]}>
-            {reprocessing ? 'Working…' : 'Reprocess'}
-          </Text>
-        </Pressable>
       </View>
-      <SectionList
-        sections={sections as any}
-        keyExtractor={(_, i) => String(i)}
-        stickySectionHeadersEnabled={false}
-        renderSectionHeader={({ section }) => <Text style={s.section}>{(section as any).title}</Text>}
-        renderItem={({ item, section }) => {
-          if ((section as any).kind === 'minutes') {
-            const m = item as Minute;
+
+      {empty ? (
+        <View style={s.emptyWrap}>
+          <Mascot mood="asleep" size={130} />
+          <Txt variant="title" style={s.emptyTitle}>
+            Nothing to show
+          </Txt>
+          <Txt variant="body" color={colors.inkSoft} style={s.emptyBody}>
+            Pip could not hear any speech in this recording. If the mic was covered or the room was
+            very quiet, try recording again a little closer.
+          </Txt>
+        </View>
+      ) : (
+        <SectionList
+          sections={sections as any}
+          keyExtractor={(_, i) => String(i)}
+          stickySectionHeadersEnabled={false}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={s.listPad}
+          renderSectionHeader={({ section }) =>
+            (section as any).data.length ? (
+              <View style={s.sectionHead}>
+                <SectionLabel>{(section as any).title}</SectionLabel>
+              </View>
+            ) : null
+          }
+          renderItem={({ item, section, index }) => {
+            if ((section as any).kind === 'minutes') {
+              const m = item as Minute;
+              const meta = kindMeta(m.kind, colors);
+              return (
+                <FadeIn index={index} style={s.itemWrap}>
+                  <Card accent={meta.color}>
+                    <View style={[s.kindTag, { backgroundColor: meta.soft }]}>
+                      <Txt variant="caption" color={meta.color}>
+                        {meta.label}
+                      </Txt>
+                    </View>
+                    <Txt variant="body" style={s.minuteText}>
+                      {m.content}
+                    </Txt>
+                  </Card>
+                </FadeIn>
+              );
+            }
+            const u = item as { who: string; idx: number; text: string };
+            const tint = colors.speakers[u.idx % colors.speakers.length];
+            const tintSoft = colors.speakersSoft[u.idx % colors.speakersSoft.length];
             return (
-              <View style={s.minuteRow}>
-                <View style={[s.kindDot, { backgroundColor: kindColor(m.kind) }]} />
-                <Text style={s.minuteText}>{m.content}</Text>
+              <View style={s.uttRow}>
+                <View style={[s.avatar, { backgroundColor: tintSoft }]}>
+                  <Txt variant="caption" color={tint}>
+                    {u.who.replace(/[^0-9A-Za-z]/g, '').slice(0, 2).toUpperCase() || '?'}
+                  </Txt>
+                </View>
+                <View style={s.rowFill}>
+                  <Txt variant="label" color={tint}>
+                    {u.who}
+                  </Txt>
+                  <Txt variant="body" color={colors.ink} style={s.uttText}>
+                    {u.text}
+                  </Txt>
+                </View>
               </View>
             );
-          }
-          const u = item as { who: string; text: string };
-          return (
-            <View style={s.uttRow}>
-              <Text style={[s.who, { color: colors.primary }]}>{u.who}</Text>
-              <Text style={s.uttText}>{u.text}</Text>
-            </View>
-          );
-        }}
-      />
+          }}
+        />
+      )}
     </View>
   );
 }
 
 function makeStyles(c: Colors) {
   return StyleSheet.create({
-    root: { flex: 1, padding: spacing.md, backgroundColor: c.bg },
-    vadPill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, alignSelf: 'flex-start', backgroundColor: c.successSoft, paddingHorizontal: spacing.sm, paddingVertical: 6, borderRadius: radius.pill, marginBottom: spacing.sm },
-    vadDot: { width: 7, height: 7, borderRadius: 4 },
-    vadText: { color: c.success, fontSize: 12, fontWeight: '600' },
-    stagePill: { alignSelf: 'flex-start', backgroundColor: c.primarySoft, paddingHorizontal: spacing.sm, paddingVertical: 6, borderRadius: radius.pill, marginBottom: spacing.sm },
-    stageText: { color: c.primary, fontSize: 12, fontWeight: '700' },
-    failPill: { backgroundColor: c.dangerSoft, padding: spacing.sm, borderRadius: radius.md, marginBottom: spacing.sm },
-    failText: { color: c.danger, fontSize: 12, fontWeight: '600' },
-    actions: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
-    btn: { flex: 1, flexDirection: 'row', gap: spacing.xs, backgroundColor: c.surface, borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: c.border },
-    btnText: { color: c.text, fontWeight: '700' },
-    section: { color: c.textDim, fontWeight: '800', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: spacing.md, marginBottom: spacing.sm },
-    minuteRow: { flexDirection: 'row', gap: spacing.sm, backgroundColor: c.surface, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1, borderColor: c.border },
-    kindDot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
-    minuteText: { flex: 1, color: c.text, fontSize: 14, lineHeight: 20 },
-    uttRow: { marginBottom: spacing.sm },
-    who: { fontSize: 12, fontWeight: '800', marginBottom: 2 },
-    uttText: { color: c.text, fontSize: 14, lineHeight: 20 },
+    root: { flex: 1, backgroundColor: c.canvas },
+    head: { paddingHorizontal: spacing.xl, paddingTop: spacing.md, gap: spacing.md },
+    rowFill: { flex: 1 },
+    workingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      backgroundColor: c.card,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: c.line,
+      padding: spacing.md,
+    },
+    statsRow: { flexDirection: 'row', gap: spacing.sm },
+    stat: {
+      flex: 1,
+      borderRadius: radius.md,
+      paddingVertical: spacing.md,
+      alignItems: 'center',
+    },
+    failCard: { borderColor: c.danger },
+    failRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    actions: { flexDirection: 'row', gap: spacing.sm },
+    action: {
+      flex: 1,
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: c.card,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: c.line,
+      paddingVertical: spacing.md,
+    },
+    listPad: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xxl },
+    sectionHead: { marginTop: spacing.xl },
+    itemWrap: { marginBottom: spacing.sm },
+    kindTag: {
+      alignSelf: 'flex-start',
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 3,
+      borderRadius: radius.sm,
+    },
+    minuteText: { marginTop: spacing.sm },
+    uttRow: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg },
+    avatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+    uttText: { marginTop: 1 },
+    emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xxl },
+    emptyTitle: { marginTop: spacing.lg },
+    emptyBody: { textAlign: 'center', marginTop: spacing.sm },
   });
 }

@@ -1,23 +1,52 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, NativeEventEmitter, NativeModules } from 'react-native';
+import {
+  NativeEventEmitter,
+  NativeModules,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import ModelManager from '../native/NativeModelManager';
 import { db } from '../db/queries';
 import Icon from '../components/Icon';
-import { useTheme, spacing, radius, type Colors, type ThemeMode } from '../theme';
+import { Card, FadeIn, ProgressBar, SectionLabel, Txt } from '../components/ui';
+import { radius, spacing, useTheme, type Colors } from '../theme';
 
 type Model = { id: string; name: string; installed: boolean; sizeBytes: number };
 
+/**
+ * Open-source notices.
+ *
+ * Every model here ships under a permissive licence, and MIT and Apache-2.0 both require the
+ * notice to travel with the software. Redistributing the weights inside an APK counts, and the
+ * sherpa-onnx conversions we fetch carry no licence metadata of their own — so this screen is
+ * where the obligation is actually discharged. Do not delete it to save space.
+ */
+const NOTICES: { name: string; licence: string; by: string }[] = [
+  { name: 'Silero VAD', licence: 'MIT', by: 'Silero Team' },
+  { name: 'Whisper (ggml)', licence: 'MIT', by: 'OpenAI / ggerganov' },
+  { name: 'pyannote segmentation 3.0', licence: 'MIT', by: 'Hervé Bredin' },
+  { name: '3D-Speaker CAM++', licence: 'Apache-2.0', by: 'Alibaba DAMO Academy' },
+  { name: 'Qwen2.5 Instruct', licence: 'Apache-2.0', by: 'Alibaba Cloud' },
+  { name: 'sherpa-onnx', licence: 'Apache-2.0', by: 'k2-fsa' },
+  { name: 'Poppins', licence: 'SIL OFL 1.1', by: 'Indian Type Foundry' },
+];
+
 export default function SettingsScreen() {
-  const { colors, mode, setMode } = useTheme();
+  const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
   const [models, setModels] = useState<Model[]>([]);
   const [progress, setProgress] = useState<Record<string, number>>({});
   const [keepAudio, setKeepAudio] = useState(false);
+  const [showNotices, setShowNotices] = useState(false);
 
   const refresh = () => ModelManager.list().then(r => setModels(JSON.parse(r)));
 
   useEffect(() => {
-    db.getSetting('keepAudio').then(v => setKeepAudio(v === '1')).catch(() => {});
+    db.getSetting('keepAudio')
+      .then(v => setKeepAudio(v === '1'))
+      .catch(() => {});
   }, []);
 
   const onToggleKeepAudio = async () => {
@@ -29,10 +58,13 @@ export default function SettingsScreen() {
   useEffect(() => {
     refresh();
     const emitter = new NativeEventEmitter(NativeModules.ModelManager);
-    const sub = emitter.addListener('onModelProgress', (e: { id: string; downloaded: number; total: number }) => {
-      const pct = e.total > 0 ? Math.round((e.downloaded / e.total) * 100) : 0;
-      setProgress(p => ({ ...p, [e.id]: pct }));
-    });
+    const sub = emitter.addListener(
+      'onModelProgress',
+      (e: { id: string; downloaded: number; total: number }) => {
+        const pct = e.total > 0 ? Math.round((e.downloaded / e.total) * 100) : 0;
+        setProgress(p => ({ ...p, [e.id]: pct }));
+      },
+    );
     return () => sub.remove();
   }, []);
 
@@ -41,99 +73,168 @@ export default function SettingsScreen() {
       await ModelManager.remove(m.id);
     } else {
       setProgress(p => ({ ...p, [m.id]: 0 }));
-      try { await ModelManager.download(m.id); } catch {}
-      setProgress(p => { const n = { ...p }; delete n[m.id]; return n; });
+      try {
+        await ModelManager.download(m.id);
+      } catch {}
+      setProgress(p => {
+        const n = { ...p };
+        delete n[m.id];
+        return n;
+      });
     }
     refresh();
   };
 
-  const modes: { key: ThemeMode; label: string; icon: 'sun' | 'moon' | 'settings' }[] = [
-    { key: 'light', label: 'Light', icon: 'sun' },
-    { key: 'dark', label: 'Dark', icon: 'moon' },
-    { key: 'system', label: 'Auto', icon: 'settings' },
-  ];
-
   return (
-    <ScrollView style={s.root} contentContainerStyle={{ padding: spacing.md }}>
-      <Text style={s.section}>Appearance</Text>
-      <View style={s.segment}>
-        {modes.map(m => {
-          const active = mode === m.key;
-          return (
-            <Pressable key={m.key} style={[s.segBtn, active && s.segBtnActive]} onPress={() => setMode(m.key)}>
-              <Icon name={m.icon} size={16} color={active ? colors.onPrimary : colors.textDim} />
-              <Text style={[s.segText, active && { color: colors.onPrimary }]}>{m.label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      <Text style={s.section}>Models</Text>
-      {models.map(m => {
+    <ScrollView
+      style={s.root}
+      contentContainerStyle={s.pad}
+      showsVerticalScrollIndicator={false}>
+      <SectionLabel>On-device models</SectionLabel>
+      {models.map((m, i) => {
         const pct = progress[m.id];
         const downloading = pct !== undefined && !m.installed;
         return (
-          <View key={m.id} style={s.row}>
-            <View style={s.rowFill}>
-              <Text style={s.name}>{m.name}</Text>
-              <Text style={s.meta}>{downloading ? `Downloading ${pct}%` : `${(m.sizeBytes / 1e6).toFixed(0)} MB`}</Text>
-            </View>
-            <Pressable
-              style={[s.pill, m.installed ? s.pillRemove : s.pillGet]}
-              onPress={() => onToggle(m)}
-              disabled={downloading}>
-              <Icon name={m.installed ? 'trash' : 'download'} size={16} color={m.installed ? colors.danger : colors.onPrimary} />
-              <Text style={[s.pillText, { color: m.installed ? colors.danger : colors.onPrimary }]}>
-                {m.installed ? 'Remove' : downloading ? '…' : 'Get'}
-              </Text>
-            </Pressable>
-          </View>
+          <FadeIn key={m.id} index={i} style={s.gapSm}>
+            <Card>
+              <View style={s.row}>
+                <View style={s.rowFill}>
+                  <Txt variant="bodyStrong">{m.name}</Txt>
+                  <Txt variant="caption" color={colors.inkFaint}>
+                    {downloading ? `Downloading… ${pct}%` : `${(m.sizeBytes / 1e6).toFixed(0)} MB`}
+                  </Txt>
+                </View>
+                <Pressable
+                  onPress={() => onToggle(m)}
+                  disabled={downloading}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${m.installed ? 'Remove' : 'Download'} ${m.name}`}
+                  style={[s.pill, m.installed ? s.pillRemove : s.pillGet]}>
+                  <Icon
+                    name={m.installed ? 'trash' : 'download'}
+                    size={15}
+                    color={m.installed ? colors.danger : colors.onPrimary}
+                  />
+                  <Txt variant="caption" color={m.installed ? colors.danger : colors.onPrimary}>
+                    {m.installed ? 'Remove' : downloading ? '…' : 'Get'}
+                  </Txt>
+                </Pressable>
+              </View>
+              {downloading ? (
+                <View style={s.gapSm}>
+                  <ProgressBar pct={pct} />
+                </View>
+              ) : null}
+            </Card>
+          </FadeIn>
         );
       })}
 
-      <Text style={s.section}>Privacy</Text>
-      <Pressable style={s.row} onPress={onToggleKeepAudio}>
-        <View style={s.rowFill}>
-          <Text style={s.name}>Keep the audio after transcribing</Text>
-          <Text style={s.meta}>
-            {keepAudio
-              ? 'Recordings stay on the device (~115 MB/hour) so a meeting can be reprocessed later.'
-              : 'Recordings are deleted once transcribed. The transcript and minutes are kept, encrypted.'}
-          </Text>
-        </View>
-        <View style={[s.switch, keepAudio && s.switchOn]}>
-          <View style={[s.knob, keepAudio && s.knobOn]} />
-        </View>
-      </Pressable>
-      <View style={s.privacy}>
-        <Icon name="shield" size={20} color={colors.success} />
-        <Text style={s.privacyText}>All processing is on-device. No third-party AI. No account required.</Text>
+      <View style={s.sectionGap}>
+        <SectionLabel>Privacy</SectionLabel>
       </View>
+      <Card onPress={onToggleKeepAudio}>
+        <View style={s.row}>
+          <View style={s.rowFill}>
+            <Txt variant="bodyStrong">Keep audio after transcribing</Txt>
+            <Txt variant="caption" color={colors.inkSoft} style={s.gapXs}>
+              {keepAudio
+                ? 'Recordings stay on the device (~115 MB/hour) so a meeting can be reprocessed later.'
+                : 'Recordings are deleted once transcribed. The transcript and minutes are kept, encrypted.'}
+            </Txt>
+          </View>
+          <View style={[s.switch, keepAudio && s.switchOn]}>
+            <View style={[s.knob, keepAudio && s.knobOn]} />
+          </View>
+        </View>
+      </Card>
+
+      <View style={s.assure}>
+        <Icon name="shield" size={20} color={colors.success} />
+        <Txt variant="caption" color={colors.ink} style={s.rowFill}>
+          Everything runs on this device. No third-party AI, no account, nothing uploaded.
+        </Txt>
+      </View>
+
+      <View style={s.sectionGap}>
+        <SectionLabel>About</SectionLabel>
+      </View>
+      <Card onPress={() => setShowNotices(v => !v)}>
+        <View style={s.row}>
+          <View style={s.rowFill}>
+            <Txt variant="bodyStrong">Open-source notices</Txt>
+            <Txt variant="caption" color={colors.inkSoft} style={s.gapXs}>
+              The models and type this app is built on
+            </Txt>
+          </View>
+          <Icon
+            name={showNotices ? 'chevronRight' : 'chevronRight'}
+            size={18}
+            color={colors.inkFaint}
+          />
+        </View>
+        {showNotices ? (
+          <View style={s.notices}>
+            {NOTICES.map(n => (
+              <View key={n.name} style={s.notice}>
+                <Txt variant="caption">{n.name}</Txt>
+                <Txt variant="caption" color={colors.inkFaint}>
+                  {n.by} · {n.licence}
+                </Txt>
+              </View>
+            ))}
+          </View>
+        ) : null}
+      </Card>
     </ScrollView>
   );
 }
 
 function makeStyles(c: Colors) {
   return StyleSheet.create({
-    root: { flex: 1, backgroundColor: c.bg },
-    rowFill: { flex: 1, paddingRight: spacing.md },
-    switch: { width: 46, height: 28, borderRadius: 14, backgroundColor: c.border, padding: 3, justifyContent: 'center' },
-    switchOn: { backgroundColor: c.primary },
-    knob: { width: 22, height: 22, borderRadius: 11, backgroundColor: c.surface },
-    knobOn: { alignSelf: 'flex-end' },
-    section: { color: c.textDim, fontWeight: '800', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: spacing.lg, marginBottom: spacing.sm },
-    segment: { flexDirection: 'row', backgroundColor: c.surfaceAlt, borderRadius: radius.md, padding: 4, gap: 4 },
-    segBtn: { flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.sm, borderRadius: radius.sm },
-    segBtnActive: { backgroundColor: c.primary },
-    segText: { color: c.textDim, fontWeight: '700', fontSize: 13 },
-    row: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1, borderColor: c.border },
-    name: { color: c.text, fontWeight: '600' },
-    meta: { color: c.textDim, fontSize: 12, marginTop: 2 },
-    pill: { flexDirection: 'row', gap: 6, alignItems: 'center', borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+    root: { flex: 1, backgroundColor: c.canvas },
+    pad: { padding: spacing.xl, paddingBottom: spacing.xxl },
+    row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    rowFill: { flex: 1 },
+    gapSm: { marginTop: spacing.sm },
+    gapXs: { marginTop: 2 },
+    sectionGap: { marginTop: spacing.xl },
+    pill: {
+      flexDirection: 'row',
+      gap: 6,
+      alignItems: 'center',
+      borderRadius: radius.pill,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+    },
     pillGet: { backgroundColor: c.primary },
     pillRemove: { backgroundColor: c.dangerSoft },
-    pillText: { fontWeight: '700', fontSize: 13 },
-    privacy: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', backgroundColor: c.successSoft, borderRadius: radius.md, padding: spacing.md },
-    privacyText: { flex: 1, color: c.text, lineHeight: 20 },
+    switch: {
+      width: 48,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: c.lineStrong,
+      padding: 3,
+      justifyContent: 'center',
+    },
+    switchOn: { backgroundColor: c.primary },
+    knob: { width: 22, height: 22, borderRadius: 11, backgroundColor: c.card },
+    knobOn: { alignSelf: 'flex-end' },
+    assure: {
+      flexDirection: 'row',
+      gap: spacing.md,
+      alignItems: 'center',
+      backgroundColor: c.successSoft,
+      borderRadius: radius.lg,
+      padding: spacing.lg,
+      marginTop: spacing.md,
+    },
+    notices: { marginTop: spacing.md, gap: spacing.sm },
+    notice: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: spacing.md,
+    },
   });
 }

@@ -1,9 +1,18 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { useColorScheme } from 'react-native';
-import { lightColors, darkColors, type Colors } from './palette';
-import { db } from '../db/queries';
+import React, { createContext, useContext } from 'react';
+import { lightColors, type Colors } from './palette';
 
-export type ThemeMode = 'light' | 'dark' | 'system';
+/**
+ * Light-only theme.
+ *
+ * The dark palette was never tuned against the light one and looked wrong beside it, so rather
+ * than ship two mediocre themes the app commits to one. The provider and hook stay because every
+ * screen consumes `useTheme()`; only the choice went away.
+ *
+ * `mode`/`setMode` are retained as no-ops so the Settings screen and any stored 'theme' setting
+ * keep compiling. If a real dark theme is wanted later it belongs here — designed against the
+ * light one, not bolted on.
+ */
+export type ThemeMode = 'light';
 
 interface ThemeValue {
   colors: Colors;
@@ -12,34 +21,16 @@ interface ThemeValue {
   setMode: (m: ThemeMode) => void;
 }
 
-const ThemeContext = createContext<ThemeValue>({
+const value: ThemeValue = {
   colors: lightColors,
   isDark: false,
-  mode: 'system',
+  mode: 'light',
   setMode: () => {},
-});
+};
+
+const ThemeContext = createContext<ThemeValue>(value);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const system = useColorScheme(); // 'light' | 'dark' | null
-  const [mode, setModeState] = useState<ThemeMode>('system');
-
-  useEffect(() => {
-    db.getSetting('theme')
-      .then(v => {
-        if (v === 'light' || v === 'dark' || v === 'system') setModeState(v);
-      })
-      .catch(() => {});
-  }, []);
-
-  const setMode = (m: ThemeMode) => {
-    setModeState(m);
-    db.setSetting('theme', m).catch(() => {});
-  };
-
-  const isDark = mode === 'system' ? system === 'dark' : mode === 'dark';
-  const colors = isDark ? darkColors : lightColors;
-
-  const value = useMemo(() => ({ colors, isDark, mode, setMode }), [colors, isDark, mode]);
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
