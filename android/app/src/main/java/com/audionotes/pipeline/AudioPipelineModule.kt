@@ -118,8 +118,23 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
           ?: throw IllegalStateException("no audio for $meetingId")
         val modelPath = ensureVadModel()
 
+        // Per-stage wall times, logged against the audio length so the numbers are comparable
+        // between recordings and against DiarEmbeddingBench. Without these the only timing signal
+        // was the gap between two log lines, which attributes queueing and DB writes to whichever
+        // stage happened to log next — enough to make a stage look 10x slower than it measures in
+        // isolation.
+        val audioMs = java.io.File(audioPath).length() / 32
+        fun stageDone(stage: String, startedAt: Long) {
+          val ms = System.currentTimeMillis() - startedAt
+          val rt = if (audioMs > 0) ms.toDouble() / audioMs else 0.0
+          Log.i("AudioPipeline", "stage=%s %dms (%.2fx realtime) audio=%ds %s"
+            .format(stage, ms, rt, audioMs / 1000, meetingId))
+        }
+
         emitProgress(meetingId, "vad", 0, 1)
+        var t0 = System.currentTimeMillis()
         val segments = NativeBridge.nativeVad(audioPath, modelPath, RecordingService.SAMPLE_RATE)
+        stageDone("vad", t0)
         db.replaceSegments(meetingId, segments)
         db.setStatus(meetingId, "vad")
         emitProgress(meetingId, "vad", 1, 1)
@@ -135,9 +150,11 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
           val n = segments.size / 2
           val starts = LongArray(n) { segments[it * 2] }
           val ends = LongArray(n) { segments[it * 2 + 1] }
+          t0 = System.currentTimeMillis()
           val json = NativeBridge.nativeTranscribe(
             audioPath, asrFile.absolutePath, RecordingService.SAMPLE_RATE, starts, ends, 0,
           )
+          stageDone("asr", t0)
           val count = db.replaceUtterancesJson(meetingId, json)
           db.setStatus(meetingId, "asr")
           emitProgress(meetingId, "asr", 1, 1)
@@ -156,9 +173,11 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
         val embModel = com.audionotes.data.ModelCatalog.fileFor(ctx, "diar-emb")
         if (transcribed && segModel != null && segModel.exists() && embModel != null && embModel.exists()) {
           emitProgress(meetingId, "diarize", 0, 1)
+          t0 = System.currentTimeMillis()
           val tri = NativeBridge.nativeDiarize(
             audioPath, segModel.absolutePath, embModel.absolutePath, RecordingService.SAMPLE_RATE, 0,
           )
+          stageDone("diarize", t0)
           val m = tri.size / 3
           if (m > 0) {
             val ds = LongArray(m) { tri[it * 3] }
