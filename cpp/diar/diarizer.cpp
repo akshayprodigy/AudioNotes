@@ -1,5 +1,7 @@
 #include "diar/diarizer.h"
 
+#include "util/cpu_topology.h"
+
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -15,25 +17,6 @@
 namespace audionotes {
 
 namespace {
-
-/**
- * Threads for the segmentation and embedding ONNX sessions.
- *
- * These defaulted to 1, which left diarization single-threaded on an 8-core phone and made it
- * cost about as much as transcription — and unlike ASR it runs over the WHOLE recording, not just
- * the VAD spans. ORT parallelises these graphs across cores well, so this is the cheapest
- * available speedup and, unlike feeding it compacted speech, it cannot change the result:
- * thread count does not affect the segmentation or the embeddings, only how fast they arrive.
- *
- * Same big.LITTLE reasoning as the ASR path — cap rather than take every core, and leave headroom
- * for the UI and the foreground service.
- */
-int diarThreadCount() {
-  const int hw = static_cast<int>(std::thread::hardware_concurrency());
-  if (hw <= 2) return 1;
-  if (hw <= 4) return hw - 1;
-  return std::min(4, hw - 2);
-}
 
 // Read an entire PCM16 mono file as float samples in [-1, 1].
 std::vector<float> readAll(const std::string& pcm_path) {
@@ -70,7 +53,10 @@ struct Diarizer::Impl {
   Impl(const std::string& seg, const std::string& emb, int sr, int ns)
       : sample_rate(sr), num_speakers(ns), seg_model(seg), emb_model(emb) {
 #ifdef HAVE_SHERPA
-    const int threads = diarThreadCount();
+    // Segmentation and embedding both default to 1 thread in sherpa's config, which left
+    // diarization single-threaded while covering the WHOLE recording (not just the VAD spans).
+    // Thread count cannot change the result here, only how fast it arrives.
+    const int threads = inferenceThreadCount();
     SherpaOnnxOfflineSpeakerDiarizationConfig config;
     memset(&config, 0, sizeof(config));
     config.segmentation.pyannote.model = seg_model.c_str();

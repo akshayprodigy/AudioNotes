@@ -1,5 +1,7 @@
 #include "asr/whisper_asr.h"
 
+#include "util/cpu_topology.h"
+
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
@@ -23,29 +25,6 @@ namespace audionotes {
 
 namespace {
 constexpr int64_t kChunkMs = 30000;  // combine VAD spans up to ~30s per whisper pass
-
-/**
- * How many threads to give whisper.
- *
- * `hardware_concurrency() / 2` is the wrong heuristic on a big.LITTLE phone. On a Tensor G2
- * (2 x Cortex-X1 + 2 x A78 + 4 x A55) it yields 4, which the scheduler is free to place partly
- * on the little cores — and ggml runs a barrier per graph node, so the whole pass advances at the
- * speed of the SLOWEST thread. A few little cores can therefore make the job slower than using
- * fewer, faster ones.
- *
- * Big-core counts cluster tightly on Android (4 on an 8-core, 6 on a 9-12 core), so cap at 6 and
- * leave at least one core for the UI and the foreground service. Measured on a Pixel 7 Pro:
- * whisper base runs at roughly 1x realtime here, so this is the difference between a 30-minute
- * meeting taking ~19 minutes and considerably longer.
- *
- * Callers may override via the `threads` argument to transcribe() (0 = use this default).
- */
-int asrThreadCount() {
-  const int hw = static_cast<int>(std::thread::hardware_concurrency());
-  if (hw <= 2) return 1;
-  if (hw <= 4) return hw - 1;
-  return std::min(6, hw - 2);
-}
 
 // Read [start_ms, end_ms) of a PCM16 mono file as float samples in [-1, 1].
 std::vector<float> readWindow(const std::string& pcm_path, int sr, int64_t start_ms, int64_t end_ms) {
@@ -117,7 +96,7 @@ std::vector<Utterance> WhisperAsr::transcribe(
 
   const auto chunks = makeChunks(segments);
   const int total = static_cast<int>(chunks.size());
-  const int threads = threads_override > 0 ? threads_override : asrThreadCount();
+  const int threads = threads_override > 0 ? threads_override : inferenceThreadCount();
   ASRLOGI("transcribing %d chunk(s) with %d threads", total, threads);
 
   for (int ci = 0; ci < total; ++ci) {
