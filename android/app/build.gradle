@@ -162,6 +162,13 @@ android {
         // directly on a device, with no UI driving and no dependence on the logcat buffer.
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
+        // Origin for the first-run model download. The weights are not in the APK — see
+        // ModelCatalog.sourcesFor. Empty means "fetch from upstream (GitHub / Hugging Face)",
+        // which is the development default; set `modelBaseUrl` in gradle.properties, or pass
+        // -PmodelBaseUrl=https://cdn.example.com on the release build, to serve them yourself.
+        buildConfigField "String", "MODEL_BASE_URL",
+            "\"${project.findProperty('modelBaseUrl') ?: ''}\""
+
         externalNativeBuild {
             cmake {
                 cppFlags "-std=c++17"
@@ -194,6 +201,7 @@ android {
     // onnxruntime-android exposes its native libs/headers to CMake via prefab.
     buildFeatures {
         prefab true
+        buildConfig true
     }
     signingConfigs {
         debug {

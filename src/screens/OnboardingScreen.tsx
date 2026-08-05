@@ -14,18 +14,19 @@ import { radius, s, sv, useTheme, type Colors } from '../theme';
 type Props = NativeStackScreenProps<RootStackParamList, 'Onboarding'>;
 
 /**
- * Everything needed for a complete first meeting, speaker labels included.
+ * What first run has to fetch, read from the catalog rather than listed here.
  *
- * Diarization used to be excluded to keep first run at ~60 MB, which meant a new user recorded a
- * meeting, got a transcript with no speaker labels, and no way to discover that "who said what" —
- * a headline feature — sat behind a Settings screen they had never opened.
+ * The duplicate list this replaces had already drifted once — it named four models by id with
+ * their own labels, so adding or renaming one in ModelCatalog silently left onboarding fetching
+ * the wrong set. The catalog marks which models a meeting cannot be processed without; this asks
+ * it, and shows the same wording Settings does.
+ *
+ * Diarization is in that required set deliberately. Excluding it kept first run at ~60 MB, but a
+ * new user then recorded a meeting, got a transcript with no speaker labels, and had no way to
+ * discover that "who said what" — a headline feature — sat behind a Settings screen they had
+ * never opened.
  */
-const ESSENTIALS: { id: string; label: string }[] = [
-  { id: 'silero-vad', label: 'Finding speech' },
-  { id: 'whisper-base', label: 'Transcription' },
-  { id: 'diar-seg', label: 'Speaker detection' },
-  { id: 'diar-emb', label: 'Telling voices apart' },
-];
+type Essential = { id: string; purpose: string; sizeBytes: number };
 
 const BULLETS: { icon: IconName; title: string; body: string; tone: 'primary' | 'success' | 'warning' }[] = [
   {
@@ -52,10 +53,17 @@ export default function OnboardingScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const st = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
-  const [status, setStatus] = useState<'intro' | 'downloading' | 'done'>('intro');
+  const [status, setStatus] = useState<'intro' | 'downloading' | 'done' | 'failed'>('intro');
   const [pct, setPct] = useState(0);
   const [step, setStep] = useState(0);
   const [current, setCurrent] = useState('');
+  const [essentials, setEssentials] = useState<Essential[]>([]);
+
+  useEffect(() => {
+    ModelManager.list()
+      .then(r => setEssentials(JSON.parse(r).filter((m: any) => m.required)))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const emitter = new NativeEventEmitter(NativeModules.ModelManager);
@@ -65,22 +73,32 @@ export default function OnboardingScreen({ navigation }: Props) {
     return () => sub.remove();
   }, []);
 
+  const totalMb = Math.round(essentials.reduce((a, m) => a + m.sizeBytes, 0) / 1e6);
+
   const finish = async () => {
     await db.setSetting('onboarded', '1');
     navigation.replace('Library');
   };
 
+  /**
+   * A failure here has to be visible. The old version swallowed every error and went straight to
+   * "All set", so a first run on a bad connection landed the user in an empty library with an app
+   * that could record but never transcribe, and nothing anywhere saying why.
+   */
   const downloadAll = async () => {
     setStatus('downloading');
-    try {
-      AudioPipeline.requestBatteryExemption().catch(() => {});
-      for (let i = 0; i < ESSENTIALS.length; i++) {
-        setStep(i);
-        setCurrent(ESSENTIALS[i].label);
-        setPct(0);
-        await ModelManager.download(ESSENTIALS[i].id);
+    AudioPipeline.requestBatteryExemption().catch(() => {});
+    for (let i = 0; i < essentials.length; i++) {
+      setStep(i);
+      setCurrent(essentials[i].purpose);
+      setPct(0);
+      try {
+        await ModelManager.download(essentials[i].id);
+      } catch {
+        setStatus('failed');
+        return;
       }
-    } catch {}
+    }
     setStatus('done');
   };
 
@@ -100,10 +118,31 @@ export default function OnboardingScreen({ navigation }: Props) {
           <View style={st.progressHead}>
             <Txt variant="bodyStrong">{current}</Txt>
             <Txt variant="chip" color={colors.inkFaint}>
-              {step + 1} of {ESSENTIALS.length}
+              {step + 1} of {essentials.length}
             </Txt>
           </View>
           <ProgressBar pct={pct} color={colors.primary} track={colors.cardAlt} />
+        </View>
+      </View>
+    );
+  }
+
+  if (status === 'failed') {
+    return (
+      <View style={[st.root, st.center, pad]}>
+        <Mascot mood="thinking" size={sv(140)} />
+        <Txt variant="display" style={st.mt}>
+          That download stopped
+        </Txt>
+        <Txt variant="body" color={colors.inkSoft} style={[st.sub, st.failBody]}>
+          “{current}” could not be fetched. Check your connection and try again — anything already
+          downloaded is kept, so it picks up where it left off.
+        </Txt>
+        <View style={st.failCta}>
+          <Button label="Try again" icon="refresh" onPress={downloadAll} full />
+          <View style={st.skipRow}>
+            <SoftButton label="Continue without it" onPress={finish} />
+          </View>
         </View>
       </View>
     );
@@ -167,12 +206,22 @@ export default function OnboardingScreen({ navigation }: Props) {
       </View>
 
       <Pop index={5} style={st.footer}>
-        <Button label="Download & get started" icon="download" onPress={downloadAll} full />
+        <Button
+          label={totalMb > 0 ? `Download the AI (${totalMb} MB)` : 'Download the AI'}
+          icon="download"
+          onPress={downloadAll}
+          disabled={essentials.length === 0}
+          full
+        />
+        {/* Said plainly, before the tap. The models are not in the app — shipping them would put
+            it well past a gigabyte on the store — so this download is what makes AudioNotes work
+            at all, and it is the only time the app touches the network. */}
         <Txt variant="chip" color={colors.inkFaint} style={[st.centerText, st.note]}>
-          One-time 96 MB download · works offline afterwards
+          The speech models are not bundled in the app, so they download once — after that
+          everything runs offline, and nothing you record is ever uploaded.
         </Txt>
         <View style={st.skipRow}>
-          <SoftButton label="Skip for now" onPress={finish} />
+          <SoftButton label="Later, from Settings" onPress={finish} />
         </View>
       </Pop>
     </View>
@@ -205,5 +254,7 @@ function makeStyles(c: Colors) {
     progressHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     doneWrap: { alignSelf: 'stretch', marginTop: s(20) },
     cta: { marginTop: s(22) },
+    failBody: { paddingHorizontal: s(10) },
+    failCta: { alignSelf: 'stretch', marginTop: s(26), gap: s(10) },
   });
 }

@@ -12,7 +12,17 @@ import { IconButton, Pop, ProgressBar, Raised, SectionRule, Switch, Txt } from '
 import { radius, s, useTheme, type Colors } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
-type Model = { id: string; name: string; installed: boolean; sizeBytes: number };
+type Model = {
+  id: string;
+  name: string;
+  purpose: string;
+  detail: string;
+  required: boolean;
+  installed: boolean;
+  sizeBytes: number;
+};
+
+const mb = (bytes: number) => `${(bytes / 1e6).toFixed(0)} MB`;
 
 /**
  * Open-source notices.
@@ -134,18 +144,22 @@ export default function SettingsScreen({ navigation }: Props) {
               <Pop key={m.id} index={i}>
                 <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={5}>
                   <View style={st.rowPad}>
+                    {/* The job first, the model name after. Someone deciding whether they can
+                        free up 190 MB is served by "writes down what was said, more accurately",
+                        not by "Whisper small (q5_1)" — but the name still has to be here, because
+                        it is what makes the open-source notices and the privacy claim checkable. */}
                     <View style={st.row}>
                       <View style={st.flex}>
-                        <Txt variant="bodyStrong">{m.name}</Txt>
-                        <Txt variant="chip" color={colors.inkFaint} style={st.tiny}>
-                          {busy ? `Downloading… ${pct}%` : `${(m.sizeBytes / 1e6).toFixed(0)} MB`}
+                        <Txt variant="bodyStrong">{m.purpose}</Txt>
+                        <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
+                          {m.detail}
                         </Txt>
                       </View>
                       <Pressable
                         onPress={() => onToggle(m)}
                         disabled={busy}
                         accessibilityRole="button"
-                        accessibilityLabel={`${m.installed ? 'Remove' : 'Download'} ${m.name}`}
+                        accessibilityLabel={`${m.installed ? 'Remove' : 'Download'} ${m.purpose} (${m.name})`}
                         style={[st.pill, { backgroundColor: m.installed ? colors.dangerSoft : colors.primary }]}>
                         <Icon
                           name={m.installed ? 'trash' : 'download'}
@@ -158,6 +172,18 @@ export default function SettingsScreen({ navigation }: Props) {
                         </Txt>
                       </Pressable>
                     </View>
+
+                    <View style={st.modelMeta}>
+                      <View style={[st.tag, { backgroundColor: m.required ? colors.primarySoft : colors.cardAlt }]}>
+                        <Txt variant="chipSm" color={m.required ? colors.primary : colors.inkFaint}>
+                          {m.required ? 'REQUIRED' : 'OPTIONAL'}
+                        </Txt>
+                      </View>
+                      <Txt variant="chipSoft" color={colors.inkFaint}>
+                        {m.name} · {busy ? `downloading ${pct}%` : mb(m.sizeBytes)}
+                      </Txt>
+                    </View>
+
                     {busy ? (
                       <View style={st.tiny}>
                         <ProgressBar pct={pct} color={colors.primary} track={colors.cardAlt} />
@@ -302,6 +328,8 @@ function makeStyles(c: Colors) {
     rowPad: { padding: s(16) },
     row: { flexDirection: 'row', alignItems: 'center', gap: s(12) },
     tiny: { marginTop: s(4) },
+    modelMeta: { flexDirection: 'row', alignItems: 'center', gap: s(8), marginTop: s(12) },
+    tag: { paddingHorizontal: s(8), paddingVertical: s(4), borderRadius: radius.pill },
     pill: {
       flexDirection: 'row',
       alignItems: 'center',

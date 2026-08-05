@@ -34,7 +34,10 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
         JSONObject()
           .put("id", spec.id)
           .put("name", spec.name)
+          .put("purpose", spec.purpose)
+          .put("detail", spec.detail)
           .put("kind", spec.kind)
+          .put("required", spec.required)
           // Size must MATCH the catalog, not merely be non-zero. Two cases this catches that
           // "exists and is not empty" does not: a download interrupted part-way leaves a
           // plausible-looking file that would be loaded as weights, and — the reason this
@@ -61,42 +64,31 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
       val dest = File(ModelCatalog.modelsDir(ctx), spec.filename)
       val part = File(dest.parentFile, spec.filename + ".part")
       try {
-        var existing = if (part.exists()) part.length() else 0L
-        val conn = (URL(spec.url).openConnection() as HttpURLConnection).apply {
-          instanceFollowRedirects = true
-          connectTimeout = 30000
-          readTimeout = 30000
-          if (existing > 0) setRequestProperty("Range", "bytes=$existing-")
-        }
-        conn.connect()
-        // If the server ignored the Range request, start over.
-        if (existing > 0 && conn.responseCode != HttpURLConnection.HTTP_PARTIAL) {
-          existing = 0L
-        }
-        val total = existing + conn.contentLengthLong.coerceAtLeast(0L)
-
-        conn.inputStream.use { input ->
-          java.io.FileOutputStream(part, existing > 0).use { out ->
-            val buf = ByteArray(1 shl 16)
-            var downloaded = existing
-            var lastEmit = 0L
-            while (true) {
-              val n = input.read(buf)
-              if (n < 0) break
-              out.write(buf, 0, n)
-              downloaded += n
-              if (downloaded - lastEmit > 512 * 1024) {
-                emitProgress(id, downloaded, total)
-                lastEmit = downloaded
-              }
-            }
+        // Try each source in turn — our mirror first, upstream as the fallback. A source that
+        // fails part-way leaves a .part file, and the next attempt resumes into it via Range,
+        // which is safe across sources ONLY because the bytes are identical by definition: the
+        // sha256 below is what proves it, and a mismatch discards the file rather than loading it.
+        val sources = ModelCatalog.sourcesFor(spec)
+        var lastError: Exception? = null
+        var fetched = false
+        for ((i, source) in sources.withIndex()) {
+          try {
+            fetchTo(part, source, id)
+            fetched = true
+            break
+          } catch (e: Exception) {
+            lastError = e
+            Log.w("ModelManager", "source ${i + 1}/${sources.size} failed for $id: $source", e)
           }
         }
-        conn.disconnect()
+        if (!fetched) throw lastError ?: IllegalStateException("no source for $id")
 
         if (spec.sha256.isNotEmpty()) {
           val actual = sha256(part)
           if (!actual.equals(spec.sha256, ignoreCase = true)) {
+            // Discard it. Left in place, the next attempt resumes into bytes already known to be
+            // wrong and can never converge — the download would fail identically forever.
+            part.delete()
             throw IllegalStateException("checksum mismatch for $id (got $actual)")
           }
         } else {
@@ -117,6 +109,50 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
         promise.reject("download_failed", e)
       }
     }.start()
+  }
+
+  /**
+   * Stream one source into `part`, resuming from whatever is already there. Throws on any
+   * non-2xx, so the caller can fall through to the next source — without the status check a CDN
+   * serving an HTML 404 page would be written out as model weights and only caught later by the
+   * checksum, after a full download.
+   */
+  private fun fetchTo(part: File, source: String, id: String) {
+    var existing = if (part.exists()) part.length() else 0L
+    val conn = (URL(source).openConnection() as HttpURLConnection).apply {
+      instanceFollowRedirects = true
+      connectTimeout = 30000
+      readTimeout = 30000
+      if (existing > 0) setRequestProperty("Range", "bytes=$existing-")
+    }
+    conn.connect()
+    val code = conn.responseCode
+    if (code !in 200..299) {
+      conn.disconnect()
+      throw IllegalStateException("HTTP $code from $source")
+    }
+    // If the server ignored the Range request, start over.
+    if (existing > 0 && code != HttpURLConnection.HTTP_PARTIAL) existing = 0L
+    val total = existing + conn.contentLengthLong.coerceAtLeast(0L)
+
+    conn.inputStream.use { input ->
+      java.io.FileOutputStream(part, existing > 0).use { out ->
+        val buf = ByteArray(1 shl 16)
+        var downloaded = existing
+        var lastEmit = 0L
+        while (true) {
+          val n = input.read(buf)
+          if (n < 0) break
+          out.write(buf, 0, n)
+          downloaded += n
+          if (downloaded - lastEmit > 512 * 1024) {
+            emitProgress(id, downloaded, total)
+            lastEmit = downloaded
+          }
+        }
+      }
+    }
+    conn.disconnect()
   }
 
   @ReactMethod
