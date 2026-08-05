@@ -1,11 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { NativeEventEmitter, NativeModules, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import ModelManager from '../native/NativeModelManager';
 import { db } from '../db/queries';
+import { PipelineController } from '../pipeline/PipelineController';
 import Icon from '../components/Icon';
+import { confirmDestructive } from '../components/confirm';
 import { IconButton, Pop, ProgressBar, Raised, SectionRule, Switch, Txt } from '../components/ui';
 import { radius, s, useTheme, type Colors } from '../theme';
 
@@ -37,14 +39,44 @@ export default function SettingsScreen({ navigation }: Props) {
   const [progress, setProgress] = useState<Record<string, number>>({});
   const [keepAudio, setKeepAudio] = useState(false);
   const [showNotices, setShowNotices] = useState(false);
+  const [empties, setEmpties] = useState(0);
 
   const refresh = () => ModelManager.list().then(r => setModels(JSON.parse(r)));
+
+  const countEmpties = useCallback(() => {
+    db.emptyMeetings()
+      .then(r => setEmpties(r.length))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     db.getSetting('keepAudio')
       .then(v => setKeepAudio(v === '1'))
       .catch(() => {});
-  }, []);
+    countEmpties();
+    return navigation.addListener('focus', countEmpties);
+  }, [navigation, countEmpties]);
+
+  /**
+   * Bulk-delete the mis-taps. Sequential rather than Promise.all: each one cancels native work
+   * and unlinks a file, and firing twenty of those at the pipeline at once is a good way to race
+   * the capture service for no gain on a list this size.
+   */
+  const clearEmpties = () =>
+    confirmDestructive({
+      title: `Delete ${empties} empty recording${empties === 1 ? '' : 's'}?`,
+      message:
+        'These recordings produced no transcript, so only the audio will be lost. This cannot ' +
+        'be undone.',
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        const rows = await db.emptyMeetings().catch(() => []);
+        for (const r of rows) {
+          await PipelineController.deleteMeeting(r.id).catch(() => {});
+        }
+        countEmpties();
+      },
+    });
 
   useEffect(() => {
     refresh();
@@ -136,6 +168,54 @@ export default function SettingsScreen({ navigation }: Props) {
               </Pop>
             );
           })}
+        </View>
+
+        <View style={st.ruleWrap}>
+          <SectionRule label="LIBRARY" />
+        </View>
+        <View style={st.list}>
+          <Raised
+            edge={colors.line}
+            fill={colors.card}
+            rad={radius.xl}
+            depth={5}
+            onPress={empties > 0 ? clearEmpties : undefined}>
+            <View style={[st.rowPad, st.row]}>
+              <View style={st.flex}>
+                <Txt variant="bodyStrong">Clear empty recordings</Txt>
+                <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
+                  {empties > 0
+                    ? `${empties} recording${empties === 1 ? '' : 's'} produced no speech. Deleting them frees the space and tidies the library.`
+                    : 'Nothing to clear — every meeting in your library has a transcript.'}
+                </Txt>
+              </View>
+              {empties > 0 ? (
+                <View style={[st.pill, { backgroundColor: colors.dangerSoft }]}>
+                  <Icon name="trash" size={s(15)} color={colors.danger} strokeWidth={2.4} />
+                  <Txt variant="chip" color={colors.danger}>
+                    {empties}
+                  </Txt>
+                </View>
+              ) : null}
+            </View>
+          </Raised>
+
+          <Raised
+            edge={colors.line}
+            fill={colors.card}
+            rad={radius.xl}
+            depth={5}
+            onPress={() => navigation.navigate('Archive')}>
+            <View style={[st.rowPad, st.row]}>
+              <View style={st.flex}>
+                <Txt variant="bodyStrong">Archived meetings</Txt>
+                <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
+                  Hidden from the library, still on the device. Restore or delete them here.
+                </Txt>
+              </View>
+              <Icon name="chevronRight" size={s(18)} color={colors.inkFaint} strokeWidth={2.4} />
+            </View>
+          </Raised>
         </View>
 
         <View style={st.ruleWrap}>

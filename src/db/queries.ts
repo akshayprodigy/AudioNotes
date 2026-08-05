@@ -16,8 +16,49 @@ export const db = {
     run<Meeting>(
       'SELECT id, title, created_at AS createdAt, duration_ms AS durationMs, language, ' +
         'status, tier_used AS tierUsed, audio_retained AS audioRetained ' +
-        'FROM meetings ORDER BY created_at DESC',
+        'FROM meetings WHERE archived_at IS NULL ORDER BY created_at DESC',
     ),
+
+  listArchived: () =>
+    run<Meeting>(
+      'SELECT id, title, created_at AS createdAt, duration_ms AS durationMs, language, ' +
+        'status, tier_used AS tierUsed, audio_retained AS audioRetained ' +
+        'FROM meetings WHERE archived_at IS NOT NULL ORDER BY archived_at DESC',
+    ),
+
+  archivedCount: () =>
+    run<{ n: number }>('SELECT COUNT(*) AS n FROM meetings WHERE archived_at IS NOT NULL').then(
+      r => r[0]?.n ?? 0,
+    ),
+
+  setArchived: (id: string, archived: boolean) =>
+    run('UPDATE meetings SET archived_at = ? WHERE id = ?', [archived ? Date.now() : null, id]),
+
+  /**
+   * Meetings that captured audio but yielded no transcript — the 3-second mis-taps that
+   * accumulate faster than anything else in the library.
+   */
+  emptyMeetings: () =>
+    run<{ id: string }>(
+      "SELECT id FROM meetings WHERE status = 'error' AND archived_at IS NULL " +
+        'AND id NOT IN (SELECT DISTINCT meeting_id FROM utterances)',
+    ),
+
+  /**
+   * Remove a meeting and everything derived from it.
+   *
+   * utterances/speakers/minutes/segments are ON DELETE CASCADE, but `meetings_fts` is an FTS5
+   * virtual table with no foreign key, so its rows survive the cascade — leaving deleted meetings
+   * findable in search, linking to a meeting that no longer opens. It is deleted explicitly, and
+   * first, so a failure part-way through cannot strand the index against a missing meeting.
+   *
+   * The caller is responsible for the audio file (see PipelineController.deleteMeeting): it lives
+   * on the filesystem, not in the database, and only native can unlink it.
+   */
+  deleteMeeting: async (id: string) => {
+    await run('DELETE FROM meetings_fts WHERE meeting_id = ?', [id]);
+    await run('DELETE FROM meetings WHERE id = ?', [id]);
+  },
 
   getMeeting: (id: string) =>
     run<Meeting>(

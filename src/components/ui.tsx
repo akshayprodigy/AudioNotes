@@ -2,6 +2,7 @@ import React, { useEffect, useId, useRef } from 'react';
 import {
   Animated,
   Easing,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -116,6 +117,7 @@ export function Raised({
   rad = radius.card,
   rotate,
   onPress,
+  onLongPress,
   style,
   grow,
   pressable = true,
@@ -128,6 +130,7 @@ export function Raised({
   rad?: number;
   rotate?: string;
   onPress?: () => void;
+  onLongPress?: () => void;
   style?: StyleProp<ViewStyle>;
   /**
    * Take the remaining space of a ROW parent.
@@ -164,9 +167,10 @@ export function Raised({
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={onLongPress}
       onPressIn={interactive ? () => to(1) : undefined}
       onPressOut={interactive ? () => to(0) : undefined}
-      disabled={!onPress}
+      disabled={!onPress && !onLongPress}
       style={grow ? styles.flex : undefined}>
       {/* Rotation lives OUTSIDE the clipping layer: a tilted child inside an un-tilted
           `overflow: hidden` box gets its corners sliced off. */}
@@ -297,6 +301,107 @@ export function IconButton({
         </View>
       </Raised>
     </View>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Action sheet
+// ---------------------------------------------------------------------------------------------
+
+export interface SheetAction {
+  icon: IconName;
+  label: string;
+  hint?: string;
+  destructive?: boolean;
+  onPress: () => void;
+}
+
+/**
+ * Bottom sheet of actions, used wherever a card or screen has more to offer than fits on it.
+ *
+ * Built rather than using Alert's button list because this carries an icon and a line of
+ * consequence per row ("the transcript stays, the audio is already gone"), which is the part that
+ * makes a destructive choice safe to make. The *confirmation* for a destructive action is still a
+ * platform Alert — that one wants to be unmistakably a system dialog, not app furniture.
+ *
+ * `onClose` fires before the action runs, so a row that navigates does not leave a modal behind.
+ */
+export function Sheet({
+  visible,
+  title,
+  actions,
+  onClose,
+}: {
+  visible: boolean;
+  title?: string;
+  actions: SheetAction[];
+  onClose: () => void;
+}) {
+  const { colors } = useTheme();
+  const rise = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(rise, {
+      toValue: visible ? 1 : 0,
+      duration: visible ? motion.base : motion.fast,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [visible, rise]);
+
+  return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+      <Pressable style={styles.sheetBackdrop} onPress={onClose} accessibilityLabel="Dismiss">
+        <Animated.View style={{ flex: 1, backgroundColor: '#0B1030', opacity: rise.interpolate({ inputRange: [0, 1], outputRange: [0, 0.38] }) }} />
+      </Pressable>
+      <Animated.View
+        style={[
+          styles.sheetCard,
+          {
+            backgroundColor: colors.card,
+            transform: [{ translateY: rise.interpolate({ inputRange: [0, 1], outputRange: [s(360), 0] }) }],
+          },
+        ]}>
+        <View style={[styles.sheetGrip, { backgroundColor: colors.line }]} />
+        {title ? (
+          <Text style={[text('overline', colors.inkFaint), styles.sheetTitle]} numberOfLines={1}>
+            {title}
+          </Text>
+        ) : null}
+        {actions.map(a => {
+          const tint = a.destructive ? colors.danger : colors.primary;
+          const soft = a.destructive ? colors.dangerSoft : colors.primarySoft;
+          return (
+            <Pressable
+              key={a.label}
+              onPress={() => {
+                onClose();
+                a.onPress();
+              }}
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.sheetRow,
+                { backgroundColor: pressed ? colors.cardAlt : 'transparent' },
+              ]}>
+              <View style={[styles.sheetIcon, { backgroundColor: soft }]}>
+                <Icon name={a.icon} size={s(19)} color={tint} strokeWidth={2.4} />
+              </View>
+              <View style={styles.flex}>
+                <Text style={text('bodyStrong', a.destructive ? colors.danger : colors.ink)}>
+                  {a.label}
+                </Text>
+                {a.hint ? (
+                  <Text style={[text('chipSoft', colors.inkSoft), styles.sheetHint]}>{a.hint}</Text>
+                ) : null}
+              </View>
+            </Pressable>
+          );
+        })}
+        <View style={styles.sheetCancel}>
+          <SoftButton label="Cancel" onPress={onClose} />
+        </View>
+      </Animated.View>
+    </Modal>
   );
 }
 
@@ -642,6 +747,36 @@ export function makeCommon(c: Colors) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  sheetBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  sheetCard: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
+    paddingHorizontal: s(14),
+    paddingTop: s(10),
+    paddingBottom: s(28),
+  },
+  sheetGrip: { alignSelf: 'center', width: s(42), height: s(5), borderRadius: 999, marginBottom: s(14) },
+  sheetTitle: { paddingHorizontal: s(10), marginBottom: s(6) },
+  sheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: s(14),
+    padding: s(12),
+    borderRadius: radius.lg,
+  },
+  sheetIcon: {
+    width: s(42),
+    height: s(42),
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetHint: { marginTop: s(2) },
+  sheetCancel: { flexDirection: 'row', marginTop: s(10), paddingHorizontal: s(2) },
   btn: {
     paddingVertical: s(18),
     paddingHorizontal: s(24),

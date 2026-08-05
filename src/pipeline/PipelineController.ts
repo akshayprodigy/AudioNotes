@@ -45,6 +45,31 @@ class PipelineControllerImpl {
   }
 
   /**
+   * Delete a meeting and everything belonging to it — audio, transcript, minutes, search index.
+   *
+   * Order matters. Cancelling first stops a run that is mid-pipeline from writing utterances back
+   * against a row that is about to disappear (and, worse, from being handed a meeting id that no
+   * longer resolves). The audio is unlinked before the row goes, because the row is the only place
+   * its path is recorded — dropping it first would leak an unencrypted PCM file on disk forever.
+   *
+   * This is the one irreversible action in the app, so callers must confirm first.
+   */
+  async deleteMeeting(meetingId: string): Promise<void> {
+    try {
+      AudioPipeline.cancel(meetingId);
+    } catch {
+      // Nothing in flight for this meeting; deleting it is still correct.
+    }
+    this.inFlight.delete(meetingId);
+    try {
+      await AudioPipeline.discardAudio(meetingId);
+    } catch {
+      // Already gone, or unlink failed. Neither is a reason to keep the row.
+    }
+    await db.deleteMeeting(meetingId);
+  }
+
+  /**
    * Honour the audio-retention setting once a meeting is fully processed.
    *
    * Default is to DELETE the raw audio: it is unencrypted PCM at ~115 MB/hour and, after

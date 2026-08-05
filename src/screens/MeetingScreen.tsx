@@ -8,6 +8,7 @@ import { PipelineController } from '../pipeline/PipelineController';
 import FileExport from '../native/NativeFileExport';
 import Icon, { type IconName } from '../components/Icon';
 import Mascot from '../components/Mascot';
+import { confirmDestructive, quoted } from '../components/confirm';
 import {
   Badge,
   IconButton,
@@ -16,9 +17,11 @@ import {
   GradientFill,
   Raised,
   SectionRule,
+  Sheet,
   Slide,
   SoftButton,
   Txt,
+  type SheetAction,
 } from '../components/ui';
 import type { Meeting, Minute, Speaker, Utterance } from '../pipeline/types';
 import { radius, s, sv, text, tilt, useTheme, type Colors } from '../theme';
@@ -85,6 +88,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const [stage, setStage] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [settled, setSettled] = useState(false);
+  const [sheet, setSheet] = useState(false);
   const startedAt = useRef(Date.now());
 
   const refresh = useCallback(async () => {
@@ -164,6 +168,41 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const working = stage !== null || reprocessing || (!settled && minutes.length === 0);
   const empty = settled && !working && minutes.length === 0 && utterances.length === 0;
 
+  /**
+   * Overflow actions. Both leave this screen, so both pop back to the library first — a detail
+   * screen for a meeting that has just been archived out of the library, or deleted outright, has
+   * nothing left to show and its polling refresh would query a row that no longer exists.
+   */
+  const sheetActions: SheetAction[] = [
+    {
+      icon: 'archive',
+      label: 'Archive',
+      hint: 'Hides it from the library. Nothing is deleted, and you can restore it.',
+      onPress: async () => {
+        await db.setArchived(meetingId, true).catch(() => {});
+        navigation.goBack();
+      },
+    },
+    {
+      icon: 'trash',
+      label: 'Delete',
+      hint: 'Removes the recording, transcript and minutes for good.',
+      destructive: true,
+      onPress: () =>
+        confirmDestructive({
+          title: 'Delete this meeting?',
+          message: `The recording, transcript and minutes for ${quoted(
+            meeting?.title,
+          )} will be permanently deleted. This cannot be undone.`,
+          confirmLabel: 'Delete',
+          onConfirm: async () => {
+            await PipelineController.deleteMeeting(meetingId).catch(() => {});
+            navigation.goBack();
+          },
+        }),
+    },
+  ];
+
   // The same three actions the finished meeting offers, in the same stacked form — they are the
   // same controls, and rendering them label-only here made the screen look like a different app.
   const Footer = () => (
@@ -200,7 +239,13 @@ export default function MeetingScreen({ route, navigation }: Props) {
         <View style={st.pad}>
           <View style={st.navRow}>
             <IconButton icon="chevronLeft" label="Back" onPress={() => navigation.goBack()} />
-            <Txt variant="sectionTitle">Meeting</Txt>
+            <Txt variant="sectionTitle" style={st.flex}>
+              Meeting
+            </Txt>
+            {/* Reachable mid-run on purpose: a mis-tapped recording is exactly the one you want
+                to throw away, and waiting out the pipeline first to be allowed to is absurd.
+                deleteMeeting cancels the run before it touches anything. */}
+            <IconButton icon="more" label="More actions" onPress={() => setSheet(true)} />
           </View>
 
           <View style={st.procHead}>
@@ -267,6 +312,12 @@ export default function MeetingScreen({ route, navigation }: Props) {
           <View style={st.spacer} />
           <Footer />
         </View>
+        <Sheet
+          visible={sheet}
+          title={meeting?.title || 'Meeting'}
+          actions={sheetActions}
+          onClose={() => setSheet(false)}
+        />
       </View>
     );
   }
@@ -303,6 +354,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
           {meeting?.status === 'done' ? (
             <Badge label="READY" color={colors.success} soft={colors.successSoft} small />
           ) : null}
+          <IconButton icon="more" label="More actions" onPress={() => setSheet(true)} />
         </View>
 
         {/* Stats: uneven flex (1.2 / 1.5 / 1) and alternating tilt, as the design has them. */}
@@ -494,6 +546,13 @@ export default function MeetingScreen({ route, navigation }: Props) {
           </>
         )}
       </ScrollView>
+
+      <Sheet
+        visible={sheet}
+        title={meeting?.title || 'Meeting'}
+        actions={sheetActions}
+        onClose={() => setSheet(false)}
+      />
     </View>
   );
 }

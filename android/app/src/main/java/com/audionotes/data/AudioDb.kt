@@ -298,7 +298,8 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
            id TEXT PRIMARY KEY, title TEXT NOT NULL, created_at INTEGER NOT NULL,
            duration_ms INTEGER NOT NULL DEFAULT 0, language TEXT,
            status TEXT NOT NULL DEFAULT 'recording', tier_used TEXT NOT NULL DEFAULT 'free',
-           audio_path TEXT, audio_retained INTEGER NOT NULL DEFAULT 1);""",
+           audio_path TEXT, audio_retained INTEGER NOT NULL DEFAULT 1,
+           archived_at INTEGER);""",
       """CREATE TABLE IF NOT EXISTS utterances(
            id TEXT PRIMARY KEY,
            meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
@@ -327,6 +328,28 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
         instance ?: open(context.applicationContext).also { instance = it }
       }
 
+    /**
+     * Columns added after a release shipped. `CREATE TABLE IF NOT EXISTS` is a no-op against an
+     * existing table, so a new column in SCHEMA reaches fresh installs only — every phone that
+     * already has a database keeps the old shape and every query naming the column fails. These
+     * run on open and are idempotent by inspection rather than by catching the duplicate-column
+     * error, so a genuine failure still surfaces.
+     */
+    private val ADDED_COLUMNS = arrayOf(
+      Triple("meetings", "archived_at", "INTEGER"),
+    )
+
+    private fun addMissingColumns(db: SQLiteDatabase) {
+      for ((table, column, decl) in ADDED_COLUMNS) {
+        var present = false
+        db.rawQuery("PRAGMA table_info($table)", null).use { c ->
+          val name = c.getColumnIndex("name")
+          while (c.moveToNext()) if (c.getString(name) == column) present = true
+        }
+        if (!present) db.execSQL("ALTER TABLE $table ADD COLUMN $column $decl")
+      }
+    }
+
     private fun open(context: Context): AudioDb {
       System.loadLibrary("sqlcipher")
       val file = File(context.filesDir, "audionotes.db")
@@ -334,6 +357,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       val db = SQLiteDatabase.openOrCreateDatabase(file, pass, null, null)
       db.execSQL("PRAGMA foreign_keys=ON;")
       SCHEMA.forEach { db.execSQL(it) }
+      addMissingColumns(db)
       return AudioDb(db)
     }
   }

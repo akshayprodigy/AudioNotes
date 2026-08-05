@@ -1,13 +1,26 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useLibraryStore } from '../state/libraryStore';
 import { PipelineController } from '../pipeline/PipelineController';
+import { db } from '../db/queries';
 import Icon from '../components/Icon';
 import Mascot from '../components/Mascot';
-import { Badge, IconButton, LiveDot, Pop, ProgressBar, Raised, Tile, Txt } from '../components/ui';
+import { confirmDestructive, quoted } from '../components/confirm';
+import {
+  Badge,
+  IconButton,
+  LiveDot,
+  Pop,
+  ProgressBar,
+  Raised,
+  Sheet,
+  Tile,
+  Txt,
+  type SheetAction,
+} from '../components/ui';
 import type { Meeting } from '../pipeline/types';
 import { radius, s, spacing, text, tilt, useTheme, type Colors } from '../theme';
 
@@ -111,15 +124,65 @@ export default function LibraryScreen({ navigation }: Props) {
   const st = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { meetings, refresh } = useLibraryStore();
+  const [sheetFor, setSheetFor] = useState<Meeting | null>(null);
+  const [archived, setArchived] = useState(0);
 
   useEffect(() => {
     const onFocus = () => {
       refresh();
+      db.archivedCount().then(setArchived).catch(() => {});
       PipelineController.processPending().then(refresh).catch(() => {});
     };
     onFocus();
     return navigation.addListener('focus', onFocus);
   }, [navigation, refresh]);
+
+  const reload = () => {
+    refresh();
+    db.archivedCount().then(setArchived).catch(() => {});
+  };
+
+  /**
+   * Long-press actions. A live recording is excluded: archiving or deleting the meeting the
+   * microphone is currently writing into would pull the row out from under the capture service.
+   */
+  const sheetActions = (m: Meeting): SheetAction[] => {
+    if (m.status === 'recording') {
+      return [
+        {
+          icon: 'alert',
+          label: 'Still recording',
+          hint: 'Finish this meeting before archiving or deleting it.',
+          onPress: () => {},
+        },
+      ];
+    }
+    return [
+      {
+        icon: 'archive',
+        label: 'Archive',
+        hint: 'Hides it from the library. Nothing is deleted, and you can restore it.',
+        onPress: () => db.setArchived(m.id, true).then(reload).catch(() => {}),
+      },
+      {
+        icon: 'trash',
+        label: 'Delete',
+        hint: 'Removes the recording, transcript and minutes for good.',
+        destructive: true,
+        onPress: () =>
+          confirmDestructive({
+            title: 'Delete this meeting?',
+            message: `The recording, transcript and minutes for ${quoted(
+              m.title,
+            )} will be permanently deleted. This cannot be undone.`,
+            confirmLabel: 'Delete',
+            onConfirm: () => {
+              PipelineController.deleteMeeting(m.id).then(reload).catch(() => {});
+            },
+          }),
+      },
+    ];
+  };
 
   const streak = useMemo(() => captureStreak(meetings), [meetings]);
   const totalMin = useMemo(
@@ -140,7 +203,8 @@ export default function LibraryScreen({ navigation }: Props) {
           rad={radius.card}
           depth={6}
           rotate={tilt(i)}
-          onPress={() => open(m.id)}>
+          onPress={() => open(m.id)}
+          onLongPress={() => setSheetFor(m)}>
           <View style={st.cardPad}>
             <View style={st.cardTop}>
               <Tile label={initials(m.title)} color={colors.primary} soft={colors.primarySoft} />
@@ -210,7 +274,8 @@ export default function LibraryScreen({ navigation }: Props) {
           rad={radius.xl}
           depth={6}
           rotate={tilt(i)}
-          onPress={() => open(m.id)}>
+          onPress={() => open(m.id)}
+          onLongPress={() => setSheetFor(m)}>
           <View style={st.smallPad}>
             <Badge label={status.label} color={status.color} soft={status.soft} small />
             <Txt variant="cardTitleSm" style={st.smallTitle} numberOfLines={2}>
@@ -234,7 +299,8 @@ export default function LibraryScreen({ navigation }: Props) {
         rad={radius.card24}
         depth={6}
         rotate={tilt(i)}
-        onPress={() => open(m.id)}>
+        onPress={() => open(m.id)}
+          onLongPress={() => setSheetFor(m)}>
         <View style={st.quietPad}>
           <Icon name="clock" size={s(22)} color={colors.warning} strokeWidth={2.4} />
           <View>
@@ -405,7 +471,40 @@ export default function LibraryScreen({ navigation }: Props) {
             </View>
           ))
         )}
+
+        {/* Only once something is in it. An always-visible "Archived (0)" is a permanent
+            reminder of a feature most people will never use. */}
+        {archived > 0 ? (
+          <View style={st.archiveRow}>
+            <Raised
+              edge={colors.line}
+              fill={colors.card}
+              rad={radius.xl}
+              depth={5}
+              onPress={() => navigation.navigate('Archive')}>
+              <View style={st.archiveInner}>
+                <View style={st.archiveIcon}>
+                  <Icon name="archive" size={s(18)} color={colors.inkSoft} strokeWidth={2.4} />
+                </View>
+                <Txt variant="bodyStrong" style={st.flex}>
+                  Archived
+                </Txt>
+                <Txt variant="chipSoft" color={colors.inkFaint}>
+                  {archived}
+                </Txt>
+                <Icon name="chevronRight" size={s(18)} color={colors.inkFaint} strokeWidth={2.4} />
+              </View>
+            </Raised>
+          </View>
+        ) : null}
       </ScrollView>
+
+      <Sheet
+        visible={sheetFor !== null}
+        title={sheetFor?.title || 'Meeting'}
+        actions={sheetFor ? sheetActions(sheetFor) : []}
+        onClose={() => setSheetFor(null)}
+      />
 
       <View style={[st.fabWrap, { bottom: Math.max(insets.bottom, s(10)) + s(16) }]} pointerEvents="box-none">
         {/* The ring is absolutely positioned against THIS box, which shrinks to the button. Hung
@@ -496,6 +595,17 @@ function makeStyles(c: Colors) {
     empty: { alignItems: 'center', paddingHorizontal: s(30) },
     emptyTitle: { marginTop: s(18) },
     emptyBody: { textAlign: 'center', marginTop: s(8) },
+
+    archiveRow: { marginHorizontal: s(20), marginTop: s(24) },
+    archiveInner: { flexDirection: 'row', alignItems: 'center', gap: s(12), padding: s(14) },
+    archiveIcon: {
+      width: s(34),
+      height: s(34),
+      borderRadius: s(12),
+      backgroundColor: c.cardAlt,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
 
     fabWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
     fab: { flexDirection: 'row', alignItems: 'center', gap: s(10), paddingHorizontal: s(30), paddingVertical: s(17) },

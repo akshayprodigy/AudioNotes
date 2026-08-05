@@ -10,7 +10,8 @@ export const SCHEMA = [
      status TEXT NOT NULL DEFAULT 'recording',
      tier_used TEXT NOT NULL DEFAULT 'free',
      audio_path TEXT,
-     audio_retained INTEGER NOT NULL DEFAULT 1
+     audio_retained INTEGER NOT NULL DEFAULT 1,
+     archived_at INTEGER           -- NULL = in the library; set = hidden, restorable
    );`,
   `CREATE TABLE IF NOT EXISTS utterances (
      id TEXT PRIMARY KEY,

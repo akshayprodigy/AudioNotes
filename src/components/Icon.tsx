@@ -31,6 +31,9 @@ export type IconName =
   | 'pause'
   | 'lock'
   | 'flame'
+  | 'archive'
+  | 'restore'
+  | 'more'
   | 'sliders'
   | 'help'
   | 'x';
@@ -163,6 +166,31 @@ function render(name: IconName, c: object, color: string) {
       return <Polyline points="9 18 15 12 9 6" {...c} />;
     case 'chevronLeft':
       return <Polyline points="15 18 9 12 15 6" {...c} />;
+    case 'archive':
+      return (
+        <>
+          <Polyline points="21 8 21 21 3 21 3 8" {...c} />
+          <Rect x="1" y="3" width="22" height="5" rx="1" {...c} />
+          <Line x1="10" y1="12" x2="14" y2="12" {...c} />
+        </>
+      );
+    case 'restore':
+      return (
+        <>
+          <Polyline points="1 4 1 10 7 10" {...c} />
+          <Path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" {...c} />
+        </>
+      );
+    // Vertical, not horizontal: it sits in a header row beside a title, where a horizontal
+    // ellipsis reads as truncated text rather than a control.
+    case 'more':
+      return (
+        <>
+          <Circle cx="12" cy="5" r="1.6" fill={color} stroke="none" />
+          <Circle cx="12" cy="12" r="1.6" fill={color} stroke="none" />
+          <Circle cx="12" cy="19" r="1.6" fill={color} stroke="none" />
+        </>
+      );
     case 'chevronDown':
       return <Polyline points="6 9 12 15 18 9" {...c} />;
     case 'chevronUp':
