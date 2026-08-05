@@ -54,10 +54,27 @@ export function reducePrompt(notes: string): string {
     'These are notes from consecutive parts of ONE meeting. Merge them into final minutes. ' +
     'Remove duplicates. Only include what the notes support.\n\n' +
     `NOTES:\n${notes}\n\n` +
-    'Respond with ONLY a JSON object, no prose, in exactly this shape:\n' +
-    '{"summary":"2-3 sentence overview","decisions":["..."],' +
-    '"actions":[{"text":"...","owner":"...","due":"..."}],"questions":["..."]}'
+    'Respond with ONLY a JSON object, no prose, in exactly this shape. Replace every ' +
+    'angle-bracket description with real text from the notes, and use an empty array when a ' +
+    'section has nothing in it:\n' +
+    '{"summary":"<2-3 sentence overview>","decisions":["<a decision that was made>"],' +
+    '"actions":[{"text":"<what will be done>","owner":"<who>","due":"<when, or empty>"}],' +
+    '"questions":["<a question left unanswered>"]}'
   );
+}
+
+/**
+ * A field the model copied out of the prompt instead of filling in.
+ *
+ * Small instruct models routinely echo the shape they are shown: a 1.5B produced
+ * `{"decisions":["..."],"actions":[{"text":"...","owner":"..."}]}` verbatim, which sailed through
+ * as three real minutes reading "…". Anything with no letter or digit left after the
+ * angle-bracket descriptors are stripped is the template, not an answer — and if that empties the
+ * result, parseMinutesJson returns null and the caller keeps the rule-based minutes, which is the
+ * correct outcome.
+ */
+function isPlaceholder(text: string): boolean {
+  return !/[a-z0-9]/i.test(text.replace(/<[^>]*>/g, ''));
 }
 
 // Extract the first balanced {...} block and parse it. Returns null if nothing parses.
@@ -74,7 +91,7 @@ export function parseMinutesJson(raw: string): LlmMinute[] | null {
   const out: LlmMinute[] = [];
   const push = (kind: MinuteKind, content: string) => {
     const c = (content ?? '').toString().trim();
-    if (c) out.push({ kind, content: c, source: 'llm' });
+    if (c && !isPlaceholder(c)) out.push({ kind, content: c, source: 'llm' });
   };
 
   if (obj.summary) push('summary', obj.summary);
@@ -83,9 +100,16 @@ export function parseMinutesJson(raw: string): LlmMinute[] | null {
     if (typeof a === 'string') {
       push('action', a);
     } else if (a) {
-      let s = (a.text ?? '').toString();
-      if (a.owner) s += ` — ${a.owner}`;
-      if (a.due && String(a.due).trim() && !/^n\/?a$/i.test(String(a.due))) s += ` (due ${a.due})`;
+      // Each field is judged BEFORE composing. Checking only the finished string lets an
+      // all-placeholder action through, because the literal words "due" and the em dash we add
+      // ourselves are letters the filter then counts as content.
+      const text = (a.text ?? '').toString().trim();
+      if (!text || isPlaceholder(text)) continue;
+      let s = text;
+      const owner = (a.owner ?? '').toString().trim();
+      if (owner && !isPlaceholder(owner)) s += ` — ${owner}`;
+      const due = (a.due ?? '').toString().trim();
+      if (due && !isPlaceholder(due) && !/^n\/?a$/i.test(due)) s += ` (due ${due})`;
       push('action', s);
     }
   }

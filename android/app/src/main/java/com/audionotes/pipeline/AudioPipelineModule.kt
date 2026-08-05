@@ -116,6 +116,18 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
         val db = AudioDb.get(ctx)
         val audioPath = db.getAudioPath(meetingId)
           ?: throw IllegalStateException("no audio for $meetingId")
+
+        // Retention deletes the recording once it has been transcribed, so a re-run can arrive
+        // with a path that no longer resolves. VAD over a missing file returns nothing, and the
+        // old code committed that nothing — replaceSegments wiped the spans of a meeting that
+        // still had a perfectly good transcript, leaving it reading "0 segments, 0s of speech".
+        // With no audio there is nothing to re-derive, so leave the stored results alone and let
+        // the caller rebuild the minutes from the transcript it already has.
+        if (!java.io.File(audioPath).exists()) {
+          Log.i("AudioPipeline", "re-run skipped for $meetingId (audio deleted by retention)")
+          promise.resolve(null)
+          return@Thread
+        }
         val modelPath = ensureVadModel()
 
         // Per-stage wall times, logged against the audio length so the numbers are comparable
@@ -221,8 +233,22 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
         putString("meetingId", CaptureController.currentMeetingId)
         putDouble("elapsedMs", CaptureController.elapsedMs().toDouble())
         putBoolean("silenced", CaptureController.silenced)
+        putBoolean("paused", CaptureController.paused)
       },
     )
+  }
+
+  /**
+   * Pause or resume capture without ending the meeting.
+   *
+   * Native owns this rather than JS holding a flag: capture survives the JS context being torn
+   * down, so a paused state kept in JS would silently un-pause itself when the app came back and
+   * quietly record a stretch the user believed was private.
+   */
+  @ReactMethod
+  fun setPaused(paused: Boolean, promise: Promise) {
+    CaptureController.applyPause(paused)
+    promise.resolve(CaptureController.paused)
   }
 
   /**

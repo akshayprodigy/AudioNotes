@@ -6,9 +6,11 @@ interface RecordingState {
   isRecording: boolean;
   elapsedMs: number;
   silenced: boolean;
+  paused: boolean;
   startedAt: number | null; // wall-clock ms, so the timer survives a trip to the background
   start: (language: string | null) => Promise<void>;
   stop: () => Promise<string | null>; // returns sessionId that was captured
+  togglePause: () => Promise<void>;
   sync: () => Promise<void>;
   tick: (ms: number) => void;
 }
@@ -18,17 +20,45 @@ export const useRecordingStore = create<RecordingState>((set, get) => ({
   isRecording: false,
   elapsedMs: 0,
   silenced: false,
+  paused: false,
   startedAt: null,
   start: async language => {
     const sessionId = await PipelineController.startRecording(language);
-    set({ sessionId, isRecording: true, elapsedMs: 0, startedAt: Date.now(), silenced: false });
+    set({
+      sessionId,
+      isRecording: true,
+      elapsedMs: 0,
+      startedAt: Date.now(),
+      silenced: false,
+      paused: false,
+    });
   },
   stop: async () => {
     const { sessionId } = get();
     if (!sessionId) return null;
     await PipelineController.stopRecording(sessionId);
-    set({ isRecording: false, startedAt: null, silenced: false });
+    set({ isRecording: false, startedAt: null, silenced: false, paused: false });
     return sessionId;
+  },
+
+  /**
+   * Pause/resume. Re-anchors `startedAt` from native's elapsed time on resume, because paused
+   * stretches do not count toward the recording length — anchoring to wall clock would make the
+   * timer claim minutes of audio that were never captured.
+   */
+  togglePause: async () => {
+    const next = !get().paused;
+    try {
+      await PipelineController.setPaused(next);
+      const s = await PipelineController.currentSession();
+      set({
+        paused: s.paused,
+        elapsedMs: s.elapsedMs,
+        startedAt: s.isRecording ? Date.now() - s.elapsedMs : null,
+      });
+    } catch {
+      // Leave the flag alone if native refused; the next sync() reconciles.
+    }
   },
 
   /**
@@ -46,6 +76,7 @@ export const useRecordingStore = create<RecordingState>((set, get) => ({
         isRecording: s.isRecording,
         sessionId: s.meetingId ?? null,
         silenced: s.silenced,
+        paused: s.paused ?? false,
         elapsedMs: s.elapsedMs,
         // Anchor the local timer to native's elapsed time so the display stays correct.
         startedAt: s.isRecording ? Date.now() - s.elapsedMs : null,

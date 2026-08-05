@@ -17,6 +17,9 @@ export type IconName =
   | 'ai'
   | 'check'
   | 'chevronRight'
+  | 'chevronLeft'
+  | 'chevronDown'
+  | 'chevronUp'
   | 'plus'
   | 'sun'
   | 'moon'
@@ -25,6 +28,11 @@ export type IconName =
   | 'clock'
   | 'alert'
   | 'edit'
+  | 'pause'
+  | 'lock'
+  | 'flame'
+  | 'sliders'
+  | 'help'
   | 'x';
 
 interface Props {
@@ -153,6 +161,12 @@ function render(name: IconName, c: object, color: string) {
       return <Polyline points="20 6 9 17 4 12" {...c} />;
     case 'chevronRight':
       return <Polyline points="9 18 15 12 9 6" {...c} />;
+    case 'chevronLeft':
+      return <Polyline points="15 18 9 12 15 6" {...c} />;
+    case 'chevronDown':
+      return <Polyline points="6 9 12 15 18 9" {...c} />;
+    case 'chevronUp':
+      return <Polyline points="18 15 12 9 6 15" {...c} />;
     case 'plus':
       return (
         <>
@@ -199,6 +213,37 @@ function render(name: IconName, c: object, color: string) {
           <Path d="M12 20h9" {...c} />
           <Path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" {...c} />
         </>
+      );
+    case 'pause':
+      return (
+        <>
+          <Rect x="6" y="5" width="4" height="14" rx="1.5" {...c} />
+          <Rect x="14" y="5" width="4" height="14" rx="1.5" {...c} />
+        </>
+      );
+    case 'lock':
+      return (
+        <>
+          <Rect x="4" y="10" width="16" height="11" rx="3" {...c} />
+          <Path d="M8 10V7a4 4 0 0 1 8 0v3" {...c} />
+        </>
+      );
+    case 'flame':
+      // Straight from the design's streak icon path.
+      return <Path d="M12 3s5 4.2 5 9a5 5 0 0 1-10 0c0-2 1-3.4 1-3.4S7 11 7 13" {...c} />;
+    case 'sliders':
+      // The design's settings glyph: three rules with knobs, not a cog.
+      return (
+        <>
+          <Path d="M4 7h16M4 12h16M4 17h16" {...c} />
+          <Circle cx="9" cy="7" r="2" {...c} fill={color} />
+          <Circle cx="15" cy="12" r="2" {...c} fill={color} />
+          <Circle cx="8" cy="17" r="2" {...c} fill={color} />
+        </>
+      );
+    case 'help':
+      return (
+        <Path d="M9.5 9a2.6 2.6 0 1 1 3.4 2.5c-.9.4-1.4 1-1.4 2M12 17.5v.01" {...c} />
       );
     case 'x':
       return (

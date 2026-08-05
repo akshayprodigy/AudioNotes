@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, SectionList, StyleSheet, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Animated, Easing, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { db } from '../db/queries';
@@ -7,53 +8,74 @@ import { PipelineController } from '../pipeline/PipelineController';
 import FileExport from '../native/NativeFileExport';
 import Icon, { type IconName } from '../components/Icon';
 import Mascot from '../components/Mascot';
-import { Card, FadeIn, LiveDot, SectionLabel, Txt } from '../components/ui';
-import type { Minute, Speaker, Utterance } from '../pipeline/types';
-import { radius, spacing, useTheme, type Colors } from '../theme';
+import {
+  Badge,
+  IconButton,
+  Pop,
+  ProgressRing,
+  GradientFill,
+  Raised,
+  SectionRule,
+  Slide,
+  SoftButton,
+  Txt,
+} from '../components/ui';
+import type { Meeting, Minute, Speaker, Utterance } from '../pipeline/types';
+import { radius, s, sv, text, tilt, useTheme, type Colors } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Meeting'>;
 
-const STAGE_TEXT: Record<string, string> = {
-  vad: 'Finding speech…',
-  asr: 'Writing the transcript…',
-  diarize: 'Working out who spoke…',
-};
-
 /**
- * Avatar initials.
- *
- * The obvious "first two letters" gives every auto-named speaker the same "SP", because they are
- * all called "Speaker N" — a column of identical circles that carries no information at all. For
- * the generated names the DIGIT is the only distinguishing part, so use it; once a speaker has
- * been given a real name, fall back to proper initials.
+ * Pipeline stages, phrased as what they achieve, with weights measured on device (the `stage=`
+ * timings logged by AudioPipelineModule). The weights drive both the ring and the ETA, so
+ * progress advances at a roughly even rate rather than sitting at 5% then jumping to done.
  */
-function initials(name: string): string {
-  const generated = name.match(/^Speaker\s*(\d+)$/i);
-  if (generated) return generated[1];
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return '?';
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  return (words[0][0] + words[words.length - 1][0]).toUpperCase();
-}
+const STAGES: { key: string; label: string; weight: number }[] = [
+  { key: 'vad', label: 'Audio cleaned up', weight: 0.03 },
+  { key: 'asr', label: 'Words written down', weight: 0.62 },
+  { key: 'diarize', label: 'Speakers separated', weight: 0.28 },
+  { key: 'minutes', label: 'Pulling out the minutes', weight: 0.07 },
+];
 
-/** Minute kinds carry meaning; give each a colour and a word rather than an unlabelled dot. */
 function kindMeta(kind: string, c: Colors): { label: string; color: string; soft: string; icon: IconName } {
   switch (kind) {
     case 'action':
-      return { label: 'Action', color: c.warning, soft: c.warningSoft, icon: 'check' };
+      return { label: 'ACTION', color: c.warning, soft: c.warningSoft, icon: 'check' };
     case 'decision':
-      return { label: 'Decision', color: c.primary, soft: c.primarySoft, icon: 'check' };
+      return { label: 'DECISION', color: c.primary, soft: c.primarySoft, icon: 'check' };
     case 'question':
-      return { label: 'Open question', color: c.success, soft: c.successSoft, icon: 'alert' };
+      return { label: 'OPEN QUESTION', color: c.success, soft: c.successSoft, icon: 'help' };
     default:
-      return { label: 'Summary', color: c.inkSoft, soft: c.cardAlt, icon: 'list' };
+      return { label: 'NOTE', color: c.inkSoft, soft: c.cardAlt, icon: 'list' };
   }
 }
 
+/**
+ * Avatar initials. "First two letters" gives every auto-named speaker "SP" — a column of
+ * identical circles carrying no information — because they are all "Speaker N". For generated
+ * names the digit is the distinguishing part; a renamed speaker gets proper initials.
+ */
+function initials(name: string): string {
+  const gen = name.match(/^Speaker\s*(\d+)$/i);
+  if (gen) return `S${gen[1]}`;
+  const w = name.trim().split(/\s+/).filter(Boolean);
+  if (!w.length) return '?';
+  if (w.length === 1) return w[0].slice(0, 2).toUpperCase();
+  return (w[0][0] + w[w.length - 1][0]).toUpperCase();
+}
+
+const stamp = (ms: number) => {
+  const sec = Math.max(0, Math.floor(ms / 1000));
+  return `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`;
+};
+
 export default function MeetingScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
-  const s = useMemo(() => makeStyles(colors), [colors]);
+  const st = useMemo(() => makeStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
   const { meetingId } = route.params;
+
+  const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [minutes, setMinutes] = useState<Minute[]>([]);
   const [utterances, setUtterances] = useState<Utterance[]>([]);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
@@ -63,14 +85,17 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const [stage, setStage] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [settled, setSettled] = useState(false);
+  const startedAt = useRef(Date.now());
 
   const refresh = useCallback(async () => {
-    const [mins, utts, segs, spk] = await Promise.all([
+    const [mtg, mins, utts, segs, spk] = await Promise.all([
+      db.getMeeting(meetingId),
       db.minutes(meetingId),
       db.utterances(meetingId),
       db.segments(meetingId),
       db.speakers(meetingId),
     ]);
+    setMeeting(mtg ?? null);
     setMinutes(mins);
     setUtterances(utts);
     setSpeakers(spk);
@@ -88,9 +113,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
       if (count === 0 && ticks < 60) {
         ticks += 1;
         setTimeout(load, 2000);
-      } else {
-        setSettled(true);
-      }
+      } else setSettled(true);
     };
     load();
     return () => {
@@ -98,8 +121,6 @@ export default function MeetingScreen({ route, navigation }: Props) {
     };
   }, [refresh]);
 
-  // Live stage progress, and the terminal event. Polling alone could not distinguish "still
-  // working" from "failed and will never produce anything", which left the screen blank forever.
   useEffect(() => {
     const offProgress = PipelineController.onProgress(p => {
       if (p.meetingId === meetingId) setStage(p.stage);
@@ -117,13 +138,11 @@ export default function MeetingScreen({ route, navigation }: Props) {
     };
   }, [meetingId, refresh]);
 
-  // Re-run the whole pipeline over the stored audio. The common reason is that a model
-  // (whisper, diarization, Qwen) was installed AFTER this meeting was recorded, so the first
-  // pass stopped early — rather than making the user re-record, re-derive from the PCM we kept.
   const onReprocess = useCallback(async () => {
     if (reprocessing) return;
     setReprocessing(true);
     setFailure(null);
+    startedAt.current = Date.now();
     try {
       await PipelineController.process(meetingId, { model: 'base', useLLM: true });
       await refresh();
@@ -134,261 +153,464 @@ export default function MeetingScreen({ route, navigation }: Props) {
     }
   }, [meetingId, refresh, reprocessing]);
 
-  const nameById = new Map(speakers.map(x => [x.id, x.displayName]));
-  const speakerIndex = new Map(speakers.map((x, i) => [x.id, i]));
+  const onExport = () =>
+    Alert.alert('Export minutes', 'Choose a format', [
+      { text: 'Markdown', onPress: () => FileExport.share(meetingId, 'md') },
+      { text: 'Plain text', onPress: () => FileExport.share(meetingId, 'txt') },
+      { text: 'Subtitles (.srt)', onPress: () => FileExport.share(meetingId, 'srt') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
 
-  const sections = [
-    { title: 'Minutes', kind: 'minutes' as const, data: minutes },
-    {
-      title: 'Transcript',
-      kind: 'transcript' as const,
-      data: utterances.map(u => ({
-        who: u.speakerId ? nameById.get(u.speakerId) ?? 'Speaker' : 'Unlabelled',
-        idx: u.speakerId ? speakerIndex.get(u.speakerId) ?? 0 : 0,
-        text: u.text,
-      })),
-    },
-  ];
+  const working = stage !== null || reprocessing || (!settled && minutes.length === 0);
+  const empty = settled && !working && minutes.length === 0 && utterances.length === 0;
 
-  const working = stage !== null || (!settled && minutes.length === 0);
-  const empty = settled && minutes.length === 0 && utterances.length === 0;
-
-  const Action = ({
-    icon,
-    label,
-    onPress,
-    disabled,
-  }: {
-    icon: IconName;
-    label: string;
-    onPress: () => void;
-    disabled?: boolean;
-  }) => (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={[s.action, disabled && { opacity: 0.45 }]}>
-      <Icon name={icon} size={18} color={colors.ink} />
-      <Txt variant="caption">{label}</Txt>
-    </Pressable>
+  // The same three actions the finished meeting offers, in the same stacked form — they are the
+  // same controls, and rendering them label-only here made the screen look like a different app.
+  const Footer = () => (
+    <View style={st.footer}>
+      <SoftButton
+        icon="users"
+        label="Speakers"
+        stacked
+        onPress={() => navigation.navigate('Speakers', { meetingId })}
+      />
+      <SoftButton icon="share" label="Export" stacked onPress={onExport} />
+      <SoftButton
+        icon="refresh"
+        label={reprocessing ? 'Working…' : 'Redo'}
+        stacked
+        onPress={onReprocess}
+        disabled={reprocessing}
+      />
+    </View>
   );
 
-  return (
-    <View style={s.root}>
-      <View style={s.head}>
-        {working ? (
-          <View style={s.workingRow}>
-            <Mascot mood="thinking" size={54} />
-            <View style={s.rowFill}>
-              <Txt variant="heading">{STAGE_TEXT[stage ?? ''] ?? 'Getting started…'}</Txt>
-              <Txt variant="caption" color={colors.inkSoft}>
-                This runs entirely on your phone, so it takes a moment.
-              </Txt>
-            </View>
-            <LiveDot color={colors.primary} />
+  // ---------- Processing ----------
+  if (working) {
+    const found = STAGES.findIndex(x => x.key === (stage ?? 'vad'));
+    const idx = found < 0 ? 0 : found;
+    const pct = Math.round(
+      STAGES.slice(0, idx).reduce((a, x) => a + x.weight, 0) * 100 + STAGES[idx].weight * 40,
+    );
+    const elapsed = Date.now() - startedAt.current;
+    const eta = pct > 8 ? Math.max(1, Math.round(((elapsed / pct) * (100 - pct)) / 1000)) : 0;
+
+    return (
+      <View style={[st.root, { paddingTop: insets.top + s(8), paddingBottom: insets.bottom + s(20) }]}>
+        <View style={st.pad}>
+          <View style={st.navRow}>
+            <IconButton icon="chevronLeft" label="Back" onPress={() => navigation.goBack()} />
+            <Txt variant="sectionTitle">Meeting</Txt>
           </View>
-        ) : segCount > 0 ? (
-          <View style={s.statsRow}>
-            <View style={[s.stat, { backgroundColor: colors.successSoft }]}>
-              <Txt variant="heading" color={colors.success}>
-                {segCount}
-              </Txt>
-              <Txt variant="caption" color={colors.success}>
-                segments
-              </Txt>
-            </View>
-            <View style={[s.stat, { backgroundColor: colors.primarySoft }]}>
-              <Txt variant="heading" color={colors.primary}>
-                {(speechMs / 1000).toFixed(0)}s
-              </Txt>
-              <Txt variant="caption" color={colors.primary}>
-                of speech
-              </Txt>
-            </View>
-            <View style={[s.stat, { backgroundColor: colors.warningSoft }]}>
-              <Txt variant="heading" color={colors.warning}>
-                {speakers.length || '—'}
-              </Txt>
-              <Txt variant="caption" color={colors.warning}>
-                {speakers.length === 1 ? 'speaker' : 'speakers'}
+
+          <View style={st.procHead}>
+            <ProgressRing pct={pct} size={sv(150)} stroke={s(8)}>
+              <Mascot mood="thinking" size={sv(94)} />
+            </ProgressRing>
+            <Txt variant="display" style={st.procTitle}>
+              Writing your notes…
+            </Txt>
+            <Txt variant="sub" color={colors.inkDim} style={st.procBody}>
+              All the thinking happens on your phone, so it takes a moment.
+            </Txt>
+            <View style={st.pctPill}>
+              <Txt variant="metaBlack" color={colors.primary}>
+                {pct}%{eta > 0 ? ` · about ${eta}s left` : ''}
               </Txt>
             </View>
           </View>
-        ) : null}
 
-        {failure ? (
-          <Card style={s.failCard}>
-            <View style={s.failRow}>
-              <Icon name="alert" size={18} color={colors.danger} />
-              <Txt variant="bodyStrong" color={colors.danger} style={s.rowFill}>
-                {failure}
-              </Txt>
-            </View>
-          </Card>
-        ) : null}
+          <View style={st.checkWrap}>
+            <Raised edge={colors.line} fill={colors.card} rad={radius.card} depth={6}>
+              <View style={st.checkInner}>
+                {STAGES.map((x, i) => {
+                  const state = i < idx ? 'done' : i === idx ? 'active' : 'todo';
+                  return (
+                    <View key={x.key}>
+                      {i > 0 && state !== 'active' ? <View style={st.divider} /> : null}
+                      <View
+                        style={[
+                          st.checkRow,
+                          state === 'active' && {
+                            borderRadius: radius.ctl,
+                            overflow: 'hidden',
+                          },
+                          state === 'todo' && { opacity: 0.45 },
+                        ]}>
+                        {/* The design tints the active row with a 90deg #F6F7FE -> #fff wash,
+                            so it fades out toward the right rather than sitting as a flat block. */}
+                        {state === 'active' ? (
+                          <GradientFill from="#F6F7FE" to="#FFFFFF" angle={90} />
+                        ) : null}
+                        {state === 'done' ? (
+                          <View style={[st.checkDot, { backgroundColor: colors.successSoft }]}>
+                            <Icon name="check" size={s(16)} color={colors.success} strokeWidth={3.2} />
+                          </View>
+                        ) : state === 'active' ? (
+                          <Spinner size={s(30)} color={colors.primary} track="#DDE1F5" />
+                        ) : (
+                          <View style={[st.checkDot, { backgroundColor: colors.cardAlt }]} />
+                        )}
+                        <Txt
+                          variant={state === 'active' ? 'bodyBlack' : 'bodyStrong'}
+                          color={state === 'active' ? colors.primary : state === 'todo' ? colors.inkDim : colors.ink}>
+                          {x.label}
+                        </Txt>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </Raised>
+          </View>
 
-        <View style={s.actions}>
-          <Action
-            icon="users"
-            label="Speakers"
-            onPress={() => navigation.navigate('Speakers', { meetingId })}
-          />
-          <Action
-            icon="share"
-            label="Export"
-            onPress={() =>
-              Alert.alert('Export minutes', 'Choose a format', [
-                { text: 'Markdown', onPress: () => FileExport.share(meetingId, 'md') },
-                { text: 'Plain text', onPress: () => FileExport.share(meetingId, 'txt') },
-                { text: 'Subtitles (.srt)', onPress: () => FileExport.share(meetingId, 'srt') },
-                { text: 'Cancel', style: 'cancel' },
-              ])
-            }
-          />
-          <Action
-            icon="refresh"
-            label={reprocessing ? 'Working…' : 'Redo'}
-            onPress={onReprocess}
-            disabled={reprocessing}
-          />
+          <View style={st.spacer} />
+          <Footer />
         </View>
       </View>
+    );
+  }
 
-      {empty ? (
-        <View style={s.emptyWrap}>
-          <Mascot mood="asleep" size={130} />
-          <Txt variant="title" style={s.emptyTitle}>
-            Nothing to show
-          </Txt>
-          <Txt variant="body" color={colors.inkSoft} style={s.emptyBody}>
-            Pip could not hear any speech in this recording. If the mic was covered or the room was
-            very quiet, try recording again a little closer.
-          </Txt>
+  const nameById = new Map(speakers.map(x => [x.id, x.displayName]));
+  const speakerIndex = new Map(speakers.map((x, i) => [x.id, i]));
+  const summary = minutes.find(m => m.kind === 'summary');
+  const items = minutes.filter(m => m.kind !== 'summary');
+  const actions = minutes.filter(m => m.kind === 'action').length;
+  const questions = minutes.filter(m => m.kind === 'question').length;
+
+  return (
+    <View style={st.root}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingTop: insets.top + s(6), paddingBottom: insets.bottom + s(30) }}>
+        <View style={st.navRowDetail}>
+          <IconButton icon="chevronLeft" label="Back" onPress={() => navigation.goBack()} />
+          <View style={st.flex}>
+            <Txt variant="sectionTitle" numberOfLines={1}>
+              {meeting?.title || 'Meeting'}
+            </Txt>
+            <Txt variant="chipSoft" color={colors.inkFaint}>
+              {meeting?.createdAt
+                ? new Date(meeting.createdAt).toLocaleString(undefined, {
+                    day: 'numeric',
+                    month: 'short',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })
+                : ''}
+            </Txt>
+          </View>
+          {meeting?.status === 'done' ? (
+            <Badge label="READY" color={colors.success} soft={colors.successSoft} small />
+          ) : null}
         </View>
-      ) : (
-        <SectionList
-          sections={sections as any}
-          keyExtractor={(_, i) => String(i)}
-          stickySectionHeadersEnabled={false}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={s.listPad}
-          renderSectionHeader={({ section }) =>
-            (section as any).data.length ? (
-              <View style={s.sectionHead}>
-                <SectionLabel>{(section as any).title}</SectionLabel>
+
+        {/* Stats: uneven flex (1.2 / 1.5 / 1) and alternating tilt, as the design has them. */}
+        <View style={st.statRow}>
+          <Pop index={0} style={{ flex: 1.2 }}>
+            <Raised
+              edge={colors.successEdge}
+              gradient={{ from: colors.successSoft, to: colors.successSoft2, angle: 160 }}
+              rad={radius.xl}
+              depth={5}
+              rotate="-1.2deg">
+              <View style={st.stat}>
+                <Txt variant="statNum" color={colors.successDeep}>
+                  {segCount}
+                </Txt>
+                <Txt variant="chipSoft" color={colors.success}>
+                  {segCount === 1 ? 'segment' : 'segments'}
+                </Txt>
               </View>
-            ) : null
-          }
-          renderItem={({ item, section, index }) => {
-            if ((section as any).kind === 'minutes') {
-              const m = item as Minute;
-              const meta = kindMeta(m.kind, colors);
-              return (
-                <FadeIn index={index} style={s.itemWrap}>
-                  <Card accent={meta.color}>
-                    <View style={[s.kindTag, { backgroundColor: meta.soft }]}>
-                      <Txt variant="caption" color={meta.color}>
-                        {meta.label}
-                      </Txt>
-                    </View>
-                    <Txt variant="body" style={s.minuteText}>
-                      {m.content}
+            </Raised>
+          </Pop>
+          <Pop index={1} style={{ flex: 1.5 }}>
+            <Raised
+              edge={colors.primarySoftEdge}
+              gradient={{ from: colors.primarySoft, to: colors.primarySoft2, angle: 160 }}
+              rad={radius.xl}
+              depth={5}
+              rotate="0.9deg">
+              <View style={st.stat}>
+                <Txt variant="statNum" color={colors.primaryEdge}>
+                  {Math.round(speechMs / 1000)}s
+                </Txt>
+                <Txt variant="chipSoft" color={colors.primary}>
+                  of speech
+                </Txt>
+              </View>
+            </Raised>
+          </Pop>
+          <Pop index={2} style={{ flex: 1 }}>
+            <Raised
+              edge={colors.warningEdge}
+              gradient={{ from: colors.warningSoft, to: colors.warningSoft2, angle: 160 }}
+              rad={radius.xl}
+              depth={5}
+              rotate="-0.7deg">
+              <View style={st.stat}>
+                <Txt variant="statNum" color={colors.warningDeep}>
+                  {speakers.length || '—'}
+                </Txt>
+                <Txt variant="chipSoft" color={colors.warning}>
+                  {speakers.length === 1 ? 'speaker' : 'speakers'}
+                </Txt>
+              </View>
+            </Raised>
+          </Pop>
+        </View>
+
+        <View style={st.actionRow}>
+          <SoftButton icon="users" label="Speakers" stacked onPress={() => navigation.navigate('Speakers', { meetingId })} />
+          <SoftButton icon="share" label="Export" stacked onPress={onExport} />
+          <SoftButton icon="refresh" label={reprocessing ? 'Working…' : 'Redo'} stacked onPress={onReprocess} disabled={reprocessing} />
+        </View>
+
+        {failure ? (
+          <View style={st.failCard}>
+            <Icon name="alert" size={s(18)} color={colors.danger} strokeWidth={2.4} />
+            <Txt variant="bodyStrong" color={colors.danger} style={st.flex}>
+              {failure}
+            </Txt>
+          </View>
+        ) : null}
+
+        {empty ? (
+          <View style={st.emptyWrap}>
+            <Mascot mood="asleep" size={sv(130)} />
+            <Txt variant="display" style={st.emptyTitle}>
+              Nothing to show
+            </Txt>
+            <Txt variant="body" color={colors.inkSoft} style={st.emptyBody}>
+              Pip could not hear any speech in this recording. If the mic was covered or the room
+              was very quiet, try again a little closer.
+            </Txt>
+          </View>
+        ) : (
+          <>
+            <View style={st.ruleWrap}>
+              <SectionRule label="MINUTES" />
+            </View>
+
+            <View style={st.list}>
+              <Slide>
+                <Raised
+                  edge={colors.primaryEdge}
+                  gradient={{ from: colors.primary, to: colors.primaryLight, angle: 135 }}
+                  rad={radius.card24}
+                  depth={6}>
+                  <View style={st.gist}>
+                    <Txt variant="overlineSm" color={colors.onPrimary} style={st.gistLabel}>
+                      THE GIST
                     </Txt>
-                  </Card>
-                </FadeIn>
-              );
-            }
-            const u = item as { who: string; idx: number; text: string };
-            const tint = colors.speakers[u.idx % colors.speakers.length];
-            const tintSoft = colors.speakersSoft[u.idx % colors.speakersSoft.length];
-            return (
-              <View style={s.uttRow}>
-                <View style={[s.avatar, { backgroundColor: tintSoft }]}>
-                  <Txt variant="caption" color={tint}>
-                    {initials(u.who)}
-                  </Txt>
+                    <Txt variant="gist" color={colors.onPrimary} style={st.gistText}>
+                      {summary?.content ?? 'No summary yet.'}
+                    </Txt>
+                    <View style={st.gistChips}>
+                      <View style={st.gistChip}>
+                        <Txt variant="chip" color={colors.onPrimary}>
+                          {actions} {actions === 1 ? 'action' : 'actions'}
+                        </Txt>
+                      </View>
+                      <View style={st.gistChip}>
+                        <Txt variant="chip" color={colors.onPrimary}>
+                          {questions} {questions === 1 ? 'question' : 'questions'}
+                        </Txt>
+                      </View>
+                    </View>
+                  </View>
+                </Raised>
+              </Slide>
+
+              {items.map((m, i) => {
+                const meta = kindMeta(m.kind, colors);
+                return (
+                  <Slide key={m.id ?? i} index={i + 1}>
+                    <View style={st.minuteRow}>
+                      <View style={[st.minuteIcon, { backgroundColor: meta.soft }]}>
+                        <Icon name={meta.icon} size={s(19)} color={meta.color} strokeWidth={2.8} />
+                      </View>
+                      <View style={st.flex}>
+                        <Raised
+                          edge={colors.line}
+                          fill={colors.card}
+                          rad={radius.xl}
+                          depth={5}
+                          rotate={tilt(i)}>
+                          <View style={st.minuteCard}>
+                            <Badge label={meta.label} color={meta.color} soft={meta.soft} small />
+                            <Txt variant="minuteBody" style={st.minuteText}>
+                              {m.content}
+                            </Txt>
+                          </View>
+                        </Raised>
+                      </View>
+                    </View>
+                  </Slide>
+                );
+              })}
+            </View>
+
+            {utterances.length > 0 ? (
+              <>
+                <View style={st.ruleWrap}>
+                  <SectionRule label="TRANSCRIPT" />
                 </View>
-                <View style={s.rowFill}>
-                  <Txt variant="label" color={tint}>
-                    {u.who}
-                  </Txt>
-                  <Txt variant="body" color={colors.ink} style={s.uttText}>
-                    {u.text}
-                  </Txt>
+                <View style={st.list}>
+                  {utterances.map((u, i) => {
+                    const who = u.speakerId ? nameById.get(u.speakerId) ?? 'Speaker' : 'Unlabelled';
+                    const idx = u.speakerId ? speakerIndex.get(u.speakerId) ?? 0 : 0;
+                    const tint = colors.speakers[idx % colors.speakers.length];
+                    const tintSoft = colors.speakersSoft[idx % colors.speakersSoft.length];
+                    return (
+                      <View key={u.id ?? i} style={st.uttRow}>
+                        <View style={[st.uttAvatar, { backgroundColor: tintSoft }]}>
+                          <Txt variant="chip" color={tint}>
+                            {initials(who)}
+                          </Txt>
+                        </View>
+                        <Raised
+                          edge="#E9ECF5"
+                          fill={colors.card}
+                          rad={radius.ctl}
+                          depth={4}
+                          grow
+                          style={st.bubbleShape}>
+                          <View style={st.uttCard}>
+                            <Txt variant="chip" color={tint}>
+                              {who} · {stamp(u.startMs)}
+                            </Txt>
+                            <Txt variant="transcript" style={st.uttText}>
+                              {u.text}
+                            </Txt>
+                          </View>
+                        </Raised>
+                      </View>
+                    );
+                  })}
                 </View>
-              </View>
-            );
-          }}
-        />
-      )}
+              </>
+            ) : null}
+          </>
+        )}
+      </ScrollView>
     </View>
+  );
+}
+
+/** The design's active-step ring: a 3px circle with one transparent edge, spinning. */
+function Spinner({ size, color, track }: { size: number; color: string; track: string }) {
+  const spin = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(spin, { toValue: 1, duration: 900, easing: Easing.linear, useNativeDriver: true }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [spin]);
+  return (
+    <Animated.View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        borderWidth: 3,
+        borderColor: track,
+        borderTopColor: color,
+        transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }],
+      }}
+    />
   );
 }
 
 function makeStyles(c: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: c.canvas },
-    // The header is pinned so Export/Redo stay reachable while reading a long transcript, which
-    // means the list scrolls underneath it. An opaque background plus a hairline is what makes
-    // that read as "content passing behind a bar" rather than "text mysteriously cut off".
-    head: {
-      paddingHorizontal: spacing.xl,
-      paddingTop: spacing.md,
-      paddingBottom: spacing.md,
-      gap: spacing.md,
-      backgroundColor: c.canvas,
-      borderBottomWidth: 1,
-      borderBottomColor: c.line,
-      zIndex: 1,
-    },
-    rowFill: { flex: 1 },
-    workingRow: {
+    flex: { flex: 1 },
+    pad: { flex: 1, paddingHorizontal: s(22) },
+    spacer: { flex: 1 },
+
+    navRow: { flexDirection: 'row', alignItems: 'center', gap: s(12) },
+    navRowDetail: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.md,
-      backgroundColor: c.card,
-      borderRadius: radius.lg,
-      borderWidth: 1,
-      borderColor: c.line,
-      padding: spacing.md,
+      gap: s(12),
+      paddingHorizontal: s(20),
     },
-    statsRow: { flexDirection: 'row', gap: spacing.sm },
-    stat: {
-      flex: 1,
-      borderRadius: radius.md,
-      paddingVertical: spacing.md,
+
+    procHead: { alignItems: 'center', marginTop: sv(26) },
+    procTitle: { marginTop: s(18), textAlign: 'center' },
+    procBody: { marginTop: s(6), textAlign: 'center', maxWidth: s(250) },
+    pctPill: {
+      marginTop: s(16),
+      backgroundColor: c.primarySoft,
+      paddingHorizontal: s(14),
+      paddingVertical: s(8),
+      borderRadius: radius.pill,
+    },
+    checkWrap: { marginTop: sv(26) },
+    checkInner: { padding: s(8) },
+    checkRow: { flexDirection: 'row', alignItems: 'center', gap: s(12), padding: s(14) },
+    checkDot: { width: s(30), height: s(30), borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
+    divider: { height: 1, backgroundColor: c.cardAlt, marginHorizontal: s(14) },
+
+    statRow: { flexDirection: 'row', gap: s(10), paddingHorizontal: s(20), paddingTop: s(18) },
+    stat: { padding: s(14) },
+    actionRow: { flexDirection: 'row', gap: s(10), paddingHorizontal: s(20), paddingTop: s(14) },
+    footer: { flexDirection: 'row', gap: s(10) },
+
+    failCard: {
+      flexDirection: 'row',
       alignItems: 'center',
+      gap: s(10),
+      backgroundColor: c.dangerSoft,
+      borderRadius: radius.xl,
+      padding: s(14),
+      marginHorizontal: s(20),
+      marginTop: s(14),
     },
-    failCard: { borderColor: c.danger },
-    failRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-    actions: { flexDirection: 'row', gap: spacing.sm },
-    action: {
-      flex: 1,
+
+    ruleWrap: { marginHorizontal: s(20), marginTop: s(22), marginBottom: s(10) },
+    list: { paddingHorizontal: s(20), gap: s(12) },
+
+    gist: { padding: s(18) },
+    gistLabel: { opacity: 0.8 },
+    gistText: { marginTop: s(8) },
+    gistChips: { flexDirection: 'row', gap: s(8), marginTop: s(14) },
+    gistChip: {
+      backgroundColor: 'rgba(255,255,255,0.2)',
+      paddingHorizontal: s(11),
+      paddingVertical: s(6),
+      borderRadius: radius.pill,
+    },
+
+    minuteRow: { flexDirection: 'row', gap: s(12), alignItems: 'flex-start' },
+    minuteIcon: {
+      width: s(38),
+      height: s(38),
+      borderRadius: s(14),
       alignItems: 'center',
-      gap: 4,
-      backgroundColor: c.card,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: c.line,
-      paddingVertical: spacing.md,
+      justifyContent: 'center',
+      marginTop: s(6),
     },
-    listPad: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xxl },
-    sectionHead: { marginTop: spacing.xl },
-    itemWrap: { marginBottom: spacing.sm },
-    kindTag: {
-      alignSelf: 'flex-start',
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 3,
-      borderRadius: radius.sm,
+    minuteCard: { paddingVertical: s(15), paddingHorizontal: s(16) },
+    minuteText: { marginTop: s(9) },
+
+    uttRow: { flexDirection: 'row', gap: s(11), alignItems: 'flex-start' },
+    uttAvatar: {
+      width: s(36),
+      height: s(36),
+      borderRadius: radius.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-    minuteText: { marginTop: spacing.sm },
-    uttRow: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg },
-    avatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-    uttText: { marginTop: 1 },
-    emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xxl },
-    emptyTitle: { marginTop: spacing.lg },
-    emptyBody: { textAlign: 'center', marginTop: spacing.sm },
+    // The bubble points at its speaker: the corner nearest the avatar is squared off.
+    bubbleShape: { borderTopLeftRadius: s(6) },
+    uttCard: { padding: s(13), paddingHorizontal: s(15) },
+    uttText: { marginTop: s(4) },
+
+    emptyWrap: { alignItems: 'center', paddingTop: sv(60), paddingHorizontal: s(30) },
+    emptyTitle: { marginTop: s(18) },
+    emptyBody: { textAlign: 'center', marginTop: s(8) },
   });
 }

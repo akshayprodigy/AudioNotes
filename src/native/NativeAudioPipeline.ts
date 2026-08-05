@@ -30,7 +30,13 @@ export interface Spec extends TurboModule {
     meetingId: string | null;
     elapsedMs: number;
     silenced: boolean;
+    paused: boolean;
   }>;
+
+  // Pause/resume without ending the meeting. Native owns the flag because capture outlives the
+  // JS context — a JS-held pause would silently resume on reload and record what the user thought
+  // was private. `elapsedMs` excludes paused time so the timer matches the audio on disk.
+  setPaused(paused: boolean): Promise<boolean>;
 
   // Ask the OS to exempt the app from battery optimization (keeps long background recordings alive).
   requestBatteryExemption(): Promise<boolean>;

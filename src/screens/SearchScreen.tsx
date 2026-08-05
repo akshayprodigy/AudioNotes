@@ -1,28 +1,35 @@
 import React, { useMemo, useState } from 'react';
 import { FlatList, StyleSheet, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { db } from '../db/queries';
 import Icon from '../components/Icon';
 import Mascot from '../components/Mascot';
-import { Card, FadeIn, Txt } from '../components/ui';
-import { font, radius, spacing, useTheme, type Colors } from '../theme';
+import { IconButton, Pop, Raised, Txt } from '../components/ui';
+import { font, radius, s, sv, useTheme, type Colors } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Search'>;
 type Hit = { meeting_id: string; snippet: string };
 
 export default function SearchScreen({ navigation }: Props) {
   const { colors } = useTheme();
-  const s = useMemo(() => makeStyles(colors), [colors]);
+  const st = useMemo(() => makeStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
   const [results, setResults] = useState<Hit[]>([]);
   const [term, setTerm] = useState('');
 
   return (
-    <View style={s.root}>
-      <View style={s.searchBox}>
-        <Icon name="search" size={18} color={colors.inkFaint} />
+    <View style={[st.root, { paddingTop: insets.top + s(8) }]}>
+      <View style={st.nav}>
+        <IconButton icon="chevronLeft" label="Back" onPress={() => navigation.goBack()} />
+        <Txt variant="sectionTitle">Search</Txt>
+      </View>
+
+      <View style={st.searchBox}>
+        <Icon name="search" size={s(19)} color={colors.inkFaint} strokeWidth={2.4} />
         <TextInput
-          style={s.input}
+          style={st.input}
           placeholder="Search every transcript"
           placeholderTextColor={colors.inkFaint}
           autoFocus
@@ -39,14 +46,18 @@ export default function SearchScreen({ navigation }: Props) {
         data={results}
         keyExtractor={(h, i) => h.meeting_id + i}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={results.length === 0 ? s.emptyPad : undefined}
+        contentContainerStyle={[
+          st.listPad,
+          { paddingBottom: insets.bottom + s(24) },
+          results.length === 0 && st.emptyPad,
+        ]}
         ListEmptyComponent={
-          <View style={s.empty}>
-            <Mascot mood={term.length > 1 ? 'thinking' : 'idle'} size={110} animated={false} />
-            <Txt variant="heading" style={s.emptyTitle}>
+          <View style={st.empty}>
+            <Mascot mood={term.length > 1 ? 'thinking' : 'idle'} size={sv(120)} animated={false} />
+            <Txt variant="display" style={st.emptyTitle}>
               {term.length > 1 ? 'Nothing found' : 'Search your meetings'}
             </Txt>
-            <Txt variant="body" color={colors.inkSoft} style={s.emptyBody}>
+            <Txt variant="body" color={colors.inkSoft} style={st.emptyBody}>
               {term.length > 1
                 ? `No transcript mentions “${term}”.`
                 : 'Find any word anyone said, across every meeting you have recorded.'}
@@ -54,16 +65,21 @@ export default function SearchScreen({ navigation }: Props) {
           </View>
         }
         renderItem={({ item, index }) => (
-          <FadeIn index={index} style={s.hitWrap}>
-            <Card onPress={() => navigation.navigate('Meeting', { meetingId: item.meeting_id })}>
-              <View style={s.hit}>
-                <Txt variant="body" style={s.snip} numberOfLines={3}>
+          <Pop index={index}>
+            <Raised
+              edge={colors.line}
+              fill={colors.card}
+              rad={radius.xl}
+              depth={5}
+              onPress={() => navigation.navigate('Meeting', { meetingId: item.meeting_id })}>
+              <View style={st.hit}>
+                <Txt variant="body" style={st.flex} numberOfLines={3}>
                   {item.snippet}
                 </Txt>
-                <Icon name="chevronRight" size={18} color={colors.inkFaint} />
+                <Icon name="chevronRight" size={s(18)} color={colors.inkFaint} strokeWidth={2.4} />
               </View>
-            </Card>
-          </FadeIn>
+            </Raised>
+          </Pop>
         )}
       />
     </View>
@@ -72,31 +88,31 @@ export default function SearchScreen({ navigation }: Props) {
 
 function makeStyles(c: Colors) {
   return StyleSheet.create({
-    root: { flex: 1, padding: spacing.xl, backgroundColor: c.canvas },
+    root: { flex: 1, backgroundColor: c.canvas },
+    flex: { flex: 1 },
+    nav: { flexDirection: 'row', alignItems: 'center', gap: s(12), paddingHorizontal: s(20) },
     searchBox: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.md,
+      gap: s(10),
       backgroundColor: c.card,
-      borderRadius: radius.md,
-      paddingHorizontal: spacing.lg,
-      marginBottom: spacing.lg,
-      borderWidth: 1,
-      borderColor: c.line,
+      borderRadius: radius.lg,
+      paddingHorizontal: s(16),
+      marginHorizontal: s(20),
+      marginTop: s(16),
     },
     input: {
       flex: 1,
       color: c.ink,
-      paddingVertical: spacing.md,
-      fontFamily: font.regular,
-      fontSize: 15,
+      paddingVertical: s(14),
+      fontFamily: font.semibold,
+      fontSize: s(15),
     },
-    hitWrap: { marginBottom: spacing.sm },
-    hit: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-    snip: { flex: 1 },
+    listPad: { paddingHorizontal: s(20), paddingTop: s(16), gap: s(10) },
     emptyPad: { flexGrow: 1, justifyContent: 'center' },
-    empty: { alignItems: 'center', paddingHorizontal: spacing.lg },
-    emptyTitle: { marginTop: spacing.lg },
-    emptyBody: { textAlign: 'center', marginTop: spacing.xs },
+    hit: { flexDirection: 'row', alignItems: 'center', gap: s(12), padding: s(16) },
+    empty: { alignItems: 'center', paddingHorizontal: s(20) },
+    emptyTitle: { marginTop: s(18) },
+    emptyBody: { textAlign: 'center', marginTop: s(6) },
   });
 }

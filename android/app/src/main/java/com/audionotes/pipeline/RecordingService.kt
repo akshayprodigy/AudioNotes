@@ -173,8 +173,16 @@ class RecordingService : Service() {
             val n = record.read(buf, 0, buf.size)
             when {
               n > 0 -> {
-                out.write(buf, 0, n)
-                CaptureController.level = computeLevel(buf, n, CaptureController.level)
+                // While paused we keep READING (so the AudioRecord buffer never overruns and we
+                // never risk losing the mic to another app mid-meeting) but discard the samples.
+                // The level is driven to zero rather than frozen, so the meter visibly flatlines
+                // instead of holding whatever it happened to show when pause was pressed.
+                if (CaptureController.paused) {
+                  CaptureController.level = 0f
+                } else {
+                  out.write(buf, 0, n)
+                  CaptureController.level = computeLevel(buf, n, CaptureController.level)
+                }
               }
               // A dead/invalid AudioRecord never recovers by itself: stop cleanly so the audio
               // captured so far is kept and processed, rather than spinning on an error.

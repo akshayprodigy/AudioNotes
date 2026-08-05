@@ -28,6 +28,10 @@ class PipelineControllerImpl {
     return AudioPipeline.currentSession();
   }
 
+  async setPaused(paused: boolean): Promise<boolean> {
+    return AudioPipeline.setPaused(paused);
+  }
+
   // Native runs the heavy stages (vad -> asr), persisting each. Then the JS layer runs the
   // deterministic rule-based minutes floor over the transcript (small text work; shared iOS+Android).
   async process(

@@ -38,8 +38,43 @@ object CaptureController {
    */
   @Volatile var silenced: Boolean = false
 
+  /**
+   * Paused means "keep the session and the file open, but stop appending audio".
+   *
+   * The AudioRecord itself keeps running and its buffers keep being drained — stopping it would
+   * risk not getting the mic back if something else grabs it mid-meeting, and would drop the
+   * foreground-service mic attribution. We simply discard what we read while paused.
+   */
+  @Volatile var paused: Boolean = false
+
+  /** Total time spent paused, so the timer reports captured audio rather than wall clock. */
+  @Volatile var pausedTotalMs: Long = 0L
+  @Volatile private var pausedAtMs: Long = 0L
+
+  // Named applyPause, not setPaused: `var paused` already generates a JVM setPaused(Z)V, and a
+  // second method with that signature is a platform declaration clash.
+  fun applyPause(value: Boolean) {
+    if (!isRecording || value == paused) return
+    if (value) {
+      pausedAtMs = System.currentTimeMillis()
+    } else if (pausedAtMs > 0L) {
+      pausedTotalMs += System.currentTimeMillis() - pausedAtMs
+      pausedAtMs = 0L
+    }
+    paused = value
+  }
+
   val isRecording: Boolean get() = currentMeetingId != null
-  fun elapsedMs(): Long = if (isRecording) System.currentTimeMillis() - startedAtMs else 0L
+
+  /**
+   * Elapsed CAPTURED time, excluding any paused stretches — this must match the length of the
+   * audio on disk, or the timer would claim a 10-minute meeting for a 4-minute recording.
+   */
+  fun elapsedMs(): Long {
+    if (!isRecording) return 0L
+    val livePause = if (paused && pausedAtMs > 0L) System.currentTimeMillis() - pausedAtMs else 0L
+    return System.currentTimeMillis() - startedAtMs - pausedTotalMs - livePause
+  }
 
   fun hasMicPermission(context: Context): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
@@ -65,6 +100,10 @@ object CaptureController {
 
     currentMeetingId = meetingId
     startedAtMs = createdAt
+    // A previous session's pause bookkeeping would otherwise be subtracted from this one's timer.
+    paused = false
+    pausedTotalMs = 0L
+    pausedAtMs = 0L
     return meetingId
   }
 

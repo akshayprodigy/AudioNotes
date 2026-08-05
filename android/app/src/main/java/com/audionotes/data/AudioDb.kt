@@ -131,16 +131,33 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     }
   }
 
+  /**
+   * Non-speech annotations whisper emits in place of words: `[BLANK_AUDIO]`, `[SILENCE]`,
+   * `(music playing)`, `[ Applause ]`. VAD trims most silence, but a span that is quiet rather
+   * than empty still reaches the decoder and comes back as one of these, which then becomes a
+   * transcript bubble, an FTS hit, a candidate meeting title and a line in every export.
+   *
+   * Anything left of the text once bracketed and parenthesised runs are removed is real speech, so
+   * a segment is dropped only when NOTHING but annotation and punctuation remains. A caption that
+   * happens to contain "[laughs]" mid-sentence keeps the sentence.
+   */
+  private val ANNOTATION = Regex("""[\[(][^\])]*[\])]""")
+
+  private fun isNonSpeech(text: String): Boolean =
+    ANNOTATION.replace(text, "").none { it.isLetterOrDigit() }
+
   /** Replace the transcript for a meeting from a JSON array of {start_ms,end_ms,text}. Returns count. */
   fun replaceUtterancesJson(meetingId: String, json: String): Int {
     val arr = JSONArray(json)
+    var kept = 0
     db.beginTransaction()
     try {
       db.execSQL("DELETE FROM utterances WHERE meeting_id=?", arrayOf<Any?>(meetingId))
       db.execSQL("DELETE FROM meetings_fts WHERE meeting_id=?", arrayOf<Any?>(meetingId))
       for (i in 0 until arr.length()) {
         val o = arr.getJSONObject(i)
-        val text = o.getString("text")
+        val text = o.getString("text").trim()
+        if (isNonSpeech(text)) continue
         db.execSQL(
           "INSERT INTO utterances(id,meeting_id,start_ms,end_ms,speaker_id,text) VALUES(?,?,?,?,NULL,?)",
           arrayOf<Any?>(UUID.randomUUID().toString(), meetingId, o.getLong("start_ms"), o.getLong("end_ms"), text),
@@ -149,12 +166,16 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
           "INSERT INTO meetings_fts(meeting_id,text) VALUES(?,?)",
           arrayOf<Any?>(meetingId, text),
         )
+        kept++
       }
       db.setTransactionSuccessful()
     } finally {
       db.endTransaction()
     }
-    return arr.length()
+    // The count downstream decides "did this meeting have speech", so it has to be what was
+    // actually stored — returning the raw segment count marks an all-silence recording as ready
+    // with an empty transcript instead of "no speech found".
+    return kept
   }
 
   /**

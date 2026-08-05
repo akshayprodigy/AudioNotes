@@ -46,6 +46,23 @@ describe('summarize helpers', () => {
     expect(parseMinutesJson('the model rambled with no json')).toBeNull();
   });
 
+  // A 1.5B model shipped the prompt's own skeleton back verbatim and it became three minutes
+  // reading "…". Nothing survives the filter here, so the caller falls back to the rule-based set.
+  it('drops template placeholders the model echoed back', () => {
+    const echoed =
+      '{"summary":"...","decisions":["..."],' +
+      '"actions":[{"text":"...","owner":"...","due":"..."}],"questions":["..."]}';
+    expect(parseMinutesJson(echoed)).toBeNull();
+  });
+
+  it('drops angle-bracket descriptors but keeps real text beside them', () => {
+    const mins = parseMinutesJson(
+      '{"summary":"<2-3 sentence overview>","decisions":["Ship on <Friday>"]}',
+    )!;
+    expect(mins).toHaveLength(1);
+    expect(mins[0]).toEqual({ kind: 'decision', content: 'Ship on <Friday>', source: 'llm' });
+  });
+
   it('drops n/a due dates', () => {
     const mins = parseMinutesJson('{"actions":[{"text":"do it","owner":"Team","due":"N/A"}]}')!;
     expect(mins[0].content).toBe('do it — Team');
