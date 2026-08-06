@@ -191,6 +191,13 @@ class BubbleView(context: Context, private val onAction: (Action) -> Unit) : Vie
     if (recording || paused) {
       drawMeter(canvas, paused, silenced)
       drawClock(canvas, paused, silenced)
+    } else if (CaptureController.stopping) {
+      // The flush after Stop takes up to five seconds, during which isRecording is already false.
+      // Showing "TAP" there invited a tap that CaptureController.start refuses outright, so the
+      // bubble looked idle, accepted the touch, and did nothing.
+      text.color = Palette.inkSoft
+      text.textSize = d(9f)
+      canvas.drawText("SAVING", puckCx, puckCy + d(20f), text)
     } else {
       // Idle: one word, so the puck is never a mystery button.
       text.color = Palette.inkFaint
@@ -313,6 +320,8 @@ class BubbleView(context: Context, private val onAction: (Action) -> Unit) : Vie
   fun hitTest(x: Float, y: Float): Action? {
     val pr = d(PUCK) / 2f
     if (dist(x, y, puckCx, puckCy) <= pr) {
+      // Refuse rather than swallow while the previous meeting is still being written out.
+      if (CaptureController.stopping) return null
       return if (!CaptureController.isRecording) Action.START else Action.TOGGLE_EXPAND
     }
     if (!expanded) return null

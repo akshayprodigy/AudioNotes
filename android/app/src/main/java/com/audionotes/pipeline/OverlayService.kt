@@ -44,6 +44,14 @@ class OverlayService : Service(), CaptureListener {
     /** Redraw cadence for the meter. 15/s reads as smooth and costs a fraction of 60. */
     private const val FRAME_MS = 66L
 
+    /** Where the user parked it, so it comes back where they left it. */
+    private const val PREFS = "audionotes.bubble"
+    private const val KEY_EDGE_LEFT = "edgeLeft"
+    private const val KEY_FY = "fy"
+
+    /** Hold to open the app. Matches the platform long-press, and leaves drag unaffected. */
+    private const val LONG_PRESS_MS = 350L
+
     /**
      * The meeting the user last put the bubble away for.
      *
@@ -161,11 +169,17 @@ class OverlayService : Service(), CaptureListener {
     bubble = view
     bubbleLp = lp
 
+    // Restore where the user last parked it. Without this the bubble reappeared at the left edge
+    // at 42% height every single time — so a user who had deliberately moved it out of the way of
+    // something had to move it again on every app switch.
     val b = bounds()
-    puckX = b.left + scale(BubbleView.PUCK / 2f) + scale(8f)
-    puckY = b.top + (b.height() * 0.42f)
-    dockedLeft = true
-    view.dockedLeft = true
+    val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    dockedLeft = prefs.getBoolean(KEY_EDGE_LEFT, true)
+    val fy = prefs.getFloat(KEY_FY, 0.42f).coerceIn(0f, 1f)
+    puckX = if (dockedLeft) b.left + scale(BubbleView.PUCK / 2f) + scale(8f)
+    else b.right - scale(BubbleView.PUCK / 2f) - scale(8f)
+    puckY = b.top + b.height() * fy
+    view.dockedLeft = dockedLeft
     applyPuckPosition()
 
     CaptureController.addListener(this)
@@ -289,6 +303,16 @@ class OverlayService : Service(), CaptureListener {
   // Touch: tap, drag, snap, dismiss
   // ---------------------------------------------------------------------------------------------
 
+  /** Set when the hold fired, so the finger-up that follows is not also treated as a tap. */
+  @Volatile private var longPressed = false
+
+  private val longPress = Runnable {
+    longPressed = true
+    bubble?.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+    setExpanded(false)
+    onBubbleAction(BubbleView.Action.OPEN_APP)
+  }
+
   private fun makeTouchListener(): android.view.View.OnTouchListener {
     var downRawX = 0f
     var downRawY = 0f
@@ -304,9 +328,13 @@ class OverlayService : Service(), CaptureListener {
           downRawX = event.rawX; downRawY = event.rawY
           startX = puckX; startY = puckY
           dragging = false
+          longPressed = false
           handler.removeCallbacks(collapse)
           settle?.cancel()
           tracker = VelocityTracker.obtain().also { it.addMovement(event) }
+          // Hold to open the app. OPEN_APP existed as an action with nothing able to reach it,
+          // which meant the bubble was a control you could never get back to the app FROM.
+          handler.postDelayed(longPress, LONG_PRESS_MS)
           true
         }
 
@@ -316,6 +344,7 @@ class OverlayService : Service(), CaptureListener {
           val dy = event.rawY - downRawY
           if (!dragging && Math.hypot(dx.toDouble(), dy.toDouble()) > slop) {
             dragging = true
+            handler.removeCallbacks(longPress) // movement means drag, not hold
             // Opening the shelf and reaching the dismiss target must never be possible within one
             // gesture, or Stop and Hide become neighbours.
             setExpanded(false)
@@ -332,7 +361,10 @@ class OverlayService : Service(), CaptureListener {
         }
 
         MotionEvent.ACTION_UP -> {
+          handler.removeCallbacks(longPress)
           val wasDragging = dragging
+          val wasLongPress = longPressed
+          longPressed = false
           val armed = dismiss?.armed == true
           var vx = 0f
           tracker?.let {
@@ -343,7 +375,9 @@ class OverlayService : Service(), CaptureListener {
           tracker = null
           dragging = false
 
-          if (!wasDragging) {
+          if (wasLongPress) {
+            // The hold already acted; this finger-up must not also count as a tap.
+          } else if (!wasDragging) {
             val hit = bubble?.hitTest(event.x, event.y)
             if (hit != null) {
               v.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
@@ -371,9 +405,12 @@ class OverlayService : Service(), CaptureListener {
         // us, a call arriving) left the drag state stale: the dismiss window stayed up and the next
         // tap was treated as the tail of the old drag.
         MotionEvent.ACTION_CANCEL -> {
+          handler.removeCallbacks(longPress)
+          longPressed = false
           tracker?.recycle(); tracker = null
           if (dragging) { hideDismissWindow(); snapToEdge(0f) }
           dragging = false
+          armCollapse()
           true
         }
 
@@ -408,6 +445,18 @@ class OverlayService : Service(), CaptureListener {
       }
       start()
     }
+    savePosition()
+  }
+
+  /** Remember the dock and the height as a fraction, so it survives rotation and a resolution change. */
+  private fun savePosition() {
+    val b = bounds()
+    if (b.height() <= 0) return
+    val fy = ((puckY - b.top) / b.height()).coerceIn(0f, 1f)
+    getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+      .putBoolean(KEY_EDGE_LEFT, dockedLeft)
+      .putFloat(KEY_FY, fy)
+      .apply()
   }
 
   // ---------------------------------------------------------------------------------------------
