@@ -37,6 +37,33 @@
         </intent-filter>
       </activity>
 
+      <!-- Invisible, finishes immediately. Its only job is to make the app briefly foreground so
+           a tile tap can legally start the microphone foreground service. taskAffinity="" keeps
+           it out of the main task, so it can never be what the user returns to. -->
+      <activity
+        android:name=".pipeline.ShimActivity"
+        android:exported="false"
+        android:theme="@android:style/Theme.NoDisplay"
+        android:taskAffinity=""
+        android:excludeFromRecents="true"
+        android:noHistory="true" />
+
+      <!-- Quick Settings tile. BIND_QUICK_SETTINGS_TILE is signature-level and declared here
+           rather than as a <uses-permission>: it is the system that must hold it to bind us. -->
+      <service
+        android:name=".pipeline.RecordTileService"
+        android:exported="true"
+        android:icon="@drawable/ic_notification_rec"
+        android:label="@string/tile_label"
+        android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+        <intent-filter>
+          <action android:name="android.service.quicksettings.action.QS_TILE" />
+        </intent-filter>
+        <meta-data
+          android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+          android:value="true" />
+      </service>
+
       <!-- Persistent recording indicator + capture run in this foreground service.
 
            stopWithTask="false" is stated explicitly rather than left to the default: swiping the

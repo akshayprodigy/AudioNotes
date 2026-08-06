@@ -57,7 +57,15 @@ object ForegroundTracker : Application.ActivityLifecycleCallbacks {
   private fun canDrawOverlays(a: Activity): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(a)
 
+  /**
+   * [ShimActivity] is machinery, not the app. It exists to be foreground for a few milliseconds so
+   * a Quick Settings tap can start the capture service legally; counting it here would read as
+   * "the user opened the app" and tear the floating bubble down every time the tile was used.
+   */
+  private fun counts(activity: Activity): Boolean = activity !is ShimActivity
+
   override fun onActivityStarted(activity: Activity) {
+    if (!counts(activity)) return
     started++
     if (started == 1 && autoShown) {
       // Back in the app — the in-app recorder UI takes over, so drop the bubble.
@@ -70,6 +78,7 @@ object ForegroundTracker : Application.ActivityLifecycleCallbacks {
   }
 
   override fun onActivityStopped(activity: Activity) {
+    if (!counts(activity)) return
     started = (started - 1).coerceAtLeast(0)
     if (started > 0) return // just moving between our own activities
     if (!CaptureController.isRecording || !autoFloatEnabled(activity)) return
