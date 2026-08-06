@@ -132,7 +132,15 @@ class OverlayService : Service(), CaptureListener {
       scale(BubbleView.COLLAPSED_W).toInt(),
       scale(BubbleView.COLLAPSED_H).toInt(),
       overlayType(),
-      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+      // FLAG_LAYOUT_NO_LIMITS is not optional here, and dropping it in the rewrite was a
+      // regression: without it the window is laid out inside the system-bar inset frame, so
+      // lp.x/lp.y are measured from below the status bar — while bounds(), puckX/puckY and the
+      // dismiss window's pocket are all in absolute display coordinates. The whole overlay landed
+      // a status-bar height too low, and every distance compared against the pocket was wrong by
+      // the same amount. With the flag, lp.x/lp.y are display-absolute and applyPuckPosition's
+      // clamp is the only thing keeping the window on screen — which is what it is written to do.
+      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
       PixelFormat.TRANSLUCENT,
     ).apply {
       gravity = Gravity.TOP or Gravity.START
@@ -206,7 +214,18 @@ class OverlayService : Service(), CaptureListener {
     return out
   }
 
-  /** Window origin from the puck centre, clamped so the puck can never leave the usable area. */
+  /**
+   * Place the window from the puck centre.
+   *
+   * The window is centred on the puck only when there is room. The puck docks 44 design units
+   * from the screen edge but the expanded window is 144 wide, so centring it there put its origin
+   * 28 units off-screen — and since the OS shifts rather than clips an off-screen window, the
+   * ENTIRE overlay jumped sideways every time the triangle opened. The puck the thumb had just
+   * touched moved out from under it, which is precisely what this design promises never happens.
+   *
+   * So the window is clamped into the usable area, and the puck's position WITHIN it is derived
+   * afterwards. The puck therefore never moves; near an edge the triangle simply skews inward.
+   */
   private fun applyPuckPosition() {
     val view = bubble ?: return
     val lp = bubbleLp ?: return
@@ -217,13 +236,21 @@ class OverlayService : Service(), CaptureListener {
 
     puckX = puckX.coerceIn(b.left + half + margin, b.right - half - margin)
     // Leave room below for the expanded triangle so the buttons are never off-screen.
-    val below = scale(BubbleView.BTN_DY + BubbleView.BTN / 2f + 6f)
+    val below = if (view.expanded) scale(BubbleView.BTN_DY + BubbleView.BTN / 2f + 6f) else 0f
     puckY = puckY.coerceIn(b.top + half + margin, b.bottom - half - margin - below)
 
-    val localCx = if (view.expanded) lp.width / 2f else scale(BubbleView.PAD + BubbleView.PUCK / 2f)
     val localCy = scale(BubbleView.PAD + BubbleView.PUCK / 2f)
-    lp.x = (puckX - localCx).toInt()
+    val wantX = puckX - (if (view.expanded) lp.width / 2f else scale(BubbleView.PAD + BubbleView.PUCK / 2f))
+    lp.x = wantX.coerceIn(
+      (b.left - margin).toDouble().toFloat(),
+      (b.right + margin - lp.width).toDouble().toFloat(),
+    ).toInt()
     lp.y = (puckY - localCy).toInt()
+
+    // Tell the view where the puck actually landed inside the window, rather than letting it
+    // assume the centre. This is what keeps the drawing and the hit-testing agreeing with the
+    // window after the clamp above has moved the origin.
+    view.setLocalPuckCx(puckX - lp.x)
     try { wm?.updateViewLayout(view, lp) } catch (_: Exception) {}
   }
 
@@ -240,8 +267,20 @@ class OverlayService : Service(), CaptureListener {
     lp.height = scale(if (value) BubbleView.EXPANDED_H else BubbleView.COLLAPSED_H).toInt()
     view.setExpanded(value)
     applyPuckPosition()
-    if (value) handler.postDelayed(collapse, 5000)
-    else handler.removeCallbacks(collapse)
+    armCollapse()
+  }
+
+  /**
+   * (Re)start the five-second idle timer whenever the triangle is left open.
+   *
+   * ACTION_DOWN cancels it so it cannot fire mid-interaction, but nothing re-armed it afterwards
+   * except a fresh expand — so tapping Pause left the shelf open permanently. That matters more
+   * than it sounds: the expanded window is 144x154 units of mostly transparent space sitting over
+   * whatever app is in front, and it swallows every touch inside its bounds.
+   */
+  private fun armCollapse() {
+    handler.removeCallbacks(collapse)
+    if (bubble?.expanded == true) handler.postDelayed(collapse, 5000)
   }
 
   private val collapse = Runnable { setExpanded(false) }
@@ -324,6 +363,7 @@ class OverlayService : Service(), CaptureListener {
             hideDismissWindow()
             snapToEdge(vx)
           }
+          armCollapse()
           true
         }
 
@@ -375,14 +415,33 @@ class OverlayService : Service(), CaptureListener {
   // ---------------------------------------------------------------------------------------------
 
   private fun showDismissWindow() {
-    if (dismiss != null) return
     val manager = wm ?: return
+    // A drag started within the exit animation of the previous one found a non-null `dismiss` and
+    // returned, leaving the new gesture with a target that was fading out and about to be removed
+    // — so it could never arm, and dragging to the bottom did nothing at all. Revive it instead.
+    dismiss?.let { existing ->
+      enterAnim?.cancel()
+      existing.recording = CaptureController.isRecording
+      enterAnim = ValueAnimator.ofFloat(existing.enter, 1f).apply {
+        duration = 140
+        interpolator = DecelerateInterpolator()
+        addUpdateListener { existing.enter = it.animatedValue as Float }
+        start()
+      }
+      return
+    }
     val view = DismissView(this)
     view.recording = CaptureController.isRecording
     val b = bounds()
     val metricsBottom = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
       manager.currentWindowMetrics.bounds.bottom else resources.displayMetrics.heightPixels
+    val metricsRight = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+      manager.currentWindowMetrics.bounds.right else resources.displayMetrics.widthPixels
     view.bottomInset = (metricsBottom - b.bottom).toFloat()
+    // Seed the pocket before attaching, so the very first drag frame measures against a real
+    // position instead of the origin.
+    val scale = com.audionotes.overlay.Scale(this)
+    view.setPocket(metricsRight / 2f, b.bottom - scale(56f))
 
     val lp = WindowManager.LayoutParams(
       WindowManager.LayoutParams.MATCH_PARENT,
@@ -423,6 +482,7 @@ class OverlayService : Service(), CaptureListener {
 
   private fun updateArmed() {
     val view = dismiss ?: return
+    if (!view.positioned) return // never arm against an unplaced pocket
     val dx = puckX - view.pocketCx
     val dy = puckY - view.pocketCy
     view.armed = Math.hypot(dx.toDouble(), dy.toDouble()) <= view.captureRadius
@@ -518,11 +578,15 @@ class OverlayService : Service(), CaptureListener {
 
   private fun startAsForeground() {
     createChannel()
-    val notif = Notification.Builder(this, CHANNEL_ID)
+    // NotificationCompat, not Notification.Builder(Context, String): that constructor is API 26
+    // and minSdk here is 24, so on Android 7.x it threw the moment the bubble was shown. The same
+    // bug was fixed in RecordingService and missed here.
+    val notif = androidx.core.app.NotificationCompat.Builder(this, CHANNEL_ID)
       .setContentTitle("Floating recorder")
       .setContentText("Pip is on top of your other apps")
       .setSmallIcon(com.audionotes.R.drawable.ic_notification_rec)
       .setOngoing(true)
+      .setSilent(true)
       .build()
     try {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {

@@ -106,8 +106,24 @@ class BubbleView(context: Context, private val onAction: (Action) -> Unit) : Vie
   }
 
   override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-    puckCx = if (expanded) w / 2f else d(PAD) + d(PUCK) / 2f
+    if (localPuckCx == null) puckCx = if (expanded) w / 2f else d(PAD) + d(PUCK) / 2f
     puckCy = d(PAD) + d(PUCK) / 2f
+  }
+
+  /**
+   * Where the puck sits inside this window, told to us by the service.
+   *
+   * The window cannot always be centred on the puck — near a screen edge it is clamped — so
+   * assuming `width / 2` drew the puck somewhere the window was not, and hit-testing followed it
+   * there. The service knows the real offset because it did the clamping.
+   */
+  private var localPuckCx: Float? = null
+
+  fun setLocalPuckCx(x: Float) {
+    if (localPuckCx == x) return
+    localPuckCx = x
+    puckCx = x
+    invalidate()
   }
 
   /** Advance the meter. Called on a timer while recording; returns true if a redraw is needed. */
@@ -275,12 +291,21 @@ class BubbleView(context: Context, private val onAction: (Action) -> Unit) : Vie
     canvas.drawPath(p, fill)
   }
 
-  /** Centres of the two buttons, mirrored so the triangle always opens toward the screen. */
+  /**
+   * Centres of the two buttons.
+   *
+   * Anchored to the WINDOW's centre, not the puck's. The puck docks close to a screen edge, so a
+   * triangle hung symmetrically off it would put one button past the edge — the outer one landed
+   * 20 units off-screen. Anchoring to the window, which is itself clamped on screen, means both
+   * buttons are always reachable and the triangle simply skews when the puck is tucked in a
+   * corner. Pause takes the side nearest the docked edge (short thumb travel, reversible); Stop
+   * is the deliberate reach.
+   */
   private fun buttonCentres(): Pair<FloatArray, FloatArray> {
     val dy = puckCy + d(BTN_DY)
-    val near = puckCx + if (dockedLeft) -d(BTN_DX) else d(BTN_DX)
-    val far = puckCx + if (dockedLeft) d(BTN_DX) else -d(BTN_DX)
-    // Near the docked edge is Pause; the far one — the deliberate reach — is Stop.
+    val mid = if (width > 0) width / 2f else puckCx
+    val near = mid + if (dockedLeft) -d(BTN_DX) else d(BTN_DX)
+    val far = mid + if (dockedLeft) d(BTN_DX) else -d(BTN_DX)
     return Pair(floatArrayOf(near, dy), floatArrayOf(far, dy))
   }
 

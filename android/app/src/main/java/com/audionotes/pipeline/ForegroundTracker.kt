@@ -41,9 +41,9 @@ object ForegroundTracker : Application.ActivityLifecycleCallbacks {
    * flag would have been wrong anyway. Read on each background transition; that happens at most
    * once per app switch, so the cost is irrelevant next to being correct.
    */
-  private fun autoFloatEnabled(activity: Activity): Boolean =
+  private fun autoFloatEnabled(context: android.content.Context): Boolean =
     try {
-      com.audionotes.data.AudioDb.get(activity).getSetting("floatEnabled") != "0"
+      com.audionotes.data.AudioDb.get(context).getSetting("floatEnabled") != "0"
     } catch (_: Exception) {
       true
     }
@@ -52,6 +52,27 @@ object ForegroundTracker : Application.ActivityLifecycleCallbacks {
 
   fun register(app: Application) {
     app.registerActivityLifecycleCallbacks(this)
+    // Also show the bubble when a recording STARTS while nothing of ours is on screen. The only
+    // trigger used to be "the app went to the background", which a tile-started recording never
+    // does — the app was never in the foreground to leave it — so a meeting begun from Quick
+    // Settings had no floating control at all, however the setting was configured.
+    CaptureController.addListener(object : CaptureListener {
+      override fun onCaptureStarted(meetingId: String) {
+        if (isForeground) return
+        if (OverlayService.isDismissed()) return
+        if (!autoFloatEnabled(app)) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(app)) return
+        try {
+          app.startService(
+            Intent(app, OverlayService::class.java).apply { action = OverlayService.ACTION_SHOW },
+          )
+          Log.i(TAG, "recording started with the app in the background; bubble shown")
+        } catch (e: Exception) {
+          // Background start refused. The notification is still a working control.
+          Log.i(TAG, "could not show the bubble on capture start", e)
+        }
+      }
+    })
   }
 
   private fun canDrawOverlays(a: Activity): Boolean =

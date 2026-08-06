@@ -47,11 +47,21 @@ class RecordTileService : TileService(), CaptureListener {
   private fun render() {
     val tile = qsTile ?: return
     val recording = CaptureController.isRecording
-    tile.state = if (recording) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
+    // The flush after Stop takes up to five seconds, during which isRecording is already false.
+    // Left as INACTIVE the tile read "Tap to record", and a second tap started nothing at all
+    // because CaptureController.start refuses while stopping — a control that lies and then
+    // silently does nothing.
+    val stopping = CaptureController.stopping
+    tile.state = when {
+      stopping -> Tile.STATE_UNAVAILABLE
+      recording -> Tile.STATE_ACTIVE
+      else -> Tile.STATE_INACTIVE
+    }
     tile.label = getString(com.audionotes.R.string.tile_label)
     tile.icon = Icon.createWithResource(this, com.audionotes.R.drawable.ic_notification_rec)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
       tile.subtitle = when {
+        stopping -> getString(com.audionotes.R.string.tile_finishing)
         CaptureController.paused -> getString(com.audionotes.R.string.tile_paused)
         recording -> getString(com.audionotes.R.string.tile_recording)
         else -> getString(com.audionotes.R.string.tile_idle)
@@ -62,12 +72,13 @@ class RecordTileService : TileService(), CaptureListener {
 
   override fun onClick() {
     super.onClick()
+    if (CaptureController.stopping) return // still saving the last one
     if (CaptureController.isRecording) {
       // Allowed from the background, and it must not block the UI thread — stop() waits for the
       // capture service to flush the PCM.
       val app = applicationContext
       Thread { CaptureController.stop(app) }.start()
-      render()
+      render() // paints the UNAVAILABLE "Finishing…" state; onCaptureEnded repaints when done
       return
     }
 

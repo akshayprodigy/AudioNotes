@@ -28,6 +28,7 @@
     <string name="tile_idle">Tap to record</string>
     <string name="tile_recording">Recording</string>
     <string name="tile_paused">Paused</string>
+    <string name="tile_finishing">Finishing…</string>
 
     <string name="notif_action_pause">Pause</string>
     <string name="notif_action_resume">Resume</string>

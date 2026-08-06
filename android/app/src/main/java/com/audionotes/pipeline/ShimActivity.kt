@@ -27,6 +27,15 @@ class ShimActivity : Activity() {
     private const val TAG = "ShimActivity"
   }
 
+  /**
+   * The service start must happen SYNCHRONOUSLY here, before finish().
+   *
+   * The point of this activity is to be foreground at the instant the microphone foreground
+   * service is started. Handing the start to a worker thread and finishing immediately meant the
+   * activity was usually gone by the time the start actually ran — so the app was in the
+   * background again and the very restriction this exists to satisfy was violated. The tile would
+   * appear to do nothing, intermittently, which is the worst way for it to fail.
+   */
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     when (intent?.getStringExtra(EXTRA_ROUTE)) {
@@ -55,11 +64,15 @@ class ShimActivity : Activity() {
       }
       return
     }
-    // Off the main thread: start() writes a row to the encrypted database.
-    val app = applicationContext
-    Thread {
-      val id = CaptureController.start(app)
-      Log.i(TAG, "quick start -> $id")
-    }.start()
+    // On the main thread, deliberately. start() writes one row to an already-open encrypted
+    // database and then calls startForegroundService — a few milliseconds — and that start has to
+    // happen while this activity is still the foreground window. Correctness beats the frame.
+    val id = try {
+      CaptureController.start(applicationContext)
+    } catch (e: Exception) {
+      Log.e(TAG, "quick start failed", e)
+      null
+    }
+    Log.i(TAG, "quick start -> $id")
   }
 }

@@ -341,6 +341,14 @@ class RecordingService : Service(), CaptureListener {
   }
 
   override fun onDestroy() {
+    // FIRST, before anything else can call back into us. Registering in onCreate without ever
+    // unregistering leaked a dead Service per meeting: each one stayed subscribed to the shared
+    // CaptureController and would still respond to a later pause by re-posting its notification —
+    // an ongoing "Recording" belonging to a service that no longer exists, which nothing can
+    // dismiss. Removing before teardown is also what makes the ordering safe, since fanOut
+    // resolves the listener set at delivery time on the main thread.
+    CaptureController.removeListener(this)
+    foregrounded = false
     recording = false
     stopNotificationTicker()
     worker?.join(2000)

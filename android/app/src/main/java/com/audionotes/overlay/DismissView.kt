@@ -47,19 +47,36 @@ class DismissView(context: Context) : View(context) {
   /** Caption copy depends on whether hiding would leave a meeting running. */
   var recording = false
 
-  /** Centre of the pocket in view coordinates, set on layout. */
+  /**
+   * Centre of the pocket.
+   *
+   * Seeded by the service from display metrics BEFORE the view is attached, not left to
+   * onSizeChanged. Layout does not happen until after the first frames of the drag, so a gesture
+   * that began with a flick was measuring its distance against (0, 0) — the top-left corner — and
+   * a bubble parked near the top of the screen armed and dismissed itself immediately.
+   */
   var pocketCx = 0f
     private set
   var pocketCy = 0f
     private set
 
+  fun setPocket(cx: Float, cy: Float) {
+    pocketCx = cx
+    pocketCy = cy
+    invalidate()
+  }
+
+  /** True once the pocket has a real position; until then nothing may arm. */
+  val positioned: Boolean get() = pocketCy > 0f
+
   /** Bottom inset in pixels — the pocket must clear the gesture-nav home strip. */
   var bottomInset = 0f
-    set(v) { field = v; requestLayout(); invalidate() }
+    set(v) { field = v; invalidate() }
 
   val captureRadius: Float get() = d(96f)
 
   override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+    // Layout refines what the service seeded; it never introduces it.
     pocketCx = w / 2f
     pocketCy = h - bottomInset - d(56f)
     scrim = LinearGradient(
