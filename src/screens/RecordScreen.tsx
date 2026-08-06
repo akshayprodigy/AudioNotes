@@ -74,12 +74,21 @@ export default function RecordScreen({ navigation }: Props) {
 
   // Native owns capture state: a meeting can be started from the floating bubble and can outlive
   // the JS context, so re-read on mount and on every resume.
+  //
+  // `onCaptureState` covers the case resume cannot: this screen is already open and visible when
+  // Stop is pressed on the notification or Pause on the bubble. Without it the screen kept
+  // counting a meeting that had already ended.
   useEffect(() => {
     sync();
+    const emitter = new NativeEventEmitter(NativeModules.AudioPipeline);
+    const state = emitter.addListener('onCaptureState', () => sync());
     const sub = AppState.addEventListener('change', a => {
       if (a === 'active') sync();
     });
-    return () => sub.remove();
+    return () => {
+      state.remove();
+      sub.remove();
+    };
   }, [sync]);
 
   useEffect(() => {

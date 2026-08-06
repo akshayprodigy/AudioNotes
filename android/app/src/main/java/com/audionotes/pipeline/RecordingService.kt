@@ -1,7 +1,6 @@
 package com.audionotes.pipeline
 
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
@@ -17,6 +16,10 @@ import android.media.MediaRecorder
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import androidx.core.app.NotificationChannelCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import com.audionotes.R
 import com.audionotes.data.AudioDb
 import java.io.BufferedOutputStream
 import java.io.File
@@ -29,7 +32,7 @@ import kotlin.concurrent.thread
  * chunks — a whole meeting is never held in RAM. On stop it marks the meeting 'captured'
  * with its real duration.
  */
-class RecordingService : Service() {
+class RecordingService : Service(), CaptureListener {
 
   companion object {
     const val EXTRA_MEETING_ID = "meetingId"
@@ -55,8 +58,10 @@ class RecordingService : Service() {
     const val END_DISK_FULL = "disk_full"
     const val END_MIC_LOST = "mic_lost"
 
-    /** Sent by the notification's Stop button. */
+    /** Sent by the notification's buttons. */
     const val ACTION_STOP = "com.audionotes.action.STOP_RECORDING"
+    const val ACTION_PAUSE = "com.audionotes.action.PAUSE_RECORDING"
+    const val ACTION_RESUME = "com.audionotes.action.RESUME_RECORDING"
   }
 
   @Volatile private var recording = false
@@ -78,15 +83,43 @@ class RecordingService : Service() {
   override fun onCreate() {
     super.onCreate()
     createChannel()
+    // The notification is the reason CaptureListener exists, and it was the one surface not
+    // subscribed to it. Pause pressed anywhere but on the notification itself — the Record screen,
+    // the floating bubble — changed the state without repainting the shade, so it went on saying
+    // "recording", with a chronometer counting up, over audio the capture loop was discarding.
+    // It self-healed on the next 60-second tick, which is a long time to be told the wrong thing
+    // by the surface the app calls its consent signal.
+    CaptureController.addListener(this)
   }
 
+  override fun onPausedChanged(paused: Boolean) = refreshNotification()
+  override fun onSilencedChanged(silenced: Boolean) = refreshNotification()
+
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    // Stop button in the notification. Route it through CaptureController (off the main thread,
-    // since stopping blocks until the PCM is flushed) so it behaves exactly like the in-app and
-    // bubble stop paths — one code path, one source of truth for "is a meeting running".
-    if (intent?.action == ACTION_STOP) {
-      Thread { CaptureController.stop(applicationContext) }.start()
-      return START_NOT_STICKY
+    // ---- Control actions ----
+    //
+    // These MUST be handled before the meeting/path guard below: a notification button carries an
+    // action and no extras, so falling through would hit that guard and stopSelf() — the Pause
+    // button would end the meeting.
+    when (intent?.action) {
+      ACTION_STOP -> {
+        // Tear the service down here rather than relying on CaptureController.stop(), which
+        // returns at its first line whenever currentMeetingId is null — exactly the state a
+        // process restart used to leave behind, making this button permanently inert.
+        Thread {
+          CaptureController.stop(applicationContext)
+          stopSelfSafely()
+        }.start()
+        return START_NOT_STICKY
+      }
+      ACTION_PAUSE, ACTION_RESUME -> {
+        val want = intent.action == ACTION_PAUSE
+        if (!CaptureController.applyPause(want)) {
+          Log.w(TAG, "pause=$want ignored (recording=${CaptureController.isRecording}, already=${CaptureController.paused})")
+        }
+        refreshNotification()
+        return START_STICKY
+      }
     }
 
     val id = intent?.getStringExtra(EXTRA_MEETING_ID)
@@ -101,6 +134,10 @@ class RecordingService : Service() {
     }
     meetingId = id
     audioPath = path
+    // Rehydrate the shared state BEFORE the notification is built, or a service restarted by
+    // START_REDELIVER_INTENT runs the microphone while CaptureController still reads "idle" —
+    // which is what made Stop a no-op and let a second session open over this same file.
+    CaptureController.adopt(applicationContext, id, System.currentTimeMillis(), path)
     startInForeground()
     acquireWakeLock()
     if (!recording) startCapture(path)
@@ -237,8 +274,8 @@ class RecordingService : Service() {
           if (nowSilenced != silenced) {
             silenced = nowSilenced
             Log.w(TAG, if (nowSilenced) "capture SILENCED by the system (call or mic taken)" else "capture resumed")
-            CaptureController.silenced = nowSilenced
-            updateNotification()
+            CaptureController.applySilenced(nowSilenced)
+            refreshNotification()
           }
         }
       }
@@ -270,7 +307,7 @@ class RecordingService : Service() {
     audioManager = null
     audioRecord = null
     silenced = false
-    CaptureController.silenced = false
+    CaptureController.applySilenced(false)
   }
 
   // RMS of a PCM16 buffer → 0..1, with a gain and a fast-attack / slow-decay smoothing so the
@@ -327,8 +364,39 @@ class RecordingService : Service() {
     }
     // Release CaptureController.stop() only now — the PCM is flushed and the row is updated,
     // so it is safe for the pipeline to read the file.
-    CaptureController.onCaptureFinished()
+    //
+    // Unconditional, and carrying the reason. Previously this only counted the latch down, so a
+    // capture that ended from mic loss or a full disk (paths that never go through stop()) left
+    // CaptureController believing a meeting was still running: isRecording stayed true forever,
+    // every surface kept sweeping a timer over a dead microphone, and the next start() returned
+    // the corpse's id rather than opening a new session.
+    CaptureController.onCaptureEnded(
+      when (endReason) {
+        END_MIC_LOST -> CaptureController.END_MIC_LOST
+        END_DISK_FULL -> CaptureController.END_WRITE_FAILED
+        else -> CaptureController.END_STOPPED
+      },
+    )
     super.onDestroy()
+  }
+
+  /**
+   * The app was swiped out of Recents.
+   *
+   * Recording deliberately continues: setting the phone down and using other apps is the primary
+   * way this product is used, and a swipe in Recents is how people tidy their task list, not how
+   * they end a meeting. The notification remains as the control, and is re-posted immediately so
+   * it cannot be left showing stale text after the task went away.
+   *
+   * `android:stopWithTask="false"` in the manifest is what makes this method the decision point
+   * rather than a silent kill.
+   */
+  override fun onTaskRemoved(rootIntent: Intent?) {
+    if (CaptureController.isRecording) {
+      Log.i(TAG, "task removed while recording — capture continues, notification is the control")
+      refreshNotification()
+    }
+    super.onTaskRemoved(rootIntent)
   }
 
   override fun onBind(intent: Intent?): IBinder? = null
@@ -340,19 +408,54 @@ class RecordingService : Service() {
     } else {
       startForeground(NOTIF_ID, notif)
     }
+    foregrounded = true
   }
 
+  /**
+   * minSdk is 24, and NotificationChannel is API 26. Constructing it unguarded threw
+   * NoClassDefFoundError on Android 7.x — the very first thing the service does, so the app could
+   * not record at all there. NotificationChannelCompat is a no-op below 26 instead.
+   */
   private fun createChannel() {
-    val mgr = getSystemService(NotificationManager::class.java)
-    val channel = NotificationChannel(CHANNEL_ID, "Recording", NotificationManager.IMPORTANCE_LOW)
-    channel.description = "Shown while AudioNotes is recording a meeting"
-    mgr.createNotificationChannel(channel)
+    val channel = NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_LOW)
+      .setName(getString(R.string.notif_channel_recording))
+      .setDescription(getString(R.string.notif_channel_recording_desc))
+      .setShowBadge(false)
+      .build()
+    NotificationManagerCompat.from(this).createNotificationChannel(channel)
   }
 
-  private fun updateNotification() {
+  /**
+   * Repost the notification — but only while this service is genuinely the live foreground
+   * service.
+   *
+   * notify() with an id whose foreground notification has already been cancelled does not update
+   * anything; it posts a NEW ongoing notification that nothing owns and no lifecycle will ever
+   * remove. A listener callback arriving during teardown, or a stale PendingIntent fired after a
+   * meeting ended, would strand a permanent "AudioNotes — recording" in the shade for a recording
+   * that does not exist.
+   */
+  @Volatile private var foregrounded = false
+
+  private fun refreshNotification() {
+    if (!foregrounded) return
     try {
-      getSystemService(NotificationManager::class.java).notify(NOTIF_ID, buildNotification())
+      NotificationManagerCompat.from(this).notify(NOTIF_ID, buildNotification())
+    } catch (_: Exception) {
+      // POST_NOTIFICATIONS denied. Capture is unaffected; only the control surface is missing.
+    }
+  }
+
+  /**
+   * stopSelf() from a worker thread after the flush has completed. Kept separate so the reason a
+   * stop tears the service down is explicit rather than a side effect of stopService().
+   */
+  private fun stopSelfSafely() {
+    foregrounded = false
+    try {
+      stopForeground(STOP_FOREGROUND_REMOVE)
     } catch (_: Exception) {}
+    stopSelf()
   }
 
   /** Refresh the elapsed time in the notification once a minute while recording. */
@@ -363,7 +466,7 @@ class RecordingService : Service() {
     notifTicker = java.util.Timer("audionotes-notif", true).also {
       it.scheduleAtFixedRate(
         object : java.util.TimerTask() {
-          override fun run() { if (recording) updateNotification() }
+          override fun run() { if (recording) refreshNotification() }
         },
         60_000L, 60_000L,
       )
@@ -375,45 +478,89 @@ class RecordingService : Service() {
     notifTicker = null
   }
 
-  private fun elapsedText(): String {
-    val min = CaptureController.elapsedMs() / 60_000
-    return when {
-      min < 1L -> "less than a minute"
-      min == 1L -> "1 minute"
-      else -> "$min minutes"
-    }
+  /** mm:ss, or h:mm past an hour. */
+  private fun clockText(ms: Long): String {
+    val s = (ms / 1000).coerceAtLeast(0)
+    return if (s < 3600) String.format("%d:%02d", s / 60, s % 60)
+    else String.format("%dh%02d", s / 3600, (s % 3600) / 60)
   }
 
+  private fun serviceIntent(action: String, requestCode: Int): PendingIntent =
+    PendingIntent.getService(
+      this, requestCode,
+      Intent(this, RecordingService::class.java).apply { this.action = action },
+      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+
   /**
-   * The recording notification is the only control the user has while another app is in front and
-   * the bubble is off, so it carries a Stop action and opens the app when tapped. Previously it
-   * was inert text: no way to stop without finding the app again.
+   * The only control that exists when another app is in front and the bubble is off.
+   *
+   * It carries Pause/Resume as well as Stop — the app has had native pause since the capture
+   * rework, and the surface most likely to need it was the one that never offered it.
+   *
+   * The elapsed time is a CHRONOMETER, counted by the system, not text we re-post. The old text
+   * rounded to whole minutes and refreshed on a one-minute timer, so it read "less than a minute"
+   * for the first 59 seconds of every meeting and could sit a minute stale after that. `when` is
+   * anchored to the start of *captured* audio, so paused time never inflates it; while paused the
+   * chronometer is switched off entirely rather than left running over audio nobody is recording.
    */
   private fun buildNotification(): Notification {
+    val paused = CaptureController.paused
     val open = PendingIntent.getActivity(
       this, 0,
       Intent(this, com.audionotes.MainActivity::class.java)
         .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK),
       PendingIntent.FLAG_IMMUTABLE,
     )
-    val stop = PendingIntent.getService(
-      this, 1,
-      Intent(this, RecordingService::class.java).apply { action = ACTION_STOP },
-      PendingIntent.FLAG_IMMUTABLE,
-    )
-    return Notification.Builder(this, CHANNEL_ID)
-      .setContentTitle(if (silenced) "AudioNotes — mic unavailable" else "AudioNotes — recording")
-      .setContentText(
-        if (silenced) "Another app is using the mic; nothing is being captured"
-        else "${elapsedText()} · everything stays on this device",
-      )
-      .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+
+    val title = when {
+      silenced -> getString(R.string.notif_title_silenced)
+      paused -> getString(R.string.notif_title_paused)
+      else -> getString(R.string.notif_title_recording)
+    }
+    val body = when {
+      silenced -> getString(R.string.notif_body_silenced)
+      paused -> getString(R.string.notif_body_paused)
+      else -> getString(R.string.notif_body_recording)
+    }
+
+    val b = NotificationCompat.Builder(this, CHANNEL_ID)
+      .setContentTitle(title)
+      .setContentText(body)
+      .setSmallIcon(R.drawable.ic_notification_rec)
       .setOngoing(true)
-      .setUsesChronometer(false)
+      .setSilent(true)
+      .setCategory(NotificationCompat.CATEGORY_SERVICE)
+      .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+      .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
       .setContentIntent(open)
-      .addAction(
-        Notification.Action.Builder(null as android.graphics.drawable.Icon?, "Stop", stop).build(),
+
+    if (paused || !CaptureController.isRecording) {
+      // No chronometer AND no timestamp. Leaving showWhen on renders `when` as a time of day, so
+      // a meeting paused at 12:04 of captured audio displayed "5:53" — the wall clock — exactly
+      // where the elapsed counter had been. The captured length moves into the body text instead,
+      // where it cannot be mistaken for the time.
+      b.setUsesChronometer(false)
+      b.setShowWhen(false)
+      b.setContentText(
+        if (silenced) body
+        else getString(R.string.notif_body_paused_at, clockText(CaptureController.elapsedMs())),
       )
-      .build()
+    } else {
+      // Wall-clock instant at which this meeting's CAPTURED time would have started had it never
+      // been paused; the system counts up from there.
+      b.setWhen(System.currentTimeMillis() - CaptureController.elapsedMs())
+      b.setUsesChronometer(true)
+      b.setShowWhen(true)
+    }
+
+    if (paused) {
+      b.addAction(0, getString(R.string.notif_action_resume), serviceIntent(ACTION_RESUME, 2))
+    } else {
+      b.addAction(0, getString(R.string.notif_action_pause), serviceIntent(ACTION_PAUSE, 1))
+    }
+    b.addAction(0, getString(R.string.notif_action_stop), serviceIntent(ACTION_STOP, 3))
+
+    return b.build()
   }
 }

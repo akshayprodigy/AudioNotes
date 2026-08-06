@@ -37,16 +37,23 @@
         </intent-filter>
       </activity>
 
-      <!-- Persistent recording indicator + capture run in this foreground service. -->
+      <!-- Persistent recording indicator + capture run in this foreground service.
+
+           stopWithTask="false" is stated explicitly rather than left to the default: swiping the
+           app out of Recents is how people tidy their task list, not how they end a meeting, and
+           the primary way this app is used is with the phone set down and another app in front.
+           RecordingService.onTaskRemoved is then the deliberate decision point. -->
       <service
         android:name=".pipeline.RecordingService"
         android:exported="false"
+        android:stopWithTask="false"
         android:foregroundServiceType="microphone" />
 
       <!-- Floating recorder bubble (drawn over other apps). -->
       <service
         android:name=".pipeline.OverlayService"
         android:exported="false"
+        android:stopWithTask="false"
         android:foregroundServiceType="specialUse">
         <!-- Play requires a justification string for specialUse. This service only draws the
              floating recorder window; the mic is owned by RecordingService (type=microphone). -->

@@ -52,6 +52,12 @@ export const useRecordingStore = create<RecordingState>((set, get) => ({
       await PipelineController.setPaused(next);
       const s = await PipelineController.currentSession();
       set({
+        // Take isRecording from native too. Without it, a meeting that ended while this screen was
+        // open — Stop pressed on the notification, mic lost — left the screen believing it was
+        // still recording while the clock reset to 00:00, which is a worse lie than either state
+        // alone.
+        isRecording: s.isRecording,
+        sessionId: s.meetingId ?? null,
         paused: s.paused,
         elapsedMs: s.elapsedMs,
         startedAt: s.isRecording ? Date.now() - s.elapsedMs : null,

@@ -33,8 +33,20 @@ object ForegroundTracker : Application.ActivityLifecycleCallbacks {
   /** True when we put the bubble up ourselves, so we only take it down again if we did. */
   private var autoShown = false
 
-  /** Set from Settings so a user who dislikes the bubble can turn the behaviour off. */
-  @Volatile var autoFloatEnabled = true
+  /**
+   * The Settings toggle, read from the database rather than held in memory.
+   *
+   * It used to be a plain `var` that defaulted to true and had no writer anywhere — so the switch
+   * it claimed to be "set from Settings" did not exist, and after a process restart an in-memory
+   * flag would have been wrong anyway. Read on each background transition; that happens at most
+   * once per app switch, so the cost is irrelevant next to being correct.
+   */
+  private fun autoFloatEnabled(activity: Activity): Boolean =
+    try {
+      com.audionotes.data.AudioDb.get(activity).getSetting("floatEnabled") != "0"
+    } catch (_: Exception) {
+      true
+    }
 
   val isForeground: Boolean get() = started > 0
 
@@ -60,7 +72,10 @@ object ForegroundTracker : Application.ActivityLifecycleCallbacks {
   override fun onActivityStopped(activity: Activity) {
     started = (started - 1).coerceAtLeast(0)
     if (started > 0) return // just moving between our own activities
-    if (!autoFloatEnabled || !CaptureController.isRecording) return
+    if (!CaptureController.isRecording || !autoFloatEnabled(activity)) return
+    // The user dragged it into the pocket for this meeting. Bringing it straight back on the next
+    // app switch would make the gesture look broken.
+    if (OverlayService.isDismissed()) return
     if (!canDrawOverlays(activity)) {
       // Nothing we can do from the background; the recording continues via the foreground
       // service and its notification, which is still a working (if less convenient) control.

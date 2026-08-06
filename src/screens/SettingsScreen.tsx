@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { NativeEventEmitter, NativeModules, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, AppState, NativeEventEmitter, NativeModules, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import ModelManager from '../native/NativeModelManager';
+import Overlay from '../native/NativeOverlay';
 import { db } from '../db/queries';
 import { PipelineController } from '../pipeline/PipelineController';
 import Icon from '../components/Icon';
@@ -50,6 +51,7 @@ export default function SettingsScreen({ navigation }: Props) {
   const [keepAudio, setKeepAudio] = useState(false);
   const [showNotices, setShowNotices] = useState(false);
   const [empties, setEmpties] = useState(0);
+  const [floatOn, setFloatOn] = useState(false);
 
   const refresh = () => ModelManager.list().then(r => setModels(JSON.parse(r)));
 
@@ -59,13 +61,39 @@ export default function SettingsScreen({ navigation }: Props) {
       .catch(() => {});
   }, []);
 
+  // Re-read on focus, not just on mount: granting the overlay permission takes the user out to a
+  // system screen, so the only reliable moment to learn the answer is when they come back.
+  const syncFloat = useCallback(async () => {
+    const [granted, want] = await Promise.all([
+      Overlay.hasPermission().catch(() => false),
+      db.getSetting('floatEnabled').catch(() => null),
+    ]);
+    setFloatOn(granted && want !== '0');
+    if (granted && want === null) db.setSetting('floatEnabled', '1').catch(() => {});
+  }, []);
+
   useEffect(() => {
     db.getSetting('keepAudio')
       .then(v => setKeepAudio(v === '1'))
       .catch(() => {});
     countEmpties();
-    return navigation.addListener('focus', countEmpties);
-  }, [navigation, countEmpties]);
+    syncFloat();
+    const offFocus = navigation.addListener('focus', () => {
+      countEmpties();
+      syncFloat();
+    });
+    // AppState as well as navigation focus. Granting the overlay permission sends the user to a
+    // SYSTEM settings screen — a different app — so this screen is never unfocused in React
+    // Navigation's terms and 'focus' does not fire on the way back. On focus alone the toggle
+    // stayed off after the user had just granted it, which reads as the switch being broken.
+    const sub = AppState.addEventListener('change', a => {
+      if (a === 'active') syncFloat();
+    });
+    return () => {
+      offFocus();
+      sub.remove();
+    };
+  }, [navigation, countEmpties, syncFloat]);
 
   /**
    * Bulk-delete the mis-taps. Sequential rather than Promise.all: each one cancels native work
@@ -99,6 +127,34 @@ export default function SettingsScreen({ navigation }: Props) {
     );
     return () => sub.remove();
   }, []);
+
+  /**
+   * The permission lives in a system settings screen the user has to visit and come back from, so
+   * this cannot be a plain toggle: we send them there, then re-read on focus (see the listener in
+   * the effect above) rather than assuming they granted it.
+   */
+  const onToggleFloat = async () => {
+    if (floatOn) {
+      setFloatOn(false);
+      await db.setSetting('floatEnabled', '0');
+      Overlay.hide().catch(() => {});
+      return;
+    }
+    if (!(await Overlay.hasPermission().catch(() => false))) {
+      Alert.alert(
+        'Let Pip float on top?',
+        'Android needs permission to draw over other apps. We only ever draw the small recorder ' +
+          'control, and only while a meeting is running.',
+        [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Open settings', onPress: () => Overlay.requestPermission().catch(() => {}) },
+        ],
+      );
+      return;
+    }
+    setFloatOn(true);
+    await db.setSetting('floatEnabled', '1');
+  };
 
   const onToggleKeepAudio = async () => {
     const next = !keepAudio;
@@ -194,6 +250,34 @@ export default function SettingsScreen({ navigation }: Props) {
               </Pop>
             );
           })}
+        </View>
+
+        <View style={st.ruleWrap}>
+          <SectionRule label="WHILE YOU RECORD" />
+        </View>
+        <View style={st.list}>
+          {/* The only route to the "display over other apps" permission.
+              It went missing when the Library was rebuilt — the redesign dropped the old header's
+              Float button and nothing replaced it, so the bubble could never be switched on again
+              on a fresh install and the whole feature was unreachable. */}
+          <Raised
+            edge={colors.line}
+            fill={colors.card}
+            rad={radius.xl}
+            depth={5}
+            onPress={onToggleFloat}>
+            <View style={[st.rowPad, st.row]}>
+              <View style={st.flex}>
+                <Txt variant="bodyStrong">Floating recorder</Txt>
+                <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
+                  {floatOn
+                    ? 'Pip floats on top of other apps while you record, so you can pause or stop without coming back here.'
+                    : 'Show a small floating control on top of other apps while recording. Needs permission to draw over other apps.'}
+                </Txt>
+              </View>
+              <Switch on={floatOn} onToggle={onToggleFloat} />
+            </View>
+          </Raised>
         </View>
 
         <View style={st.ruleWrap}>

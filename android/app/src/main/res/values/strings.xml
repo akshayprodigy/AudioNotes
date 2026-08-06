@@ -1,3 +1,24 @@
 <resources>
     <string name="app_name">AudioNotes</string>
+
+    <!--
+      Recording notification. This is the only control the user has while another app is in front,
+      so the copy has to carry the state on its own: "recording", "paused" and "mic unavailable"
+      must be distinguishable from the shade at a glance, without opening anything.
+    -->
+    <string name="notif_channel_recording">Recording</string>
+    <string name="notif_channel_recording_desc">Shown while AudioNotes is recording a meeting</string>
+
+    <string name="notif_title_recording">AudioNotes — recording</string>
+    <string name="notif_title_paused">AudioNotes — paused</string>
+    <string name="notif_title_silenced">AudioNotes — mic unavailable</string>
+
+    <string name="notif_body_recording">Everything stays on this device</string>
+    <string name="notif_body_paused">Nothing is being captured until you resume</string>
+    <string name="notif_body_paused_at">Paused at %1$s · nothing is being captured</string>
+    <string name="notif_body_silenced">Another app is using the mic; nothing is being captured</string>
+
+    <string name="notif_action_pause">Pause</string>
+    <string name="notif_action_resume">Resume</string>
+    <string name="notif_action_stop">Stop</string>
 </resources>

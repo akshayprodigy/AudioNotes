@@ -33,6 +33,48 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
 
   override fun getName() = "AudioPipeline"
 
+  /**
+   * Tell JS whenever capture state changes from OUTSIDE React.
+   *
+   * The Record screen re-read native state on mount and on app resume, which covers coming back to
+   * a recording started elsewhere — but not the case where the screen is already open and the user
+   * presses Stop on the notification or Pause on the bubble. The screen went on counting a meeting
+   * that had ended, and its next sync reset the clock to 00:00 while the pill still read RECORDING.
+   */
+  private val captureListener = object : CaptureListener {
+    override fun onCaptureStarted(meetingId: String) = emitState()
+    override fun onCaptureEnded(meetingId: String, reason: String) = emitState()
+    override fun onPausedChanged(paused: Boolean) = emitState()
+    override fun onSilencedChanged(silenced: Boolean) = emitState()
+  }
+
+  private fun emitState() {
+    val map = WritableNativeMap().apply {
+      putBoolean("isRecording", CaptureController.isRecording)
+      putString("meetingId", CaptureController.currentMeetingId)
+      putBoolean("paused", CaptureController.paused)
+      putBoolean("silenced", CaptureController.silenced)
+      putDouble("elapsedMs", CaptureController.elapsedMs().toDouble())
+    }
+    try {
+      ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+        .emit("onCaptureState", map)
+    } catch (_: Exception) {
+      // No JS context (the app is backgrounded or torn down). Native state remains the truth and
+      // the screen re-reads it on resume.
+    }
+  }
+
+  init {
+    CaptureController.addListener(captureListener)
+  }
+
+  override fun invalidate() {
+    CaptureController.removeListener(captureListener)
+    stopLevelEmitter()
+    super.invalidate()
+  }
+
   // Push the live mic level to JS ~20x/s while recording, for the animated meter.
   private fun startLevelEmitter() {
     stopLevelEmitter()

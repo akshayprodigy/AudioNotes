@@ -125,6 +125,21 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     db.execSQL("UPDATE meetings SET status=? WHERE id=?", arrayOf<Any?>(status, id))
   }
 
+  /**
+   * Read a user setting from native. The JS layer owns this table, but the capture services run
+   * with no React context — and often with no JS at all, after a process restart — so anything
+   * that changes native behaviour has to be readable from here too.
+   */
+  fun getSetting(key: String): String? {
+    return try {
+      db.rawQuery("SELECT value FROM settings WHERE key=?", arrayOf(key)).use { c ->
+        if (c.moveToFirst()) c.getString(0) else null
+      }
+    } catch (_: Exception) {
+      null
+    }
+  }
+
   fun getAudioPath(id: String): String? {
     db.rawQuery("SELECT audio_path FROM meetings WHERE id=?", arrayOf(id)).use { c ->
       return if (c.moveToFirst()) c.getString(0) else null
