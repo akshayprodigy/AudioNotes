@@ -18,6 +18,10 @@
     <string name="notif_body_paused_at">Paused at %1$s · nothing is being captured</string>
     <string name="notif_body_silenced">Another app is using the mic; nothing is being captured</string>
 
+    <!-- Android 16 status-bar chip. Very short: the system truncates hard. -->
+    <string name="chip_paused">Paused</string>
+    <string name="chip_no_mic">No mic</string>
+
     <!-- Quick Settings tile: the fastest route into a meeting, and the one that still works
          when the user declines the floating bubble's overlay permission. -->
     <string name="tile_label">Record meeting</string>

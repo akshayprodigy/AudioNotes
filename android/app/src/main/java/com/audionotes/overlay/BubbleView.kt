@@ -62,6 +62,23 @@ class BubbleView(context: Context, private val onAction: (Action) -> Unit) : Vie
   var expanded = false
     private set
 
+  private val a11y = BubbleAccessibilityHelper(this) { onAction(it) }
+
+  init {
+    androidx.core.view.ViewCompat.setAccessibilityDelegate(this, a11y)
+  }
+
+  override fun dispatchHoverEvent(event: android.view.MotionEvent): Boolean =
+    a11y.dispatchHoverEvent(event) || super.dispatchHoverEvent(event)
+
+  /** Re-announce the puck when state changes under a screen reader. */
+  fun announceState() {
+    a11y.invalidateVirtualView(
+      BubbleAccessibilityHelper.ID_PUCK,
+      android.view.accessibility.AccessibilityEvent.CONTENT_CHANGE_TYPE_CONTENT_DESCRIPTION,
+    )
+  }
+
   /** Smoothed bar heights 0..1, so the meter falls gently rather than flickering. */
   private val bars = FloatArray(BARS) { 0.18f }
   private var phase = 0f
@@ -285,6 +302,21 @@ class BubbleView(context: Context, private val onAction: (Action) -> Unit) : Vie
   }
 
   fun emit(a: Action) = onAction(a)
+
+  // ---- Bounds for the accessibility node provider, matching exactly what is drawn ----
+
+  fun puckBounds(out: android.graphics.Rect) {
+    val r = d(PUCK) / 2f
+    out.set((puckCx - r).toInt(), (puckCy - r).toInt(), (puckCx + r).toInt(), (puckCy + r).toInt())
+  }
+
+  fun pauseBounds(out: android.graphics.Rect) = buttonBounds(out, buttonCentres().first)
+  fun stopBounds(out: android.graphics.Rect) = buttonBounds(out, buttonCentres().second)
+
+  private fun buttonBounds(out: android.graphics.Rect, c: FloatArray) {
+    val r = d(BTN) / 2f
+    out.set((c[0] - r).toInt(), (c[1] - r).toInt(), (c[0] + r).toInt(), (c[1] + r).toInt())
+  }
 
   private fun dist(x1: Float, y1: Float, x2: Float, y2: Float): Float {
     val dx = x1 - x2

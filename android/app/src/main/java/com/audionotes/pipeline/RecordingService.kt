@@ -561,6 +561,51 @@ class RecordingService : Service(), CaptureListener {
     }
     b.addAction(0, getString(R.string.notif_action_stop), serviceIntent(ACTION_STOP, 3))
 
-    return b.build()
+    applyPromotedOngoing(b, paused, silenced)
+
+    val n = b.build()
+    // Log whether the notification actually qualified. Asking for the promoted treatment does not
+    // guarantee it: the system checks characteristics we can get wrong silently, and without this
+    // the only symptom would be a chip that never appears, with nothing anywhere saying why.
+    if (NotificationManagerCompat.from(this).canPostPromotedNotifications() &&
+      !NotificationCompat.hasPromotableCharacteristics(n)
+    ) {
+      Log.w(TAG, "promoted ongoing requested but the notification does not qualify")
+    }
+    return n
+  }
+
+  /**
+   * Android 16's "live update" treatment: a persistent chip in the status bar and a place on the
+   * lock screen, the same affordance ride-hailing and timer apps use.
+   *
+   * This is the right shape for a recorder — the whole product is about setting the phone down and
+   * forgetting it, and a chip showing the elapsed time is a standing answer to "is it still
+   * going?" that costs no interaction at all.
+   *
+   * The chip text is MINUTE-granular on purpose. The notification is rebuilt once a minute, so
+   * seconds in the chip would be visibly stale between ticks; showing "12m" is a number that is
+   * still true when nobody has repainted it for fifty seconds. The expanded notification keeps the
+   * live chronometer, which the system ticks itself.
+   *
+   * Guarded by canPostPromotedNotifications() rather than a version check: the user can turn the
+   * treatment off per app, and the platform is the only thing that knows.
+   */
+  private fun applyPromotedOngoing(b: NotificationCompat.Builder, paused: Boolean, silenced: Boolean) {
+    if (!NotificationManagerCompat.from(this).canPostPromotedNotifications()) return
+    b.setRequestPromotedOngoing(true)
+    b.setShortCriticalText(
+      when {
+        silenced -> getString(R.string.chip_no_mic)
+        paused -> getString(R.string.chip_paused)
+        else -> shortElapsed(CaptureController.elapsedMs())
+      },
+    )
+  }
+
+  /** "12m" / "1h07" — short enough for a status-bar chip, coarse enough to stay true for a minute. */
+  private fun shortElapsed(ms: Long): String {
+    val min = (ms / 60_000).coerceAtLeast(0)
+    return if (min < 60) "${min}m" else String.format("%dh%02d", min / 60, min % 60)
   }
 }

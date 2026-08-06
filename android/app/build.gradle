@@ -230,7 +230,16 @@ dependencies {
     implementation("com.facebook.react:react-android")
 
     // AudioNotes milestone 1
-    implementation("androidx.core:core-ktx:1.13.1")
+    //
+    // Pinned at 1.17.0, not 1.13.1, and deliberately: the recording notification uses
+    // NotificationCompat.setRequestPromotedOngoing / setShortCriticalText and
+    // NotificationManagerCompat.canPostPromotedNotifications, none of which exist before 1.17.
+    // The build only compiled at 1.13.1 because React Native happened to drag 1.17.0 in
+    // transitively — so a React Native version bump could have silently removed them.
+    implementation("androidx.core:core-ktx:1.17.0")
+    // ExploreByTouchHelper, which is what makes the Canvas-drawn floating bubble reachable by
+    // TalkBack. Declared rather than relied on transitively, for the same reason as core above.
+    implementation("androidx.customview:customview:1.1.0")
     implementation("com.microsoft.onnxruntime:onnxruntime-android:${project.ext.ortVersion}") // Silero VAD (MIT), prefab
     implementation("net.zetetic:sqlcipher-android:4.6.1")                  // encrypted storage
     implementation("androidx.sqlite:sqlite:2.4.0")

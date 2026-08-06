@@ -172,6 +172,16 @@ export default function RecordScreen({ navigation }: Props) {
                   Audio and text never leave this phone. Just make sure everyone in the room is okay
                   with being recorded.
                 </Txt>
+                {/* The background-use disclosure, stated before the first recording rather than
+                    buried in Settings. Play's Permissions policy requires continuous background
+                    microphone use to be disclosed prominently and in-app, and separately from the
+                    OS permission dialog — and it is the honest thing to say anyway, because this
+                    app is designed to be used with the screen off and another app in front. */}
+                <Txt variant="body" color={colors.inkSoft} style={st.consentBody}>
+                  Recording keeps going while the screen is off and while you use other apps, and
+                  can show a small floating control on top of them. You can stop it at any time
+                  from that control or from the notification.
+                </Txt>
                 <View style={st.consentCta}>
                   <Button
                     label="Everyone's in — let's go"
