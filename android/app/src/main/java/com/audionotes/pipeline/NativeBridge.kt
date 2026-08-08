@@ -1,12 +1,37 @@
 package com.audionotes.pipeline
 
+import android.content.Context
+import com.audionotes.data.ModelCatalog
+import java.io.File
+
 /**
  * JNI bridge into the shared C++ core (libaudionotes). Milestone 1 exposes VAD only;
  * ASR / diarization / LLM entry points land in later milestones.
  */
 object NativeBridge {
-  init {
+  @Volatile private var loaded = false
+
+  /**
+   * Load the native core. libonnxruntime.so is NOT packaged in the APK (kept out to keep the
+   * install small — see ModelCatalog "onnxruntime-lib" and app/build.gradle packaging excludes);
+   * ModelManager downloads it to filesDir/models on first run. It is System.load()ed by absolute
+   * path FIRST so libaudionotes.so's DT_NEEDED on libonnxruntime.so, and the RTLD_GLOBAL dlopen in
+   * util/ort_init.cpp, both resolve to this one loaded copy. Idempotent; every caller invokes it
+   * before its first native call.
+   */
+  @Synchronized
+  fun ensureLoaded(context: Context) {
+    if (loaded) return
+    val ort = File(ModelCatalog.modelsDir(context), "libonnxruntime.so")
+    check(ort.exists()) {
+      "libonnxruntime.so not downloaded yet — ModelManager must fetch \"onnxruntime-lib\" first"
+    }
+    // Loading executable code from a writable file draws a W^X warning ("will throw on a future
+    // Android version") — clear the write bit first so the loaded .so is read-only.
+    if (ort.canWrite()) ort.setReadOnly()
+    System.load(ort.absolutePath)
     System.loadLibrary("audionotes")
+    loaded = true
   }
 
   /**

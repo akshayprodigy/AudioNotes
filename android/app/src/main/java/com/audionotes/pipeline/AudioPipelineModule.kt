@@ -155,6 +155,10 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
     cancelled.remove(meetingId) // a fresh run is never pre-cancelled
     Thread {
       try {
+        // Loads libaudionotes.so, first System.load()ing the downloaded libonnxruntime.so it
+        // depends on (kept out of the APK). Throws a clear error if that download is missing,
+        // which the catch below surfaces as a failed run rather than a native crash.
+        NativeBridge.ensureLoaded(ctx)
         val db = AudioDb.get(ctx)
         val audioPath = db.getAudioPath(meetingId)
           ?: throw IllegalStateException("no audio for $meetingId")

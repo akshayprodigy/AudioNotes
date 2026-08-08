@@ -50,6 +50,8 @@ class LlmModule(private val ctx: ReactApplicationContext) :
     }
     Thread {
       try {
+        // Loads libaudionotes.so + its downloaded libonnxruntime.so dependency first.
+        NativeBridge.ensureLoaded(ctx)
         val threads = maxOf(1, Runtime.getRuntime().availableProcessors() / 2)
         val h = NativeBridge.nativeLlmLoad(f.absolutePath, 8192, threads)
         handle = h

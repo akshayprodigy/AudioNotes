@@ -147,7 +147,12 @@ android {
             // onnxruntime-android aligned libonnxruntime.so at 1.20.0 but did not align this one
             // until 1.23. Excluding an unused library beats bumping three more minor versions to
             // fix code we never call.
-            excludes += ['**/libonnxruntime4j_jni.so']
+            //
+            // libonnxruntime.so itself is ALSO kept out of the APK: at 17 MB it was the single
+            // biggest payload, so it downloads on first run instead (ModelCatalog "onnxruntime-lib").
+            // NativeBridge.ensureLoaded() System.load()s it from filesDir before libaudionotes.so,
+            // which satisfies that library's DT_NEEDED and the RTLD_GLOBAL dlopen in ort_init.cpp.
+            excludes += ['**/libonnxruntime4j_jni.so', '**/libonnxruntime.so']
         }
     }
 

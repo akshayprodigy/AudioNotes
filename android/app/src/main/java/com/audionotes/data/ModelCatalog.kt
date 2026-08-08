@@ -79,6 +79,18 @@ data class ModelSpec(
 
 object ModelCatalog {
   val ALL: List<ModelSpec> = listOf(
+    // The ONNX Runtime shared library is not a model, but it rides the same checksum-verified
+    // download path: at 17 MB it was the biggest single thing in the APK, so it is kept out
+    // (app/build.gradle packaging excludes) and fetched on first run. NativeBridge.ensureLoaded()
+    // System.load()s it from filesDir before libaudionotes.so. required=true so first run cannot
+    // finish without it — nothing native can load otherwise.
+    ModelSpec(
+      "onnxruntime-lib", "ONNX Runtime",
+      "Runs the speech models", "The shared inference engine every speech model runs on. Kept out of the app download so the install stays small.",
+      "runtime", true, "libonnxruntime.so",
+      "https://github.com/akshayprodigy/AudioNotes/releases/download/runtime-v1.20.0/libonnxruntime-1.20.0-arm64-v8a.so",
+      "52329b7c8e5fcd5c1aa88b01093215faaef362e3f3d0e374cb8b10d1e4704677", 17_571_160L,
+    ),
     ModelSpec(
       "silero-vad", "Silero VAD",
       "Finds the speech", "Skips the silence, so everything after it only works on real talking.",
