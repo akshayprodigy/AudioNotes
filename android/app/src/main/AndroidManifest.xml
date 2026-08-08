@@ -30,6 +30,8 @@
         android:launchMode="singleTask"
         android:windowSoftInputMode="adjustResize"
         android:screenOrientation="portrait"
+        android:supportsPictureInPicture="true"
+        android:resizeableActivity="true"
         android:exported="true">
         <intent-filter>
             <action android:name="android.intent.action.MAIN" />
@@ -88,6 +90,11 @@
           android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
           android:value="Keeps the floating recorder control visible over other apps while a meeting is being recorded, so the user can see and stop the recording without returning to the app." />
       </service>
+
+      <!-- Routes taps on the PiP window's Pause/Resume/Stop buttons to CaptureController. -->
+      <receiver
+        android:name=".pipeline.PipActionReceiver"
+        android:exported="false" />
 
       <!-- Share exported minutes via a content URI. -->
       <provider
