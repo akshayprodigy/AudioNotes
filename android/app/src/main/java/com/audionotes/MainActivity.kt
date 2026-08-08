@@ -49,11 +49,15 @@ class MainActivity : ReactActivity() {
   private fun reactInstanceManagerBridgeless(): ReactContext? =
     (application as com.facebook.react.ReactApplication).reactHost?.currentReactContext
 
-  /** System Back that would exit the app -> float into PiP instead while recording. */
-  @Deprecated("Deprecated in Java")
-  override fun onBackPressed() {
-    if (isTaskRoot && PipController.enterIfRecording(this)) return
-    @Suppress("DEPRECATION") super.onBackPressed()
+  /**
+   * A Back press that would actually leave the app -> float into PiP instead while recording.
+   *
+   * RN calls this only after JS (React Navigation) has declined the back press, so in-app back
+   * still works normally; this fires only when the app would otherwise exit.
+   */
+  override fun invokeDefaultOnBackPressed() {
+    if (PipController.enterIfRecording(this)) return
+    super.invokeDefaultOnBackPressed()
   }
 
   companion object {

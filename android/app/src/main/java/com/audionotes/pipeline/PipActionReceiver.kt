@@ -14,15 +14,26 @@ import com.audionotes.MainActivity
 class PipActionReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     when (intent.action) {
-      ACTION_PAUSE -> CaptureController.applyPause(true)
-      ACTION_RESUME -> CaptureController.applyPause(false)
-      ACTION_STOP -> {
-        try { CaptureController.stop(context) } catch (e: Exception) { Log.e(TAG, "stop failed", e) }
+      ACTION_PAUSE -> {
+        CaptureController.applyPause(true)
+        // Swap the icon (Pause -> Resume) while still in PiP.
+        MainActivity.current?.let { PipController.updateParams(it) }
       }
-    }
-    // Swap the icon (Pause<->Resume). STOP ends capture, which takes the activity out of PiP anyway.
-    (context.applicationContext as? android.app.Application)?.let {
-      MainActivity.current?.let { a -> PipController.updateParams(a) }
+      ACTION_RESUME -> {
+        CaptureController.applyPause(false)
+        MainActivity.current?.let { PipController.updateParams(it) }
+      }
+      ACTION_STOP -> {
+        // stop() blocks up to 5s waiting for the flush and must not run on the main thread.
+        // goAsync keeps the broadcast alive while a worker thread does it. STOP ends capture,
+        // which takes the activity out of PiP, so there is nothing to refresh afterwards.
+        val result = goAsync()
+        Thread {
+          try { CaptureController.stop(context.applicationContext) }
+          catch (e: Exception) { Log.e(TAG, "stop failed", e) }
+          finally { result.finish() }
+        }.start()
+      }
     }
   }
 

@@ -29,13 +29,14 @@ object PipController {
     val paused = CaptureController.paused
     val toggle = RemoteAction(
       Icon.createWithResource(activity, if (paused) R.drawable.ic_pip_resume else R.drawable.ic_pip_pause),
-      if (paused) "Resume" else "Pause",
-      if (paused) "Resume recording" else "Pause recording",
+      activity.getString(if (paused) R.string.pip_action_resume else R.string.pip_action_pause),
+      activity.getString(if (paused) R.string.pip_action_resume_desc else R.string.pip_action_pause_desc),
       pending(activity, REQ_PAUSE, if (paused) PipActionReceiver.ACTION_RESUME else PipActionReceiver.ACTION_PAUSE),
     )
     val stop = RemoteAction(
       Icon.createWithResource(activity, R.drawable.ic_pip_stop),
-      "Stop", "Stop recording",
+      activity.getString(R.string.pip_action_stop),
+      activity.getString(R.string.pip_action_stop_desc),
       pending(activity, REQ_STOP, PipActionReceiver.ACTION_STOP),
     )
     return PictureInPictureParams.Builder()
@@ -62,7 +63,7 @@ object PipController {
   private fun pending(activity: Activity, req: Int, action: String): PendingIntent =
     PendingIntent.getBroadcast(
       activity, req,
-      Intent(action).setPackage(activity.packageName),
+      Intent(activity, PipActionReceiver::class.java).setAction(action),
       PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 }

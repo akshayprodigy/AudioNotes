@@ -33,4 +33,12 @@
     <string name="notif_action_pause">Pause</string>
     <string name="notif_action_resume">Resume</string>
     <string name="notif_action_stop">Stop</string>
+
+    <!-- Picture-in-Picture window action buttons: short title + a fuller content description. -->
+    <string name="pip_action_pause">Pause</string>
+    <string name="pip_action_pause_desc">Pause recording</string>
+    <string name="pip_action_resume">Resume</string>
+    <string name="pip_action_resume_desc">Resume recording</string>
+    <string name="pip_action_stop">Stop</string>
+    <string name="pip_action_stop_desc">Stop recording</string>
 </resources>
