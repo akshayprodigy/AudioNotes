@@ -8,6 +8,7 @@ import { PipelineController } from '../pipeline/PipelineController';
 import { db } from '../db/queries';
 import Icon from '../components/Icon';
 import Mascot from '../components/Mascot';
+import RecordingBar from '../components/RecordingBar';
 import { confirmDestructive, quoted } from '../components/confirm';
 import {
   Badge,
@@ -506,6 +507,15 @@ export default function LibraryScreen({ navigation }: Props) {
         onClose={() => setSheetFor(null)}
       />
 
+      {/* Sits just above the Record dock while a meeting is recording: tap to jump back into the
+          recorder, ■ to stop. Returns null when idle, so this wrapper is empty the rest of the
+          time (box-none lets touches through to the list below). */}
+      <View
+        style={[st.barWrap, { bottom: Math.max(insets.bottom, s(10)) + s(16) + s(72) }]}
+        pointerEvents="box-none">
+        <RecordingBar navigation={navigation} />
+      </View>
+
       <View style={[st.fabWrap, { bottom: Math.max(insets.bottom, s(10)) + s(16) }]} pointerEvents="box-none">
         {/* The ring is absolutely positioned against THIS box, which shrinks to the button. Hung
             off the outer wrapper instead it inherits its left:0/right:0 and paints a full-width
@@ -607,6 +617,7 @@ function makeStyles(c: Colors) {
       justifyContent: 'center',
     },
 
+    barWrap: { position: 'absolute', left: 0, right: 0 },
     fabWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
     fab: { flexDirection: 'row', alignItems: 'center', gap: s(10), paddingHorizontal: s(30), paddingVertical: s(17) },
   });
