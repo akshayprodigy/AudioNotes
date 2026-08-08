@@ -4,6 +4,8 @@ import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { font, useTheme } from '../theme';
 import { db } from '../db/queries';
+import { usePipMode } from '../hooks/usePipMode';
+import PipRecorder from '../components/PipRecorder';
 import Mascot from '../components/Mascot';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import RecordScreen from '../screens/RecordScreen';
@@ -29,6 +31,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootNavigator() {
   const { colors } = useTheme();
+  const inPip = usePipMode();
   const [initial, setInitial] = useState<keyof RootStackParamList | null>(null);
 
   useEffect(() => {
@@ -75,30 +78,38 @@ export default function RootNavigator() {
     );
   }
 
+  // In the PiP window the compact recorder REPLACES the whole navigator: the window is a fraction
+  // of the screen, and native PiP action buttons (Pause/Stop) drive capture, so the full app UI
+  // has nothing to do there. The StatusBar stays so the (invisible-in-PiP) bar keeps its style
+  // when the app is restored to full screen.
   return (
     <>
       <StatusBar barStyle="dark-content" backgroundColor={colors.canvas} />
-      <NavigationContainer theme={navTheme}>
-        <Stack.Navigator initialRouteName={initial} screenOptions={screenOptions}>
-          <Stack.Screen
-            name="Onboarding"
-            component={OnboardingScreen}
-            options={{ headerShown: false }}
-          />
-          {/* Library, Record and Meeting each draw their own header — a large title, a status
-              bar, a meeting name — so the stack header would only duplicate them. They handle
-              their own safe-area inset accordingly. */}
-          <Stack.Screen name="Library" component={LibraryScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="Record" component={RecordScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="Meeting" component={MeetingScreen} options={{ headerShown: false }} />
-          {/* Every screen draws its own header — a back chip plus a title, matching the design —
-              so the stack header is off everywhere and each screen owns its safe-area inset. */}
-          <Stack.Screen name="Speakers" component={SpeakersScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="Search" component={SearchScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="Archive" component={ArchiveScreen} options={{ headerShown: false }} />
-        </Stack.Navigator>
-      </NavigationContainer>
+      {inPip ? (
+        <PipRecorder />
+      ) : (
+        <NavigationContainer theme={navTheme}>
+          <Stack.Navigator initialRouteName={initial} screenOptions={screenOptions}>
+            <Stack.Screen
+              name="Onboarding"
+              component={OnboardingScreen}
+              options={{ headerShown: false }}
+            />
+            {/* Library, Record and Meeting each draw their own header — a large title, a status
+                bar, a meeting name — so the stack header would only duplicate them. They handle
+                their own safe-area inset accordingly. */}
+            <Stack.Screen name="Library" component={LibraryScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Record" component={RecordScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Meeting" component={MeetingScreen} options={{ headerShown: false }} />
+            {/* Every screen draws its own header — a back chip plus a title, matching the design —
+                so the stack header is off everywhere and each screen owns its safe-area inset. */}
+            <Stack.Screen name="Speakers" component={SpeakersScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Search" component={SearchScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Archive" component={ArchiveScreen} options={{ headerShown: false }} />
+          </Stack.Navigator>
+        </NavigationContainer>
+      )}
     </>
   );
 }
