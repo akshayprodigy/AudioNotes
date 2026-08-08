@@ -17,7 +17,7 @@ class AudioPipelinePackage : ReactPackage {
       ModelManagerModule(ctx),
       LlmModule(ctx),
       FileExportModule(ctx),
-      OverlayModule(ctx),
+      PipModule(ctx),
     )
 
   override fun createViewManagers(ctx: ReactApplicationContext): List<ViewManager<*, *>> =

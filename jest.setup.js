@@ -58,6 +58,11 @@ const mockNativeModules = {
     hide: jest.fn(async () => {}),
     isRecording: jest.fn(async () => false),
   },
+  Pip: {
+    isSupported: jest.fn(async () => false),
+    addListener: jest.fn(),
+    removeListeners: jest.fn(),
+  },
 };
 
 // Intercept only OUR modules; everything else (PlatformConstants, DeviceInfo, …)
