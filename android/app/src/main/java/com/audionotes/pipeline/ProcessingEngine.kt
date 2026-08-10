@@ -113,6 +113,7 @@ class ProcessingEngine(
 
       // ---- Diarization (sherpa-onnx), if the models are installed and we have a transcript ----
       if (Stage.DIARIZE in remaining) {
+        if (checkCancelled()) return
         val segModel = ModelCatalog.fileFor(ctx, "diar-seg")
         val embModel = ModelCatalog.fileFor(ctx, "diar-emb")
         if (transcribed && segModel != null && segModel.exists() && embModel != null && embModel.exists()) {

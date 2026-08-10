@@ -157,14 +157,17 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
   fun process(meetingId: String, options: ReadableMap, promise: Promise) {
     cancelled.remove(meetingId) // a fresh run is never pre-cancelled
     val model = if (options.hasKey("model")) options.getString("model") ?: "base" else "base"
+    // Constructed and registered synchronously, before the thread starts: a cancel() arriving
+    // between process() returning and the thread actually running must still find the engine in
+    // the map, or it silently no-ops against a meeting that looks like it's still processing.
+    val engine = ProcessingEngine(ctx, meetingId, model, object : ProcessingEngine.Listener {
+      override fun onStage(stage: String, done: Int, total: Int) = emitProgress(meetingId, stage, done, total)
+      override fun onComplete(outcome: String, message: String?) {
+        if (outcome == "error") emitComplete(meetingId, "error", message ?: "") else emitComplete(meetingId, outcome)
+      }
+    })
+    engines[meetingId] = engine
     Thread {
-      val engine = ProcessingEngine(ctx, meetingId, model, object : ProcessingEngine.Listener {
-        override fun onStage(stage: String, done: Int, total: Int) = emitProgress(meetingId, stage, done, total)
-        override fun onComplete(outcome: String, message: String?) {
-          if (outcome == "error") emitComplete(meetingId, "error", message ?: "") else emitComplete(meetingId, outcome)
-        }
-      })
-      engines[meetingId] = engine
       try {
         engine.run()
         promise.resolve(null)
@@ -233,10 +236,10 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
    * Cooperatively cancel a running pipeline.
    *
    * The native stages (VAD/ASR/diarize) are long single JNI calls that cannot be interrupted
-   * part-way, so this marks the meeting cancelled and process() checks between stages. A cancel
-   * therefore takes effect at the next stage boundary rather than instantly — which is the right
-   * trade: killing a thread mid-inference would leak the model and could corrupt the transcript
-   * write. The audio and any completed stages are kept, so Reprocess can resume later.
+   * part-way, so this marks the meeting cancelled and ProcessingEngine checks between stages. A
+   * cancel therefore takes effect at the next stage boundary rather than instantly — which is the
+   * right trade: killing a thread mid-inference would leak the model and could corrupt the
+   * transcript write. The audio and any completed stages are kept, so Reprocess can resume later.
    */
   @ReactMethod
   fun cancel(meetingId: String) {
