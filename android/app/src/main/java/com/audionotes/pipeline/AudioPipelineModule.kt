@@ -31,6 +31,9 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
   /** Meetings for which cancel() was requested; checked at each pipeline stage boundary. */
   private val cancelled = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
+  /** The in-flight engine for each meeting currently processing, so cancel() can reach it directly. */
+  private val engines = java.util.concurrent.ConcurrentHashMap<String, ProcessingEngine>()
+
   override fun getName() = "AudioPipeline"
 
   /**
@@ -153,111 +156,22 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
   @ReactMethod
   fun process(meetingId: String, options: ReadableMap, promise: Promise) {
     cancelled.remove(meetingId) // a fresh run is never pre-cancelled
+    val model = if (options.hasKey("model")) options.getString("model") ?: "base" else "base"
     Thread {
+      val engine = ProcessingEngine(ctx, meetingId, model, object : ProcessingEngine.Listener {
+        override fun onStage(stage: String, done: Int, total: Int) = emitProgress(meetingId, stage, done, total)
+        override fun onComplete(outcome: String, message: String?) {
+          if (outcome == "error") emitComplete(meetingId, "error", message ?: "") else emitComplete(meetingId, outcome)
+        }
+      })
+      engines[meetingId] = engine
       try {
-        // Loads libaudionotes.so, first System.load()ing the downloaded libonnxruntime.so it
-        // depends on (kept out of the APK). Throws a clear error if that download is missing,
-        // which the catch below surfaces as a failed run rather than a native crash.
-        NativeBridge.ensureLoaded(ctx)
-        val db = AudioDb.get(ctx)
-        val audioPath = db.getAudioPath(meetingId)
-          ?: throw IllegalStateException("no audio for $meetingId")
-
-        // Retention deletes the recording once it has been transcribed, so a re-run can arrive
-        // with a path that no longer resolves. VAD over a missing file returns nothing, and the
-        // old code committed that nothing — replaceSegments wiped the spans of a meeting that
-        // still had a perfectly good transcript, leaving it reading "0 segments, 0s of speech".
-        // With no audio there is nothing to re-derive, so leave the stored results alone and let
-        // the caller rebuild the minutes from the transcript it already has.
-        if (!java.io.File(audioPath).exists()) {
-          Log.i("AudioPipeline", "re-run skipped for $meetingId (audio deleted by retention)")
-          promise.resolve(null)
-          return@Thread
-        }
-        val modelPath = ensureVadModel()
-
-        // Per-stage wall times, logged against the audio length so the numbers are comparable
-        // between recordings and against DiarEmbeddingBench. Without these the only timing signal
-        // was the gap between two log lines, which attributes queueing and DB writes to whichever
-        // stage happened to log next — enough to make a stage look 10x slower than it measures in
-        // isolation.
-        val audioMs = java.io.File(audioPath).length() / 32
-        fun stageDone(stage: String, startedAt: Long) {
-          val ms = System.currentTimeMillis() - startedAt
-          val rt = if (audioMs > 0) ms.toDouble() / audioMs else 0.0
-          Log.i("AudioPipeline", "stage=%s %dms (%.2fx realtime) audio=%ds %s"
-            .format(stage, ms, rt, audioMs / 1000, meetingId))
-        }
-
-        emitProgress(meetingId, "vad", 0, 1)
-        var t0 = System.currentTimeMillis()
-        val segments = NativeBridge.nativeVad(audioPath, modelPath, RecordingService.SAMPLE_RATE)
-        stageDone("vad", t0)
-        db.replaceSegments(meetingId, segments)
-        db.setStatus(meetingId, "vad")
-        emitProgress(meetingId, "vad", 1, 1)
-        Log.i("AudioPipeline", "VAD produced ${segments.size / 2} speech segments for $meetingId")
-        if (checkCancelled(meetingId)) { promise.resolve(null); return@Thread }
-
-        // ---- ASR (whisper.cpp) over the VAD spans, if the chosen model is installed ----
-        val modelName = if (options.hasKey("model")) options.getString("model") ?: "base" else "base"
-        val asrFile = com.audionotes.data.ModelCatalog.fileFor(ctx, com.audionotes.data.ModelCatalog.asrIdForModel(modelName))
-        var transcribed = false
-        if (segments.isNotEmpty() && asrFile != null && asrFile.exists()) {
-          emitProgress(meetingId, "asr", 0, 1)
-          val n = segments.size / 2
-          val starts = LongArray(n) { segments[it * 2] }
-          val ends = LongArray(n) { segments[it * 2 + 1] }
-          t0 = System.currentTimeMillis()
-          val json = NativeBridge.nativeTranscribe(
-            audioPath, asrFile.absolutePath, RecordingService.SAMPLE_RATE, starts, ends, 0,
-          )
-          stageDone("asr", t0)
-          val count = db.replaceUtterancesJson(meetingId, json)
-          db.setStatus(meetingId, "asr")
-          emitProgress(meetingId, "asr", 1, 1)
-          transcribed = count > 0
-          Log.i("AudioPipeline", "ASR produced $count utterances for $meetingId")
-          if (checkCancelled(meetingId)) { promise.resolve(null); return@Thread }
-        } else {
-          // Two very different reasons to land here; saying "no model" for both sent me hunting
-          // for a missing file when the real answer was that the recording had no speech in it.
-          val why = if (segments.isEmpty()) "no speech detected" else "whisper model not installed"
-          Log.i("AudioPipeline", "ASR skipped for $meetingId ($why)")
-        }
-
-        // ---- Diarization (sherpa-onnx), if the models are installed and we have a transcript ----
-        val segModel = com.audionotes.data.ModelCatalog.fileFor(ctx, "diar-seg")
-        val embModel = com.audionotes.data.ModelCatalog.fileFor(ctx, "diar-emb")
-        if (transcribed && segModel != null && segModel.exists() && embModel != null && embModel.exists()) {
-          emitProgress(meetingId, "diarize", 0, 1)
-          t0 = System.currentTimeMillis()
-          val tri = NativeBridge.nativeDiarize(
-            audioPath, segModel.absolutePath, embModel.absolutePath, RecordingService.SAMPLE_RATE, 0,
-          )
-          stageDone("diarize", t0)
-          val m = tri.size / 3
-          if (m > 0) {
-            val ds = LongArray(m) { tri[it * 3] }
-            val de = LongArray(m) { tri[it * 3 + 1] }
-            val sp = IntArray(m) { tri[it * 3 + 2].toInt() }
-            db.assignSpeakers(meetingId, ds, de, sp)
-            db.setStatus(meetingId, "diarized")
-          }
-          emitProgress(meetingId, "diarize", 1, 1)
-          Log.i("AudioPipeline", "Diarization produced $m segments for $meetingId")
-        } else if (transcribed) {
-          Log.i("AudioPipeline", "Diarization skipped for $meetingId (no diar models installed yet)")
-        }
-
-        emitComplete(meetingId, "done")
+        engine.run()
         promise.resolve(null)
       } catch (e: Exception) {
-        Log.e("AudioPipeline", "process failed", e)
-        try { AudioDb.get(ctx).setStatus(meetingId, "error") } catch (_: Exception) {}
-        emitComplete(meetingId, "error", e.message ?: e.toString())
         promise.reject("process_failed", e)
       } finally {
+        engines.remove(meetingId)
         cancelled.remove(meetingId)
       }
     }.start()
@@ -327,6 +241,7 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
   @ReactMethod
   fun cancel(meetingId: String) {
     cancelled.add(meetingId)
+    engines[meetingId]?.cancelled = true
     Log.i("AudioPipeline", "cancel requested for $meetingId (applies at the next stage boundary)")
   }
 
@@ -376,24 +291,6 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
 
   @ReactMethod fun addListener(eventName: String) {}
   @ReactMethod fun removeListeners(count: Double) {}
-
-  /** Resolve the Silero VAD model, copying it out of assets on first use if bundled there. */
-  private fun ensureVadModel(): String {
-    val modelsDir = File(ctx.filesDir, "models").apply { mkdirs() }
-    val model = File(modelsDir, "silero_vad.onnx")
-    if (model.exists()) return model.absolutePath
-    // Optional: bundle the ~1MB MIT model in android/app/src/main/assets/ for offline first-run.
-    try {
-      ctx.assets.open("silero_vad.onnx").use { input ->
-        model.outputStream().use { input.copyTo(it) }
-      }
-      return model.absolutePath
-    } catch (_: Exception) {
-      throw IllegalStateException(
-        "silero_vad.onnx not found — place it in assets/ or have ModelManager download it (milestone 2)",
-      )
-    }
-  }
 
   /**
    * Terminal event for a pipeline run. The JS layer previously had no way to learn that

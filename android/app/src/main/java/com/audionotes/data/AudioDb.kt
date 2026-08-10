@@ -327,6 +327,26 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     }
   }
 
+  /**
+   * Read back persisted VAD segments in the same flat `[start0,end0,start1,end1,...]` shape
+   * `NativeBridge.nativeVad` returns (ms), ordered by start_ms — mirrors the JS-side
+   * `db.segments()` query in src/db/queries.ts. Lets ASR resume from a prior session's VAD
+   * output when the VAD stage itself is skipped (see ResumePlan / ProcessingEngine).
+   */
+  fun segments(meetingId: String): LongArray {
+    val out = ArrayList<Long>()
+    db.rawQuery(
+      "SELECT start_ms, end_ms FROM segments WHERE meeting_id=? ORDER BY start_ms",
+      arrayOf(meetingId),
+    ).use { c ->
+      while (c.moveToNext()) {
+        out.add(c.getLong(0))
+        out.add(c.getLong(1))
+      }
+    }
+    return out.toLongArray()
+  }
+
   companion object {
     @Volatile private var instance: AudioDb? = null
 
