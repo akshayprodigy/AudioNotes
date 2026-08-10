@@ -57,6 +57,14 @@ class PipContentView(context: Context) : View(context) {
   private val startNanos = System.nanoTime()
   private fun seconds(): Float = (System.nanoTime() - startNanos) / 1_000_000_000f
 
+  init {
+    // Purely decorative: never take touch or focus, so nothing here can interfere with the
+    // system's tap-to-reveal PiP controls (Pause/Stop/close).
+    isClickable = false
+    isFocusable = false
+    isFocusableInTouchMode = false
+  }
+
   override fun onDraw(canvas: Canvas) {
     val w = width.toFloat()
     val h = height.toFloat()
@@ -84,8 +92,10 @@ class PipContentView(context: Context) : View(context) {
 
     drawClock(canvas, w * 0.5f, h * 0.85f, h, paused)
 
-    // Animate only while capturing; otherwise the view is static and cheap.
-    if (recording) postInvalidateOnAnimation()
+    // Animate only while capturing, and throttled to ~20fps rather than every vsync frame:
+    // continuously invalidating hammered the compositor and could keep the PiP surface "busy"
+    // enough to swallow the system's tap-to-reveal controls. 20fps keeps the wave alive cheaply.
+    if (recording) postInvalidateDelayed(50L)
   }
 
   /** Pip, transcribed from Mascot.tsx's SVG (viewBox 120), scaled around its visual centre (60,62). */

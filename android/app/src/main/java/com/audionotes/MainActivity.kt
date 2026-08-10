@@ -55,6 +55,9 @@ class MainActivity : ReactActivity() {
       ),
     )
     pipView = v
+    // Re-assert the PiP action buttons (Pause/Stop) now that we're in PiP, so they stay attached
+    // to the window regardless of how it was entered.
+    PipController.updateParams(this)
   }
 
   private fun hidePipContent() {
