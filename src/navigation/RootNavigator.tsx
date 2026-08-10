@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, StatusBar, View } from 'react-native';
+import { StatusBar, StyleSheet, View } from 'react-native';
 import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { font, useTheme } from '../theme';
@@ -78,17 +78,29 @@ export default function RootNavigator() {
     );
   }
 
-  // In the PiP window the compact recorder is shown via a Modal, not by unmounting or overlaying
-  // the navigator. react-native-screens keeps each native-stack screen attached in a native
-  // container that outranks sibling RN views AND survives long enough that even unmounting the
-  // navigator left the last screen showing in the PiP surface. A Modal renders in its own native
-  // window that sits above the screens, so it reliably wins — and it lets the NavigationContainer
-  // stay mounted, preserving the nav stack and each screen's state when PiP is dismissed.
+  // Showing the compact recorder in the PiP window is the awkward part. The Android PiP surface
+  // only captures the activity's MAIN window, and react-native-screens renders each native-stack
+  // screen in a native container that owns that window — so a sibling overlay, a full replace of
+  // the navigator, and even a Modal (its own window, not captured) all left the last screen showing
+  // in the PiP pane. The fix: render PipRecorder through the navigator's `layout`, which wraps EACH
+  // screen's content. That puts the overlay INSIDE the displayed native screen (not beside it), so
+  // it's part of the captured window and wins. The navigator stays mounted, preserving nav state.
+  const pipLayout = ({ children }: { children: React.ReactNode }) => (
+    <View style={styles.fill}>
+      {children}
+      {inPip ? (
+        <View style={StyleSheet.absoluteFill}>
+          <PipRecorder />
+        </View>
+      ) : null}
+    </View>
+  );
+
   return (
     <>
       <StatusBar barStyle="dark-content" backgroundColor={colors.canvas} />
       <NavigationContainer theme={navTheme}>
-        <Stack.Navigator initialRouteName={initial} screenOptions={screenOptions}>
+        <Stack.Navigator initialRouteName={initial} screenOptions={screenOptions} layout={pipLayout}>
           <Stack.Screen
             name="Onboarding"
             component={OnboardingScreen}
@@ -108,9 +120,8 @@ export default function RootNavigator() {
           <Stack.Screen name="Archive" component={ArchiveScreen} options={{ headerShown: false }} />
         </Stack.Navigator>
       </NavigationContainer>
-      <Modal visible={inPip} animationType="none" transparent={false} onRequestClose={() => {}}>
-        <PipRecorder />
-      </Modal>
     </>
   );
 }
+
+const styles = StyleSheet.create({ fill: { flex: 1 } });
