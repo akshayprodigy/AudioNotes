@@ -15,9 +15,6 @@ import android.util.Log
  * Launching this first makes the app momentarily foreground, which makes the service start legal.
  * It finishes immediately, draws nothing, and is excluded from Recents, so the user sees the
  * Quick Settings panel collapse and a recording begin — no app, no flash of UI.
- *
- * [ForegroundTracker] deliberately ignores this activity. Counting it as "the app came to the
- * foreground" would tear down the floating bubble every time the tile was used.
  */
 class ShimActivity : Activity() {
 

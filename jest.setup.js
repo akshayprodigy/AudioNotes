@@ -51,13 +51,6 @@ const mockNativeModules = {
     generate: jest.fn(async () => ''),
     unload: jest.fn(async () => {}),
   },
-  Overlay: {
-    hasPermission: jest.fn(async () => false),
-    requestPermission: jest.fn(async () => {}),
-    show: jest.fn(async () => {}),
-    hide: jest.fn(async () => {}),
-    isRecording: jest.fn(async () => false),
-  },
   Pip: {
     isSupported: jest.fn(async () => false),
     addListener: jest.fn(),

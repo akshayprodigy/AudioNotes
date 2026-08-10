@@ -17,8 +17,8 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
- * Shared capture state + control, used by BOTH the RN module (AudioPipelineModule) and the floating
- * overlay (OverlayService) so recording behaves identically no matter how it was started. Keeps a
+ * Shared capture state + control, used by the RN module (AudioPipelineModule), the Quick Settings
+ * tile and the notification, so recording behaves identically no matter how it was started. Keeps a
  * single source of truth for "are we recording, which meeting, since when".
  *
  * Two things make this more than a bag of `@Volatile` fields.
