@@ -29,14 +29,12 @@ class PipContentView(context: Context) : View(context) {
 
   // Light palette (the app forces light chrome). Kept in sync with src/theme/palette.ts.
   private val cCanvas = Color.parseColor("#F5F7FA")
-  private val cCard = Color.parseColor("#FFFFFF")
   private val cPrimary = Color.parseColor("#4A56D2")
   private val cPrimaryEdge = Color.parseColor("#3A45B4")
   private val cDanger = Color.parseColor("#E9575A")
   private val cDangerLight = Color.parseColor("#F0696C")
   private val cDangerEdge = Color.parseColor("#C6474A")
   private val cInk = Color.parseColor("#16192C")
-  private val cInkSoft = Color.parseColor("#6B7185")
   private val cInkFaint = Color.parseColor("#A2A8BC")
   private val cInkDim = Color.parseColor("#8A90A6")
   private val cMuteEdge = Color.parseColor("#7C84A6")
@@ -85,7 +83,6 @@ class PipContentView(context: Context) : View(context) {
     drawMic(canvas, startX + mascotSize + gap + micR, rowCy, micR, level, active, paused, t)
 
     drawClock(canvas, w * 0.5f, h * 0.85f, h, paused)
-    drawClose(canvas, w - h * 0.11f, h * 0.11f, h * 0.062f)
 
     // Animate only while capturing; otherwise the view is static and cheap.
     if (recording) postInvalidateOnAnimation()
@@ -201,14 +198,5 @@ class PipContentView(context: Context) : View(context) {
     canvas.drawCircle(left + dotR, cy, dotR, fill)
     val fm = text.fontMetrics
     canvas.drawText(label, left + dotR * 2f + gap, cy - (fm.ascent + fm.descent) / 2f, text)
-  }
-
-  private fun drawClose(canvas: Canvas, cx: Float, cy: Float, r: Float) {
-    fill.color = cCard
-    canvas.drawCircle(cx, cy, r, fill)
-    stroke.color = cInkSoft; stroke.strokeWidth = r * 0.22f
-    val a = r * 0.42f
-    canvas.drawLine(cx - a, cy - a, cx + a, cy + a, stroke)
-    canvas.drawLine(cx + a, cy - a, cx - a, cy + a, stroke)
   }
 }
