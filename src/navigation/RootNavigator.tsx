@@ -1,11 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { StatusBar, StyleSheet, View } from 'react-native';
+import { StatusBar, View } from 'react-native';
 import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { font, useTheme } from '../theme';
 import { db } from '../db/queries';
-import { usePipMode } from '../hooks/usePipMode';
-import PipRecorder from '../components/PipRecorder';
 import Mascot from '../components/Mascot';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import RecordScreen from '../screens/RecordScreen';
@@ -31,7 +29,6 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootNavigator() {
   const { colors } = useTheme();
-  const inPip = usePipMode();
   const [initial, setInitial] = useState<keyof RootStackParamList | null>(null);
 
   useEffect(() => {
@@ -78,29 +75,15 @@ export default function RootNavigator() {
     );
   }
 
-  // Showing the compact recorder in the PiP window is the awkward part. The Android PiP surface
-  // only captures the activity's MAIN window, and react-native-screens renders each native-stack
-  // screen in a native container that owns that window — so a sibling overlay, a full replace of
-  // the navigator, and even a Modal (its own window, not captured) all left the last screen showing
-  // in the PiP pane. The fix: render PipRecorder through the navigator's `layout`, which wraps EACH
-  // screen's content. That puts the overlay INSIDE the displayed native screen (not beside it), so
-  // it's part of the captured window and wins. The navigator stays mounted, preserving nav state.
-  const pipLayout = ({ children }: { children: React.ReactNode }) => (
-    <View style={styles.fill}>
-      {children}
-      {inPip ? (
-        <View style={StyleSheet.absoluteFill}>
-          <PipRecorder />
-        </View>
-      ) : null}
-    </View>
-  );
-
+  // The PiP window's contents are drawn NATIVELY (see MainActivity + PipContentView.kt): React
+  // Native can't render into the Android PiP surface because react-native-screens' native-stack
+  // screen owns the captured window and draws above any RN view. So the navigator here is just the
+  // normal full-screen app; nothing PiP-specific lives on the JS side.
   return (
     <>
       <StatusBar barStyle="dark-content" backgroundColor={colors.canvas} />
       <NavigationContainer theme={navTheme}>
-        <Stack.Navigator initialRouteName={initial} screenOptions={screenOptions} layout={pipLayout}>
+        <Stack.Navigator initialRouteName={initial} screenOptions={screenOptions}>
           <Stack.Screen
             name="Onboarding"
             component={OnboardingScreen}
@@ -123,5 +106,3 @@ export default function RootNavigator() {
     </>
   );
 }
-
-const styles = StyleSheet.create({ fill: { flex: 1 } });

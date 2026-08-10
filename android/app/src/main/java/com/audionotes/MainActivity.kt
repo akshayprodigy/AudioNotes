@@ -32,9 +32,34 @@ class MainActivity : ReactActivity() {
     if (!PipController.enterIfRecording(this)) super.onUserLeaveHint()
   }
 
+  private var pipView: com.audionotes.pipeline.PipContentView? = null
+
   override fun onPictureInPictureModeChanged(isInPip: Boolean, newConfig: Configuration) {
     super.onPictureInPictureModeChanged(isInPip, newConfig)
+    // Swap in a NATIVE recorder view for the PiP pane. React Native can't render into the PiP
+    // surface (react-native-screens owns the captured window), so we draw it in Android and add
+    // it on top of the content root, where it is part of the captured window. Removed on restore.
+    if (isInPip) showPipContent() else hidePipContent()
     emitPipMode(isInPip)
+  }
+
+  private fun showPipContent() {
+    if (pipView != null) return
+    val root = findViewById<android.view.ViewGroup>(android.R.id.content) ?: return
+    val v = com.audionotes.pipeline.PipContentView(this)
+    root.addView(
+      v,
+      android.view.ViewGroup.LayoutParams(
+        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+      ),
+    )
+    pipView = v
+  }
+
+  private fun hidePipContent() {
+    pipView?.let { (it.parent as? android.view.ViewGroup)?.removeView(it) }
+    pipView = null
   }
 
   private fun emitPipMode(inPip: Boolean) {
