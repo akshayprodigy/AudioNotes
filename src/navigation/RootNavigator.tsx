@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StatusBar, StyleSheet, View } from 'react-native';
+import { Modal, StatusBar, View } from 'react-native';
 import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { font, useTheme } from '../theme';
@@ -78,13 +78,14 @@ export default function RootNavigator() {
     );
   }
 
-  // In the PiP window the compact recorder is drawn OVER the navigator (absolute fill), rather
-  // than replacing it. Keeping the NavigationContainer mounted preserves the nav stack and each
-  // screen's state, so restoring from PiP returns the user exactly where they were instead of
-  // resetting to the initial route. The PiP window only shows the small overlay; the navigator
-  // underneath is simply not visible there.
+  // In the PiP window the compact recorder is shown via a Modal, not by unmounting or overlaying
+  // the navigator. react-native-screens keeps each native-stack screen attached in a native
+  // container that outranks sibling RN views AND survives long enough that even unmounting the
+  // navigator left the last screen showing in the PiP surface. A Modal renders in its own native
+  // window that sits above the screens, so it reliably wins — and it lets the NavigationContainer
+  // stay mounted, preserving the nav stack and each screen's state when PiP is dismissed.
   return (
-    <View style={styles.root}>
+    <>
       <StatusBar barStyle="dark-content" backgroundColor={colors.canvas} />
       <NavigationContainer theme={navTheme}>
         <Stack.Navigator initialRouteName={initial} screenOptions={screenOptions}>
@@ -107,13 +108,9 @@ export default function RootNavigator() {
           <Stack.Screen name="Archive" component={ArchiveScreen} options={{ headerShown: false }} />
         </Stack.Navigator>
       </NavigationContainer>
-      {inPip && (
-        <View style={StyleSheet.absoluteFill}>
-          <PipRecorder />
-        </View>
-      )}
-    </View>
+      <Modal visible={inPip} animationType="none" transparent={false} onRequestClose={() => {}}>
+        <PipRecorder />
+      </Modal>
+    </>
   );
 }
-
-const styles = StyleSheet.create({ root: { flex: 1 } });
