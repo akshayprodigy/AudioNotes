@@ -1,6 +1,7 @@
 package com.audionotes.data
 
 import android.content.Context
+import com.audionotes.pipeline.ResumePlan
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 import org.json.JSONArray
 import org.json.JSONObject
@@ -144,6 +145,27 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     db.rawQuery("SELECT audio_path FROM meetings WHERE id=?", arrayOf(id)).use { c ->
       return if (c.moveToFirst()) c.getString(0) else null
     }
+  }
+
+  /**
+   * The four facts the resume planner needs, in one read: current status and whether each stage's
+   * output rows exist. Rows (not status) decide what to skip — see ResumePlan.
+   *
+   * Callers must resolve a meeting still in 'recording' to 'captured'/'error' (via
+   * recoverOrphanedRecordings) BEFORE calling this — ResumePlan assumes it never sees 'recording'.
+   */
+  fun pipelineState(meetingId: String): ResumePlan.State {
+    fun exists(table: String): Boolean =
+      db.rawQuery("SELECT 1 FROM $table WHERE meeting_id=? LIMIT 1", arrayOf(meetingId)).use { it.moveToFirst() }
+    val status = db.rawQuery("SELECT status FROM meetings WHERE id=? LIMIT 1", arrayOf(meetingId)).use {
+      if (it.moveToFirst()) it.getString(0) else "captured"
+    }
+    return ResumePlan.State(
+      status = status,
+      hasSegments = exists("segments"),
+      hasUtterances = exists("utterances"),
+      hasSpeakers = exists("speakers"),
+    )
   }
 
   /**
