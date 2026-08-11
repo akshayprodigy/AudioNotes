@@ -107,7 +107,18 @@ class RecordingService : Service(), CaptureListener {
         // returns at its first line whenever currentMeetingId is null — exactly the state a
         // process restart used to leave behind, making this button permanently inert.
         Thread {
-          CaptureController.stop(applicationContext)
+          val id = try { CaptureController.stop(applicationContext) } catch (e: Exception) {
+            Log.e(TAG, "stop failed", e)
+            null
+          }
+          // Auto-enqueue processing so a notification-button stop produces a finished MOM
+          // headlessly, not just a 'captured' meeting waiting on the app to be reopened.
+          // Guarded: a background-FGS-start rejection must not crash this service — the
+          // Library sweep is the fallback that picks it up later.
+          if (id != null) {
+            try { ProcessingService.enqueue(applicationContext, id) }
+            catch (e: Exception) { Log.w(TAG, "auto-enqueue after notification stop failed for $id", e) }
+          }
           stopSelfSafely()
         }.start()
         return START_NOT_STICKY

@@ -29,7 +29,17 @@ class PipActionReceiver : BroadcastReceiver() {
         // which takes the activity out of PiP, so there is nothing to refresh afterwards.
         val result = goAsync()
         Thread {
-          try { CaptureController.stop(context.applicationContext) }
+          try {
+            val id = CaptureController.stop(context.applicationContext)
+            // Auto-enqueue processing so a PiP-button stop produces a finished MOM headlessly,
+            // not just a 'captured' meeting waiting on the app to be reopened. Guarded: a
+            // background-FGS-start rejection must not crash this receiver — the Library sweep
+            // is the fallback that picks it up later.
+            if (id != null) {
+              try { ProcessingService.enqueue(context.applicationContext, id) }
+              catch (e: Exception) { Log.w(TAG, "auto-enqueue after PiP stop failed for $id", e) }
+            }
+          }
           catch (e: Exception) { Log.e(TAG, "stop failed", e) }
           finally { result.finish() }
         }.start()
