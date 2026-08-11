@@ -148,6 +148,7 @@ class ProcessingEngine(
       // Gate only on utterances existing — NOT on `transcribed`/diarize success. Diarize can
       // legitimately produce no speakers (single-speaker meeting, or no diar models installed
       // yet) and the meeting still deserves a full MOM from whatever transcript it has.
+      listener.onStage("minutes", 0, 1)
       val utts = db.utterances(meetingId)
       if (utts.isNotEmpty()) {
         val speakers = db.speakers(meetingId)
@@ -156,6 +157,7 @@ class ProcessingEngine(
         retitleFromTranscript(meetingId, utts)
         applyRetention(meetingId, utts.size)
         db.setStatus(meetingId, "done")
+        listener.onStage("minutes", 1, 1)
         Log.i(TAG, "Minutes produced ${minutes.size} items for $meetingId")
       } else {
         // No transcript. Port of PipelineController.buildMinutes' empty-utterances branch

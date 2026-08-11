@@ -11,7 +11,7 @@ export type MeetingStatus =
   | 'done'
   | 'error';
 
-export type PipelineStage = 'vad' | 'asr' | 'diarize' | 'align' | 'structure';
+export type PipelineStage = 'vad' | 'asr' | 'diarize' | 'minutes' | 'align' | 'structure';
 
 // Terminal outcome of a processing run, as reported by onStageComplete/onError.
 export type PipelineOutcome = 'done' | 'cancelled' | 'error';
