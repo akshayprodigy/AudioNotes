@@ -50,8 +50,13 @@ class ProcessingEngine(
         return
       }
 
-      val remaining = ResumePlan.remaining(db.pipelineState(meetingId))
-      if (remaining.isEmpty()) { listener.onComplete("done"); return }
+      val state = db.pipelineState(meetingId)
+      val remaining = ResumePlan.remaining(state)
+      // Rows-only isn't enough: if the native minutes stage previously threw (e.g. replaceMinutes)
+      // the outer catch sets status='error' while every stage's rows are already present, and a
+      // rows-only check would report "done" here without ever re-running the minutes stage —
+      // stranding the meeting with no minutes forever. Require status=='done' too.
+      if (remaining.isEmpty() && state.status == "done") { listener.onComplete("done"); return }
 
       // Per-stage wall times, logged against the audio length so the numbers are comparable
       // between recordings and against DiarEmbeddingBench. Without these the only timing signal
@@ -152,6 +157,25 @@ class ProcessingEngine(
         applyRetention(meetingId, utts.size)
         db.setStatus(meetingId, "done")
         Log.i(TAG, "Minutes produced ${minutes.size} items for $meetingId")
+      } else {
+        // No transcript. Port of PipelineController.buildMinutes' empty-utterances branch
+        // (src/pipeline/PipelineController.ts ~183-208, post-33b0c94) — terminal classification
+        // only when we KNOW re-running would produce the same nothing; otherwise leave pending
+        // so the next sweep retries once the model/state catches up.
+        //
+        // No spans at all: the recording genuinely contains no speech. Re-running VAD on the
+        // same silent audio yields the same nothing, so mark terminal ('error' -> "NO SPEECH").
+        if (spans.isEmpty()) {
+          db.setStatus(meetingId, "error")
+        } else if (state.status == "asr") {
+          // Spans exist and ASR actually ran (status only reaches 'asr' when the whisper model
+          // was present) but produced zero utterances (music/noise/unintelligible) — re-running
+          // transcribes the same audio to the same nothing, so mark terminal instead of being
+          // re-swept forever.
+          db.setStatus(meetingId, "error")
+        }
+        // else: status is still 'vad'/'captured' -> ASR hasn't run yet (model still downloading)
+        // -> leave pending for the next sweep to retry, no status change.
       }
 
       listener.onComplete("done")
@@ -211,7 +235,7 @@ class ProcessingEngine(
 
       title = title.replaceFirstChar { it.uppercaseChar() }
       db.setTitle(meetingId, title)
-    } catch (_: Exception) {
+    } catch (_: Throwable) {
       // Titling is cosmetic — never let it fail the pipeline.
     }
   }
@@ -239,7 +263,7 @@ class ProcessingEngine(
         }
       }
       db.setAudioRetained(meetingId, false)
-    } catch (_: Exception) {
+    } catch (_: Throwable) {
       // Retention is best-effort; never fail a good transcript over cleanup.
     }
   }
