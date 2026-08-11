@@ -1,7 +1,10 @@
 package com.audionotes.data
 
 import android.content.Context
+import com.audionotes.pipeline.DraftMinute
 import com.audionotes.pipeline.ResumePlan
+import com.audionotes.pipeline.Spk
+import com.audionotes.pipeline.Utt
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 import org.json.JSONArray
 import org.json.JSONObject
@@ -124,6 +127,14 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
 
   fun setStatus(id: String, status: String) {
     db.execSQL("UPDATE meetings SET status=? WHERE id=?", arrayOf<Any?>(status, id))
+  }
+
+  /**
+   * Overwrite the meeting title. Mirrors db.setTitle() in src/db/queries.ts. Caller guards WHICH
+   * titles may be overwritten (e.g. only auto-generated placeholders, never a user-edited one).
+   */
+  fun setTitle(id: String, title: String) {
+    db.execSQL("UPDATE meetings SET title=? WHERE id=?", arrayOf<Any?>(title, id))
   }
 
   /**
@@ -291,6 +302,57 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
         )
       }
 
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
+  }
+
+  /**
+   * Utterances for a meeting in the shape [com.audionotes.pipeline.MinutesExtractor] consumes.
+   * Mirrors the `text, speakerId` projection of db.utterances() in src/db/queries.ts.
+   */
+  fun utterances(meetingId: String): List<Utt> {
+    val out = ArrayList<Utt>()
+    db.rawQuery(
+      "SELECT text, speaker_id FROM utterances WHERE meeting_id=? ORDER BY start_ms",
+      arrayOf(meetingId),
+    ).use { c ->
+      while (c.moveToNext()) out.add(Utt(c.getString(0), c.getString(1)))
+    }
+    return out
+  }
+
+  /**
+   * Speakers for a meeting in the shape [com.audionotes.pipeline.MinutesExtractor] consumes.
+   * Mirrors the `id, displayName` projection of db.speakers() in src/db/queries.ts.
+   */
+  fun speakers(meetingId: String): List<Spk> {
+    val out = ArrayList<Spk>()
+    db.rawQuery(
+      "SELECT id, display_name FROM speakers WHERE meeting_id=?",
+      arrayOf(meetingId),
+    ).use { c ->
+      while (c.moveToNext()) out.add(Spk(c.getString(0), c.getString(1)))
+    }
+    return out
+  }
+
+  /**
+   * Replace all minutes rows for a meeting in one transaction — mirrors db.replaceMinutes() in
+   * src/db/queries.ts and the DELETE+INSERT idiom used by replaceUtterancesJson/replaceSegments.
+   * `content_json` stores the plain string content (aliased `content` on the JS side).
+   */
+  fun replaceMinutes(meetingId: String, rows: List<DraftMinute>) {
+    db.beginTransaction()
+    try {
+      db.execSQL("DELETE FROM minutes WHERE meeting_id=?", arrayOf<Any?>(meetingId))
+      for (r in rows) {
+        db.execSQL(
+          "INSERT INTO minutes(id,meeting_id,kind,content_json,source) VALUES(?,?,?,?,?)",
+          arrayOf<Any?>(UUID.randomUUID().toString(), meetingId, r.kind, r.content, r.source),
+        )
+      }
       db.setTransactionSuccessful()
     } finally {
       db.endTransaction()
