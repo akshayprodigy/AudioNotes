@@ -32,16 +32,42 @@ class PipelineControllerImpl {
     return AudioPipeline.setPaused(paused);
   }
 
-  // Native runs the heavy stages (vad -> asr), persisting each. Then the JS layer runs the
-  // deterministic rule-based minutes floor over the transcript (small text work; shared iOS+Android).
+  // AudioPipeline.process() is fire-and-forget: it enqueues the meeting into the foreground
+  // service and resolves immediately, so the heavy stages (vad -> asr -> diarize) run AFTER this
+  // call returns. We must await the service's terminal event before running the JS layer's
+  // deterministic rule-based minutes floor over the transcript — otherwise minutes get built from
+  // whatever (possibly empty) transcript happens to exist at the moment `process` resolves.
   async process(
     meetingId: string,
     opts: { model: 'base' | 'small'; useLLM: boolean },
   ): Promise<void> {
-    await AudioPipeline.process(meetingId, opts);
+    const outcome = await this.awaitNativeComplete(meetingId, () => AudioPipeline.process(meetingId, opts));
+    // 'cancelled'/'error' already have their status set natively; nothing to summarize.
+    if (outcome !== 'done') return;
     await this.buildMinutes(meetingId); // deterministic floor first — always present
     if (opts.useLLM !== false) await this.enhanceMinutes(meetingId); // best-effort upgrade
     await this.applyRetention(meetingId);
+  }
+
+  /**
+   * Resolve when the service reports this meeting's terminal outcome (done | cancelled | error).
+   * `kick` starts native processing (now fire-and-forget) — if it throws synchronously we resolve
+   * 'error' so the caller never hangs. If the app is killed mid-run, this promise simply never
+   * settles (the process is gone); the next Library sweep finishes the meeting.
+   */
+  private awaitNativeComplete(meetingId: string, kick: () => Promise<void>): Promise<string> {
+    return new Promise<string>(resolve => {
+      const off = this.onComplete(e => {
+        if (e.meetingId === meetingId) {
+          off();
+          resolve(e.outcome);
+        }
+      });
+      kick().catch(() => {
+        off();
+        resolve('error');
+      });
+    });
   }
 
   /**
@@ -127,7 +153,19 @@ class PipelineControllerImpl {
       if (this.inFlight.has(m.id)) continue;
       this.inFlight.add(m.id);
       try {
-        await this.process(m.id, { model: 'base', useLLM: true });
+        const utt = await db.utterances(m.id);
+        const spk = await db.speakers(m.id);
+        if (utt.length > 0 && spk.length > 0) {
+          // Native stages already done in the background — only the JS minutes remain. Calling
+          // full process() here would spin up the foreground service + notification for nothing.
+          await this.buildMinutes(m.id);
+          await this.enhanceMinutes(m.id);
+          await this.applyRetention(m.id);
+        } else {
+          // Still owes native work — enqueue into the service, which resumes only the missing
+          // stages (ResumePlan).
+          await this.process(m.id, { model: 'base', useLLM: true });
+        }
       } catch {
         // leave the status as-is so the next sweep retries it
       } finally {

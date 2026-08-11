@@ -46,6 +46,7 @@ class ProcessingEngine(
       // the caller rebuild the minutes from the transcript it already has.
       if (!File(audioPath).exists()) {
         Log.i(TAG, "re-run skipped for $meetingId (audio deleted by retention)")
+        listener.onComplete("done")
         return
       }
 
