@@ -24,7 +24,7 @@ class ProcessingService : Service() {
   private val queue = ConcurrentLinkedQueue<String>()
 
   // Guards `running` and `currentId` together so an id enqueued while the worker is in its
-  // finally-block teardown (releaseWakeLock -> stopForeground -> stopSelf, several IPCs) is never
+  // finally-block teardown (wake-lock release -> stopForeground -> stopSelf, several IPCs) is never
   // stranded: onStartCommand's enqueue and the worker's decision to exit both happen under this
   // same lock, so one of two things is always true — either the id lands in the queue before the
   // worker checks it and is picked up, or `running` is still true when the id is added and the
@@ -35,7 +35,7 @@ class ProcessingService : Service() {
   private var worker: Thread? = null
   @Volatile private var current: ProcessingEngine? = null
   @Volatile private var currentId: String? = null
-  private var wakeLock: PowerManager.WakeLock? = null
+  @Volatile private var lastStartId = 0
 
   override fun onBind(intent: Intent?): IBinder? = null
 
@@ -45,6 +45,7 @@ class ProcessingService : Service() {
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    lastStartId = startId
     val id = intent?.getStringExtra(EXTRA_MEETING_ID)
     val shouldStart = synchronized(lock) {
       if (id != null && id != currentId && !queue.contains(id)) queue.add(id)
@@ -55,9 +56,14 @@ class ProcessingService : Service() {
     return START_REDELIVER_INTENT
   }
 
+  private fun newWakeLock(): PowerManager.WakeLock {
+    val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+    return pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "audionotes:processing")
+  }
+
   private fun runLoop() {
+    val wl = newWakeLock().apply { acquire(6 * 60 * 60 * 1000L) }
     try {
-      acquireWakeLock()
       while (true) {
         // The engine is constructed INSIDE the lock so that currentId and current are published
         // atomically together — a cancel() landing between "currentId is set" and "current is set"
@@ -86,9 +92,16 @@ class ProcessingService : Service() {
         synchronized(lock) { current = null; currentId = null }
       }
     } finally {
-      releaseWakeLock()
-      try { stopForegroundCompat() } catch (_: Exception) {}
-      stopSelf()
+      if (wl.isHeld) wl.release()
+      // Only tear the service down if no successor worker was started while we were exiting.
+      // onStartCommand flips running back to true (under `lock`) when it starts a new worker; in that
+      // case that worker now owns the service and will stop it when IT drains.
+      synchronized(lock) {
+        if (!running) {
+          try { stopForegroundCompat() } catch (_: Exception) {}
+          stopSelf(lastStartId)
+        }
+      }
     }
   }
 
@@ -124,10 +137,7 @@ class ProcessingService : Service() {
     super.onTaskRemoved(rootIntent)
   }
 
-  /** Defensive: releases the wake lock if the service is torn down externally while the worker is
-   *  mid-loop rather than mid-finally. releaseWakeLock() is idempotent (checks isHeld). */
   override fun onDestroy() {
-    releaseWakeLock()
     if (instance === this) instance = null
     super.onDestroy()
   }
@@ -157,11 +167,6 @@ class ProcessingService : Service() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE)
     else @Suppress("DEPRECATION") stopForeground(true)
   }
-  private fun acquireWakeLock() {
-    val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-    wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "audionotes:processing").apply { acquire(6 * 60 * 60 * 1000L) }
-  }
-  private fun releaseWakeLock() { wakeLock?.let { if (it.isHeld) it.release() }; wakeLock = null }
   private fun stageLabel(stage: String) = when (stage) {
     "vad" -> "Cleaning up audio…"; "asr" -> "Writing words down…"; "diarize" -> "Separating speakers…"; else -> LABEL_TRANSCRIBING
   }

@@ -157,8 +157,17 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
     // event (emitted by ProcessingService through AudioPipelineBridge), or discovers it on the next
     // pending-sweep if the app was killed. `options` currently only carries model=base (the sole
     // installed ASR model); the service uses base.
-    ProcessingService.enqueue(ctx, meetingId)
-    promise.resolve(null)
+    try {
+      ProcessingService.enqueue(ctx, meetingId)
+      promise.resolve(null)
+    } catch (e: Exception) {
+      // Most likely ForegroundServiceStartNotAllowedException: enqueue() ran while the app was in the
+      // background and the service wasn't already running (Android 12+ blocks starting a FGS from the
+      // background). Reject so the JS awaiter settles instead of hanging the sweep forever; the meeting
+      // stays pending and the next foreground sweep retries it.
+      Log.w("AudioPipeline", "enqueue failed for $meetingId", e)
+      promise.reject("enqueue_failed", e)
+    }
   }
 
   /**
