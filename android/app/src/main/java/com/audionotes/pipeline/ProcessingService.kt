@@ -45,9 +45,9 @@ class ProcessingService : Service() {
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    lastStartId = startId
     val id = intent?.getStringExtra(EXTRA_MEETING_ID)
     val shouldStart = synchronized(lock) {
+      lastStartId = startId
       if (id != null && id != currentId && !queue.contains(id)) queue.add(id)
       if (!running) { running = true; true } else false
     }
@@ -62,6 +62,8 @@ class ProcessingService : Service() {
   }
 
   private fun runLoop() {
+    // Local to this worker generation: a worker's own finally always releases it below, and the 6h
+    // timeout backstops the case where the service is force-destroyed out from under the thread.
     val wl = newWakeLock().apply { acquire(6 * 60 * 60 * 1000L) }
     try {
       while (true) {
@@ -93,14 +95,14 @@ class ProcessingService : Service() {
       }
     } finally {
       if (wl.isHeld) wl.release()
-      // Only tear the service down if no successor worker was started while we were exiting.
-      // onStartCommand flips running back to true (under `lock`) when it starts a new worker; in that
-      // case that worker now owns the service and will stop it when IT drains.
-      synchronized(lock) {
-        if (!running) {
-          try { stopForegroundCompat() } catch (_: Exception) {}
-          stopSelf(lastStartId)
-        }
+      // Decide teardown under the lock (atomic with onStartCommand's running/lastStartId snapshot),
+      // but make the Binder calls OUTSIDE it so a slow stopForeground/stopSelf can't stall the main
+      // thread waiting on `lock` in onStartCommand. If a successor started meanwhile, stopId is stale
+      // and stopSelf() becomes a no-op — exactly right.
+      val stopId = synchronized(lock) { if (!running) lastStartId else null }
+      if (stopId != null) {
+        try { stopForegroundCompat() } catch (_: Exception) {}
+        stopSelf(stopId)
       }
     }
   }
