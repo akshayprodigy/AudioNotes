@@ -159,6 +159,17 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
   }
 
   /**
+   * Read the meeting's current title. Needed natively so ProcessingEngine's retitle step can
+   * apply the same "only overwrite an app-generated title" guard as
+   * PipelineController.retitleFromTranscript does on the JS side.
+   */
+  fun getTitle(id: String): String? {
+    db.rawQuery("SELECT title FROM meetings WHERE id=?", arrayOf(id)).use { c ->
+      return if (c.moveToFirst()) c.getString(0) else null
+    }
+  }
+
+  /**
    * The four facts the resume planner needs, in one read: current status and whether each stage's
    * output rows exist. Rows (not status) decide what to skip — see ResumePlan.
    *

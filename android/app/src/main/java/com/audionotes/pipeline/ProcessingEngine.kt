@@ -139,6 +139,21 @@ class ProcessingEngine(
         }
       }
 
+      // ---- Minutes / MOM (rule-based, native) + retitle + retention, then done ----
+      // Gate only on utterances existing — NOT on `transcribed`/diarize success. Diarize can
+      // legitimately produce no speakers (single-speaker meeting, or no diar models installed
+      // yet) and the meeting still deserves a full MOM from whatever transcript it has.
+      val utts = db.utterances(meetingId)
+      if (utts.isNotEmpty()) {
+        val speakers = db.speakers(meetingId)
+        val minutes = MinutesExtractor.extract(utts, speakers)
+        db.replaceMinutes(meetingId, minutes)
+        retitleFromTranscript(meetingId, utts)
+        applyRetention(meetingId, utts.size)
+        db.setStatus(meetingId, "done")
+        Log.i(TAG, "Minutes produced ${minutes.size} items for $meetingId")
+      }
+
       listener.onComplete("done")
     } catch (e: Throwable) {
       // Must catch Throwable, not just Exception: an OutOfMemoryError/LinkageError during a stage
@@ -156,6 +171,77 @@ class ProcessingEngine(
     Log.i(TAG, "pipeline cancelled for $meetingId")
     listener.onComplete("cancelled")
     return true
+  }
+
+  /**
+   * Native port of PipelineController.retitleFromTranscript (src/pipeline/PipelineController.ts:
+   * ~223-249). Replaces the timestamp-placeholder title with the opening line of the meeting —
+   * what people actually remember is how a meeting started. Only overwrites a title the app
+   * generated itself (JS guard, matched exactly below), so a rename by the user is never
+   * clobbered. Titling is cosmetic, so this never fails the pipeline.
+   */
+  private fun retitleFromTranscript(meetingId: String, utts: List<Utt>) {
+    try {
+      val db = AudioDb.get(ctx)
+      val current = db.getTitle(meetingId) ?: ""
+      // JS: const isGenerated = current === 'Meeting' || / meeting · /.test(current);
+      val isGenerated = current == "Meeting" || RETITLE_PLACEHOLDER.containsMatchIn(current)
+      if (!isGenerated) return
+
+      // JS: utterances.map(u => u.text.trim()).filter(Boolean).join(' ').replace(/\s+/g,' ').trim()
+      val opening = utts.map { it.text.trim() }
+        .filter { it.isNotEmpty() }
+        .joinToString(" ")
+        .replace(WHITESPACE_RUN, " ")
+        .trim()
+      if (opening.length < 8) return
+
+      // Cut at a sentence end when there is one close by, otherwise on a word boundary.
+      // JS: let title = opening.slice(0, 60);
+      //     const sentenceEnd = title.search(/[.!?]/);
+      //     if (sentenceEnd > 15) title = title.slice(0, sentenceEnd);
+      //     else if (opening.length > 60) title = title.replace(/\s+\S*$/, '') + '…';
+      var title = opening.take(60)
+      val sentenceEnd = title.indexOfFirst { it == '.' || it == '!' || it == '?' }
+      if (sentenceEnd > 15) {
+        title = title.substring(0, sentenceEnd)
+      } else if (opening.length > 60) {
+        title = title.replace(TRAILING_PARTIAL_WORD, "") + "…"
+      }
+
+      title = title.replaceFirstChar { it.uppercaseChar() }
+      db.setTitle(meetingId, title)
+    } catch (_: Exception) {
+      // Titling is cosmetic — never let it fail the pipeline.
+    }
+  }
+
+  /**
+   * Native port of PipelineController.applyRetention (src/pipeline/PipelineController.ts:
+   * ~113-123). Default is to delete the raw PCM once a transcript exists — unencrypted audio at
+   * ~115 MB/hour whose only remaining use after transcription is Reprocess. Keeping it is opt-in
+   * via the `keepAudio` setting. Only ever discards when a transcript actually exists, so a
+   * failed ASR run never destroys the only copy of the meeting. Retention is best-effort and
+   * never fails a good transcript over cleanup.
+   */
+  private fun applyRetention(meetingId: String, utteranceCount: Int) {
+    try {
+      val db = AudioDb.get(ctx)
+      if (db.getSetting("keepAudio") == "1") return // user opted to keep audio
+      if (utteranceCount == 0) return // no transcript — the audio is all we have, keep it
+
+      // Delete pattern reused from AudioPipelineModule.discardAudio.
+      val path = db.getAudioPath(meetingId)
+      if (path != null) {
+        val f = File(path)
+        if (f.exists() && !f.delete()) {
+          Log.w(TAG, "could not delete audio for $meetingId")
+        }
+      }
+      db.setAudioRetained(meetingId, false)
+    } catch (_: Exception) {
+      // Retention is best-effort; never fail a good transcript over cleanup.
+    }
   }
 
   /** Resolve the Silero VAD model, copying it out of assets on first use if bundled there. */
@@ -176,5 +262,13 @@ class ProcessingEngine(
     }
   }
 
-  companion object { private const val TAG = "AudioPipeline" }
+  companion object {
+    private const val TAG = "AudioPipeline"
+
+    // Mirrors the JS-generated-title guard in PipelineController.retitleFromTranscript exactly:
+    // / meeting · /.test(current) — a space, "meeting", a middle-dot, a space.
+    private val RETITLE_PLACEHOLDER = Regex(""" meeting · """)
+    private val WHITESPACE_RUN = Regex("""\s+""")
+    private val TRAILING_PARTIAL_WORD = Regex("""\s+\S*$""")
+  }
 }
