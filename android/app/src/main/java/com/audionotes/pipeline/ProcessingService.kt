@@ -39,6 +39,11 @@ class ProcessingService : Service() {
 
   override fun onBind(intent: Intent?): IBinder? = null
 
+  override fun onCreate() {
+    super.onCreate()
+    instance = this
+  }
+
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     val id = intent?.getStringExtra(EXTRA_MEETING_ID)
     val shouldStart = synchronized(lock) {
@@ -109,6 +114,7 @@ class ProcessingService : Service() {
    *  mid-loop rather than mid-finally. releaseWakeLock() is idempotent (checks isHeld). */
   override fun onDestroy() {
     releaseWakeLock()
+    if (instance === this) instance = null
     super.onDestroy()
   }
 
@@ -152,11 +158,21 @@ class ProcessingService : Service() {
     private const val CHANNEL_ID = "audionotes.processing"
     private const val LABEL_TRANSCRIBING = "Transcribing meeting…"
     private const val TAG = "ProcessingService"
+    /** The live instance, so cancel() below can reach it without a bind. Set in onCreate(),
+     *  cleared in onDestroy() — a static registry rather than binding, since callers (the RN
+     *  module) just need to fire a cancel, not hold a service connection. */
+    @Volatile private var instance: ProcessingService? = null
     /** Start/queue processing for a meeting. MUST be called while the app is in the foreground
      *  (Android forbids starting a background FGS) — callers do so right after Stop / on app open. */
     fun enqueue(ctx: Context, meetingId: String) {
       val i = Intent(ctx, ProcessingService::class.java).putExtra(EXTRA_MEETING_ID, meetingId)
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ctx.startForegroundService(i) else ctx.startService(i)
+    }
+    /** Cancel a queued or running meeting inside the service, if it's alive. `ctx` is unused today
+     *  but kept for symmetry with enqueue() and in case future callers need it (e.g. to start the
+     *  service first). */
+    fun cancel(ctx: Context, meetingId: String) {
+      instance?.cancel(meetingId)
     }
   }
 }

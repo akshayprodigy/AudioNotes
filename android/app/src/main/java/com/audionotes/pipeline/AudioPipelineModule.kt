@@ -28,12 +28,6 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
 
   private var levelTimer: java.util.Timer? = null
 
-  /** Meetings for which cancel() was requested; checked at each pipeline stage boundary. */
-  private val cancelled = java.util.Collections.synchronizedSet(mutableSetOf<String>())
-
-  /** The in-flight engine for each meeting currently processing, so cancel() can reach it directly. */
-  private val engines = java.util.concurrent.ConcurrentHashMap<String, ProcessingEngine>()
-
   override fun getName() = "AudioPipeline"
 
   /**
@@ -70,6 +64,9 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
 
   init {
     CaptureController.addListener(captureListener)
+    // Lets the (foreground-service-hosted) ProcessingService reach JS with progress/completion
+    // events while this module instance — and its ReactApplicationContext — is alive.
+    AudioPipelineBridge.attach(ctx)
   }
 
   override fun invalidate() {
@@ -155,29 +152,13 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
 
   @ReactMethod
   fun process(meetingId: String, options: ReadableMap, promise: Promise) {
-    cancelled.remove(meetingId) // a fresh run is never pre-cancelled
-    val model = if (options.hasKey("model")) options.getString("model") ?: "base" else "base"
-    // Constructed and registered synchronously, before the thread starts: a cancel() arriving
-    // between process() returning and the thread actually running must still find the engine in
-    // the map, or it silently no-ops against a meeting that looks like it's still processing.
-    val engine = ProcessingEngine(ctx, meetingId, model, object : ProcessingEngine.Listener {
-      override fun onStage(stage: String, done: Int, total: Int) = emitProgress(meetingId, stage, done, total)
-      override fun onComplete(outcome: String, message: String?) {
-        if (outcome == "error") emitComplete(meetingId, "error", message ?: "") else emitComplete(meetingId, outcome)
-      }
-    })
-    engines[meetingId] = engine
-    Thread {
-      try {
-        engine.run()
-        promise.resolve(null)
-      } catch (e: Exception) {
-        promise.reject("process_failed", e)
-      } finally {
-        engines.remove(meetingId)
-        cancelled.remove(meetingId)
-      }
-    }.start()
+    // Processing now runs in ProcessingService (a foreground service) so it survives the app being
+    // backgrounded/killed. This returns immediately; JS learns of completion via the onStageComplete
+    // event (emitted by ProcessingService through AudioPipelineBridge), or discovers it on the next
+    // pending-sweep if the app was killed. `options` currently only carries model=base (the sole
+    // installed ASR model); the service uses base.
+    ProcessingService.enqueue(ctx, meetingId)
+    promise.resolve(null)
   }
 
   /**
@@ -243,9 +224,8 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
    */
   @ReactMethod
   fun cancel(meetingId: String) {
-    cancelled.add(meetingId)
-    engines[meetingId]?.cancelled = true
     Log.i("AudioPipeline", "cancel requested for $meetingId (applies at the next stage boundary)")
+    ProcessingService.cancel(ctx, meetingId)
   }
 
   /**
@@ -283,50 +263,6 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
     }.start()
   }
 
-  /** True if cancel() was called for this meeting; clears the flag so the next run is clean. */
-  private fun checkCancelled(meetingId: String): Boolean {
-    if (!cancelled.contains(meetingId)) return false
-    cancelled.remove(meetingId)
-    Log.i("AudioPipeline", "pipeline cancelled for $meetingId")
-    emitComplete(meetingId, "cancelled")
-    return true
-  }
-
   @ReactMethod fun addListener(eventName: String) {}
   @ReactMethod fun removeListeners(count: Double) {}
-
-  /**
-   * Terminal event for a pipeline run. The JS layer previously had no way to learn that
-   * processing finished or failed — it polled the database on a timer instead, which meant a
-   * failed run looked identical to a slow one.
-   *
-   * @param outcome one of: done | cancelled | error
-   */
-  private fun emitComplete(meetingId: String, outcome: String, message: String? = null) {
-    val map = WritableNativeMap().apply {
-      putString("meetingId", meetingId)
-      putString("outcome", outcome)
-      if (message != null) putString("message", message)
-    }
-    emit(if (outcome == "error") "onError" else "onStageComplete", map)
-  }
-
-  private fun emit(event: String, map: WritableNativeMap) {
-    try {
-      ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java).emit(event, map)
-    } catch (_: Exception) {
-      // No JS context (app killed while processing continues) — events are advisory only.
-    }
-  }
-
-  private fun emitProgress(meetingId: String, stage: String, done: Int, total: Int) {
-    val map = WritableNativeMap().apply {
-      putString("meetingId", meetingId)
-      putString("stage", stage)
-      putInt("chunk", done)
-      putInt("total", total)
-    }
-    ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-      .emit("onStageProgress", map)
-  }
 }
