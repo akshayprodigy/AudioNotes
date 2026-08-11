@@ -7,6 +7,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.util.Log
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -21,7 +22,17 @@ import java.util.concurrent.ConcurrentLinkedQueue
  */
 class ProcessingService : Service() {
   private val queue = ConcurrentLinkedQueue<String>()
-  @Volatile private var worker: Thread? = null
+
+  // Guards `running` and `currentId` together so an id enqueued while the worker is in its
+  // finally-block teardown (releaseWakeLock -> stopForeground -> stopSelf, several IPCs) is never
+  // stranded: onStartCommand's enqueue and the worker's decision to exit both happen under this
+  // same lock, so one of two things is always true — either the id lands in the queue before the
+  // worker checks it and is picked up, or `running` is still true when the id is added and the
+  // caller does NOT start a second worker (the existing one is guaranteed to loop again).
+  private val lock = Any()
+  @Volatile private var running = false
+
+  private var worker: Thread? = null
   @Volatile private var current: ProcessingEngine? = null
   @Volatile private var currentId: String? = null
   private var wakeLock: PowerManager.WakeLock? = null
@@ -30,41 +41,47 @@ class ProcessingService : Service() {
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     val id = intent?.getStringExtra(EXTRA_MEETING_ID)
-    if (id != null && id != currentId && !queue.contains(id)) queue.add(id)
+    val shouldStart = synchronized(lock) {
+      if (id != null && id != currentId && !queue.contains(id)) queue.add(id)
+      if (!running) { running = true; true } else false
+    }
     startForegroundSafe()
-    ensureWorker()
+    if (shouldStart) worker = Thread { runLoop() }.also { it.name = "audionotes-processing"; it.start() }
     return START_REDELIVER_INTENT
   }
 
-  private fun ensureWorker() {
-    if (worker?.isAlive == true) return
-    worker = Thread {
-      try {
-        acquireWakeLock()
-        while (true) {
-          val id = queue.poll() ?: break
-          currentId = id
-          updateNotification("Transcribing meeting…")
-          val engine = ProcessingEngine(this, id, "base", object : ProcessingEngine.Listener {
-            override fun onStage(stage: String, done: Int, total: Int) {
-              updateNotification(stageLabel(stage))
-              AudioPipelineBridge.emitProgress(id, stage, done, total)
-            }
-            override fun onComplete(outcome: String, message: String?) {
-              AudioPipelineBridge.emitComplete(id, outcome, message)
-            }
-          })
-          current = engine
-          engine.run()
-          current = null
-          currentId = null
+  private fun runLoop() {
+    try {
+      acquireWakeLock()
+      while (true) {
+        val id = synchronized(lock) {
+          val next = queue.poll()
+          if (next == null) running = false // exit decided under the same lock as enqueue
+          currentId = next // set/clear atomically with poll (dedup in onStartCommand reads currentId under lock)
+          next
+        } ?: break
+        try { updateNotification(LABEL_TRANSCRIBING) } catch (_: Exception) {
+          // POST_NOTIFICATIONS denied or similar. Processing is unaffected; only the control
+          // surface is missing — mirrors RecordingService.refreshNotification().
         }
-      } finally {
-        releaseWakeLock()
-        stopForegroundCompat()
-        stopSelf()
+        val engine = ProcessingEngine(this, id, "base", object : ProcessingEngine.Listener {
+          override fun onStage(stage: String, done: Int, total: Int) {
+            try { updateNotification(stageLabel(stage)) } catch (_: Exception) {}
+            AudioPipelineBridge.emitProgress(id, stage, done, total)
+          }
+          override fun onComplete(outcome: String, message: String?) {
+            AudioPipelineBridge.emitComplete(id, outcome, message)
+          }
+        })
+        current = engine
+        engine.run()
+        current = null
       }
-    }.also { it.name = "audionotes-processing"; it.start() }
+    } finally {
+      releaseWakeLock()
+      try { stopForegroundCompat() } catch (_: Exception) {}
+      stopSelf()
+    }
   }
 
   /** Cancel a queued or running meeting. */
@@ -73,10 +90,32 @@ class ProcessingService : Service() {
     if (currentId == meetingId) current?.cancelled = true
   }
 
+  /**
+   * The app was swiped out of Recents.
+   *
+   * Processing deliberately continues — that is the entire point of running it in a foreground
+   * service rather than in-process: a swipe in Recents is how people tidy their task list, not how
+   * they cancel a transcription. The notification remains as the only control surface.
+   *
+   * `android:stopWithTask="false"` in the manifest is what makes this method the decision point
+   * rather than a silent kill (mirrors RecordingService.onTaskRemoved).
+   */
+  override fun onTaskRemoved(rootIntent: Intent?) {
+    if (running) Log.i(TAG, "task removed while processing — work continues, notification is the control")
+    super.onTaskRemoved(rootIntent)
+  }
+
+  /** Defensive: releases the wake lock if the service is torn down externally while the worker is
+   *  mid-loop rather than mid-finally. releaseWakeLock() is idempotent (checks isHeld). */
+  override fun onDestroy() {
+    releaseWakeLock()
+    super.onDestroy()
+  }
+
   // --- foreground / notification (mirror RecordingService's idioms) ---
   private fun startForegroundSafe() {
     createChannel()
-    val n = buildNotification("Transcribing meeting…")
+    val n = buildNotification(LABEL_TRANSCRIBING)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
       startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
     else startForeground(NOTIF_ID, n)
@@ -104,13 +143,15 @@ class ProcessingService : Service() {
   }
   private fun releaseWakeLock() { wakeLock?.let { if (it.isHeld) it.release() }; wakeLock = null }
   private fun stageLabel(stage: String) = when (stage) {
-    "vad" -> "Cleaning up audio…"; "asr" -> "Writing words down…"; "diarize" -> "Separating speakers…"; else -> "Transcribing meeting…"
+    "vad" -> "Cleaning up audio…"; "asr" -> "Writing words down…"; "diarize" -> "Separating speakers…"; else -> LABEL_TRANSCRIBING
   }
 
   companion object {
     private const val EXTRA_MEETING_ID = "meetingId"
     private const val NOTIF_ID = 43
     private const val CHANNEL_ID = "audionotes.processing"
+    private const val LABEL_TRANSCRIBING = "Transcribing meeting…"
+    private const val TAG = "ProcessingService"
     /** Start/queue processing for a meeting. MUST be called while the app is in the foreground
      *  (Android forbids starting a background FGS) — callers do so right after Stop / on app open. */
     fun enqueue(ctx: Context, meetingId: String) {

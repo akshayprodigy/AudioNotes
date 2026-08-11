@@ -78,10 +78,15 @@
         android:foregroundServiceType="microphone" />
 
       <!-- Runs meeting processing (VAD/ASR/diarize) so it survives the app being backgrounded or
-           killed. Not yet started by anything — wired up in a later task. -->
+           killed. Not yet started by anything — wired up in a later task.
+
+           stopWithTask="false" mirrors RecordingService: swiping the app out of Recents is how
+           people tidy their task list, not how they cancel a transcription, so processing keeps
+           running with ProcessingService.onTaskRemoved as the deliberate decision point. -->
       <service
         android:name=".pipeline.ProcessingService"
         android:exported="false"
+        android:stopWithTask="false"
         android:foregroundServiceType="dataSync" />
 
       <!-- Routes taps on the PiP window's Pause/Resume/Stop buttons to CaptureController. -->
