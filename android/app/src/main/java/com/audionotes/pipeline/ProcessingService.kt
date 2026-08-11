@@ -59,28 +59,31 @@ class ProcessingService : Service() {
     try {
       acquireWakeLock()
       while (true) {
-        val id = synchronized(lock) {
-          val next = queue.poll()
-          if (next == null) running = false // exit decided under the same lock as enqueue
-          currentId = next // set/clear atomically with poll (dedup in onStartCommand reads currentId under lock)
-          next
+        // The engine is constructed INSIDE the lock so that currentId and current are published
+        // atomically together — a cancel() landing between "currentId is set" and "current is set"
+        // would otherwise see currentId == meetingId but current == null and silently no-op,
+        // losing the cancel. Construction itself is cheap (no IO), so holding the lock here is
+        // fine; engine.run() — the actual VAD/ASR/diarize work — stays outside the lock.
+        val engine = synchronized(lock) {
+          val id = queue.poll()
+          if (id == null) { running = false; return@synchronized null } // exit decided under the same lock as enqueue
+          currentId = id
+          ProcessingEngine(this, id, "base", object : ProcessingEngine.Listener {
+            override fun onStage(stage: String, done: Int, total: Int) {
+              try { updateNotification(stageLabel(stage)) } catch (_: Exception) {}
+              AudioPipelineBridge.emitProgress(id, stage, done, total)
+            }
+            override fun onComplete(outcome: String, message: String?) {
+              AudioPipelineBridge.emitComplete(id, outcome, message)
+            }
+          }).also { current = it }
         } ?: break
         try { updateNotification(LABEL_TRANSCRIBING) } catch (_: Exception) {
           // POST_NOTIFICATIONS denied or similar. Processing is unaffected; only the control
           // surface is missing — mirrors RecordingService.refreshNotification().
         }
-        val engine = ProcessingEngine(this, id, "base", object : ProcessingEngine.Listener {
-          override fun onStage(stage: String, done: Int, total: Int) {
-            try { updateNotification(stageLabel(stage)) } catch (_: Exception) {}
-            AudioPipelineBridge.emitProgress(id, stage, done, total)
-          }
-          override fun onComplete(outcome: String, message: String?) {
-            AudioPipelineBridge.emitComplete(id, outcome, message)
-          }
-        })
-        current = engine
         engine.run()
-        current = null
+        synchronized(lock) { current = null; currentId = null }
       }
     } finally {
       releaseWakeLock()
@@ -89,10 +92,21 @@ class ProcessingService : Service() {
     }
   }
 
-  /** Cancel a queued or running meeting. */
+  /**
+   * Cancel a queued or running meeting.
+   *
+   * Running: mark the live engine cancelled; it emits the terminal "cancelled" event itself at the
+   * next stage boundary. Queued-only: there is no engine to emit it, so this does — otherwise a
+   * cancelled-while-queued meeting never produces a terminal event and, once JS awaits completion
+   * events (Task 6), would hang forever.
+   */
   fun cancel(meetingId: String) {
-    queue.remove(meetingId)
-    if (currentId == meetingId) current?.cancelled = true
+    val wasQueuedOnly = synchronized(lock) {
+      val removed = queue.remove(meetingId)
+      if (currentId == meetingId) { current?.cancelled = true; false } // running: engine emits "cancelled" itself
+      else removed                                                     // queued-only: we must emit below
+    }
+    if (wasQueuedOnly) AudioPipelineBridge.emitComplete(meetingId, "cancelled", null) // emit OUTSIDE the lock
   }
 
   /**

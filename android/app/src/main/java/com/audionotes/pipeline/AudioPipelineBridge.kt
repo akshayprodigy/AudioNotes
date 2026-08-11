@@ -8,8 +8,8 @@ import java.lang.ref.WeakReference
 /** Lets the background ProcessingService emit RN events without owning the module. Best-effort:
  *  a no-op when JS is gone (app killed) — the service + notification are the durable channel.
  *
- *  Event names/keys mirror AudioPipelineModule.emitProgress/emitComplete exactly, so JS listeners
- *  set up for the module's events also see events raised while the service runs standalone. */
+ *  Emits onStageProgress / onStageComplete / onError to JS via RCTDeviceEventEmitter; best-effort
+ *  no-op when JS is gone. */
 object AudioPipelineBridge {
   @Volatile private var ref: WeakReference<ReactApplicationContext>? = null
 
