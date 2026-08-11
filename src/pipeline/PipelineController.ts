@@ -184,6 +184,23 @@ class PipelineControllerImpl {
   }
 
   /**
+   * Rebuild a meeting's minutes after a speaker merge WITHOUT downgrading its tier.
+   *
+   * SpeakersScreen's "Regenerate" used to call buildMinutes directly, which always rewrites the
+   * rule-based floor (source:'rule') — silently discarding any LLM-enhanced minutes the meeting
+   * had. Here we detect whether the meeting currently holds LLM minutes and, if so, re-run the LLM
+   * enhancement after the rule rebuild so the meeting keeps its enhanced tier. enhanceMinutes is
+   * already gated on the model being available/capable and falls back to keeping the rule minutes
+   * on any failure, so an LLM-less device degrades gracefully to the rebuilt rule floor.
+   */
+  async regenerateMinutes(meetingId: string): Promise<void> {
+    const existing = await db.minutes(meetingId);
+    const wasLlm = existing.some(m => m.source === 'llm');
+    await this.buildMinutes(meetingId);
+    if (wasLlm) await this.enhanceMinutes(meetingId);
+  }
+
+  /**
    * Replace the timestamp placeholder title with the opening line of the meeting.
    *
    * A Library of rows all reading "Meeting" (or all reading the same date format) is unusable —

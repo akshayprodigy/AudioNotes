@@ -13,6 +13,7 @@ jest.mock('../src/db/queries', () => ({
     utterances: jest.fn(),
     speakers: jest.fn(),
     segments: jest.fn(async () => []),
+    minutes: jest.fn(async () => []),
     replaceMinutes: jest.fn(async () => {}),
     setStatus: jest.fn(async () => {}),
     getMeeting: jest.fn(async () => undefined),
@@ -25,6 +26,13 @@ jest.mock('../src/db/queries', () => ({
 
 // Imported after the mock so PipelineController picks up the mocked db.
 import { PipelineController } from '../src/pipeline/PipelineController';
+
+// NativeLlm's default export resolves to the jest.setup.js mock (available/capable/load default
+// to false), so importing it here gives us the same jest.fn()s to assert against.
+import Llm from '../src/native/NativeLlm';
+const mockLlm = Llm as unknown as {
+  available: jest.Mock; capable: jest.Mock; load: jest.Mock; generate: jest.Mock; unload: jest.Mock;
+};
 
 const mockDb = db as jest.Mocked<typeof db>;
 const mockProcess = AudioPipeline.process as jest.Mock;
@@ -64,6 +72,7 @@ beforeEach(() => {
   mockDb.getMeeting.mockResolvedValue(undefined as any);
   mockDb.setTitle.mockResolvedValue(undefined as any);
   mockDb.getSetting.mockResolvedValue('');
+  mockDb.minutes.mockResolvedValue([]);
 });
 
 describe('PipelineController sweep()', () => {
@@ -140,5 +149,35 @@ describe('PipelineController buildMinutes() — on-demand rebuild (SpeakersScree
     await PipelineController.buildMinutes('m5');
 
     expect(mockDb.setStatus).toHaveBeenCalledWith('m5', 'error');
+  });
+});
+
+describe('PipelineController regenerateMinutes() — tier-preserving rebuild after a speaker merge', () => {
+  it('re-runs LLM enhancement when the meeting currently has LLM-enhanced minutes', async () => {
+    mockDb.minutes.mockResolvedValue([
+      { id: 'm6:0', meetingId: 'm6', kind: 'summary', content: 'x', source: 'llm' },
+    ]);
+    mockDb.utterances.mockResolvedValue([utt('u1', 'm6')]);
+    mockDb.speakers.mockResolvedValue([speaker('m6')]);
+
+    await PipelineController.regenerateMinutes('m6');
+
+    // Rule floor rebuilt (buildMinutes ran) AND the LLM enhancement was attempted — Llm.available
+    // is enhanceMinutes' first gate, so its being called proves the tier-preserving branch ran.
+    expect(mockDb.replaceMinutes).toHaveBeenCalled();
+    expect(mockLlm.available).toHaveBeenCalled();
+  });
+
+  it('does NOT run LLM enhancement when the meeting only has rule-based minutes', async () => {
+    mockDb.minutes.mockResolvedValue([
+      { id: 'm7:0', meetingId: 'm7', kind: 'summary', content: 'x', source: 'rule' },
+    ]);
+    mockDb.utterances.mockResolvedValue([utt('u1', 'm7')]);
+    mockDb.speakers.mockResolvedValue([speaker('m7')]);
+
+    await PipelineController.regenerateMinutes('m7');
+
+    expect(mockDb.replaceMinutes).toHaveBeenCalled();
+    expect(mockLlm.available).not.toHaveBeenCalled();
   });
 });

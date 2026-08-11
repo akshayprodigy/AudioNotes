@@ -42,7 +42,7 @@ export default function SpeakersScreen({ route, navigation }: Props) {
   const regenerate = async () => {
     setBusy(true);
     try {
-      await PipelineController.buildMinutes(meetingId);
+      await PipelineController.regenerateMinutes(meetingId);
     } finally {
       setBusy(false);
     }
