@@ -1,5 +1,6 @@
 package com.audionotes.pipeline
 
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -12,6 +13,7 @@ import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.audionotes.R
+import com.audionotes.data.AudioDb
 import java.util.concurrent.ConcurrentLinkedQueue
 
 /**
@@ -83,6 +85,14 @@ class ProcessingService : Service() {
             }
             override fun onComplete(outcome: String, message: String?) {
               AudioPipelineBridge.emitComplete(id, outcome, message)
+              // ProcessingEngine reports the run outcome as "done" even for terminal-but-empty
+              // cases (no-speech -> status 'error'; model still downloading -> status left at
+              // 'vad'/'captured') — outcome alone can't tell a finished MOM from those. Re-read
+              // the meeting's own status from the DB and only notify when it actually reached
+              // 'done'.
+              if (outcome == "done" && AudioDb.get(this@ProcessingService).pipelineState(id).status == "done") {
+                postNotesReady(id)
+              }
             }
           }).also { current = it }
         } ?: break
@@ -171,6 +181,42 @@ class ProcessingService : Service() {
   }
   private fun stageLabel(stage: String) = when (stage) {
     "vad" -> "Cleaning up audio…"; "asr" -> "Writing words down…"; "diarize" -> "Separating speakers…"; else -> LABEL_TRANSCRIBING
+  }
+
+  /**
+   * User-visible "notes ready" notification, posted once a meeting reaches a finished MOM in the
+   * background — the whole point of running processing headlessly is that someone who stopped
+   * from PiP and walked off finds out without reopening the app. Its own channel
+   * (IMPORTANCE_DEFAULT, can alert) is deliberately separate from CHANNEL_ID above: that one is
+   * silent/low and torn down with the ongoing foreground notification when the service stops, so
+   * reusing it here would mean this notification either can't alert or disappears with it.
+   *
+   * Tapping just opens the app (plain launch intent) for v1. `openMeetingId` is carried as a hint
+   * for a future deep-link straight to the meeting; MainActivity does not read it yet — follow-up.
+   */
+  private fun postNotesReady(meetingId: String) {
+    try {
+      val chan = "audionotes.done"
+      NotificationManagerCompat.from(this).createNotificationChannel(
+        NotificationChannelCompat.Builder(chan, NotificationManagerCompat.IMPORTANCE_DEFAULT)
+          .setName("Notes ready").build())
+      val open = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+        putExtra("openMeetingId", meetingId) // optional deep-link hint; plain open is fine for v1
+      } ?: Intent()
+      val pi = PendingIntent.getActivity(
+        this, meetingId.hashCode(), open,
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+      val n = NotificationCompat.Builder(this, chan)
+        .setSmallIcon(R.drawable.ic_notification_rec)
+        .setContentTitle("Your notes are ready")
+        .setContentText("Tap to see the summary and transcript.")
+        .setAutoCancel(true)
+        .setContentIntent(pi)
+        .build()
+      NotificationManagerCompat.from(this).notify(meetingId.hashCode() and 0xffff, n)
+    } catch (_: Exception) {
+      // POST_NOTIFICATIONS denied or similar — non-fatal, processing already completed fine.
+    }
   }
 
   companion object {
