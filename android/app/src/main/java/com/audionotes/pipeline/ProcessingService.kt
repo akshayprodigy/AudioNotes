@@ -180,7 +180,7 @@ class ProcessingService : Service() {
     else @Suppress("DEPRECATION") stopForeground(true)
   }
   private fun stageLabel(stage: String) = when (stage) {
-    "vad" -> "Cleaning up audio…"; "asr" -> "Writing words down…"; "diarize" -> "Separating speakers…"; else -> LABEL_TRANSCRIBING
+    "vad" -> "Cleaning up audio…"; "asr" -> "Writing words down…"; "diarize" -> "Separating speakers…"; "minutes" -> "Pulling out the minutes…"; else -> LABEL_TRANSCRIBING
   }
 
   /**

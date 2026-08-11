@@ -148,9 +148,9 @@ class ProcessingEngine(
       // Gate only on utterances existing — NOT on `transcribed`/diarize success. Diarize can
       // legitimately produce no speakers (single-speaker meeting, or no diar models installed
       // yet) and the meeting still deserves a full MOM from whatever transcript it has.
-      listener.onStage("minutes", 0, 1)
       val utts = db.utterances(meetingId)
       if (utts.isNotEmpty()) {
+        listener.onStage("minutes", 0, 1)
         val speakers = db.speakers(meetingId)
         val minutes = MinutesExtractor.extract(utts, speakers)
         db.replaceMinutes(meetingId, minutes)
