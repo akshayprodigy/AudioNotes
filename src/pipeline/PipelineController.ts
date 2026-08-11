@@ -33,18 +33,20 @@ class PipelineControllerImpl {
   }
 
   // AudioPipeline.process() is fire-and-forget: it enqueues the meeting into the foreground
-  // service and resolves immediately, so the heavy stages (vad -> asr -> diarize) run AFTER this
-  // call returns. We must await the service's terminal event before running the JS layer's
-  // deterministic rule-based minutes floor over the transcript — otherwise minutes get built from
-  // whatever (possibly empty) transcript happens to exist at the moment `process` resolves.
+  // service and resolves immediately, so the heavy stages (vad -> asr -> diarize -> minutes) run
+  // AFTER this call returns. We await the service's terminal event so callers can rely on
+  // process() resolving only once the meeting is fully finished — the native ProcessingEngine now
+  // builds the rule-based minutes, retitles, applies audio retention, and sets the terminal status
+  // itself. JS only adds the best-effort LLM upgrade on top when the app is open and the device is
+  // capable — enhanceMinutes() no-ops when there are no utterances or no LLM model.
   async process(
     meetingId: string,
     opts: { model: 'base' | 'small'; useLLM: boolean },
   ): Promise<void> {
     const outcome = await this.awaitNativeComplete(meetingId, () => AudioPipeline.process(meetingId, opts));
-    // 'cancelled'/'error' already have their status set natively; nothing to summarize.
+    // 'cancelled'/'error' already have their status set natively; nothing to enhance.
     if (outcome !== 'done') return;
-    await this.finishMinutes(meetingId, opts.useLLM !== false);
+    if (opts.useLLM !== false) await this.enhanceMinutes(meetingId);
   }
 
   /**
@@ -66,15 +68,6 @@ class PipelineControllerImpl {
         resolve('error');
       });
     });
-  }
-
-  // Shared tail of a successful run: the deterministic rule-based floor, an optional best-effort
-  // LLM upgrade, then retention cleanup. Used both when process() just finished natively and when
-  // sweep() finds a meeting whose native stages already completed in the background.
-  private async finishMinutes(meetingId: string, useLLM: boolean): Promise<void> {
-    await this.buildMinutes(meetingId); // deterministic rule-based floor
-    if (useLLM) await this.enhanceMinutes(meetingId); // best-effort LLM upgrade
-    await this.applyRetention(meetingId);
   }
 
   /**
@@ -100,26 +93,6 @@ class PipelineControllerImpl {
       // Already gone, or unlink failed. Neither is a reason to keep the row.
     }
     await db.deleteMeeting(meetingId);
-  }
-
-  /**
-   * Honour the audio-retention setting once a meeting is fully processed.
-   *
-   * Default is to DELETE the raw audio: it is unencrypted PCM at ~115 MB/hour and, after
-   * transcription, its only remaining use is Reprocess. Keeping it is the privacy-weaker and
-   * storage-expensive option, so it must be opted into. Only ever runs when a transcript
-   * actually exists — otherwise a failed ASR run would destroy the only copy of the meeting.
-   */
-  async applyRetention(meetingId: string): Promise<void> {
-    try {
-      const keep = (await db.getSetting('keepAudio')) === '1';
-      if (keep) return;
-      const utterances = await db.utterances(meetingId);
-      if (utterances.length === 0) return; // no transcript — the audio is all we have, keep it
-      await AudioPipeline.discardAudio(meetingId);
-    } catch {
-      // Retention is best-effort; never fail a good transcript over cleanup.
-    }
   }
 
   /**
@@ -160,17 +133,11 @@ class PipelineControllerImpl {
       if (this.inFlight.has(m.id)) continue;
       this.inFlight.add(m.id);
       try {
-        const utt = await db.utterances(m.id);
-        const spk = await db.speakers(m.id);
-        if (utt.length > 0 && spk.length > 0) {
-          // Native stages already done in the background — only the JS minutes remain. Calling
-          // full process() here would spin up the foreground service + notification for nothing.
-          await this.finishMinutes(m.id, true);
-        } else {
-          // Still owes native work — enqueue into the service, which resumes only the missing
-          // stages (ResumePlan).
-          await this.process(m.id, { model: 'base', useLLM: true });
-        }
+        // Always route through process() -> the native service. Its status-aware completion gate
+        // resumes only the missing stages (ResumePlan) — a meeting whose rows already exist but
+        // whose status isn't 'done' has just its minutes step re-run natively, so this no longer
+        // needs a JS-side shortcut for the "utterances + speakers already present" case.
+        await this.process(m.id, { model: 'base', useLLM: true });
       } catch {
         // leave the status as-is so the next sweep retries it
       } finally {
@@ -179,7 +146,10 @@ class PipelineControllerImpl {
     }
   }
 
-  // Rule-based minutes — the Free-tier floor. Runs whenever a transcript exists.
+  // Rule-based minutes — the Free-tier floor. The native ProcessingEngine now runs the equivalent
+  // logic itself as part of process()/sweep(), so this is no longer on that happy path. It stays
+  // as the on-demand rebuild SpeakersScreen calls after a user merges speakers (see "regenerate"
+  // there) — a local, already-'done' meeting with no need to touch the foreground service.
   async buildMinutes(meetingId: string): Promise<void> {
     const utterances = await db.utterances(meetingId);
     if (utterances.length === 0) {

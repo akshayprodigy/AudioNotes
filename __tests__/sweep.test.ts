@@ -1,7 +1,8 @@
-// PipelineController.sweep() must not spin up the foreground service (AudioPipeline.process)
-// for a meeting whose native stages already finished in the background — that only wastes a
-// notification + service start for work that is already done. It should finish such meetings
-// with the JS-only minutes floor instead. See Task 6 / feat/background-processing.
+// PipelineController.sweep() must route every pending meeting through process() -> the native
+// ProcessingService. Native now owns the full pipeline including the rule-based minutes floor,
+// retitling, and retention — its status-aware completion gate resumes only the missing stages for
+// a meeting whose rows already exist (e.g. utterances + speakers present but status isn't 'done'
+// yet), so sweep() no longer needs a JS-side "finish it locally" shortcut. See Task 6 / feat/headless-mom.
 import { db } from '../src/db/queries';
 import AudioPipeline from '../src/native/NativeAudioPipeline';
 import type { Meeting, Utterance, Speaker } from '../src/pipeline/types';
@@ -66,18 +67,24 @@ beforeEach(() => {
 });
 
 describe('PipelineController sweep()', () => {
-  it('finishes a pending meeting that already has utterances + speakers via buildMinutes, without calling AudioPipeline.process', async () => {
+  // Note: both cases below reject AudioPipeline.process so the run resolves deterministically —
+  // the jest-wide NativeEventEmitter mock (jest.setup.js) is a genuine no-op, so there is no way
+  // to fake a native 'onStageComplete' event from a test. The reject path still proves what
+  // matters here: sweep() calls AudioPipeline.process (via process()) and never writes minutes
+  // itself, regardless of outcome.
+  it('no longer shortcuts a meeting that already has utterances + speakers — routes it through process() -> AudioPipeline.process instead of a direct db write', async () => {
     mockDb.pendingMeetings.mockResolvedValue([{ id: 'm1' }]);
     mockDb.utterances.mockResolvedValue([utt('u1', 'm1')]);
     mockDb.speakers.mockResolvedValue([speaker('m1')]);
     mockDb.getMeeting.mockResolvedValue(meeting('m1'));
+    mockProcess.mockRejectedValueOnce(new Error('boom'));
 
-    await PipelineController.processPending();
+    await expect(PipelineController.processPending()).resolves.toBeUndefined();
 
-    expect(mockProcess).not.toHaveBeenCalled();
-    // buildMinutes ran: it wrote minutes from the transcript and marked the meeting done.
-    expect(mockDb.replaceMinutes).toHaveBeenCalledWith('m1', expect.any(Array));
-    expect(mockDb.setStatus).toHaveBeenCalledWith('m1', 'done');
+    // This meeting has utterances AND speakers — under the old behavior sweep() would have
+    // finished it locally via buildMinutes and never called AudioPipeline.process at all.
+    expect(mockProcess).toHaveBeenCalledWith('m1', { model: 'base', useLLM: true });
+    expect(mockDb.replaceMinutes).not.toHaveBeenCalled();
   });
 
   it('routes a meeting with utterances but no speakers to process(), and resolves (not throws) when AudioPipeline.process rejects', async () => {
@@ -91,12 +98,12 @@ describe('PipelineController sweep()', () => {
     await expect(PipelineController.processPending()).resolves.toBeUndefined();
 
     expect(mockProcess).toHaveBeenCalledWith('m2', { model: 'base', useLLM: true });
-    // outcome 'error' short-circuits process() before minutes are ever built.
+    // outcome 'error' short-circuits process() before minutes are ever touched.
     expect(mockDb.replaceMinutes).not.toHaveBeenCalled();
   });
 });
 
-describe('PipelineController buildMinutes() — empty-transcript terminal handling', () => {
+describe('PipelineController buildMinutes() — on-demand rebuild (SpeakersScreen "regenerate" after merge)', () => {
   it('marks a meeting NO SPEECH (error) when ASR ran (status asr) but produced zero utterances', async () => {
     // VAD found speech spans, but whisper transcribed them all to blanks (0 utterances). The engine
     // set status 'asr' (it only does so when the ASR model was present), so ASR genuinely ran and
