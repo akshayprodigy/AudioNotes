@@ -188,12 +188,22 @@ class PipelineControllerImpl {
       // transcribed; leave a hopeless one pending and every Library focus re-runs a full VAD
       // pass over it forever, since the resumable-status sweep will keep picking it back up.
       //
-      // VAD spans are the discriminator. Spans but no utterances means ASR could not run —
-      // typically the whisper model is still downloading — so leave it for the next sweep. No
-      // spans at all means the recording genuinely contains no speech; re-running VAD on the
-      // same silent audio will produce the same nothing, so stop and say so.
+      // Two discriminators decide whether this is terminal. No spans at all means the recording
+      // genuinely contains no speech; re-running VAD on the same silent audio produces the same
+      // nothing, so mark it terminal ('error' renders as "NO SPEECH").
       const spans = await db.segments(meetingId);
-      if (spans.length === 0) await db.setStatus(meetingId, 'error');
+      if (spans.length === 0) {
+        await db.setStatus(meetingId, 'error');
+        return;
+      }
+      // Spans but no utterances: the STATUS tells us whether ASR actually ran. The native engine
+      // sets 'asr' only when the whisper model was present, so status 'asr' means ASR ran and
+      // transcribed the spans to nothing (music/noise/unintelligible) — re-running yields the same
+      // nothing, so mark it terminal instead of leaving it pending to re-transcribe on every Library
+      // sweep forever. A status still at 'vad'/'captured' means ASR has not run (model still
+      // downloading), so leave it pending for the next sweep to retry.
+      const meeting = await db.getMeeting(meetingId);
+      if (meeting?.status === 'asr') await db.setStatus(meetingId, 'error');
       return;
     }
     const speakers = await db.speakers(meetingId);

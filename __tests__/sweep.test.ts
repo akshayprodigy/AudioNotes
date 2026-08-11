@@ -95,3 +95,43 @@ describe('PipelineController sweep()', () => {
     expect(mockDb.replaceMinutes).not.toHaveBeenCalled();
   });
 });
+
+describe('PipelineController buildMinutes() — empty-transcript terminal handling', () => {
+  it('marks a meeting NO SPEECH (error) when ASR ran (status asr) but produced zero utterances', async () => {
+    // VAD found speech spans, but whisper transcribed them all to blanks (0 utterances). The engine
+    // set status 'asr' (it only does so when the ASR model was present), so ASR genuinely ran and
+    // re-running it yields the same nothing — this must be terminal, not left pending to re-transcribe
+    // on every Library sweep forever.
+    mockDb.utterances.mockResolvedValue([]);
+    mockDb.segments.mockResolvedValue([0, 1000] as any); // spans exist
+    mockDb.getMeeting.mockResolvedValue({ ...meeting('m3'), status: 'asr' });
+
+    await PipelineController.buildMinutes('m3');
+
+    expect(mockDb.setStatus).toHaveBeenCalledWith('m3', 'error');
+    expect(mockDb.replaceMinutes).not.toHaveBeenCalled();
+  });
+
+  it('leaves a meeting pending (no status change) when spans exist but ASR has not run yet (status vad)', async () => {
+    // Spans but no utterances AND status still 'vad' means the whisper model has not run — typically
+    // still downloading. Marking it terminal would strand a recoverable meeting, so it must stay
+    // pending for the next sweep.
+    mockDb.utterances.mockResolvedValue([]);
+    mockDb.segments.mockResolvedValue([0, 1000] as any);
+    mockDb.getMeeting.mockResolvedValue({ ...meeting('m4'), status: 'vad' });
+
+    await PipelineController.buildMinutes('m4');
+
+    expect(mockDb.setStatus).not.toHaveBeenCalled();
+    expect(mockDb.replaceMinutes).not.toHaveBeenCalled();
+  });
+
+  it('marks a truly silent meeting (no spans, no utterances) NO SPEECH (error), unchanged behavior', async () => {
+    mockDb.utterances.mockResolvedValue([]);
+    mockDb.segments.mockResolvedValue([] as any); // no speech spans at all
+
+    await PipelineController.buildMinutes('m5');
+
+    expect(mockDb.setStatus).toHaveBeenCalledWith('m5', 'error');
+  });
+});
