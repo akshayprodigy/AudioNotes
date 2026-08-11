@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { StatusBar, View } from 'react-native';
-import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { DeviceEventEmitter, StatusBar, View } from 'react-native';
+import { DefaultTheme, NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { font, useTheme } from '../theme';
 import { db } from '../db/queries';
+import AudioPipeline from '../native/NativeAudioPipeline';
 import Mascot from '../components/Mascot';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import RecordScreen from '../screens/RecordScreen';
@@ -27,6 +28,9 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+// A container-level ref so a native "Notes ready" tap can navigate without a screen in scope.
+export const navigationRef = createNavigationContainerRef<RootStackParamList>();
+
 export default function RootNavigator() {
   const { colors } = useTheme();
   const [initial, setInitial] = useState<keyof RootStackParamList | null>(null);
@@ -41,6 +45,20 @@ export default function RootNavigator() {
       }
     })();
   }, []);
+
+  const openMeeting = useCallback((meetingId?: string | null) => {
+    if (meetingId && navigationRef.isReady()) {
+      navigationRef.navigate('Meeting', { meetingId });
+    }
+  }, []);
+
+  // Warm tap: the app is already running, so MainActivity.onNewIntent emits onOpenMeeting.
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('onOpenMeeting', (e: { meetingId?: string }) =>
+      openMeeting(e?.meetingId),
+    );
+    return () => sub.remove();
+  }, [openMeeting]);
 
   const navTheme = {
     ...DefaultTheme,
@@ -82,7 +100,14 @@ export default function RootNavigator() {
   return (
     <>
       <StatusBar barStyle="dark-content" backgroundColor={colors.canvas} />
-      <NavigationContainer theme={navTheme}>
+      <NavigationContainer
+        ref={navigationRef}
+        theme={navTheme}
+        onReady={() => {
+          // Cold start: MainActivity stashed the id before React existed; consume it once the
+          // navigator is mounted so navigate() has somewhere to go.
+          AudioPipeline.consumePendingMeetingId().then(openMeeting).catch(() => {});
+        }}>
         <Stack.Navigator initialRouteName={initial} screenOptions={screenOptions}>
           <Stack.Screen
             name="Onboarding"

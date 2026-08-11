@@ -23,6 +23,11 @@ export interface Spec extends TurboModule {
   // Returns bytes reclaimed. The transcript and minutes live on in the encrypted DB.
   discardAudio(meetingId: string): Promise<number>;
 
+  // Consume (and clear) a meetingId stashed by a cold-start "Notes ready" notification tap, so the
+  // navigator can deep-link to it on mount. Resolves null when there is none. Warm taps arrive as
+  // the 'onOpenMeeting' DeviceEventEmitter event instead.
+  consumePendingMeetingId(): Promise<string | null>;
+
   // Live capture state owned by native. Capture can be started by the floating bubble or outlive
   // the JS context, so the store must re-read this on resume rather than trust its own flag.
   currentSession(): Promise<{

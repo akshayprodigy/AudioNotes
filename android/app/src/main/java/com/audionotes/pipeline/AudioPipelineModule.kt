@@ -272,6 +272,19 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
     }.start()
   }
 
+  /**
+   * Hand JS the meetingId stashed by a cold-start "Notes ready" notification tap, exactly once.
+   * MainActivity stores it in DeepLink.pendingMeetingId before React is ready (onCreate); the JS
+   * navigator calls this on mount to deep-link to the meeting. Warm taps skip this and arrive as
+   * the 'onOpenMeeting' device event instead. Resolves null when there is nothing pending.
+   */
+  @ReactMethod
+  fun consumePendingMeetingId(promise: Promise) {
+    val id = com.audionotes.DeepLink.pendingMeetingId
+    com.audionotes.DeepLink.pendingMeetingId = null
+    promise.resolve(id)
+  }
+
   @ReactMethod fun addListener(eventName: String) {}
   @ReactMethod fun removeListeners(count: Double) {}
 }

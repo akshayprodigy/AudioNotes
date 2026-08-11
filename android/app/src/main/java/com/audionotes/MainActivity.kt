@@ -1,5 +1,6 @@
 package com.audionotes
 
+import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
 import com.audionotes.pipeline.PipController
@@ -9,6 +10,12 @@ import com.facebook.react.bridge.ReactContext
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
 import com.facebook.react.defaults.DefaultReactActivityDelegate
 import com.facebook.react.modules.core.DeviceEventManagerModule
+
+/** Carries a "Notes ready" notification's target meetingId across a cold start until JS is ready
+ *  to consume it (see AudioPipelineModule.consumePendingMeetingId). Warm taps use onOpenMeeting. */
+object DeepLink {
+  @Volatile var pendingMeetingId: String? = null
+}
 
 class MainActivity : ReactActivity() {
 
@@ -20,6 +27,27 @@ class MainActivity : ReactActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     current = this
+    intent?.getStringExtra("openMeetingId")?.let { DeepLink.pendingMeetingId = it }
+  }
+
+  /**
+   * A "Notes ready" tap while the app is already running (singleTask) lands here, not in onCreate.
+   * Emit onOpenMeeting straight to JS when React is live; if it somehow isn't, fall back to the
+   * same pending slot the cold-start path uses so the navigator still picks it up on mount.
+   */
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    val id = intent.getStringExtra("openMeetingId") ?: return
+    val ctx: ReactContext? = reactInstanceManagerBridgeless()
+    if (ctx != null) {
+      ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+        .emit("onOpenMeeting", com.facebook.react.bridge.Arguments.createMap().apply {
+          putString("meetingId", id)
+        })
+    } else {
+      DeepLink.pendingMeetingId = id
+    }
   }
 
   override fun onDestroy() {

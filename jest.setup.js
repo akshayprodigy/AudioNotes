@@ -19,6 +19,7 @@ const mockNativeModules = {
     cancel: jest.fn(),
     requestBatteryExemption: jest.fn(async () => true),
     recoverOrphans: jest.fn(async () => 0),
+    consumePendingMeetingId: jest.fn(async () => null),
     currentSession: jest.fn(async () => ({
       isRecording: false, meetingId: null, elapsedMs: 0, silenced: false,
     })),
