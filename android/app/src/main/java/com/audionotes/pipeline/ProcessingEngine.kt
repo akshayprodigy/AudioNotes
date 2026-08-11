@@ -167,11 +167,15 @@ class ProcessingEngine(
         // same silent audio yields the same nothing, so mark terminal ('error' -> "NO SPEECH").
         if (spans.isEmpty()) {
           db.setStatus(meetingId, "error")
-        } else if (state.status == "asr") {
-          // Spans exist and ASR actually ran (status only reaches 'asr' when the whisper model
-          // was present) but produced zero utterances (music/noise/unintelligible) — re-running
-          // transcribes the same audio to the same nothing, so mark terminal instead of being
-          // re-swept forever.
+        } else if (db.pipelineState(meetingId).status == "asr") {
+          // Read fresh (not the `state` cached at the top of run()) so this reflects THIS pass's
+          // ASR stage having just called db.setStatus(meetingId, "asr") above — otherwise a
+          // same-pass blank transcription (model present, spans exist, zero utterances) would
+          // read the stale pre-ASR status and wrongly fall through to "leave pending", stranding
+          // a headless one-shot run (no later sweep to converge it) forever. Spans exist and ASR
+          // actually ran (status only reaches 'asr' when the whisper model was present) but
+          // produced zero utterances (music/noise/unintelligible) — re-running transcribes the
+          // same audio to the same nothing, so mark terminal instead of being re-swept forever.
           db.setStatus(meetingId, "error")
         }
         // else: status is still 'vad'/'captured' -> ASR hasn't run yet (model still downloading)
