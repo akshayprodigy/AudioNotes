@@ -4,6 +4,7 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -75,6 +76,13 @@
         android:exported="false"
         android:stopWithTask="false"
         android:foregroundServiceType="microphone" />
+
+      <!-- Runs meeting processing (VAD/ASR/diarize) so it survives the app being backgrounded or
+           killed. Not yet started by anything — wired up in a later task. -->
+      <service
+        android:name=".pipeline.ProcessingService"
+        android:exported="false"
+        android:foregroundServiceType="dataSync" />
 
       <!-- Routes taps on the PiP window's Pause/Resume/Stop buttons to CaptureController. -->
       <receiver
