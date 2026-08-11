@@ -140,7 +140,11 @@ class ProcessingEngine(
       }
 
       listener.onComplete("done")
-    } catch (e: Exception) {
+    } catch (e: Throwable) {
+      // Must catch Throwable, not just Exception: an OutOfMemoryError/LinkageError during a stage
+      // (plausible on-device during diarization on a low-RAM phone) is not an Exception, and JS
+      // sweep() now awaits this run's terminal event — missing it wedges that one meeting forever
+      // and blocks the whole sweep loop for the rest of the app session.
       Log.e(TAG, "process failed for $meetingId", e)
       try { AudioDb.get(ctx).setStatus(meetingId, "error") } catch (_: Exception) {}
       listener.onComplete("error", e.message ?: e.toString())

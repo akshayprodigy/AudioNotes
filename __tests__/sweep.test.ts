@@ -79,4 +79,19 @@ describe('PipelineController sweep()', () => {
     expect(mockDb.replaceMinutes).toHaveBeenCalledWith('m1', expect.any(Array));
     expect(mockDb.setStatus).toHaveBeenCalledWith('m1', 'done');
   });
+
+  it('routes a meeting with utterances but no speakers to process(), and resolves (not throws) when AudioPipeline.process rejects', async () => {
+    mockDb.pendingMeetings.mockResolvedValue([{ id: 'm2' }]);
+    mockDb.utterances.mockResolvedValue([utt('u1', 'm2')]);
+    mockDb.speakers.mockResolvedValue([]); // diarization hasn't produced speakers yet
+    mockProcess.mockRejectedValueOnce(new Error('boom'));
+
+    // awaitNativeComplete's kick().catch() resolves 'error' instead of letting the rejection
+    // propagate, so process() — and therefore the whole sweep — must resolve normally.
+    await expect(PipelineController.processPending()).resolves.toBeUndefined();
+
+    expect(mockProcess).toHaveBeenCalledWith('m2', { model: 'base', useLLM: true });
+    // outcome 'error' short-circuits process() before minutes are ever built.
+    expect(mockDb.replaceMinutes).not.toHaveBeenCalled();
+  });
 });

@@ -7,7 +7,7 @@ import Llm from '../native/NativeLlm';
 import { db } from '../db/queries';
 import { extractMinutes } from './minutes';
 import { enhanceMinutes } from './summarize';
-import type { StageProgress, Utterance } from './types';
+import type { PipelineOutcome, StageProgress, Utterance } from './types';
 
 type ProgressCb = (p: StageProgress) => void;
 
@@ -44,9 +44,7 @@ class PipelineControllerImpl {
     const outcome = await this.awaitNativeComplete(meetingId, () => AudioPipeline.process(meetingId, opts));
     // 'cancelled'/'error' already have their status set natively; nothing to summarize.
     if (outcome !== 'done') return;
-    await this.buildMinutes(meetingId); // deterministic floor first — always present
-    if (opts.useLLM !== false) await this.enhanceMinutes(meetingId); // best-effort upgrade
-    await this.applyRetention(meetingId);
+    await this.finishMinutes(meetingId, opts.useLLM !== false);
   }
 
   /**
@@ -55,8 +53,8 @@ class PipelineControllerImpl {
    * 'error' so the caller never hangs. If the app is killed mid-run, this promise simply never
    * settles (the process is gone); the next Library sweep finishes the meeting.
    */
-  private awaitNativeComplete(meetingId: string, kick: () => Promise<void>): Promise<string> {
-    return new Promise<string>(resolve => {
+  private awaitNativeComplete(meetingId: string, kick: () => Promise<void>): Promise<PipelineOutcome> {
+    return new Promise<PipelineOutcome>(resolve => {
       const off = this.onComplete(e => {
         if (e.meetingId === meetingId) {
           off();
@@ -68,6 +66,15 @@ class PipelineControllerImpl {
         resolve('error');
       });
     });
+  }
+
+  // Shared tail of a successful run: the deterministic rule-based floor, an optional best-effort
+  // LLM upgrade, then retention cleanup. Used both when process() just finished natively and when
+  // sweep() finds a meeting whose native stages already completed in the background.
+  private async finishMinutes(meetingId: string, useLLM: boolean): Promise<void> {
+    await this.buildMinutes(meetingId); // deterministic rule-based floor
+    if (useLLM) await this.enhanceMinutes(meetingId); // best-effort LLM upgrade
+    await this.applyRetention(meetingId);
   }
 
   /**
@@ -158,9 +165,7 @@ class PipelineControllerImpl {
         if (utt.length > 0 && spk.length > 0) {
           // Native stages already done in the background — only the JS minutes remain. Calling
           // full process() here would spin up the foreground service + notification for nothing.
-          await this.buildMinutes(m.id);
-          await this.enhanceMinutes(m.id);
-          await this.applyRetention(m.id);
+          await this.finishMinutes(m.id, true);
         } else {
           // Still owes native work — enqueue into the service, which resumes only the missing
           // stages (ResumePlan).
@@ -265,13 +270,16 @@ class PipelineControllerImpl {
 
   // Terminal event for a run: outcome is 'done' | 'cancelled' | 'error'. Screens can react to a
   // finished or failed pipeline instead of polling the database until something shows up.
-  onComplete(cb: (e: { meetingId: string; outcome: string; message?: string }) => void): () => void {
+  onComplete(cb: (e: { meetingId: string; outcome: PipelineOutcome; message?: string }) => void): () => void {
     const done = this.emitter.addListener('onStageComplete', cb);
     const err = this.emitter.addListener('onError', cb);
     this.subs.push(done, err);
     return () => {
       done.remove();
       err.remove();
+      // Without this, subs grows by two every time awaitNativeComplete registers and unsubscribes
+      // a per-meeting listener (once per processed meeting) — a session-lifetime leak.
+      this.subs = this.subs.filter(s => s !== done && s !== err);
     };
   }
 
