@@ -8,6 +8,7 @@ import com.audionotes.pipeline.NativeBridge
 import org.json.JSONArray
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
@@ -29,6 +30,23 @@ import java.io.File
 class NativePipelineTest {
 
   private val ctx: Context get() = InstrumentationRegistry.getInstrumentation().targetContext
+
+  /**
+   * Load libaudionotes before any external fun is touched.
+   *
+   * NativeBridge used to self-load in an `init { System.loadLibrary("audionotes") }` block, so
+   * these tests never had to. `2cbc1a2` moved libonnxruntime.so out of the APK to a first-run
+   * download, which means it must now be System.load()ed by absolute path FIRST — so the static
+   * init became the explicit ensureLoaded(context) below, and this file was never updated. Every
+   * native test here threw UnsatisfiedLinkError as a result; it went unnoticed because the
+   * androidTest source set stopped compiling around the same time (see CaptureStateTest).
+   */
+  @Before
+  fun loadCore() {
+    val ort = File(ModelCatalog.modelsDir(ctx), "libonnxruntime.so")
+    assumeTrue("libonnxruntime.so not downloaded yet on this device", ort.exists())
+    NativeBridge.ensureLoaded(ctx)
+  }
 
   /** Copy the packed fixture out of androidTest assets into a real file the C++ side can fopen. */
   private fun fixturePcm(): File {

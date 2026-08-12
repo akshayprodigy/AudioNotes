@@ -6,6 +6,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.audionotes.data.ModelCatalog
 import com.audionotes.pipeline.NativeBridge
 import org.junit.Assume.assumeTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
@@ -32,6 +33,17 @@ import java.io.File
 class DiarEmbeddingBench {
 
   private val ctx: Context get() = InstrumentationRegistry.getInstrumentation().targetContext
+
+  /**
+   * Load libaudionotes before any external fun is touched — see the note in NativePipelineTest:
+   * NativeBridge stopped self-loading in `2cbc1a2`, and this file was never updated.
+   */
+  @Before
+  fun loadCore() {
+    val ort = File(ModelCatalog.modelsDir(ctx), "libonnxruntime.so")
+    assumeTrue("libonnxruntime.so not downloaded yet on this device", ort.exists())
+    NativeBridge.ensureLoaded(ctx)
+  }
   private val stage: File get() = File(ctx.getExternalFilesDir(null), "diarbench")
 
   private fun fixture(): File {
