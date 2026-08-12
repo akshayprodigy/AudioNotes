@@ -1,26 +1,19 @@
-// AudioNotes desktop CLI — Phase 1a bring-up.
+// AudioNotes desktop CLI — the desktop host for the shared core.
 //
-// Current milestone: ASR + VAD + diarize + LLM. Transcribe a 16 kHz mono PCM16 WAV using the
-// shared core's WhisperAsr, (with --vad) segment it first with the core's SileroVad, (with
-// --diar-seg/--diar-emb) label speakers with the core's Diarizer, and (with --llm) summarize the
-// transcript with the core's LlamaEngine — the same code the Android app runs via JNI. The --llm
-// prompt here is a bring-up placeholder; the real MOM prompts (map-reduce + minutes) get ported
-// in the orchestrator slice. Without --vad we fall back to fixed 30 s windows over the whole file.
-#include "asr/whisper_asr.h"
-#include "diar/diarizer.h"
-#include "llm/llama_engine.h"
-#include "vad/silero_vad.h"
+// Full pipeline: WAV in -> VAD -> ASR -> diarize -> align -> minutes (rule floor, optionally
+// LLM-enhanced) via the core's Pipeline orchestrator — the same brain every platform shell
+// drives. --json writes the machine-readable result document (the eval harness input format).
+// Without --vad we fall back to fixed 30 s windows over the whole file.
+#include "pipeline/pipeline.h"
+#include "pipeline/result_json.h"
 
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <exception>
 #include <fstream>
-#include <map>
 #include <string>
-#include <thread>
 #include <vector>
 
 namespace {
@@ -87,14 +80,14 @@ int main(int argc, char** argv) {
     std::fprintf(stderr,
                  "usage: %s <whisper-model.bin> <input-16k-mono.wav> [--vad silero_vad.onnx]\n"
                  "          [--diar-seg segmentation.onnx --diar-emb embedding.onnx] "
-                 "[--speakers N] [--llm model.gguf]\n",
+                 "[--speakers N] [--llm model.gguf] [--json out.json]\n",
                  argv[0]);
     return 2;
   }
   const std::string model = argv[1];
   const std::string wav = argv[2];
   const std::string pcm = wav + ".pcm";
-  std::string vad_model, diar_seg, diar_emb, llm_model;
+  std::string vad_model, diar_seg, diar_emb, llm_model, json_out;
   int num_speakers = 0;  // 0 = auto (threshold clustering), matching the Android pipeline
   for (int i = 3; i < argc; ++i) {
     if (std::strcmp(argv[i], "--vad") == 0 && i + 1 < argc) vad_model = argv[++i];
@@ -102,6 +95,7 @@ int main(int argc, char** argv) {
     else if (std::strcmp(argv[i], "--diar-emb") == 0 && i + 1 < argc) diar_emb = argv[++i];
     else if (std::strcmp(argv[i], "--speakers") == 0 && i + 1 < argc) num_speakers = std::atoi(argv[++i]);
     else if (std::strcmp(argv[i], "--llm") == 0 && i + 1 < argc) llm_model = argv[++i];
+    else if (std::strcmp(argv[i], "--json") == 0 && i + 1 < argc) json_out = argv[++i];
   }
 
 #ifdef AUDIONOTES_ORT_LIB_DEFAULT
@@ -117,103 +111,49 @@ int main(int argc, char** argv) {
   }
   std::fprintf(stderr, "audio: %.1fs\n", dur_ms / 1000.0);
 
-  audionotes::WhisperAsr asr(model);
-  if (!asr.ok()) {
-    std::fprintf(stderr, "failed to load whisper model: %s\n", model.c_str());
+  audionotes::PipelineConfig cfg;
+  cfg.asr_model = model;
+  cfg.vad_model = vad_model;
+  cfg.diar_seg_model = diar_seg;
+  cfg.diar_emb_model = diar_emb;
+  cfg.llm_model = llm_model;
+  cfg.num_speakers = num_speakers;
+
+  audionotes::Pipeline pipeline(cfg);
+  audionotes::PipelineResult res;
+  bool ok = pipeline.run(pcm, &res, [](const std::string& stage, int done, int total) {
+    std::fprintf(stderr, "[%s] %d/%d\n", stage.c_str(), done, total);
+  });
+  if (!ok) {
+    std::fprintf(stderr, "pipeline error: %s\n", pipeline.error().c_str());
     return 1;
   }
 
-  std::vector<audionotes::Segment> segs;
-  if (!vad_model.empty()) {
-    try {
-      audionotes::SileroVad vad(vad_model, 16000);
-      segs = vad.process(pcm);
-    } catch (const std::exception& e) {
-      std::fprintf(stderr, "vad error: %s\n", e.what());
-      return 1;
-    }
-    std::fprintf(stderr, "vad: %zu speech segment(s)\n", segs.size());
-    for (const auto& s : segs) {
-      std::fprintf(stderr, "  speech %6lld-%6lld ms\n", static_cast<long long>(s.start_ms),
-                   static_cast<long long>(s.end_ms));
-    }
-  } else {
-    // No VAD model given: fixed 30 s windows over the whole file.
-    for (int64_t s = 0; s < dur_ms; s += 30000) {
-      segs.push_back({s, std::min<int64_t>(s + 30000, dur_ms)});
-    }
-  }
-
-  auto utts = asr.transcribe(pcm, segs, 16000);
-  std::fprintf(stderr, "utterances: %zu\n", utts.size());
-
-  // Diarize + assign: per utterance, the cluster with the greatest summed temporal overlap wins
-  // (mirrors AudioDb.assignSpeakers on Android). -1 = unassigned.
-  std::vector<int> speaker_of(utts.size(), -1);
-  bool have_diar = false;
-  if (!diar_seg.empty() && !diar_emb.empty()) {
-    try {
-      audionotes::Diarizer diar(diar_seg, diar_emb, 16000, num_speakers);
-      if (!diar.ok()) {
-        std::fprintf(stderr, "diarizer unavailable (models failed to load?)\n");
-        return 1;
-      }
-      auto dsegs = diar.process(pcm);
-      std::fprintf(stderr, "diar: %zu segment(s)\n", dsegs.size());
-      for (const auto& d : dsegs) {
-        std::fprintf(stderr, "  S%d %6lld-%6lld ms\n", d.speaker,
-                     static_cast<long long>(d.start_ms), static_cast<long long>(d.end_ms));
-      }
-      have_diar = !dsegs.empty();
-      for (size_t i = 0; i < utts.size(); ++i) {
-        std::map<int, int64_t> overlap;
-        for (const auto& d : dsegs) {
-          int64_t ov = std::min(utts[i].end_ms, d.end_ms) - std::max(utts[i].start_ms, d.start_ms);
-          if (ov > 0) overlap[d.speaker] += ov;
-        }
-        int best = -1;
-        int64_t best_ov = 0;
-        for (const auto& [spk, ov] : overlap) {
-          if (ov > best_ov) { best = spk; best_ov = ov; }
-        }
-        speaker_of[i] = best;
-      }
-    } catch (const std::exception& e) {
-      std::fprintf(stderr, "diar error: %s\n", e.what());
-      return 1;
-    }
-  }
-
-  for (size_t i = 0; i < utts.size(); ++i) {
-    const auto& u = utts[i];
-    if (have_diar) {
+  std::fprintf(stderr, "vad: %zu segment(s), asr: %zu utterance(s)\n", res.segments.size(),
+               res.transcript.size());
+  for (const auto& u : res.transcript) {
+    if (u.speaker >= 0) {
       std::printf("[%6lld-%6lld ms] S%d: %s\n", static_cast<long long>(u.start_ms),
-                  static_cast<long long>(u.end_ms), speaker_of[i], u.text.c_str());
+                  static_cast<long long>(u.end_ms), u.speaker, u.text.c_str());
     } else {
       std::printf("[%6lld-%6lld ms] %s\n", static_cast<long long>(u.start_ms),
                   static_cast<long long>(u.end_ms), u.text.c_str());
     }
   }
+  if (!res.minutes.empty()) {
+    std::printf("\n== minutes (%s) ==\n", res.minutes_source.c_str());
+    for (const auto& m : res.minutes)
+      std::printf("%s: %s\n", m.kind.c_str(), m.content.c_str());
+  }
 
-  // LLM bring-up: one summary generation over the speaker-labeled transcript. Placeholder prompt —
-  // the app's real map-reduce MOM prompts get ported with the orchestrator slice.
-  if (!llm_model.empty()) {
-    audionotes::LlamaEngine llm;
-    unsigned hw = std::thread::hardware_concurrency();
-    int threads = hw > 2 ? static_cast<int>(hw > 8 ? 8 : hw) : 2;
-    if (!llm.load(llm_model, 8192, threads)) {  // n_ctx mirrors LlmModule on Android
-      std::fprintf(stderr, "failed to load LLM model: %s\n", llm_model.c_str());
+  if (!json_out.empty()) {
+    std::ofstream jf(json_out);
+    if (!jf) {
+      std::fprintf(stderr, "cannot write %s\n", json_out.c_str());
       return 1;
     }
-    std::string prompt =
-        "Summarize this meeting transcript in at most 3 short bullet points, then list any "
-        "action items with owners:\n\n";
-    for (size_t i = 0; i < utts.size(); ++i) {
-      if (have_diar && speaker_of[i] >= 0) prompt += "Speaker " + std::to_string(speaker_of[i]) + ": ";
-      prompt += utts[i].text + "\n";
-    }
-    std::string out = llm.generate(prompt, 256);
-    std::printf("\n== LLM summary ==\n%s\n", out.c_str());
+    jf << audionotes::resultToJson(res);
+    std::fprintf(stderr, "wrote %s\n", json_out.c_str());
   }
   return 0;
 }

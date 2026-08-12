@@ -90,10 +90,16 @@ add_executable(audionotes_cli
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
   ${CORE}/diar/diarizer.cpp
-  ${CORE}/llm/llama_engine.cpp)
+  ${CORE}/llm/llama_engine.cpp
+  ${CORE}/pipeline/pipeline.cpp
+  ${CORE}/pipeline/result_json.cpp
+  ${CORE}/minutes/minutes_extractor.cpp
+  ${CORE}/minutes/llm_minutes.cpp
+  ${CORE}/capi/audionotes_capi.cpp)
 
 target_include_directories(audionotes_cli PRIVATE
   ${CORE}
+  ${TP}
   ${TP}/onnxruntime/include
   ${TP}/whisper.cpp/include
   ${TP}/whisper.cpp/ggml/include
