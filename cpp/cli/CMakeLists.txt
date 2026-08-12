@@ -122,3 +122,8 @@ endfunction()
 audionotes_add_test(test_minutes
   ${CORE}/tests/test_minutes.cpp
   ${CORE}/minutes/minutes_extractor.cpp)
+
+audionotes_add_test(test_llm_minutes
+  ${CORE}/tests/test_llm_minutes.cpp
+  ${CORE}/minutes/llm_minutes.cpp
+  ${CORE}/minutes/minutes_extractor.cpp)
