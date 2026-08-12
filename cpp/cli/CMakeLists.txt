@@ -118,3 +118,7 @@ function(audionotes_add_test name)
   target_include_directories(${name} PRIVATE ${CORE} ${CORE}/third_party)
   add_test(NAME ${name} COMMAND ${name} ${CORE}/tests/golden)
 endfunction()
+
+audionotes_add_test(test_minutes
+  ${CORE}/tests/test_minutes.cpp
+  ${CORE}/minutes/minutes_extractor.cpp)
