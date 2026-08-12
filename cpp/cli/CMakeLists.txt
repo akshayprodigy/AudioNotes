@@ -3,7 +3,7 @@
 # This target excludes the JNI layer and links the vendored engines for the host toolchain.
 #
 # Milestone order (layered to de-risk): ASR (whisper, no ORT) -> +VAD -> +diarize -> +LLM -> orchestrator.
-# Current milestone: ASR + VAD.
+# Current milestone: ASR + VAD + diarize.
 cmake_minimum_required(VERSION 3.22)
 project(audionotes_cli CXX C)
 
@@ -44,17 +44,42 @@ else()
     "pointing at a libonnxruntime shared library at runtime.")
 endif()
 
+# Static engines throughout: one self-contained binary (plus the ORT dylib loaded at runtime).
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+
 # --- whisper.cpp (ASR) : builds ggml + whisper static libs for the host ---
 set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(WHISPER_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
 set(WHISPER_BUILD_SERVER   OFF CACHE BOOL "" FORCE)
 add_subdirectory(${TP}/whisper.cpp ${CMAKE_BINARY_DIR}/whisper EXCLUDE_FROM_ALL)
 
+# --- sherpa-onnx (diarization) : same pre-installed-ORT dance as the Android build (../CMakeLists.txt),
+# pointed at the vendored headers + the fetched host dylib instead of the AAR's .so. Skipped (with the
+# diarizer compiled out, Diarizer::ok() == false) when no host ORT artifact is pinned. ---
+if(ORT_LIB)
+  # Sherpa gets the FETCHED release's headers, not the vendored Android set: on macOS it includes
+  # coreml_provider_factory.h, which only the official osx artifact ships — and those headers match
+  # the linked dylib version exactly.
+  set(ENV{SHERPA_ONNXRUNTIME_INCLUDE_DIR} "${ORT_ROOT}/include")
+  set(ENV{SHERPA_ONNXRUNTIME_LIB_DIR} "${ORT_ROOT}/lib")
+  set(SHERPA_ONNX_USE_PRE_INSTALLED_ONNXRUNTIME_IF_AVAILABLE ON CACHE BOOL "" FORCE)
+  set(SHERPA_ONNX_ENABLE_C_API ON CACHE BOOL "" FORCE)
+  set(SHERPA_ONNX_ENABLE_PYTHON OFF CACHE BOOL "" FORCE)
+  set(SHERPA_ONNX_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+  set(SHERPA_ONNX_ENABLE_PORTAUDIO OFF CACHE BOOL "" FORCE)
+  set(SHERPA_ONNX_ENABLE_BINARY OFF CACHE BOOL "" FORCE)
+  set(SHERPA_ONNX_ENABLE_WEBSOCKET OFF CACHE BOOL "" FORCE)
+  set(SHERPA_ONNX_ENABLE_JNI OFF CACHE BOOL "" FORCE)
+  set(SHERPA_ONNX_ENABLE_TTS OFF CACHE BOOL "" FORCE)
+  add_subdirectory(${TP}/sherpa-onnx ${CMAKE_BINARY_DIR}/sherpa EXCLUDE_FROM_ALL)
+endif()
+
 add_executable(audionotes_cli
   main.cpp
   ${CORE}/asr/whisper_asr.cpp
   ${CORE}/util/ort_init.cpp
-  ${CORE}/vad/silero_vad.cpp)
+  ${CORE}/vad/silero_vad.cpp
+  ${CORE}/diar/diarizer.cpp)
 
 target_include_directories(audionotes_cli PRIVATE
   ${CORE}
@@ -63,7 +88,13 @@ target_include_directories(audionotes_cli PRIVATE
   ${TP}/whisper.cpp/ggml/include)
 
 target_compile_definitions(audionotes_cli PRIVATE HAVE_WHISPER)
+target_link_libraries(audionotes_cli PRIVATE whisper ${CMAKE_DL_LIBS})
 if(ORT_LIB)
   target_compile_definitions(audionotes_cli PRIVATE AUDIONOTES_ORT_LIB_DEFAULT="${ORT_LIB}")
+  target_compile_definitions(audionotes_cli PRIVATE HAVE_SHERPA=1)
+  target_include_directories(audionotes_cli PRIVATE ${TP}/sherpa-onnx)
+  target_link_libraries(audionotes_cli PRIVATE sherpa-onnx-c-api)
+  # The fetched dylib's install name is @rpath/libonnxruntime.<ver>.dylib; point the executable
+  # at the fetched copy so the build-time link (sherpa) and the runtime dlopen agree on one file.
+  set_target_properties(audionotes_cli PROPERTIES BUILD_RPATH "${ORT_ROOT}/lib")
 endif()
-target_link_libraries(audionotes_cli PRIVATE whisper ${CMAKE_DL_LIBS})
