@@ -1,0 +1,80 @@
+// The shared brain: PCM in -> transcript + speakers + minutes out. Capture-agnostic — every
+// platform shell (desktop CLI today; Android JNI / iOS / Windows next) drives this same class, so
+// the pipeline behaves identically everywhere. DB writes, retitling, retention and status
+// bookkeeping are deliberately NOT here — they are app concerns (see ProcessingEngine.kt).
+#pragma once
+#include <cstdint>
+#include <functional>
+#include <string>
+#include <vector>
+
+#include "asr/whisper_asr.h"            // Utterance {start_ms,end_ms,text}
+#include "diar/diarizer.h"              // DiarSegment
+#include "minutes/minutes_extractor.h"  // DraftMinute, MinuteUtt, MinuteSpk
+#include "vad/silero_vad.h"             // Segment
+
+namespace audionotes {
+
+struct AlignedUtterance {
+  int64_t start_ms;
+  int64_t end_ms;
+  int speaker;  // diar cluster index; -1 = unassigned
+  std::string text;
+};
+
+struct PipelineConfig {
+  std::string asr_model;       // required
+  std::string vad_model;       // "" = skip VAD, fall back to fixed 30 s windows
+  std::string diar_seg_model;  // both diar paths "" = skip diarization
+  std::string diar_emb_model;
+  std::string llm_model;       // "" = rule-based minutes only
+  int num_speakers = 0;        // 0 = auto clustering
+  int sample_rate = 16000;
+  int asr_threads = 0;         // 0 = engine default
+  int llm_threads = 4;
+  int llm_n_ctx = 8192;        // mirrors LlmModule.kt
+};
+
+// progress(stage, done, total); stage in: "vad" | "asr" | "diarize" | "minutes"
+// (the same stage names ProcessingEngine.Listener.onStage emits on Android).
+using PipelineProgressFn = std::function<void(const std::string&, int, int)>;
+
+struct PipelineResult {
+  int64_t audio_ms = 0;
+  std::vector<Segment> segments;             // VAD speech spans
+  std::vector<AlignedUtterance> transcript;  // ASR + speaker alignment
+  std::vector<DraftMinute> minutes;          // summary/decisions/actions/questions
+  std::string minutes_source;                // "llm" | "rule" | "" (no transcript)
+  // Per-stage wall-clock ms (same rationale as ProcessingEngine's stageDone logging).
+  int64_t vad_ms = 0, asr_ms = 0, diar_ms = 0, minutes_ms = 0;
+};
+
+// Pure function, exposed for tests: max-summed-overlap speaker assignment.
+// Port of AudioDb.assignSpeakers (AudioDb.kt:245-286): per utterance, sum the temporal overlap
+// with each cluster's diar segments; the cluster with the greatest sum wins; no overlap -> -1.
+std::vector<AlignedUtterance> alignSpeakers(const std::vector<Utterance>& utts,
+                                            const std::vector<DiarSegment>& diar);
+
+// Cluster -> "Speaker N" display names, numbered 1..K over the clusters that actually own
+// utterances, ascending cluster index (parity with AudioDb's create-then-drop-empty-then-renumber).
+std::vector<MinuteSpk> speakerNames(const std::vector<AlignedUtterance>& transcript);
+
+class Pipeline {
+ public:
+  explicit Pipeline(PipelineConfig cfg) : cfg_(std::move(cfg)) {}
+
+  // Runs vad -> asr -> diarize -> align -> minutes over a headerless PCM16 mono file.
+  // Returns false only on fatal setup errors (model failed to load); error() explains.
+  // Missing optional models degrade exactly like Android: no VAD model -> 30 s windows,
+  // no diar models -> all speakers -1, no LLM -> rule minutes.
+  bool run(const std::string& pcm_path, PipelineResult* out,
+           const PipelineProgressFn& progress = nullptr);
+
+  const std::string& error() const { return error_; }
+
+ private:
+  PipelineConfig cfg_;
+  std::string error_;
+};
+
+}  // namespace audionotes

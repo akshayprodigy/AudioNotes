@@ -127,3 +127,25 @@ audionotes_add_test(test_llm_minutes
   ${CORE}/tests/test_llm_minutes.cpp
   ${CORE}/minutes/llm_minutes.cpp
   ${CORE}/minutes/minutes_extractor.cpp)
+
+audionotes_add_test(test_pipeline_align
+  ${CORE}/tests/test_pipeline_align.cpp
+  ${CORE}/pipeline/pipeline.cpp
+  ${CORE}/minutes/minutes_extractor.cpp
+  ${CORE}/minutes/llm_minutes.cpp
+  ${CORE}/asr/whisper_asr.cpp
+  ${CORE}/util/ort_init.cpp
+  ${CORE}/vad/silero_vad.cpp
+  ${CORE}/diar/diarizer.cpp
+  ${CORE}/llm/llama_engine.cpp)
+target_include_directories(test_pipeline_align PRIVATE
+  ${TP}/onnxruntime/include ${TP}/whisper.cpp/include ${TP}/whisper.cpp/ggml/include
+  ${TP}/llama.cpp/include)
+target_compile_definitions(test_pipeline_align PRIVATE HAVE_WHISPER HAVE_LLAMA=1)
+target_link_libraries(test_pipeline_align PRIVATE whisper llama ${CMAKE_DL_LIBS})
+if(ORT_LIB)
+  target_compile_definitions(test_pipeline_align PRIVATE HAVE_SHERPA=1)
+  target_include_directories(test_pipeline_align PRIVATE ${TP}/sherpa-onnx)
+  target_link_libraries(test_pipeline_align PRIVATE sherpa-onnx-c-api)
+  set_target_properties(test_pipeline_align PROPERTIES BUILD_RPATH "${ORT_ROOT}/lib")
+endif()

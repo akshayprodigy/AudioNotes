@@ -2,7 +2,12 @@
 
 This is the platform-agnostic heart of AudioNotes. Both Android (JNI) and iOS
 (Swift/Objective-C++) call into this same code, so the pipeline behaves identically
-across platforms. `audionotes_core.h` sketches the interface.
+across platforms. Layers, bottom to top: the engines (`vad/`, `asr/`, `diar/`, `llm/`),
+the minutes logic (`minutes/` — parity ports of `src/pipeline/minutes.ts` +
+`summarize.ts`, golden-tested), the orchestrator (`pipeline/pipeline.h` — PCM in →
+transcript + speakers + minutes out), and the stable C ABI every non-C++ shell binds
+to (`capi/audionotes_capi.h`). `cli/` is the desktop host (macOS today) driving the
+same core; `tests/` holds the core unit tests (ctest, wired in `cli/CMakeLists.txt`).
 
 ## Runtimes (vendored as git submodules — not committed to this repo)
 
