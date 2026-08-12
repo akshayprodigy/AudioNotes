@@ -11,7 +11,6 @@
 #include "diar/diarizer.h"
 #include "llm/llama_engine.h"
 #include "minutes/minutes_extractor.h"
-#include "nlohmann/json.hpp"
 #include "vad/silero_vad.h"
 
 namespace {
@@ -186,6 +185,7 @@ Java_com_audionotes_pipeline_NativeBridge_nativeDiarize(
 }
 
 
+
 // ---------------------------------------------------------------------------
 // Rule-based minutes, from the shared core.
 //
@@ -194,41 +194,79 @@ Java_com_audionotes_pipeline_NativeBridge_nativeDiarize(
 // it in sync. The C++ side is golden-tested against the real TS, so routing Kotlin here means one
 // brain instead of three.
 //
+// Parallel string arrays rather than JSON, matching how nativeVad/nativeDiarize already exchange
+// flat arrays with Kotlin. The first cut marshalled JSON with nlohmann, which cost ~200 KB of
+// shipped code to parse two small arrays — the whole of nlohmann's template machinery pulled in
+// for a job this does in a loop.
+//
 // Deliberately rule-only, matching what MinutesExtractor did: LLM enhancement still runs JS-side
 // via PipelineController.enhanceMinutes. Moving that native too is a separate change with its own
 // timing consequences (it would run inside ProcessingService).
 // ---------------------------------------------------------------------------
-extern "C" JNIEXPORT jstring JNICALL
+namespace {
+
+std::vector<std::string> jstrArray(JNIEnv* env, jobjectArray arr) {
+  std::vector<std::string> out;
+  if (!arr) return out;
+  const jsize n = env->GetArrayLength(arr);
+  out.reserve(static_cast<size_t>(n));
+  for (jsize i = 0; i < n; ++i) {
+    auto s = static_cast<jstring>(env->GetObjectArrayElement(arr, i));
+    out.push_back(jstr(env, s));
+    if (s) env->DeleteLocalRef(s);
+  }
+  return out;
+}
+
+}  // namespace
+
+extern "C" JNIEXPORT jobjectArray JNICALL
 Java_com_audionotes_pipeline_NativeBridge_nativeMinutes(
-    JNIEnv* env, jobject /*thiz*/, jstring jUtterancesJson, jstring jSpeakersJson) {
-  using nlohmann::json;
-  const std::string utts_json = jstr(env, jUtterancesJson);
-  const std::string spks_json = jstr(env, jSpeakersJson);
+    JNIEnv* env, jobject /*thiz*/, jobjectArray jTexts, jobjectArray jSpeakerIds,
+    jobjectArray jSpkIds, jobjectArray jSpkNames) {
+  jclass string_cls = env->FindClass("java/lang/String");
+  if (!string_cls) return nullptr;
 
+  std::vector<audionotes::MinuteUtt> utts;
+  std::vector<audionotes::MinuteSpk> spks;
   try {
-    json ju = json::parse(utts_json, nullptr, /*allow_exceptions=*/false);
-    json js = json::parse(spks_json, nullptr, /*allow_exceptions=*/false);
-    if (ju.is_discarded() || !ju.is_array()) throw std::runtime_error("utterances: bad JSON");
-    if (js.is_discarded() || !js.is_array()) throw std::runtime_error("speakers: bad JSON");
-
-    std::vector<audionotes::MinuteUtt> utts;
-    utts.reserve(ju.size());
-    for (const auto& u : ju) {
-      utts.push_back({u.value("text", std::string()), u.value("speaker_id", std::string())});
+    const auto texts = jstrArray(env, jTexts);
+    const auto speaker_ids = jstrArray(env, jSpeakerIds);
+    const auto spk_ids = jstrArray(env, jSpkIds);
+    const auto spk_names = jstrArray(env, jSpkNames);
+    utts.reserve(texts.size());
+    for (size_t i = 0; i < texts.size(); ++i) {
+      utts.push_back({texts[i], i < speaker_ids.size() ? speaker_ids[i] : std::string()});
     }
-    std::vector<audionotes::MinuteSpk> spks;
-    spks.reserve(js.size());
-    for (const auto& s : js) {
-      spks.push_back({s.value("id", std::string()), s.value("display_name", std::string())});
+    spks.reserve(spk_ids.size());
+    for (size_t i = 0; i < spk_ids.size(); ++i) {
+      spks.push_back({spk_ids[i], i < spk_names.size() ? spk_names[i] : std::string()});
     }
-
-    json out = json::array();
-    for (const auto& m : audionotes::extractMinutes(utts, spks)) {
-      out.push_back({{"kind", m.kind}, {"content", m.content}, {"source", m.source}});
-    }
-    return env->NewStringUTF(out.dump().c_str());
   } catch (const std::exception& e) {
     throwRuntime(env, e.what());
-    return env->NewStringUTF("[]");
+    return env->NewObjectArray(0, string_cls, nullptr);
   }
+
+  // Flat [kind, content, source, ...] triples — same shape convention as nativeDiarize.
+  std::vector<audionotes::DraftMinute> minutes;
+  try {
+    minutes = audionotes::extractMinutes(utts, spks);
+  } catch (const std::exception& e) {
+    throwRuntime(env, e.what());
+    return env->NewObjectArray(0, string_cls, nullptr);
+  }
+
+  jobjectArray out =
+      env->NewObjectArray(static_cast<jsize>(minutes.size() * 3), string_cls, nullptr);
+  if (!out) return nullptr;
+  for (size_t i = 0; i < minutes.size(); ++i) {
+    const char* fields[3] = {minutes[i].kind.c_str(), minutes[i].content.c_str(),
+                             minutes[i].source.c_str()};
+    for (int f = 0; f < 3; ++f) {
+      jstring s = env->NewStringUTF(fields[f]);
+      env->SetObjectArrayElement(out, static_cast<jsize>(i * 3 + f), s);
+      if (s) env->DeleteLocalRef(s);
+    }
+  }
+  return out;
 }

@@ -77,9 +77,15 @@ object NativeBridge {
    * desktop CLI run, golden-tested against the real TS. Replaces the hand-maintained Kotlin
    * MinutesExtractor, which was a third copy of these rules with nothing keeping it in sync.
    *
-   * utterancesJson: [{"text":..,"speaker_id":..}]  (speaker_id "" when unassigned)
-   * speakersJson:   [{"id":..,"display_name":..}]
-   * Returns [{"kind":..,"content":..,"source":"rule"}].
+   * Parallel arrays rather than JSON, matching nativeVad/nativeDiarize: texts[i] pairs with
+   * speakerIds[i] ("" when unassigned), and spkIds[i] with spkNames[i].
+   *
+   * Returns a flat array of [kind, content, source] triples.
    */
-  external fun nativeMinutes(utterancesJson: String, speakersJson: String): String
+  external fun nativeMinutes(
+    texts: Array<String>,
+    speakerIds: Array<String>,
+    spkIds: Array<String>,
+    spkNames: Array<String>,
+  ): Array<String>
 }

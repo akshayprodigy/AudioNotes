@@ -1,8 +1,5 @@
 package com.audionotes.pipeline
 
-import org.json.JSONArray
-import org.json.JSONObject
-
 /** Mirrors src/pipeline/minutes.ts DraftMinute. kind in: summary|decision|action|question. */
 data class DraftMinute(val kind: String, val content: String, val source: String = "rule")
 
@@ -25,20 +22,19 @@ data class Spk(val id: String, val displayName: String?)
 object Minutes {
   /** Requires NativeBridge.ensureLoaded() to have run (ProcessingEngine does it first thing). */
   fun extract(utterances: List<Utt>, speakers: List<Spk> = emptyList()): List<DraftMinute> {
-    val u = JSONArray()
-    for (x in utterances) {
-      u.put(JSONObject().put("text", x.text).put("speaker_id", x.speakerId ?: ""))
-    }
-    val s = JSONArray()
-    for (x in speakers) {
-      s.put(JSONObject().put("id", x.id).put("display_name", x.displayName ?: ""))
-    }
+    val flat = NativeBridge.nativeMinutes(
+      Array(utterances.size) { utterances[it].text },
+      Array(utterances.size) { utterances[it].speakerId ?: "" },
+      Array(speakers.size) { speakers[it].id },
+      Array(speakers.size) { speakers[it].displayName ?: "" },
+    )
 
-    val arr = JSONArray(NativeBridge.nativeMinutes(u.toString(), s.toString()))
-    val out = ArrayList<DraftMinute>(arr.length())
-    for (i in 0 until arr.length()) {
-      val o = arr.getJSONObject(i)
-      out.add(DraftMinute(o.getString("kind"), o.getString("content"), o.optString("source", "rule")))
+    // Flat [kind, content, source] triples.
+    val out = ArrayList<DraftMinute>(flat.size / 3)
+    var i = 0
+    while (i + 2 < flat.size) {
+      out.add(DraftMinute(flat[i], flat[i + 1], flat[i + 2]))
+      i += 3
     }
     return out
   }
