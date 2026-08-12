@@ -67,6 +67,15 @@ bool Pipeline::run(const std::string& pcm_path, PipelineResult* out,
   auto report = [&progress](const char* stage, int done, int total) {
     if (progress) progress(stage, done, total);
   };
+  // An unreadable input is a setup error, not "no speech": without this, a bad path sails
+  // through every stage (0 segments -> ASR skipped) and reports an empty success that callers
+  // can't tell apart from a genuinely silent recording.
+  if (FILE* f = std::fopen(pcm_path.c_str(), "rb")) {
+    std::fclose(f);
+  } else {
+    error_ = "cannot open pcm: " + pcm_path;
+    return false;
+  }
   out->audio_ms = pcmDurationMs(pcm_path, cfg_.sample_rate);
 
   // ---- VAD (or fixed 30 s windows when no model is configured) ----
