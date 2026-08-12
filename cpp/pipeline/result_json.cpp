@@ -18,6 +18,7 @@ std::string resultToJson(const PipelineResult& res, const std::string& error) {
     doc["transcript"].push_back({{"start_ms", u.start_ms}, {"end_ms", u.end_ms},
                                  {"speaker", u.speaker}, {"text", u.text}});
   doc["minutes_source"] = res.minutes_source;
+  doc["cancelled"] = res.cancelled;
   doc["minutes"] = json::array();
   for (const auto& m : res.minutes)
     doc["minutes"].push_back({{"kind", m.kind}, {"content", m.content}, {"source", m.source}});

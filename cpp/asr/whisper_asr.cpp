@@ -89,7 +89,8 @@ std::vector<Utterance> WhisperAsr::transcribe(
     const std::vector<Segment>& segments,
     int sample_rate,
     int threads_override,
-    const AsrProgressFn& progress) {
+    const AsrProgressFn& progress,
+    const AsrCancelFn& cancel) {
   std::vector<Utterance> utts;
 #ifdef HAVE_WHISPER
   if (!impl_->ok) throw std::runtime_error("whisper model not loaded");
@@ -100,6 +101,12 @@ std::vector<Utterance> WhisperAsr::transcribe(
   ASRLOGI("transcribing %d chunk(s) with %d threads", total, threads);
 
   for (int ci = 0; ci < total; ++ci) {
+    // Between chunks is the finest cancellation granularity whisper_full() allows us without an
+    // abort callback; utterances decoded so far are kept and returned.
+    if (cancel && cancel()) {
+      ASRLOGI("cancelled after %d/%d chunk(s)", ci, total);
+      break;
+    }
     const auto& ch = chunks[ci];
     std::vector<float> samples = readWindow(pcm_path, sample_rate, ch.first, ch.second);
     if (samples.empty()) {

@@ -63,10 +63,20 @@ std::vector<MinuteSpk> speakerNames(const std::vector<AlignedUtterance>& transcr
 }
 
 bool Pipeline::run(const std::string& pcm_path, PipelineResult* out,
-                   const PipelineProgressFn& progress) {
+                   const PipelineProgressFn& progress, const PipelineCancelFn& cancel) {
   auto report = [&progress](const char* stage, int done, int total) {
     if (progress) progress(stage, done, total);
   };
+  // Checked before each stage. Sets out->cancelled and unwinds via `return true` — a cancel is a
+  // legitimate outcome, not a failure, and the partial result is kept for the caller to discard.
+  auto cancelled = [&cancel, out] {
+    if (cancel && cancel()) {
+      out->cancelled = true;
+      return true;
+    }
+    return false;
+  };
+  if (cancelled()) return true;
   // An unreadable input is a setup error, not "no speech": without this, a bad path sails
   // through every stage (0 segments -> ASR skipped) and reports an empty success that callers
   // can't tell apart from a genuinely silent recording.
@@ -98,6 +108,8 @@ bool Pipeline::run(const std::string& pcm_path, PipelineResult* out,
     report("vad", 1, 1);
   }
 
+  if (cancelled()) return true;
+
   // ---- ASR ----
   std::vector<Utterance> utts;
   if (!out->segments.empty()) {
@@ -108,8 +120,12 @@ bool Pipeline::run(const std::string& pcm_path, PipelineResult* out,
       return false;
     }
     utts = asr.transcribe(pcm_path, out->segments, cfg_.sample_rate, cfg_.asr_threads,
-                          [&report](int done, int total) { report("asr", done, total); });
+                          [&report](int done, int total) { report("asr", done, total); },
+                          cancel ? PipelineCancelFn(cancel) : nullptr);
     out->asr_ms = nowMs() - t0;
+    // A mid-ASR cancel leaves a partial transcript; stop rather than diarize and mint minutes
+    // from half a meeting.
+    if (cancelled()) return true;
   }
 
   // ---- Diarize (optional, best-effort — parity with ProcessingEngine's "skipped" path) ----
@@ -126,6 +142,8 @@ bool Pipeline::run(const std::string& pcm_path, PipelineResult* out,
     out->diar_ms = nowMs() - t0;
     report("diarize", 1, 1);
   }
+
+  if (cancelled()) return true;
 
   out->transcript = alignSpeakers(utts, diar);
 

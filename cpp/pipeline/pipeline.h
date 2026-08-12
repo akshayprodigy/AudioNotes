@@ -39,12 +39,20 @@ struct PipelineConfig {
 // (the same stage names ProcessingEngine.Listener.onStage emits on Android).
 using PipelineProgressFn = std::function<void(const std::string&, int, int)>;
 
+// Polled between stages and between ASR chunks; true = stop. Mirrors the @Volatile cancelled
+// flag ProcessingEngine checks on Android, so a user-cancelled meeting stops promptly instead
+// of running a multi-minute transcription to completion.
+using PipelineCancelFn = std::function<bool()>;
+
 struct PipelineResult {
   int64_t audio_ms = 0;
   std::vector<Segment> segments;             // VAD speech spans
   std::vector<AlignedUtterance> transcript;  // ASR + speaker alignment
   std::vector<DraftMinute> minutes;          // summary/decisions/actions/questions
   std::string minutes_source;                // "llm" | "rule" | "" (no transcript)
+  // Stopped early at the caller's request. Distinct from failure: whatever completed before the
+  // cancel is still in this result, and callers must NOT treat it as a finished meeting.
+  bool cancelled = false;
   // Per-stage wall-clock ms (same rationale as ProcessingEngine's stageDone logging).
   int64_t vad_ms = 0, asr_ms = 0, diar_ms = 0, minutes_ms = 0;
 };
@@ -65,10 +73,12 @@ class Pipeline {
 
   // Runs vad -> asr -> diarize -> align -> minutes over a headerless PCM16 mono file.
   // Returns false only on fatal setup errors (model failed to load); error() explains.
+  // Cancelling is NOT an error: run() returns true with out->cancelled set.
   // Missing optional models degrade exactly like Android: no VAD model -> 30 s windows,
   // no diar models -> all speakers -1, no LLM -> rule minutes.
   bool run(const std::string& pcm_path, PipelineResult* out,
-           const PipelineProgressFn& progress = nullptr);
+           const PipelineProgressFn& progress = nullptr,
+           const PipelineCancelFn& cancel = nullptr);
 
   const std::string& error() const { return error_; }
 

@@ -19,6 +19,11 @@ struct Utterance {
 // progress(done_chunks, total_chunks)
 using AsrProgressFn = std::function<void(int, int)>;
 
+// Polled before each chunk; true = stop and return what has been transcribed so far. ASR is by
+// far the longest stage (whisper-base runs ~0.68x realtime), so a between-stages-only check
+// would leave a cancel unanswered for minutes.
+using AsrCancelFn = std::function<bool()>;
+
 class WhisperAsr {
  public:
   explicit WhisperAsr(const std::string& model_path);
@@ -34,7 +39,8 @@ class WhisperAsr {
       const std::vector<Segment>& segments,
       int sample_rate,
       int threads = 0,
-      const AsrProgressFn& progress = nullptr);
+      const AsrProgressFn& progress = nullptr,
+      const AsrCancelFn& cancel = nullptr);
 
  private:
   struct Impl;

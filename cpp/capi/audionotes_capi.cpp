@@ -10,11 +10,13 @@
 struct an_result {
   std::string error;  // "" = success
   std::string json_doc;
+  bool cancelled = false;
 };
 
 extern "C" {
 
-an_result* an_process(const an_options* opts, an_progress_fn progress, void* user) {
+an_result* an_process(const an_options* opts, an_progress_fn progress, an_cancel_fn cancel,
+                      void* user) {
   an_result* r = new (std::nothrow) an_result;
   if (!r) return nullptr;
   try {
@@ -37,8 +39,13 @@ an_result* an_process(const an_options* opts, an_progress_fn progress, void* use
         progress(stage.c_str(), done, total, user);
       };
     }
-    const bool ok = pipeline.run(opts->pcm_path ? opts->pcm_path : "", &res, cb);
+    audionotes::PipelineCancelFn cancel_cb;
+    if (cancel) {
+      cancel_cb = [cancel, user] { return cancel(user) != 0; };
+    }
+    const bool ok = pipeline.run(opts->pcm_path ? opts->pcm_path : "", &res, cb, cancel_cb);
     if (!ok) r->error = pipeline.error().empty() ? "pipeline failed" : pipeline.error();
+    r->cancelled = res.cancelled;
     r->json_doc = audionotes::resultToJson(res, r->error);
   } catch (const std::exception& e) {
     r->error = e.what();
@@ -50,6 +57,7 @@ an_result* an_process(const an_options* opts, an_progress_fn progress, void* use
 const char* an_result_error(const an_result* r) {
   return r->error.empty() ? nullptr : r->error.c_str();
 }
+int an_result_cancelled(const an_result* r) { return r->cancelled ? 1 : 0; }
 const char* an_result_json(const an_result* r) { return r->json_doc.c_str(); }
 void an_result_free(an_result* r) { delete r; }
 
