@@ -1,0 +1,41 @@
+{
+ "input": {
+  "utterances": [
+   {
+    "text": "I'll send the report by Friday. I'll send the report by Friday.",
+    "speakerId": "S0"
+   },
+   {
+    "text": "i'll send THE REPORT by friday!",
+    "speakerId": "S1"
+   }
+  ],
+  "speakers": [
+   {
+    "id": "S0",
+    "displayName": "Speaker 1"
+   },
+   {
+    "id": "S1",
+    "displayName": "Speaker 2"
+   }
+  ]
+ },
+ "output": [
+  {
+   "kind": "summary",
+   "content": "2 action items, 0 decisions, 0 open questions.",
+   "source": "rule"
+  },
+  {
+   "kind": "action",
+   "content": "I'll send the report by Friday. — Speaker 1 (due by Friday)",
+   "source": "rule"
+  },
+  {
+   "kind": "action",
+   "content": "i'll send THE REPORT by friday! — Speaker 2 (due by friday)",
+   "source": "rule"
+  }
+ ]
+}

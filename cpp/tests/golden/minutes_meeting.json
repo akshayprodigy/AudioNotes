@@ -1,0 +1,83 @@
+{
+ "input": {
+  "utterances": [
+   {
+    "text": "Alright team, let's kick off the design review. We have three items on the agenda today.",
+    "speakerId": "S0"
+   },
+   {
+    "text": "Thanks. First, the rollout plan. I think we should ship version 2.1 this Friday.",
+    "speakerId": "S1"
+   },
+   {
+    "text": "Agreed. We decided to go with the phased rollout. Can you also update the project roadmap by Thursday?",
+    "speakerId": "S0"
+   },
+   {
+    "text": "Sure, I'll update the roadmap by Thursday. Maya will send the summary to everyone tomorrow.",
+    "speakerId": "S1"
+   },
+   {
+    "text": "What about the pricing question? Should we revisit it next week?",
+    "speakerId": "S0"
+   }
+  ],
+  "speakers": [
+   {
+    "id": "S0",
+    "displayName": "Speaker 1"
+   },
+   {
+    "id": "S1",
+    "displayName": "Speaker 2"
+   }
+  ]
+ },
+ "output": [
+  {
+   "kind": "summary",
+   "content": "4 action items, 1 decision, 3 open questions.",
+   "source": "rule"
+  },
+  {
+   "kind": "decision",
+   "content": "We decided to go with the phased rollout.",
+   "source": "rule"
+  },
+  {
+   "kind": "action",
+   "content": "Alright team, let's kick off the design review. — Speaker 1",
+   "source": "rule"
+  },
+  {
+   "kind": "action",
+   "content": "I think we should ship version 2.1 this Friday. — Unassigned",
+   "source": "rule"
+  },
+  {
+   "kind": "action",
+   "content": "Sure, I'll update the roadmap by Thursday. — Speaker 2 (due by Thursday)",
+   "source": "rule"
+  },
+  {
+   "kind": "action",
+   "content": "Maya will send the summary to everyone tomorrow. — Maya (due tomorrow)",
+   "source": "rule"
+  },
+  {
+   "kind": "question",
+   "content": "Can you also update the project roadmap by Thursday?",
+   "source": "rule"
+  },
+  {
+   "kind": "question",
+   "content": "What about the pricing question?",
+   "source": "rule"
+  },
+  {
+   "kind": "question",
+   "content": "Should we revisit it next week?",
+   "source": "rule"
+  }
+ ]
+}

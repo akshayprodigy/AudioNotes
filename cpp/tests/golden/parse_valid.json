@@ -1,0 +1,25 @@
+{
+ "input": "Here are the minutes:\n{\"summary\":\"Team reviewed the rollout.\",\"decisions\":[\"Ship 2.1 Friday\"],\"actions\":[{\"text\":\"Update roadmap\",\"owner\":\"Sam\",\"due\":\"Thursday\"}],\"questions\":[\"Revisit pricing?\"]}\nDone.",
+ "output": [
+  {
+   "kind": "summary",
+   "content": "Team reviewed the rollout.",
+   "source": "llm"
+  },
+  {
+   "kind": "decision",
+   "content": "Ship 2.1 Friday",
+   "source": "llm"
+  },
+  {
+   "kind": "action",
+   "content": "Update roadmap — Sam (due Thursday)",
+   "source": "llm"
+  },
+  {
+   "kind": "question",
+   "content": "Revisit pricing?",
+   "source": "llm"
+  }
+ ]
+}

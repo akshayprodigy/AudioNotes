@@ -1,0 +1,15 @@
+{
+ "input": "{\"summary\":\"S.\",\"decisions\":[],\"actions\":[\"Send the deck — Ana\"],\"questions\":[]}",
+ "output": [
+  {
+   "kind": "summary",
+   "content": "S.",
+   "source": "llm"
+  },
+  {
+   "kind": "action",
+   "content": "Send the deck — Ana",
+   "source": "llm"
+  }
+ ]
+}

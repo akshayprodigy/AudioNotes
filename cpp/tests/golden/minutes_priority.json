@@ -1,0 +1,41 @@
+{
+ "input": {
+  "utterances": [
+   {
+    "text": "Should we update the roadmap?",
+    "speakerId": "S0"
+   },
+   {
+    "text": "We agreed that we need to ship on Friday.",
+    "speakerId": "S1"
+   }
+  ],
+  "speakers": [
+   {
+    "id": "S0",
+    "displayName": "Speaker 1"
+   },
+   {
+    "id": "S1",
+    "displayName": "Speaker 2"
+   }
+  ]
+ },
+ "output": [
+  {
+   "kind": "summary",
+   "content": "0 action items, 1 decision, 1 open question.",
+   "source": "rule"
+  },
+  {
+   "kind": "decision",
+   "content": "We agreed that we need to ship on Friday.",
+   "source": "rule"
+  },
+  {
+   "kind": "question",
+   "content": "Should we update the roadmap?",
+   "source": "rule"
+  }
+ ]
+}
