@@ -110,3 +110,11 @@ if(ORT_LIB)
   # at the fetched copy so the build-time link (sherpa) and the runtime dlopen agree on one file.
   set_target_properties(audionotes_cli PROPERTIES BUILD_RPATH "${ORT_ROOT}/lib")
 endif()
+
+# --- Core unit tests (ctest). Plain assert-based executables, no framework dep. ---
+enable_testing()
+function(audionotes_add_test name)
+  add_executable(${name} ${ARGN})
+  target_include_directories(${name} PRIVATE ${CORE} ${CORE}/third_party)
+  add_test(NAME ${name} COMMAND ${name} ${CORE}/tests/golden)
+endfunction()
