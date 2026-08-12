@@ -1,12 +1,14 @@
 // AudioNotes desktop CLI — Phase 1a bring-up.
 //
-// Current milestone: ASR + VAD + diarize. Transcribe a 16 kHz mono PCM16 WAV using the shared
-// core's WhisperAsr, (with --vad) segment it first with the core's SileroVad, and (with
-// --diar-seg/--diar-emb) label speakers with the core's Diarizer — the same code the Android app
-// runs via JNI. The LLM MOM and the full orchestrator land in later milestones. Without --vad we
-// fall back to fixed 30 s windows over the whole file.
+// Current milestone: ASR + VAD + diarize + LLM. Transcribe a 16 kHz mono PCM16 WAV using the
+// shared core's WhisperAsr, (with --vad) segment it first with the core's SileroVad, (with
+// --diar-seg/--diar-emb) label speakers with the core's Diarizer, and (with --llm) summarize the
+// transcript with the core's LlamaEngine — the same code the Android app runs via JNI. The --llm
+// prompt here is a bring-up placeholder; the real MOM prompts (map-reduce + minutes) get ported
+// in the orchestrator slice. Without --vad we fall back to fixed 30 s windows over the whole file.
 #include "asr/whisper_asr.h"
 #include "diar/diarizer.h"
+#include "llm/llama_engine.h"
 #include "vad/silero_vad.h"
 
 #include <algorithm>
@@ -18,6 +20,7 @@
 #include <fstream>
 #include <map>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -84,20 +87,21 @@ int main(int argc, char** argv) {
     std::fprintf(stderr,
                  "usage: %s <whisper-model.bin> <input-16k-mono.wav> [--vad silero_vad.onnx]\n"
                  "          [--diar-seg segmentation.onnx --diar-emb embedding.onnx] "
-                 "[--speakers N]\n",
+                 "[--speakers N] [--llm model.gguf]\n",
                  argv[0]);
     return 2;
   }
   const std::string model = argv[1];
   const std::string wav = argv[2];
   const std::string pcm = wav + ".pcm";
-  std::string vad_model, diar_seg, diar_emb;
+  std::string vad_model, diar_seg, diar_emb, llm_model;
   int num_speakers = 0;  // 0 = auto (threshold clustering), matching the Android pipeline
   for (int i = 3; i < argc; ++i) {
     if (std::strcmp(argv[i], "--vad") == 0 && i + 1 < argc) vad_model = argv[++i];
     else if (std::strcmp(argv[i], "--diar-seg") == 0 && i + 1 < argc) diar_seg = argv[++i];
     else if (std::strcmp(argv[i], "--diar-emb") == 0 && i + 1 < argc) diar_emb = argv[++i];
     else if (std::strcmp(argv[i], "--speakers") == 0 && i + 1 < argc) num_speakers = std::atoi(argv[++i]);
+    else if (std::strcmp(argv[i], "--llm") == 0 && i + 1 < argc) llm_model = argv[++i];
   }
 
 #ifdef AUDIONOTES_ORT_LIB_DEFAULT
@@ -189,6 +193,27 @@ int main(int argc, char** argv) {
       std::printf("[%6lld-%6lld ms] %s\n", static_cast<long long>(u.start_ms),
                   static_cast<long long>(u.end_ms), u.text.c_str());
     }
+  }
+
+  // LLM bring-up: one summary generation over the speaker-labeled transcript. Placeholder prompt —
+  // the app's real map-reduce MOM prompts get ported with the orchestrator slice.
+  if (!llm_model.empty()) {
+    audionotes::LlamaEngine llm;
+    unsigned hw = std::thread::hardware_concurrency();
+    int threads = hw > 2 ? static_cast<int>(hw > 8 ? 8 : hw) : 2;
+    if (!llm.load(llm_model, 8192, threads)) {  // n_ctx mirrors LlmModule on Android
+      std::fprintf(stderr, "failed to load LLM model: %s\n", llm_model.c_str());
+      return 1;
+    }
+    std::string prompt =
+        "Summarize this meeting transcript in at most 3 short bullet points, then list any "
+        "action items with owners:\n\n";
+    for (size_t i = 0; i < utts.size(); ++i) {
+      if (have_diar && speaker_of[i] >= 0) prompt += "Speaker " + std::to_string(speaker_of[i]) + ": ";
+      prompt += utts[i].text + "\n";
+    }
+    std::string out = llm.generate(prompt, 256);
+    std::printf("\n== LLM summary ==\n%s\n", out.c_str());
   }
   return 0;
 }

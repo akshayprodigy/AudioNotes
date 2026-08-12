@@ -3,7 +3,7 @@
 # This target excludes the JNI layer and links the vendored engines for the host toolchain.
 #
 # Milestone order (layered to de-risk): ASR (whisper, no ORT) -> +VAD -> +diarize -> +LLM -> orchestrator.
-# Current milestone: ASR + VAD + diarize.
+# Current milestone: ASR + VAD + diarize + LLM.
 cmake_minimum_required(VERSION 3.22)
 project(audionotes_cli CXX C)
 
@@ -47,6 +47,16 @@ endif()
 # Static engines throughout: one self-contained binary (plus the ORT dylib loaded at runtime).
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
+# --- llama.cpp (LLM) : must be added BEFORE whisper.cpp. Both vendor ggml under the same target
+# names and whichever is added first owns it; llama's copy is the newer superset and whisper only
+# uses long-stable ggml APIs (see the ggml-ownership note in ../CMakeLists.txt). ---
+set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+set(LLAMA_CURL OFF CACHE BOOL "" FORCE)
+add_subdirectory(${TP}/llama.cpp ${CMAKE_BINARY_DIR}/llama EXCLUDE_FROM_ALL)
+
 # --- whisper.cpp (ASR) : builds ggml + whisper static libs for the host ---
 set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(WHISPER_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
@@ -79,16 +89,18 @@ add_executable(audionotes_cli
   ${CORE}/asr/whisper_asr.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
-  ${CORE}/diar/diarizer.cpp)
+  ${CORE}/diar/diarizer.cpp
+  ${CORE}/llm/llama_engine.cpp)
 
 target_include_directories(audionotes_cli PRIVATE
   ${CORE}
   ${TP}/onnxruntime/include
   ${TP}/whisper.cpp/include
-  ${TP}/whisper.cpp/ggml/include)
+  ${TP}/whisper.cpp/ggml/include
+  ${TP}/llama.cpp/include)
 
-target_compile_definitions(audionotes_cli PRIVATE HAVE_WHISPER)
-target_link_libraries(audionotes_cli PRIVATE whisper ${CMAKE_DL_LIBS})
+target_compile_definitions(audionotes_cli PRIVATE HAVE_WHISPER HAVE_LLAMA=1)
+target_link_libraries(audionotes_cli PRIVATE whisper llama ${CMAKE_DL_LIBS})
 if(ORT_LIB)
   target_compile_definitions(audionotes_cli PRIVATE AUDIONOTES_ORT_LIB_DEFAULT="${ORT_LIB}")
   target_compile_definitions(audionotes_cli PRIVATE HAVE_SHERPA=1)
