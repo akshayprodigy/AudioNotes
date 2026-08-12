@@ -1,15 +1,18 @@
 // AudioNotes desktop CLI — Phase 1a bring-up.
 //
-// Current milestone: ASR-only. Transcribe a 16 kHz mono PCM16 WAV using the shared core's
-// WhisperAsr (the same code the Android app runs via JNI). VAD, diarization, the LLM MOM, and the
-// full orchestrator land in later milestones; for now we fabricate fixed 30 s "segments" over the
-// whole file in place of real VAD spans.
+// Current milestone: ASR + VAD. Transcribe a 16 kHz mono PCM16 WAV using the shared core's
+// WhisperAsr and (with --vad) segment it first with the core's SileroVad — the same code the
+// Android app runs via JNI. Diarization, the LLM MOM, and the full orchestrator land in later
+// milestones. Without --vad we fall back to fixed 30 s windows over the whole file.
 #include "asr/whisper_asr.h"
+#include "vad/silero_vad.h"
 
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -75,12 +78,23 @@ int64_t wavToPcm(const std::string& wav, const std::string& pcm_out, std::string
 
 int main(int argc, char** argv) {
   if (argc < 3) {
-    std::fprintf(stderr, "usage: %s <whisper-model.bin> <input-16k-mono.wav>\n", argv[0]);
+    std::fprintf(stderr,
+                 "usage: %s <whisper-model.bin> <input-16k-mono.wav> [--vad silero_vad.onnx]\n",
+                 argv[0]);
     return 2;
   }
   const std::string model = argv[1];
   const std::string wav = argv[2];
   const std::string pcm = wav + ".pcm";
+  std::string vad_model;
+  for (int i = 3; i < argc; ++i) {
+    if (std::strcmp(argv[i], "--vad") == 0 && i + 1 < argc) vad_model = argv[++i];
+  }
+
+#ifdef AUDIONOTES_ORT_LIB_DEFAULT
+  // The build fetched a host onnxruntime; make it the default unless the user already chose one.
+  setenv("AUDIONOTES_ORT_LIB", AUDIONOTES_ORT_LIB_DEFAULT, /*overwrite=*/0);
+#endif
 
   std::string err;
   int64_t dur_ms = wavToPcm(wav, pcm, err);
@@ -96,10 +110,25 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  // Stand in for VAD: fixed 30 s windows over the whole file (real VAD is the next milestone).
   std::vector<audionotes::Segment> segs;
-  for (int64_t s = 0; s < dur_ms; s += 30000) {
-    segs.push_back({s, std::min<int64_t>(s + 30000, dur_ms)});
+  if (!vad_model.empty()) {
+    try {
+      audionotes::SileroVad vad(vad_model, 16000);
+      segs = vad.process(pcm);
+    } catch (const std::exception& e) {
+      std::fprintf(stderr, "vad error: %s\n", e.what());
+      return 1;
+    }
+    std::fprintf(stderr, "vad: %zu speech segment(s)\n", segs.size());
+    for (const auto& s : segs) {
+      std::fprintf(stderr, "  speech %6lld-%6lld ms\n", static_cast<long long>(s.start_ms),
+                   static_cast<long long>(s.end_ms));
+    }
+  } else {
+    // No VAD model given: fixed 30 s windows over the whole file.
+    for (int64_t s = 0; s < dur_ms; s += 30000) {
+      segs.push_back({s, std::min<int64_t>(s + 30000, dur_ms)});
+    }
   }
 
   auto utts = asr.transcribe(pcm, segs, 16000);
