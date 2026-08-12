@@ -35,6 +35,29 @@ const PRIORITY = [
   { text: 'We agreed that we need to ship on Friday.', speakerId: 'S1' },
 ];
 
+// Rule-level cases inherited from the Kotlin port's test suite (MinutesExtractorTest), moved here
+// when MinutesExtractor.kt was deleted in favour of the shared core. Hand-verified against the
+// real minutes.ts back then, so they double as an independent check on the C++ port.
+const RULES = [
+  { text: 'The decision is final: we ship on Monday.', speakerId: 'S0' },
+  // "should" is both an ACTION_OBLIGATION trigger and a NAMED_OWNER trigger word, so this one
+  // exercises named-owner and due-date detection together. ("Priya will prepare …" would NOT
+  // match: "will prepare" is not among the obligation verbs — only will send/get/do are.)
+  { text: 'Priya should send the report by next week.', speakerId: 'S1' },
+  // Question detected with no question mark, via QUESTION_WORDS + the <160 char rule.
+  { text: 'How should we proceed with this rollout.', speakerId: 'S0' },
+  // NAMED_OWNER superficially matches "This will", but "This" is on the exclusion list, so the
+  // owner must fall through to Unassigned rather than being reported as a person.
+  { text: 'This will need to be fixed by Friday.', speakerId: 'S0' },
+];
+
+// Decision dedup DOES collapse case/punctuation variants: unlike actions, decision content is
+// stored verbatim (no owner appended), so norm() maps both of these to one key.
+const DECISION_DEDUP = [
+  { text: 'We decided to go with Plan A.', speakerId: 'S0' },
+  { text: 'we decided to go with Plan A!', speakerId: 'S0' },
+];
+
 const PARSE_CASES: Record<string, string> = {
   parse_valid:
     'Here are the minutes:\n{"summary":"Team reviewed the rollout.","decisions":["Ship 2.1 Friday"],' +
@@ -64,6 +87,23 @@ test('write golden files for the C++ parity tests', () => {
   const priority = extractMinutes(PRIORITY as any, SPEAKERS as any);
   write('minutes_priority', { input: { utterances: PRIORITY, speakers: SPEAKERS }, output: priority });
   expect(priority.filter(m => m.kind === 'action').length).toBe(0); // both classified away from action
+
+  const rules = extractMinutes(RULES as any, SPEAKERS as any);
+  write('minutes_rules', { input: { utterances: RULES, speakers: SPEAKERS }, output: rules });
+  const content = rules.map(m => m.content);
+  expect(content).toContain('The decision is final: we ship on Monday.');
+  expect(content).toContain('Priya should send the report by next week. — Priya (due next week)');
+  expect(content).toContain('How should we proceed with this rollout.');
+  expect(content).toContain('This will need to be fixed by Friday. — Unassigned (due by Friday)');
+
+  const decisionDedup = extractMinutes(DECISION_DEDUP as any, SPEAKERS as any);
+  write('minutes_decision_dedup', {
+    input: { utterances: DECISION_DEDUP, speakers: SPEAKERS },
+    output: decisionDedup,
+  });
+  const decisions = decisionDedup.filter(m => m.kind === 'decision');
+  expect(decisions.length).toBe(1);
+  expect(decisions[0].content).toBe('We decided to go with Plan A.'); // first occurrence wins
 
   for (const [name, raw] of Object.entries(PARSE_CASES)) {
     write(name, { input: raw, output: parseMinutesJson(raw) });

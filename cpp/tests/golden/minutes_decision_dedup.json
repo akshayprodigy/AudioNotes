@@ -1,0 +1,36 @@
+{
+ "input": {
+  "utterances": [
+   {
+    "text": "We decided to go with Plan A.",
+    "speakerId": "S0"
+   },
+   {
+    "text": "we decided to go with Plan A!",
+    "speakerId": "S0"
+   }
+  ],
+  "speakers": [
+   {
+    "id": "S0",
+    "displayName": "Speaker 1"
+   },
+   {
+    "id": "S1",
+    "displayName": "Speaker 2"
+   }
+  ]
+ },
+ "output": [
+  {
+   "kind": "summary",
+   "content": "0 action items, 1 decision, 0 open questions.",
+   "source": "rule"
+  },
+  {
+   "kind": "decision",
+   "content": "We decided to go with Plan A.",
+   "source": "rule"
+  }
+ ]
+}

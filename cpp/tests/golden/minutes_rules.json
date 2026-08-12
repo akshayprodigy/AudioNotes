@@ -1,0 +1,59 @@
+{
+ "input": {
+  "utterances": [
+   {
+    "text": "The decision is final: we ship on Monday.",
+    "speakerId": "S0"
+   },
+   {
+    "text": "Priya should send the report by next week.",
+    "speakerId": "S1"
+   },
+   {
+    "text": "How should we proceed with this rollout.",
+    "speakerId": "S0"
+   },
+   {
+    "text": "This will need to be fixed by Friday.",
+    "speakerId": "S0"
+   }
+  ],
+  "speakers": [
+   {
+    "id": "S0",
+    "displayName": "Speaker 1"
+   },
+   {
+    "id": "S1",
+    "displayName": "Speaker 2"
+   }
+  ]
+ },
+ "output": [
+  {
+   "kind": "summary",
+   "content": "2 action items, 1 decision, 1 open question.",
+   "source": "rule"
+  },
+  {
+   "kind": "decision",
+   "content": "The decision is final: we ship on Monday.",
+   "source": "rule"
+  },
+  {
+   "kind": "action",
+   "content": "Priya should send the report by next week. — Priya (due next week)",
+   "source": "rule"
+  },
+  {
+   "kind": "action",
+   "content": "This will need to be fixed by Friday. — Unassigned (due by Friday)",
+   "source": "rule"
+  },
+  {
+   "kind": "question",
+   "content": "How should we proceed with this rollout.",
+   "source": "rule"
+  }
+ ]
+}

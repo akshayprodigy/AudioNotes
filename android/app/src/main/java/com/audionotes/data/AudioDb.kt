@@ -320,7 +320,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
   }
 
   /**
-   * Utterances for a meeting in the shape [com.audionotes.pipeline.MinutesExtractor] consumes.
+   * Utterances for a meeting in the shape [com.audionotes.pipeline.Minutes] consumes.
    * Mirrors the `text, speakerId` projection of db.utterances() in src/db/queries.ts.
    */
   fun utterances(meetingId: String): List<Utt> {
@@ -335,7 +335,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
   }
 
   /**
-   * Speakers for a meeting in the shape [com.audionotes.pipeline.MinutesExtractor] consumes.
+   * Speakers for a meeting in the shape [com.audionotes.pipeline.Minutes] consumes.
    * Mirrors the `id, displayName` projection of db.speakers() in src/db/queries.ts.
    */
   fun speakers(meetingId: String): List<Spk> {

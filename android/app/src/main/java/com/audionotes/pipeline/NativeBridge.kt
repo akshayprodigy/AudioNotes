@@ -71,4 +71,15 @@ object NativeBridge {
   external fun nativeLlmLoad(modelPath: String, nCtx: Int, nThreads: Int): Long
   external fun nativeLlmGenerate(handle: Long, prompt: String, maxTokens: Int): String
   external fun nativeLlmFree(handle: Long)
+
+  /**
+   * Rule-based minutes from the shared core — the same code path `src/pipeline/minutes.ts` and the
+   * desktop CLI run, golden-tested against the real TS. Replaces the hand-maintained Kotlin
+   * MinutesExtractor, which was a third copy of these rules with nothing keeping it in sync.
+   *
+   * utterancesJson: [{"text":..,"speaker_id":..}]  (speaker_id "" when unassigned)
+   * speakersJson:   [{"id":..,"display_name":..}]
+   * Returns [{"kind":..,"content":..,"source":"rule"}].
+   */
+  external fun nativeMinutes(utterancesJson: String, speakersJson: String): String
 }

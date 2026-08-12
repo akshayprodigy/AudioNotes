@@ -2,6 +2,7 @@
 #include <jni.h>
 
 #include <cstdio>
+#include <cstring>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -9,6 +10,8 @@
 #include "asr/whisper_asr.h"
 #include "diar/diarizer.h"
 #include "llm/llama_engine.h"
+#include "minutes/minutes_extractor.h"
+#include "nlohmann/json.hpp"
 #include "vad/silero_vad.h"
 
 namespace {
@@ -180,4 +183,52 @@ Java_com_audionotes_pipeline_NativeBridge_nativeDiarize(
     env->SetLongArrayRegion(result, 0, static_cast<jsize>(flat.size()), flat.data());
   }
   return result;
+}
+
+
+// ---------------------------------------------------------------------------
+// Rule-based minutes, from the shared core.
+//
+// This replaces MinutesExtractor.kt, which was a hand-maintained third copy of the same rules
+// (alongside src/pipeline/minutes.ts and cpp/minutes/minutes_extractor.cpp) with nothing keeping
+// it in sync. The C++ side is golden-tested against the real TS, so routing Kotlin here means one
+// brain instead of three.
+//
+// Deliberately rule-only, matching what MinutesExtractor did: LLM enhancement still runs JS-side
+// via PipelineController.enhanceMinutes. Moving that native too is a separate change with its own
+// timing consequences (it would run inside ProcessingService).
+// ---------------------------------------------------------------------------
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_audionotes_pipeline_NativeBridge_nativeMinutes(
+    JNIEnv* env, jobject /*thiz*/, jstring jUtterancesJson, jstring jSpeakersJson) {
+  using nlohmann::json;
+  const std::string utts_json = jstr(env, jUtterancesJson);
+  const std::string spks_json = jstr(env, jSpeakersJson);
+
+  try {
+    json ju = json::parse(utts_json, nullptr, /*allow_exceptions=*/false);
+    json js = json::parse(spks_json, nullptr, /*allow_exceptions=*/false);
+    if (ju.is_discarded() || !ju.is_array()) throw std::runtime_error("utterances: bad JSON");
+    if (js.is_discarded() || !js.is_array()) throw std::runtime_error("speakers: bad JSON");
+
+    std::vector<audionotes::MinuteUtt> utts;
+    utts.reserve(ju.size());
+    for (const auto& u : ju) {
+      utts.push_back({u.value("text", std::string()), u.value("speaker_id", std::string())});
+    }
+    std::vector<audionotes::MinuteSpk> spks;
+    spks.reserve(js.size());
+    for (const auto& s : js) {
+      spks.push_back({s.value("id", std::string()), s.value("display_name", std::string())});
+    }
+
+    json out = json::array();
+    for (const auto& m : audionotes::extractMinutes(utts, spks)) {
+      out.push_back({{"kind", m.kind}, {"content", m.content}, {"source", m.source}});
+    }
+    return env->NewStringUTF(out.dump().c_str());
+  } catch (const std::exception& e) {
+    throwRuntime(env, e.what());
+    return env->NewStringUTF("[]");
+  }
 }

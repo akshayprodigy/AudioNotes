@@ -56,6 +56,10 @@ int main(int argc, char** argv) {
   runMinutesGolden(dir, "minutes_meeting.json");
   runMinutesGolden(dir, "minutes_dedup.json");
   runMinutesGolden(dir, "minutes_priority.json");
+  // Rule-level cases inherited from the deleted Kotlin MinutesExtractorTest: standalone decision,
+  // named owner + due date, question without a question mark, and the NAMED_OWNER exclusion list.
+  runMinutesGolden(dir, "minutes_rules.json");
+  runMinutesGolden(dir, "minutes_decision_dedup.json");
 
   // Caps: 35 distinct action sentences -> 30 actions kept; summary counts the trimmed list.
   {

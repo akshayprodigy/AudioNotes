@@ -16,6 +16,11 @@ add_library(audionotes SHARED
   asr/whisper_asr.cpp
   diar/diarizer.cpp
   llm/llama_engine.cpp
+  # Rule-based minutes, shared with the CLI and minutes.ts (see jni nativeMinutes). The rest of
+  # the core's upper layers (pipeline/, capi/) are NOT built here: Android drives the stages from
+  # Kotlin because ProcessingEngine owns DB-backed resume-by-stage, which the capture-agnostic
+  # an_process facade has no notion of. Add them when that changes.
+  minutes/minutes_extractor.cpp
   jni/audionotes_jni.cpp)
 
 # ---------------------------------------------------------------------------
@@ -42,6 +47,7 @@ endfunction()
 
 target_include_directories(audionotes PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party  # nlohmann/json.hpp (minutes + result_json)
   ${ORT_INCLUDE})
 
 # ---------------------------------------------------------------------------

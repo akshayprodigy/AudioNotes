@@ -152,7 +152,7 @@ class ProcessingEngine(
       if (utts.isNotEmpty()) {
         listener.onStage("minutes", 0, 1)
         val speakers = db.speakers(meetingId)
-        val minutes = MinutesExtractor.extract(utts, speakers)
+        val minutes = Minutes.extract(utts, speakers)
         db.replaceMinutes(meetingId, minutes)
         retitleFromTranscript(meetingId, utts)
         applyRetention(meetingId, utts.size)
