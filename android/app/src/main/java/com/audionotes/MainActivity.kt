@@ -27,7 +27,10 @@ class MainActivity : ReactActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     current = this
-    intent?.getStringExtra("openMeetingId")?.let { DeepLink.pendingMeetingId = it }
+    intent?.getStringExtra("openMeetingId")?.let {
+      DeepLink.pendingMeetingId = it
+      intent.removeExtra("openMeetingId")
+    }
   }
 
   /**
@@ -37,8 +40,10 @@ class MainActivity : ReactActivity() {
    */
   override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
+    val id = intent.getStringExtra("openMeetingId")
+    if (id != null) intent.removeExtra("openMeetingId")
     setIntent(intent)
-    val id = intent.getStringExtra("openMeetingId") ?: return
+    if (id == null) return
     val ctx: ReactContext? = reactInstanceManagerBridgeless()
     if (ctx != null) {
       ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
@@ -46,6 +51,9 @@ class MainActivity : ReactActivity() {
           putString("meetingId", id)
         })
     } else {
+      // Fallback only helps a startup race (context still initializing → onReady consumes this
+      // later). If the activity is alive but the React context was torn down without a remount,
+      // nothing re-consumes this until the next fresh mount — an accepted, rare edge.
       DeepLink.pendingMeetingId = id
     }
   }

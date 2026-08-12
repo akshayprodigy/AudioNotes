@@ -191,8 +191,9 @@ class ProcessingService : Service() {
    * silent/low and torn down with the ongoing foreground notification when the service stops, so
    * reusing it here would mean this notification either can't alert or disappears with it.
    *
-   * Tapping just opens the app (plain launch intent) for v1. `openMeetingId` is carried as a hint
-   * for a future deep-link straight to the meeting; MainActivity does not read it yet — follow-up.
+   * Tapping deep-links straight to the meeting: `openMeetingId` is read by MainActivity, which
+   * either stashes it for AudioPipelineModule.consumePendingMeetingId (cold start, via onCreate)
+   * or emits it as the 'onOpenMeeting' device event (warm tap, via onNewIntent).
    */
   private fun postNotesReady(meetingId: String) {
     try {
