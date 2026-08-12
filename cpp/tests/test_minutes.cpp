@@ -60,6 +60,8 @@ int main(int argc, char** argv) {
   // named owner + due date, question without a question mark, and the NAMED_OWNER exclusion list.
   runMinutesGolden(dir, "minutes_rules.json");
   runMinutesGolden(dir, "minutes_decision_dedup.json");
+  runMinutesGolden(dir, "minutes_unassigned.json");
+  runMinutesGolden(dir, "minutes_empty.json");
 
   // Caps: 35 distinct action sentences -> 30 actions kept; summary counts the trimmed list.
   {

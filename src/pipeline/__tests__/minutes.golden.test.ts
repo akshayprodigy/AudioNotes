@@ -58,6 +58,14 @@ const DECISION_DEDUP = [
   { text: 'we decided to go with Plan A!', speakerId: 'S0' },
 ];
 
+// No speaker on any utterance and no speaker rows at all — the shape a single-speaker meeting (or
+// one where diarization was skipped) actually produces. Exists mainly to pin the marshalling at
+// the JNI boundary, where speakerId becomes "" rather than null.
+const UNASSIGNED = [
+  { text: 'We decided to ship on Friday.', speakerId: null },
+  { text: 'I will send the notes tomorrow.', speakerId: null },
+];
+
 const PARSE_CASES: Record<string, string> = {
   parse_valid:
     'Here are the minutes:\n{"summary":"Team reviewed the rollout.","decisions":["Ship 2.1 Friday"],' +
@@ -104,6 +112,16 @@ test('write golden files for the C++ parity tests', () => {
   const decisions = decisionDedup.filter(m => m.kind === 'decision');
   expect(decisions.length).toBe(1);
   expect(decisions[0].content).toBe('We decided to go with Plan A.'); // first occurrence wins
+
+  const unassigned = extractMinutes(UNASSIGNED as any, [] as any);
+  write('minutes_unassigned', { input: { utterances: UNASSIGNED, speakers: [] }, output: unassigned });
+  // With no speaker name to attribute to, first-person actions fall through to Unassigned.
+  expect(unassigned.map(m => m.kind)).toEqual(['summary', 'decision', 'action']);
+
+  const empty = extractMinutes([] as any, [] as any);
+  write('minutes_empty', { input: { utterances: [], speakers: [] }, output: empty });
+  expect(empty.length).toBe(1);
+  expect(empty[0].kind).toBe('summary');
 
   for (const [name, raw] of Object.entries(PARSE_CASES)) {
     write(name, { input: raw, output: parseMinutesJson(raw) });

@@ -18,9 +18,8 @@ import java.util.concurrent.TimeUnit
  * The capture state machine, tested without a microphone.
  *
  * These cover the failures that actually happened rather than hypotheticals: a notification button
- * that did nothing after a process restart, a mic-loss teardown that left the app believing a
- * meeting was still running forever, and — the one the whole floating-bubble dismiss design rests
- * on — the guarantee that hiding the control never stops the recording.
+ * that did nothing after a process restart, and a mic-loss teardown that left the app believing a
+ * meeting was still running forever.
  *
  * Run with:  ./gradlew connectedDebugAndroidTest
  */
@@ -135,27 +134,10 @@ class CaptureStateTest {
     assertTrue(CaptureController.applyPause(false))
   }
 
-  /**
-   * THE INVARIANT THE DISMISS GESTURE RESTS ON.
-   *
-   * Dragging the floating bubble into the pocket hides a control; it must never end the meeting.
-   * OverlayService.dismissBubble deliberately shares no code path with stop(), and this asserts
-   * the outcome so a later refactor cannot quietly join them: the promise is printed on screen at
-   * the moment of the gesture ("Hide — keeps recording"), so breaking it would make the app lie.
-   */
-  @Test
-  fun dismissingTheBubbleLeavesTheRecordingRunning() {
-    val id = "test-meeting-dismiss"
-    CaptureController.adopt(ctx, id, System.currentTimeMillis())
-    assertTrue(CaptureController.isRecording)
-
-    val intent = android.content.Intent(ctx, com.audionotes.pipeline.OverlayService::class.java)
-      .apply { action = com.audionotes.pipeline.OverlayService.ACTION_HIDE }
-    ctx.startService(intent)
-    Thread.sleep(500)
-
-    assertTrue("hiding the bubble must not stop the meeting", CaptureController.isRecording)
-    assertEquals(id, CaptureController.currentMeetingId)
-    assertFalse("hiding the bubble must not pause it either", CaptureController.paused)
-  }
+  // Once there was a dismissingTheBubbleLeavesTheRecordingRunning test here. `d11d574` retired
+  // OverlayService in favour of native Picture-in-Picture but left the test referencing the
+  // deleted class, which made the WHOLE androidTest source set uncompilable — every instrumented
+  // test in the module has been unrunnable since. Deleted rather than rewritten: the gesture it
+  // guarded (dragging the bubble into a pocket) no longer exists, and the equivalent PiP promise
+  // deserves a test written against the PiP surface rather than a mechanical port of this one.
 }

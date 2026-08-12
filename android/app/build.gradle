@@ -156,6 +156,16 @@ android {
         }
     }
 
+    sourceSets {
+        androidTest {
+            // Serve cpp/tests/golden/ straight into the instrumentation APK's assets rather than
+            // copying it. MinutesParityTest replays the SAME files the C++ test_minutes replays,
+            // so the device and the desktop core are checked against one artifact — a copy here
+            // could drift, which is the exact failure the shared core exists to prevent.
+            assets.srcDirs += ["$rootDir/../cpp/tests/golden"]
+        }
+    }
+
     namespace "com.audionotes"
     defaultConfig {
         applicationId "com.audionotes"

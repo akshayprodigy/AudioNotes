@@ -1,0 +1,13 @@
+{
+ "input": {
+  "utterances": [],
+  "speakers": []
+ },
+ "output": [
+  {
+   "kind": "summary",
+   "content": "0 action items, 0 decisions, 0 open questions.",
+   "source": "rule"
+  }
+ ]
+}

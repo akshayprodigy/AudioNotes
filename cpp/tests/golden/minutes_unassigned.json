@@ -1,0 +1,32 @@
+{
+ "input": {
+  "utterances": [
+   {
+    "text": "We decided to ship on Friday.",
+    "speakerId": null
+   },
+   {
+    "text": "I will send the notes tomorrow.",
+    "speakerId": null
+   }
+  ],
+  "speakers": []
+ },
+ "output": [
+  {
+   "kind": "summary",
+   "content": "1 action item, 1 decision, 0 open questions.",
+   "source": "rule"
+  },
+  {
+   "kind": "decision",
+   "content": "We decided to ship on Friday.",
+   "source": "rule"
+  },
+  {
+   "kind": "action",
+   "content": "I will send the notes tomorrow. — Unassigned (due tomorrow)",
+   "source": "rule"
+  }
+ ]
+}
