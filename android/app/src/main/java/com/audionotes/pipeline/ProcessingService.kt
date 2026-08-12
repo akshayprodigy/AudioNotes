@@ -202,7 +202,8 @@ class ProcessingService : Service() {
         NotificationChannelCompat.Builder(chan, NotificationManagerCompat.IMPORTANCE_DEFAULT)
           .setName("Notes ready").build())
       val open = packageManager.getLaunchIntentForPackage(packageName)?.apply {
-        putExtra("openMeetingId", meetingId) // optional deep-link hint; plain open is fine for v1
+        // Load-bearing: MainActivity reads this to deep-link to the meeting (see the KDoc above).
+        putExtra("openMeetingId", meetingId)
       } ?: Intent()
       val pi = PendingIntent.getActivity(
         this, meetingId.hashCode(), open,
