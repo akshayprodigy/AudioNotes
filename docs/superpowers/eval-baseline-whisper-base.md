@@ -101,13 +101,24 @@ before it drives a decision.
 | 0.5 (shipped) | 28 | 46.2% | 52.9% | 62 | 60.4% | 48.7% |
 | 0.6 | 23 | 41.5% | 59.7% | 52 | 59.3% | 49.3% |
 | 0.7 | 19 | 25.7% | 81.2% | 36 | 37.7% | 70.3% |
-| 0.8 | 10 | 23.4% | 85.3% | | | |
+| 0.8 | 10 | 23.4% | 85.3% | 25 | 33.6% | 78.4% |
+| 0.9 | 7 | **18.1%** | **91.1%** | 21 | **28.9%** | **85.9%** |
 | `--speakers 4` | 4 | 41.8% | 80.1% | | | |
 
 Missed and false-alarm time are IDENTICAL across every threshold (54s / 31s on ES2003a) — only
 confusion moves, 195s at 0.5 down to 71s at 0.7. One parameter, one error bucket, which is what
 makes this a clean result rather than a coincidence. The remaining DER is segmentation, which no
 clustering threshold can touch.
+
+**The floor that makes these numbers legible:** collapse every utterance into ONE cluster and
+score that. ES2003a gets DER 64.9% / attribution 53.6%, ES2002a DER 69.4% / attribution 50.6%.
+Any real result has to beat that, or the sweep is only riding toward a degenerate answer.
+
+It also says something uncomfortable about what ships today. At threshold 0.5, attribution is
+52.9% and 48.7% — i.e. **the shipped diarization is no better at putting the right name on an
+utterance than assigning the entire meeting to a single speaker**, and on ES2002a it is
+marginally worse. The high thresholds clear the floor by 35+ points, so they are measuring
+something real.
 
 Note that 0.8 beats forcing the true speaker count. Forcing exactly 4 clusters makes bad merges
 where the audio does not support them; a higher merge threshold leaves the uncertain fragments
