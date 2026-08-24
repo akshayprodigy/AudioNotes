@@ -63,25 +63,55 @@ meeting had been transcribed, diarized and summarised. Exit 134. The Android pat
 same byte through `NewStringUTF`, which aborts the ART VM. Fixed at the source in `cpp/util/utf8`
 and covered by `test_utf8`; a run that used to lose everything now completes.
 
-**2. whisper-base cannot transcribe code-switched Hinglish**, and it fails in two different ways
-depending on the language setting:
+**2. whisper-base picks the wrong language.** The meeting is Hindi/English code-switched. Which
+script each model chose for its 133 / 68 utterances:
 
-| language | foreign-script utterances | repeated lines | ASR time |
-|---|---:|---:|---:|
-| `auto` (shipped) | 49 / 133 (37%) | — | 35s |
-| `en` | 0 | 23 / 140 | 12s |
+| model | language | Arabic/Urdu | Devanagari | Latin only | repeated lines | ASR (509s audio) |
+|---|---|---:|---:|---:|---:|---:|
+| base | `auto` (shipped) | **37** | 12 | 84 | 27 (20%) | 35s |
+| base | `en` | 0 | 0 | 140 | 23 (16%) | 12s |
+| small | `auto` | **0** | 59 | 9 | 2 (3%) | 135s |
+| small | `en` | 0 | 0 | 99 | 15 (15%) | 25s |
 
-With `auto`, whisper re-detects per 30s chunk (`no_context` is set), lands on Hindi or Urdu, and
-writes **Arabic script for Hindi speech** — one meeting comes back in three scripts. With `en`
-pinned it stops doing that and starts hallucinating fluent English instead: "And that's what
-we've posted." appears six times in a row over speech that says nothing of the sort.
+base with `auto` writes **Arabic script for Hindi speech** in 37 utterances and flip-flops across
+three scripts in one meeting, because `no_context` is set and the language is re-detected every
+30s chunk. base pinned to `en` stops that and starts hallucinating instead: "And that's what
+we've posted." six times over speech that says nothing of the sort. That failure is the more
+dangerous one — wrong script is visibly wrong, invented fluent English is not, and it flows into
+the minutes as a real sentence.
 
-The second failure is the more dangerous one. Wrong script is visibly wrong. Fluent invented
-English is not, and it flows straight into the minutes as though it were a real sentence.
+**small fixes the language identification outright**: no Urdu, Devanagari for the Hindi, Latin
+for the English, and the hallucination loops largely stop (3% repeated lines against base's 20%).
+The Devanagari itself is phonetic and rough — "अकाुंट खुल्डर" for "account holder" — so this is
+"the right language, badly spelled", not "solved". How badly is unmeasurable until the recording
+has a corrected reference.
 
-Neither is a setting problem. `--language` exists now so the choice can be measured, but the
-honest reading is that the model is too small for this audio, and the next question is whether
-`ggml-small-q5_1` (already in `ModelCatalog.kt`) clears the bar.
+The cost is speed: 135s against 35s for the same audio, 3.8x. base measures ~0.68x realtime on a
+Pixel 7 Pro against ~0.07x here, so small extrapolates to roughly **2.6x realtime on device** —
+an 8.5 minute meeting would take something like 22 minutes to transcribe. That is an
+extrapolation from one device measurement, not a measurement, and it needs checking on hardware
+before it drives a decision.
+
+## The diarization threshold sweep
+
+`--diar-threshold`, auto-clustering, against 4 real speakers per meeting:
+
+| threshold | ES2003a clusters | DER | attribution | ES2002a clusters | DER | attribution |
+|---|---:|---:|---:|---:|---:|---:|
+| 0.5 (shipped) | 28 | 46.2% | 52.9% | 62 | 60.4% | 48.7% |
+| 0.6 | 23 | 41.5% | 59.7% | 52 | 59.3% | 49.3% |
+| 0.7 | 19 | 25.7% | 81.2% | 36 | 37.7% | 70.3% |
+| 0.8 | 10 | 23.4% | 85.3% | | | |
+| `--speakers 4` | 4 | 41.8% | 80.1% | | | |
+
+Missed and false-alarm time are IDENTICAL across every threshold (54s / 31s on ES2003a) — only
+confusion moves, 195s at 0.5 down to 71s at 0.7. One parameter, one error bucket, which is what
+makes this a clean result rather than a coincidence. The remaining DER is segmentation, which no
+clustering threshold can touch.
+
+Note that 0.8 beats forcing the true speaker count. Forcing exactly 4 clusters makes bad merges
+where the audio does not support them; a higher merge threshold leaves the uncertain fragments
+in small clusters of their own instead, where they cost far less.
 
 ## Caveats that belong on every number here
 
