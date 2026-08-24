@@ -126,8 +126,14 @@ class NativePipelineTest {
    * user. Running VAD first is deliberate: it forces the manual-init path to happen before
    * sherpa's first call.
    *
-   * Speaker COUNT is not asserted — the fixture is a single speaker and clustering thresholds are
-   * a tuning question for real multi-party audio, not a correctness gate.
+   * Speaker COUNT *is* asserted now, and it is no longer a tuning question. sherpa's default
+   * merge threshold of 0.5 shipped for months and was measured splitting 4-speaker AMI meetings
+   * into 28-101 clusters — attribution no better than assigning the whole meeting to one person.
+   * The default is 1.0 as of the sweep in docs/superpowers/eval-baseline-whisper-base.md.
+   *
+   * A single-speaker fixture is the cheapest possible guard on that: one voice must not fragment.
+   * Revert the threshold and this fails, which is the whole point of writing it down here rather
+   * than only in a desktop harness the app build never runs.
    */
   @Test
   fun diarization_runs_and_shares_the_onnx_runtime_with_vad() {
@@ -154,6 +160,13 @@ class NativePipelineTest {
     println("DIAR: $n segment(s), ${speakers.size} speaker(s), ${elapsed}ms for ${totalMs}ms audio")
 
     assertTrue("diarization returned no segments for audio containing speech", n > 0)
+    // One person speaking must not come back as a crowd. Generous by design — the gate is
+    // "fragmentation", not an exact count, because segmentation may legitimately split a pause.
+    assertTrue(
+      "one speaker fragmented into ${speakers.size} clusters — the diarization merge threshold " +
+        "has regressed (should be 1.0, see Diarizer::Diarizer)",
+      speakers.size <= 2,
+    )
     for (i in 0 until n) {
       val s = tri[i * 3]
       val e = tri[i * 3 + 1]
