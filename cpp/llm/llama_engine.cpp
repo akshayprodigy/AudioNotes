@@ -1,5 +1,7 @@
 #include "llm/llama_engine.h"
 
+#include "util/utf8.h"
+
 #include <string>
 #include <vector>
 
@@ -98,7 +100,11 @@ struct LlamaEngine::Impl {
     (void)prompt;
     (void)max_tokens;
 #endif
-    return out;
+    // Generation that stops mid-character (max_tokens, or EOG right after a partial piece)
+    // leaves a trailing fragment. Sanitize the FINISHED string, never the individual pieces: a
+    // BPE token is routinely half a character, so per-piece scrubbing would delete every
+    // non-ASCII character in the output.
+    return sanitizeUtf8(out);
   }
 
   ~Impl() {

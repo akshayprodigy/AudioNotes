@@ -87,6 +87,7 @@ endif()
 add_executable(audionotes_cli
   main.cpp
   ${CORE}/asr/whisper_asr.cpp
+  ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
   ${CORE}/diar/diarizer.cpp
@@ -125,6 +126,10 @@ function(audionotes_add_test name)
   add_test(NAME ${name} COMMAND ${name} ${CORE}/tests/golden)
 endfunction()
 
+audionotes_add_test(test_utf8
+  ${CORE}/tests/test_utf8.cpp
+  ${CORE}/util/utf8.cpp)
+
 audionotes_add_test(test_minutes
   ${CORE}/tests/test_minutes.cpp
   ${CORE}/minutes/minutes_extractor.cpp)
@@ -140,6 +145,7 @@ audionotes_add_test(test_pipeline_align
   ${CORE}/minutes/minutes_extractor.cpp
   ${CORE}/minutes/llm_minutes.cpp
   ${CORE}/asr/whisper_asr.cpp
+  ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
   ${CORE}/diar/diarizer.cpp
@@ -164,6 +170,7 @@ audionotes_add_test(test_cancel
   ${CORE}/minutes/minutes_extractor.cpp
   ${CORE}/minutes/llm_minutes.cpp
   ${CORE}/asr/whisper_asr.cpp
+  ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
   ${CORE}/diar/diarizer.cpp
@@ -188,6 +195,7 @@ audionotes_add_test(test_capi
   ${CORE}/minutes/minutes_extractor.cpp
   ${CORE}/minutes/llm_minutes.cpp
   ${CORE}/asr/whisper_asr.cpp
+  ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
   ${CORE}/diar/diarizer.cpp

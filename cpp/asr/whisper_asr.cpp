@@ -1,5 +1,7 @@
 #include "asr/whisper_asr.h"
 
+#include "util/utf8.h"
+
 #include "util/cpu_topology.h"
 
 #include <algorithm>
@@ -134,7 +136,11 @@ std::vector<Utterance> WhisperAsr::transcribe(
       // whisper t0/t1 are in centiseconds (1/100 s); re-anchor to the chunk's global start.
       const int64_t t0 = whisper_full_get_segment_t0(impl_->ctx, i) * 10;
       const int64_t t1 = whisper_full_get_segment_t1(impl_->ctx, i) * 10;
-      std::string s = text ? text : "";
+      // whisper returns raw decoded token bytes. A character split across a chunk boundary
+      // arrives as a fragment, and that fragment terminates every consumer downstream (JSON
+      // dump throws, JNI NewStringUTF aborts the VM) — found on a Hindi/English meeting, after
+      // the whole recording had already been processed. Scrub once, here at the source.
+      std::string s = sanitizeUtf8(text ? text : "");
       // trim leading space whisper tends to add
       if (!s.empty() && s.front() == ' ') s.erase(0, 1);
       if (!s.empty()) utts.push_back(Utterance{ch.first + t0, ch.first + t1, s});
