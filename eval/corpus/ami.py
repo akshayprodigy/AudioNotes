@@ -27,24 +27,34 @@ def _read(path):
 
 
 def parse_words(data_dir, meeting, speaker):
-    """Ordered [(word_id, text)] for one speaker, punctuation tokens excluded."""
+    """Ordered [(id, text, is_text)] for every id-bearing element in the speaker's words file.
+
+    Index broadly, filter narrowly. A words file holds <w> plus <vocalsound>, <gap> and
+    <disfmarker>, and all of them share ONE id sequence that segment hrefs use as range endpoints.
+    Indexing only spoken words makes those lookups fail and silently discards the entire segment.
+    On ES2002a the two variants of this mistake cost 256 of 277 segments between them, leaving a
+    WER computed against 363 reference words instead of ~3100 — a number that would have looked
+    plausible and been meaningless.
+
+    `is_text` marks the elements that contribute words: <w> without punc="true".
+    """
     root = _read(os.path.join(data_dir, f"{meeting}.{speaker}.words.xml"))
     words = []
-    for w in root.iter():
-        if not (w.tag.endswith("}w") or w.tag == "w"):
+    for node in root.iter():
+        node_id = node.get(f"{NITE}id")
+        if not node_id:
             continue
-        if w.get("punc") == "true":
-            continue
-        text = (w.text or "").strip()
-        if text:
-            words.append((w.get(f"{NITE}id"), text))
+        is_word = node.tag.endswith("}w") or node.tag == "w"
+        text = (node.text or "").strip() if is_word else ""
+        is_text = bool(is_word and text and node.get("punc") != "true")
+        words.append((node_id, text, is_text))
     return words
 
 
 def parse_segments(data_dir, meeting, speaker):
     """Speaker-labelled segments with ms timings, in file order."""
     words = parse_words(data_dir, meeting, speaker)
-    index = {wid: i for i, (wid, _) in enumerate(words)}
+    index = {wid: i for i, (wid, _, _) in enumerate(words)}  # every id, spoken or not
 
     root = _read(os.path.join(data_dir, f"{meeting}.{speaker}.segments.xml"))
     segments = []
@@ -66,7 +76,7 @@ def parse_segments(data_dir, meeting, speaker):
         first, last = ids[0], ids[-1]
         if first not in index or last not in index:
             continue
-        text = " ".join(t for _, t in words[index[first]:index[last] + 1])
+        text = " ".join(t for _, t, is_text in words[index[first]:index[last] + 1] if is_text)
         if not text:
             continue
         segments.append({

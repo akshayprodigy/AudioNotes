@@ -1,0 +1,27 @@
+{
+ "decisions": [
+  "The remote will sell for 25 Euro.",
+  "The remote will be sold on an international scale.",
+  "The production costs cannot exceed 12.50 Euro."
+ ],
+ "actions": [
+  {
+   "text": "The industrial designer will work on the working design of the remote.",
+   "owner": "",
+   "due": ""
+  },
+  {
+   "text": "The user interface designer will work on the technical functions of the remote.",
+   "owner": "",
+   "due": ""
+  },
+  {
+   "text": "The marketing executive will work on what requirements the remote has to fulfill",
+   "owner": "",
+   "due": ""
+  }
+ ],
+ "questions": [
+  "Whether the remote will be used exclusively for televisions."
+ ]
+}

@@ -6,4 +6,10 @@
    <segment nite:id="ES9999a.sync.2" transcriber_start="9.00" transcriber_end="9.40">
       <nite:child href="ES9999a.A.words.xml#id(ES9999a.A.words4)"/>
    </segment>
+   <segment nite:id="ES9999a.sync.3" transcriber_start="12.00" transcriber_end="12.50">
+      <nite:child href="ES9999a.A.words.xml#id(ES9999a.A.words0)..id(ES9999a.A.words1)"/>
+   </segment>
+   <segment nite:id="ES9999a.sync.4" transcriber_start="14.00" transcriber_end="14.60">
+      <nite:child href="ES9999a.A.words.xml#id(ES9999a.A.words4)..id(ES9999a.A.words5)"/>
+   </segment>
 </nite:root>
