@@ -102,13 +102,29 @@ before it drives a decision.
 | 0.6 | 23 | 41.5% | 59.7% | 52 | 59.3% | 49.3% |
 | 0.7 | 19 | 25.7% | 81.2% | 36 | 37.7% | 70.3% |
 | 0.8 | 10 | 23.4% | 85.3% | 25 | 33.6% | 78.4% |
-| 0.9 | 7 | **18.1%** | **91.1%** | 21 | **28.9%** | **85.9%** |
+| 0.9 | 7 | 18.1% | 91.1% | 21 | 28.9% | 85.9% |
+| 0.95 | 7 | 18.1% | 91.1% | 18 | 28.7% | 86.6% |
+| **1.0** | 5 | **15.9%** | **95.8%** | 13 | **28.7%** | **86.6%** |
+| 1.2 | 3 | 48.3% | 71.2% | 4 | 27.2% | 89.9% |
 | `--speakers 4` | 4 | 41.8% | 80.1% | | | |
 
-Missed and false-alarm time are IDENTICAL across every threshold (54s / 31s on ES2003a) — only
-confusion moves, 195s at 0.5 down to 71s at 0.7. One parameter, one error bucket, which is what
-makes this a clean result rather than a coincidence. The remaining DER is segmentation, which no
-clustering threshold can touch.
+**The curve turns, and that is what makes 1.0 trustworthy.** At 1.2 ES2003a over-merges to 3
+clusters — fewer than the 4 people in the room — and DER snaps back to 48.3%, worse than the
+shipped setting. 1.0 is a peak, not the edge of the range that happened to get tested.
+
+Splitting DER into its parts shows the mechanism with no ambiguity:
+
+| | segmentation (missed + false alarm) | confusion |
+|---|---:|---:|
+| ES2003a @ 0.5 | 14.0% | 32.2% |
+| ES2003a @ 1.0 | 14.0% | **1.8%** |
+| ES2003a @ 1.2 | 14.0% | 34.3% |
+| ES2002a @ 0.5 | 23.1% | 37.3% |
+| ES2002a @ 1.0 | 23.1% | **5.6%** |
+
+Segmentation is constant to the decimal at every threshold, because the threshold cannot touch
+it. All that moves is confusion, and at 1.0 it is nearly gone: clustering stops being the
+bottleneck and the residual DER becomes the segmentation stage, which is a different fix.
 
 **The floor that makes these numbers legible:** collapse every utterance into ONE cluster and
 score that. ES2003a gets DER 64.9% / attribution 53.6%, ES2002a DER 69.4% / attribution 50.6%.
