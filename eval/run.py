@@ -14,27 +14,44 @@ import sys
 
 from eval.metrics.wer import wer_tokens
 from eval.metrics.normalize import normalize
+from eval.metrics.der import der
+from eval.metrics.attribution import utterance_attribution
 from eval import report
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def run_cli(cli, models, fixture_dir, out_json):
-    """Invoke the shared core. Returns the parsed --json document."""
+    """Invoke the shared core. Returns (document, peak_rss_bytes).
+
+    Diarization models are passed when present, so DER is scored whenever the models exist and the
+    run degrades to transcript-only when they do not, rather than failing.
+    """
     cmd = [cli,
            os.path.join(models, "ggml-base-q5_1.bin"),
            os.path.join(fixture_dir, "audio.wav"),
-           "--vad", os.path.join(models, "silero_vad.onnx"),
-           "--json", out_json]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+           "--vad", os.path.join(models, "silero_vad.onnx")]
+    seg = os.path.join(models, "diar_segmentation.onnx")
+    emb = os.path.join(models, "diar_embedding.onnx")
+    if os.path.exists(seg) and os.path.exists(emb):
+        cmd += ["--diar-seg", seg, "--diar-emb", emb]
+    cmd += ["--json", out_json]
+
+    # /usr/bin/time -l reports peak RSS on macOS; it goes to stderr alongside the CLI's own output.
+    proc = subprocess.run(["/usr/bin/time", "-l"] + cmd, capture_output=True, text=True)
     if proc.returncode != 0 or not os.path.exists(out_json):
         sys.stderr.write(proc.stderr[-2000:] + "\n")
         raise SystemExit(f"CLI failed for {fixture_dir} (exit {proc.returncode})")
+    peak_rss = 0
+    for line in proc.stderr.splitlines():
+        if "maximum resident set size" in line:
+            peak_rss = int(line.strip().split()[0])
+            break
     with open(out_json) as f:
-        return json.load(f)
+        return json.load(f), peak_rss
 
 
-def score(fixture_dir, doc):
+def score(fixture_dir, doc, peak_rss=0):
     with open(os.path.join(fixture_dir, "truth.json")) as f:
         truth = json.load(f)
     with open(os.path.join(fixture_dir, "meta.json")) as f:
@@ -49,13 +66,26 @@ def score(fixture_dir, doc):
     for utt in sorted(doc.get("transcript", []), key=lambda u: u["start_ms"]):
         hyp_tokens.extend(normalize(utt["text"]))
 
+    d = der(truth["segments"], doc.get("transcript", []))
+    attribution = utterance_attribution(truth["segments"], doc.get("transcript", []), d.mapping)
+
+    timings = doc.get("timings", {})
+    audio_ms = truth["audio_ms"] or 1
+    realtime = {k.replace("_ms", "_xrt"): round(v / audio_ms, 4)
+                for k, v in timings.items()}
+    realtime["total_xrt"] = round(sum(timings.values()) / audio_ms, 4)
+
     return {
         "id": os.path.basename(fixture_dir.rstrip("/")),
         "source": meta.get("source", "unknown"),
         "notes": meta.get("notes", ""),
         "audio_ms": truth["audio_ms"],
         "wer": wer_tokens(ref_tokens, hyp_tokens).as_dict(),
-        "timings": doc.get("timings", {}),
+        "der": d.as_dict(),
+        "attribution": attribution,
+        "timings": timings,
+        "realtime": realtime,
+        "peak_rss_mb": round(peak_rss / 1048576, 1) if peak_rss else None,
         "utterances": len(doc.get("transcript", [])),
     }
 
@@ -86,12 +116,15 @@ def main():
             print(f"skip {fid}: audio.wav missing (gitignored; rebuild the fixture)")
             continue
         print(f"running {fid} …")
-        doc = run_cli(args.cli, args.models, fixture_dir,
-                      os.path.join(out_dir, f"{fid}.cli.json"))
-        r = score(fixture_dir, doc)
+        doc, peak_rss = run_cli(args.cli, args.models, fixture_dir,
+                                os.path.join(out_dir, f"{fid}.cli.json"))
+        r = score(fixture_dir, doc, peak_rss)
         results["fixtures"].append(r)
+        acc = r["attribution"]["accuracy"]
         print(f"  WER {r['wer']['wer'] * 100:.1f}%  "
-              f"({r['wer']['errors']}/{r['wer']['ref_words']} words)")
+              f"DER {r['der']['der'] * 100:.1f}%  "
+              f"attrib {('%.1f%%' % (acc * 100)) if acc is not None else 'n/a'}  "
+              f"{r['realtime']['total_xrt']:.2f}x realtime")
 
     with open(os.path.join(out_dir, "results.json"), "w") as f:
         json.dump(results, f, indent=1)
