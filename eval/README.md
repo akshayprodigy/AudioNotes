@@ -29,17 +29,44 @@ what lets your own recordings become a benchmark by writing these four files.
 
 ## Baseline
 
-whisper-base (`ggml-base-q5_1.bin`), VAD on, ES2002a (AMI), 2026-08-24:
+Full numbers, and what the first real pass found:
+`docs/superpowers/eval-baseline-whisper-base.md`.
+
+whisper-base over 4 AMI meetings (1h47m), 2026-08-24:
 
 | metric | value |
 |---|---|
-| WER | **30.8%** |
-| substitutions / deletions / insertions | 329 / 304 / 159 |
-| reference words | 2572 |
+| WER | **29.7%** (4220 errors / 14220 reference words) |
+| DER | **48.8%** — confusion 1190s vs missed 227s, false alarm 275s |
+| attribution | 25-62% per meeting |
+| speed | 0.06-0.09x realtime on desktop |
 
-Published whisper-base on AMI headset audio sits around 20-30%, so this is the right
+Published whisper-base on AMI headset audio sits around 20-30%, so WER is the right
 neighbourhood. A run far above it usually means VAD dropped speech before ASR saw it — the
 deletion count is the tell. Anything near 100% means the CLI failed and produced no transcript.
+
+DER is NOT in the right neighbourhood: auto-clustering returns 28-101 clusters for meetings with
+4 speakers. Forcing `--speakers 4` moves attribution from 52.9% to 80.1% on ES2003a, so the
+embeddings are fine and the merge threshold is wrong. `--diar-threshold` exists to sweep it.
+
+## Your own recordings
+
+AMI tells you whether a change regressed. Your own meetings tell you whether the product works.
+The first one added found a crash and a language failure that AMI cannot express — see the
+baseline doc.
+
+    python3 -m eval.corpus.build_local ~/Downloads/meeting.mp4 --id real-acme-2026-08-19
+    cpp/cli/build/audionotes_cli eval/models/ggml-base-q5_1.bin \
+      eval/fixtures/real-acme-2026-08-19/audio.wav --vad eval/models/silero_vad.onnx \
+      --json /tmp/run.json
+    python3 -m eval.corpus.truth_draft export real-acme-2026-08-19 /tmp/run.json
+    # correct eval/fixtures/real-acme-2026-08-19/truth.draft.txt, then
+    python3 -m eval.corpus.truth_draft import real-acme-2026-08-19
+
+Fixtures named `real-*` are gitignored in full — audio, transcript and minutes. Correcting our
+transcript instead of typing one makes the resulting WER a lower bound, since a plausible
+mistranscription read past stays in the reference; the draft header says so and the gap markers
+push against it.
 
 Models live in `eval/models/` (gitignored). Fetch them with:
 
