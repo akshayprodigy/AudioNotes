@@ -63,8 +63,9 @@ struct WhisperAsr::Impl {
   whisper_context* ctx = nullptr;
 #endif
   bool ok = false;
+  std::string language;
 
-  explicit Impl(const std::string& model_path) {
+  Impl(const std::string& model_path, const std::string& lang) : language(lang) {
 #ifdef HAVE_WHISPER
     whisper_context_params cparams = whisper_context_default_params();
     ctx = whisper_init_from_file_with_params(model_path.c_str(), cparams);
@@ -82,7 +83,8 @@ struct WhisperAsr::Impl {
   }
 };
 
-WhisperAsr::WhisperAsr(const std::string& model_path) : impl_(new Impl(model_path)) {}
+WhisperAsr::WhisperAsr(const std::string& model_path, const std::string& language)
+    : impl_(new Impl(model_path, language)) {}
 WhisperAsr::~WhisperAsr() { delete impl_; }
 bool WhisperAsr::ok() const { return impl_->ok; }
 
@@ -121,7 +123,7 @@ std::vector<Utterance> WhisperAsr::transcribe(
     wparams.print_realtime = false;
     wparams.print_special = false;
     wparams.translate = false;
-    wparams.language = "auto";  // multilingual by default
+    wparams.language = impl_->language.c_str();
     wparams.n_threads = threads;
     wparams.no_context = true;
 

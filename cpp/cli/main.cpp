@@ -80,7 +80,8 @@ int main(int argc, char** argv) {
     std::fprintf(stderr,
                  "usage: %s <whisper-model.bin> <input-16k-mono.wav> [--vad silero_vad.onnx]\n"
                  "          [--diar-seg segmentation.onnx --diar-emb embedding.onnx] "
-                 "[--speakers N] [--llm model.gguf] [--json out.json]\n",
+                 "[--speakers N] [--diar-threshold F] [--language en|hi|auto]\n"
+                 "          [--llm model.gguf] [--json out.json]\n",
                  argv[0]);
     return 2;
   }
@@ -89,11 +90,15 @@ int main(int argc, char** argv) {
   const std::string pcm = wav + ".pcm";
   std::string vad_model, diar_seg, diar_emb, llm_model, json_out;
   int num_speakers = 0;  // 0 = auto (threshold clustering), matching the Android pipeline
+  float diar_threshold = 0.5f;
+  std::string language = "auto";
   for (int i = 3; i < argc; ++i) {
     if (std::strcmp(argv[i], "--vad") == 0 && i + 1 < argc) vad_model = argv[++i];
     else if (std::strcmp(argv[i], "--diar-seg") == 0 && i + 1 < argc) diar_seg = argv[++i];
     else if (std::strcmp(argv[i], "--diar-emb") == 0 && i + 1 < argc) diar_emb = argv[++i];
     else if (std::strcmp(argv[i], "--speakers") == 0 && i + 1 < argc) num_speakers = std::atoi(argv[++i]);
+    else if (std::strcmp(argv[i], "--diar-threshold") == 0 && i + 1 < argc) diar_threshold = std::atof(argv[++i]);
+    else if (std::strcmp(argv[i], "--language") == 0 && i + 1 < argc) language = argv[++i];
     else if (std::strcmp(argv[i], "--llm") == 0 && i + 1 < argc) llm_model = argv[++i];
     else if (std::strcmp(argv[i], "--json") == 0 && i + 1 < argc) json_out = argv[++i];
   }
@@ -118,6 +123,8 @@ int main(int argc, char** argv) {
   cfg.diar_emb_model = diar_emb;
   cfg.llm_model = llm_model;
   cfg.num_speakers = num_speakers;
+  cfg.diar_threshold = diar_threshold;
+  cfg.language = language;
 
   audionotes::Pipeline pipeline(cfg);
   audionotes::PipelineResult res;

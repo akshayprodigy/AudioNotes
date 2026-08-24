@@ -90,17 +90,51 @@ def score(fixture_dir, doc, peak_rss=0):
     }
 
 
+def rescore(run_dir, fixtures, out_dir, run_id):
+    """Score the documents a previous run saved, without running the core again.
+
+    Stage timings live in the document, so xrealtime survives; peak RSS was measured around the
+    process and does not, so it reports n/a rather than carrying a stale number forward."""
+    results = {"run_id": run_id, "cli": f"rescored from {run_dir}", "fixtures": []}
+    for name in sorted(os.listdir(run_dir)):
+        if not name.endswith(".cli.json"):
+            continue
+        fid = name[: -len(".cli.json")]
+        fixture_dir = os.path.join(fixtures, fid)
+        if not os.path.exists(os.path.join(fixture_dir, "truth.json")):
+            print(f"skip {fid}: no truth.json")
+            continue
+        with open(os.path.join(run_dir, name)) as f:
+            doc = json.load(f)
+        r = score(fixture_dir, doc)
+        results["fixtures"].append(r)
+        print(f"  {fid}: WER {r['wer']['wer'] * 100:.1f}%  DER {r['der']['der'] * 100:.1f}%")
+    with open(os.path.join(out_dir, "results.json"), "w") as f:
+        json.dump(results, f, indent=1)
+    md = report.render(results)
+    with open(os.path.join(out_dir, "report.md"), "w") as f:
+        f.write(md)
+    print("\n" + md)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cli", required=True)
     ap.add_argument("--models", required=True)
     ap.add_argument("--fixtures", default=os.path.join(ROOT, "eval", "fixtures"))
     ap.add_argument("--only", help="run a single fixture id")
+    ap.add_argument("--rescore", metavar="RUN_DIR",
+                    help="re-score the saved <fixture>.cli.json documents in RUN_DIR instead of "
+                         "running the core again. A metric fix should not cost an hour of "
+                         "inference, and re-running would also change the thing being measured.")
     args = ap.parse_args()
 
     run_id = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     out_dir = os.path.join(ROOT, "eval", "results", run_id)
     os.makedirs(out_dir, exist_ok=True)
+
+    if args.rescore:
+        return rescore(args.rescore, args.fixtures, out_dir, run_id)
 
     ids = sorted(d for d in os.listdir(args.fixtures)
                  if os.path.isdir(os.path.join(args.fixtures, d)))

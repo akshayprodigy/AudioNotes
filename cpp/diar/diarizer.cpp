@@ -44,6 +44,7 @@ std::vector<float> readAll(const std::string& pcm_path) {
 struct Diarizer::Impl {
   int sample_rate;
   int num_speakers;
+  float threshold;
   std::string seg_model;
   std::string emb_model;
   bool ok = false;
@@ -66,8 +67,8 @@ struct Diarizer::Impl {
     return bytes > 0;
   }
 
-  Impl(const std::string& seg, const std::string& emb, int sr, int ns)
-      : sample_rate(sr), num_speakers(ns), seg_model(seg), emb_model(emb) {
+  Impl(const std::string& seg, const std::string& emb, int sr, int ns, float thr)
+      : sample_rate(sr), num_speakers(ns), threshold(thr), seg_model(seg), emb_model(emb) {
 #ifdef HAVE_SHERPA
     if (!readable(seg_model) || !readable(emb_model)) {
       ok = false;
@@ -90,7 +91,7 @@ struct Diarizer::Impl {
     config.embedding.num_threads = threads;
     config.embedding.provider = "cpu";
     config.clustering.num_clusters = num_speakers > 0 ? num_speakers : -1;
-    config.clustering.threshold = 0.5f;
+    config.clustering.threshold = threshold;
     config.min_duration_on = 0.3f;
     config.min_duration_off = 0.5f;
     sd = SherpaOnnxCreateOfflineSpeakerDiarization(&config);
@@ -108,8 +109,8 @@ struct Diarizer::Impl {
 };
 
 Diarizer::Diarizer(const std::string& seg_model, const std::string& emb_model,
-                   int sample_rate, int num_speakers)
-    : impl_(new Impl(seg_model, emb_model, sample_rate, num_speakers)) {}
+                   int sample_rate, int num_speakers, float threshold)
+    : impl_(new Impl(seg_model, emb_model, sample_rate, num_speakers, threshold)) {}
 
 Diarizer::~Diarizer() { delete impl_; }
 bool Diarizer::ok() const { return impl_->ok; }

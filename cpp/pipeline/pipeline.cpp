@@ -114,7 +114,7 @@ bool Pipeline::run(const std::string& pcm_path, PipelineResult* out,
   std::vector<Utterance> utts;
   if (!out->segments.empty()) {
     const int64_t t0 = nowMs();
-    WhisperAsr asr(cfg_.asr_model);
+    WhisperAsr asr(cfg_.asr_model, cfg_.language);
     if (!asr.ok()) {
       error_ = "asr: failed to load model " + cfg_.asr_model;
       return false;
@@ -134,7 +134,8 @@ bool Pipeline::run(const std::string& pcm_path, PipelineResult* out,
     const int64_t t0 = nowMs();
     report("diarize", 0, 1);
     try {
-      Diarizer d(cfg_.diar_seg_model, cfg_.diar_emb_model, cfg_.sample_rate, cfg_.num_speakers);
+      Diarizer d(cfg_.diar_seg_model, cfg_.diar_emb_model, cfg_.sample_rate,
+                 cfg_.num_speakers, cfg_.diar_threshold);
       if (d.ok()) diar = d.process(pcm_path);
     } catch (const std::exception&) {
       // Best-effort: a diarization failure never sinks a good transcript.

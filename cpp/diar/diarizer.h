@@ -16,8 +16,11 @@ struct DiarSegment {
 class Diarizer {
  public:
   // num_speakers: 0 = auto (threshold clustering); >0 = fixed cluster count.
+  // threshold: only consulted when num_speakers is 0. Cosine distance below which two clusters
+  // merge, so a SMALLER value splits more. Measured on AMI, where auto mode at 0.5 produced 28
+  // to 101 clusters for 4-speaker meetings — see docs/superpowers/eval-baseline-*.md.
   Diarizer(const std::string& seg_model, const std::string& emb_model,
-           int sample_rate, int num_speakers);
+           int sample_rate, int num_speakers, float threshold = 0.5f);
   ~Diarizer();
 
   bool ok() const;  // false if sherpa-onnx is not compiled in or models failed to load

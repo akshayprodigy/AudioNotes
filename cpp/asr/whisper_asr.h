@@ -26,7 +26,11 @@ using AsrCancelFn = std::function<bool()>;
 
 class WhisperAsr {
  public:
-  explicit WhisperAsr(const std::string& model_path);
+  // language: a whisper language code ("en", "hi", ...) or "auto". With no_context set, "auto"
+  // re-detects per 30 s chunk, so one meeting can come back in several languages AND several
+  // scripts — a Hindi/English meeting produced Urdu script for 39% of its utterances. Pin it
+  // when the language is known.
+  explicit WhisperAsr(const std::string& model_path, const std::string& language = "auto");
   ~WhisperAsr();
 
   bool ok() const;  // false if whisper is not compiled in or the model failed to load
