@@ -42,8 +42,12 @@ whisper-base over 4 AMI meetings (1h47m), 2026-08-24:
 | speed | 0.06-0.09x realtime on desktop |
 
 Published whisper-base on AMI headset audio sits around 20-30%, so WER is the right
-neighbourhood. A run far above it usually means VAD dropped speech before ASR saw it — the
-deletion count is the tell. Anything near 100% means the CLI failed and produced no transcript.
+neighbourhood. Anything near 100% means the CLI failed and produced no transcript.
+
+Deletions are the largest error bucket (2035 of 4220), and it is NOT VAD dropping speech —
+measured, only 0.5% of reference words fall in audio the pipeline produced no transcript for at
+all. Whisper is under-transcribing audio it did read. Some of that is structural: ~15% of AMI
+speech time is two people at once, and one mono transcript cannot hold both.
 
 DER was 48.8% until the diarization merge threshold moved from sherpa's default 0.5 to 1.0:
 auto-clustering had been returning 28-101 clusters for 4-speaker meetings. Confusion time fell
