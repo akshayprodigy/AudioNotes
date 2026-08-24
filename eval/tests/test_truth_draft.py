@@ -31,9 +31,15 @@ DOC = {
 }
 
 
+def as_corrected(doc, fixture_id="demo"):
+    """A rendered draft with the UNCORRECTED marker removed — what a human hands back."""
+    return "\n".join(l for l in render_draft(doc, fixture_id).splitlines()
+                     if "UNCORRECTED" not in l)
+
+
 class RoundTripTest(unittest.TestCase):
     def test_untouched_draft_round_trips(self):
-        parsed = parse_draft(render_draft(DOC, "demo"))
+        parsed = parse_draft(as_corrected(DOC))
         self.assertEqual(parsed["audio_ms"], 60000)
         self.assertEqual(parsed["segments"], [
             {"start_ms": 1000, "end_ms": 3000, "speaker": "S7", "text": "hello everyone"},
@@ -43,9 +49,8 @@ class RoundTripTest(unittest.TestCase):
     def test_gap_marker_is_a_comment_and_survives_import(self):
         # A 27 s hole between the two utterances: the draft must point at it, because speech we
         # never transcribed is invisible otherwise — and deletions are our largest error bucket.
-        draft = render_draft(DOC, "demo")
-        self.assertIn("no detected speech", draft)
-        self.assertEqual(len(parse_draft(draft)["segments"]), 2)
+        self.assertIn("no detected speech", render_draft(DOC, "demo"))
+        self.assertEqual(len(parse_draft(as_corrected(DOC))["segments"]), 2)
 
     def test_human_edits_are_carried_verbatim(self):
         draft = """# audio_ms: 60000
@@ -88,6 +93,21 @@ class RoundTripTest(unittest.TestCase):
         # Two people talking at once is real; DER excludes overlap but the reference must hold it.
         draft = "# audio_ms: 10\n[1 -> 4] A: one\n[3 -> 6] B: two\n"
         self.assertEqual(len(parse_draft(draft)["segments"]), 2)
+
+    def test_importing_an_uncorrected_draft_is_refused(self):
+        """The worst outcome this workflow can produce is a reference that IS the hypothesis.
+
+        It would score near-0% WER and read as a perfect product. So the draft carries a marker
+        the corrector has to delete, and import refuses while it is there.
+        """
+        draft = render_draft(DOC, "demo")
+        self.assertIn("UNCORRECTED", draft)
+        with self.assertRaises(ValueError) as e:
+            parse_draft(draft)
+        self.assertIn("UNCORRECTED", str(e.exception))
+
+    def test_removing_the_marker_allows_import(self):
+        self.assertEqual(len(parse_draft(as_corrected(DOC))["segments"]), 2)
 
     def test_audio_ms_missing_falls_back_to_the_last_end(self):
         # A bare number is SECONDS, not milliseconds — 2.5 here, and 2500 would be 41 minutes.

@@ -74,6 +74,9 @@ HEADER = """\
 # Format:  [start -> end] Speaker: text        (timestamps are HH:MM:SS.mmm)
 #
 # audio_ms: {audio_ms}
+# STATUS: UNCORRECTED — delete this line when you are done. Import refuses while it is here,
+# because a reference imported straight from this file would BE the transcript it is meant to
+# grade: near-0% WER, and the product would look perfect.
 """
 
 
@@ -109,6 +112,12 @@ def parse_draft(text):
     audio_ms = None
     segments = []
     dropped = 0
+    if "UNCORRECTED" in text:
+        raise ValueError(
+            "this draft still carries its STATUS: UNCORRECTED line.\n"
+            "  Correct the transcript against the audio, then delete that line.\n"
+            "  Importing it as-is would make the reference a copy of the transcript being "
+            "graded — near-0% WER, and every real error invisible.")
     for n, raw in enumerate(text.splitlines(), start=1):
         line = raw.strip()
         if not line:
@@ -160,7 +169,12 @@ def main(argv):
               f"python3 -m eval.corpus.truth_draft import {fixture_id}")
     elif cmd == "import":
         with open(draft_path) as f:
-            parsed = parse_draft(f.read())
+            try:
+                parsed = parse_draft(f.read())
+            except ValueError as exc:
+                # A traceback here is noise: every one of these is a message for the person
+                # holding the file, not a bug in the parser.
+                raise SystemExit(f"{draft_path}\n{exc}") from None
         truth = {"audio_ms": parsed["audio_ms"], "segments": parsed["segments"]}
         out = os.path.join(fixture_dir, "truth.json")
         with open(out, "w") as f:
