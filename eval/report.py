@@ -104,15 +104,23 @@ def _mom_section(results, calibration):
         out += [f"_Judge calibrated: {calibration['rate'] * 100:.0f}% agreement with a human over "
                 f"{calibration['total']} hand-labelled items._", ""]
 
-    out += ["| fixture | decisions | actions | questions | overall recall | invented |",
-            "|---|---:|---:|---:|---:|---:|"]
+    out += ["| fixture | decisions | actions | questions | overall recall | unsupported | "
+            "invented |",
+            "|---|---:|---:|---:|---:|---:|---:|"]
     for r in scored:
         m = r["mom"]
         rec = m["recall"]
-        invented = sum(m["hallucinated"].values()) if m["hallucinated"] else None
+        unsupported = sum(m["unsupported"].values()) if m.get("unsupported") else None
+        invented = sum(m["invented"].values()) if m.get("invented") else None
         out.append(f"| {r['id']} | {_pct(rec['decisions'])} | {_pct(rec['actions'])} | "
                    f"{_pct(rec['questions'])} | **{_pct(rec['overall'])}** | "
+                   f"{'n/a' if unsupported is None else unsupported} | "
                    f"{'n/a' if invented is None else invented} |")
+    out.append("")
+    out.append("_Unsupported: produced items the reference transcript does not back — real "
+               "wrongness, but our minutes are EXTRACTIVE, so most of it is ASR mishearing rather "
+               "than fabrication. Invented counts only the items absent from our own transcript "
+               "too, which is the number that starts mattering when an LLM writes the minutes._")
     out.append("")
     out.append("_Recall: reference items our minutes captured, judged semantically — the "
                "reference is abstractive and our minutes quote the meeting, so they rarely share "

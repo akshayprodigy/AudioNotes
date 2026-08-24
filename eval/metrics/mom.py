@@ -91,12 +91,18 @@ def _norm(s):
     return " ".join((s or "").strip().lower().split())
 
 
-def score_minutes(reference, doc, judge, transcript=""):
+def score_minutes(reference, doc, judge, transcript="", own_transcript=""):
     """Recall of reference items, support for produced items, and owner/due on matched actions.
 
     `transcript` is the ground-truth text. Without it there is nothing to check produced items
     against, so precision is left None rather than assumed perfect — the failure mode this
     guards is a minutes writer that invents plausible items and scores well on recall alone.
+
+    `own_transcript` is what OUR ASR produced, and it separates two causes that look identical
+    in the verdicts. Our minutes are extractive, so a mis-heard sentence becomes a minute stating
+    something nobody said: unsupported, genuinely wrong, but an ASR defect. Only an item absent
+    from our own transcript too was invented by the minutes layer. Without it the split is not
+    guessed at — invention is left unmeasured rather than conflated with transcription error.
     """
     produced = from_document(doc)
     recall, verdicts = {}, []
@@ -126,25 +132,35 @@ def score_minutes(reference, doc, judge, transcript=""):
     recall["overall"] = (captured_total / ref_total) if ref_total else None
 
     precision = {c: None for c in CATEGORIES}
-    hallucinated = {}
+    unsupported, invented = {}, {}
     if transcript:
+        ours = _norm(own_transcript)
         for category in CATEGORIES:
             items = produced[category]
             if not items:
                 continue
-            bad = 0
+            bad = made_up = 0
             for item in items:
-                v = judge.supported(_text(item), category, transcript)
-                bad += 0 if v.matched else 1
-                verdicts.append({"kind": "support", "category": category, "item": _text(item),
-                                 "matched": v.matched, "evidence": v.evidence, "note": v.note})
+                text = _text(item)
+                v = judge.supported(text, category, transcript)
+                traceable = bool(ours) and _norm(text) in ours
+                if not v.matched:
+                    bad += 1
+                    if ours and not traceable:
+                        made_up += 1
+                verdicts.append({"kind": "support", "category": category, "item": text,
+                                 "matched": v.matched, "evidence": v.evidence, "note": v.note,
+                                 "in_our_transcript": traceable if ours else None})
             precision[category] = (len(items) - bad) / len(items)
-            hallucinated[category] = bad
+            unsupported[category] = bad
+            if ours:
+                invented[category] = made_up
 
     return {
         "recall": recall,
         "precision": precision,
-        "hallucinated": hallucinated,
+        "unsupported": unsupported,
+        "invented": invented,
         "owner": owner,
         "due": due,
         "produced_counts": {c: len(produced[c]) for c in CATEGORIES},

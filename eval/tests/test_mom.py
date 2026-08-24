@@ -109,11 +109,11 @@ class RecallTest(unittest.TestCase):
         self.assertIsNone(r["recall"]["overall"])
 
 
-class HallucinationTest(unittest.TestCase):
+class SupportTest(unittest.TestCase):
     def test_unsupported_items_are_counted(self):
         judge = Scripted(supported={"We decided on 25 Euro.": Verdict(False, note="not said")})
         r = score_minutes(REFERENCE, DOCUMENT, judge, transcript="t")
-        self.assertEqual(r["hallucinated"]["decisions"], 1)
+        self.assertEqual(r["unsupported"]["decisions"], 1)
         self.assertEqual(r["precision"]["decisions"], 0.0)
         self.assertEqual(r["precision"]["actions"], 1.0)
 
@@ -122,7 +122,7 @@ class HallucinationTest(unittest.TestCase):
         not computed rather than assumed perfect."""
         r = score_minutes(REFERENCE, DOCUMENT, Scripted(), transcript="")
         self.assertIsNone(r["precision"]["decisions"])
-        self.assertEqual(r["hallucinated"], {})
+        self.assertEqual(r["unsupported"], {})
 
 
 class OwnerDueTest(unittest.TestCase):
@@ -173,3 +173,49 @@ class EvidenceIsAPointerTest(unittest.TestCase):
         })
         r = score_minutes(REFERENCE, DOCUMENT, judge, transcript="")
         self.assertEqual(r["owner"], {"correct": 0, "checked": 1})
+
+
+class UnsupportedVersusInventedTest(unittest.TestCase):
+    """An item can fail the support check for two very different reasons.
+
+    Our minutes are extractive — sentences lifted from our own transcript. When ASR mishears,
+    the resulting minute states something nobody said, so it fails against the reference. That is
+    a real defect, but it is an ASR defect, and counting it as "invented" would report a
+    rule-based extractor that cannot invent anything as hallucinating 62% of the time. It also
+    hides the number that will matter in Phase 2, when an LLM writes the minutes and invention
+    becomes possible for real.
+
+    So: unsupported = not backed by the reference (user-visible wrongness, whatever the cause).
+    Invented = unsupported AND not traceable to our own transcript either.
+    """
+
+    DOC = {"minutes": [
+        {"kind": "decision", "content": "we shipp on fryday"},        # mis-heard by ASR
+        {"kind": "decision", "content": "the budget was doubled"},    # nowhere at all
+    ]}
+    OURS = "so we shipp on fryday everyone"
+
+    def test_asr_error_is_unsupported_but_not_invented(self):
+        judge = Scripted(supported={"we shipp on fryday": Verdict(False),
+                                    "the budget was doubled": Verdict(False)})
+        r = score_minutes({"decisions": [], "actions": [], "questions": []}, self.DOC, judge,
+                          transcript="so we ship on Friday everyone",
+                          own_transcript=self.OURS)
+        self.assertEqual(r["unsupported"]["decisions"], 2)
+        self.assertEqual(r["invented"]["decisions"], 1)   # only the budget line
+
+    def test_a_supported_item_is_neither(self):
+        judge = Scripted(supported={"we shipp on fryday": Verdict(True),
+                                    "the budget was doubled": Verdict(True)})
+        r = score_minutes({"decisions": [], "actions": [], "questions": []}, self.DOC, judge,
+                          transcript="t", own_transcript=self.OURS)
+        self.assertEqual(r["unsupported"]["decisions"], 0)
+        self.assertEqual(r["invented"]["decisions"], 0)
+
+    def test_without_our_transcript_invention_is_not_guessed_at(self):
+        judge = Scripted(supported={"we shipp on fryday": Verdict(False),
+                                    "the budget was doubled": Verdict(False)})
+        r = score_minutes({"decisions": [], "actions": [], "questions": []}, self.DOC, judge,
+                          transcript="t")
+        self.assertEqual(r["unsupported"]["decisions"], 2)
+        self.assertIsNone(r["invented"].get("decisions"))

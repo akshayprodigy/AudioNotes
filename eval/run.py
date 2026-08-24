@@ -95,7 +95,10 @@ def score(fixture_dir, doc, peak_rss=0, judge=None):
             reference_minutes = json.load(f)
         transcript_text = " ".join(s["text"] for s in
                                    sorted(ref_segments, key=lambda s: s["start_ms"]))
-        mom = judge.score(reference_minutes, doc, transcript_text)
+        # Our own transcript too: it is what separates "ASR misheard this" from "the minutes
+        # layer made it up", which look identical in a support verdict.
+        ours = " ".join(u["text"] for u in sorted(hyp_utterances, key=lambda u: u["start_ms"]))
+        mom = judge.score(reference_minutes, doc, transcript_text, ours)
 
     timings = doc.get("timings", {})
     audio_ms = truth["audio_ms"] or 1

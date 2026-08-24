@@ -147,25 +147,29 @@ class BatchedJudge:
     # a judge's context. Truncating it silently would turn "the model could not see that part"
     # into "the system invented this", so an over-long transcript disables the support check and
     # says so instead.
-    def __init__(self, run, max_transcript_chars=12000):
+    # ~4 chars per token, so 40k chars is ~10k tokens — comfortable inside the 16k context the
+    # runner asks for, with room for the instructions and the answer. Set from measurement: AMI
+    # meeting transcripts here run 13k-35k chars, and the first pass at 12k silently skipped the
+    # support check on three fixtures out of four.
+    def __init__(self, run, max_transcript_chars=40000):
         self._run = run
         self._max = max_transcript_chars
 
-    def score(self, reference, doc, transcript=""):
+    def score(self, reference, doc, transcript="", own_transcript=""):
         skipped = ""
         if transcript and len(transcript) > self._max:
             skipped = (f"transcript is {len(transcript)} chars, over the {self._max} the judge "
                        f"can see at once — support/hallucination not checked for this fixture")
             transcript = ""
         collector = _Collector()
-        score_minutes(reference, doc, collector, transcript)
+        score_minutes(reference, doc, collector, transcript, own_transcript)
         answers = self._run(collector.prompts) if collector.prompts else []
-        result = score_minutes(reference, doc, _Replay(answers), transcript)
+        result = score_minutes(reference, doc, _Replay(answers), transcript, own_transcript)
         result["notes"] = [skipped] if skipped else []
         return result
 
 
-def local_runner(binary, model, ctx=8192, threads=0, max_tokens=192, timeout=3600):
+def local_runner(binary, model, ctx=16384, threads=0, max_tokens=192, timeout=7200):
     """A `run` backed by the audionotes_judge binary — one process for the whole batch."""
 
     def run(prompts):
