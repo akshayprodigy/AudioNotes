@@ -139,14 +139,26 @@ class _Replay:
 class BatchedJudge:
     """`run(prompts) -> [completion]`. Injected so the arithmetic is testable without a model."""
 
-    def __init__(self, run):
+    # A support prompt carries the whole ground-truth transcript, and a long meeting will not fit
+    # a judge's context. Truncating it silently would turn "the model could not see that part"
+    # into "the system invented this", so an over-long transcript disables the support check and
+    # says so instead.
+    def __init__(self, run, max_transcript_chars=12000):
         self._run = run
+        self._max = max_transcript_chars
 
     def score(self, reference, doc, transcript=""):
+        skipped = ""
+        if transcript and len(transcript) > self._max:
+            skipped = (f"transcript is {len(transcript)} chars, over the {self._max} the judge "
+                       f"can see at once — support/hallucination not checked for this fixture")
+            transcript = ""
         collector = _Collector()
         score_minutes(reference, doc, collector, transcript)
         answers = self._run(collector.prompts) if collector.prompts else []
-        return score_minutes(reference, doc, _Replay(answers), transcript)
+        result = score_minutes(reference, doc, _Replay(answers), transcript)
+        result["notes"] = [skipped] if skipped else []
+        return result
 
 
 def local_runner(binary, model, ctx=8192, threads=0, max_tokens=192, timeout=3600):

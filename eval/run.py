@@ -16,6 +16,7 @@ from eval.metrics.wer import wer_tokens
 from eval.metrics.normalize import normalize
 from eval.metrics.der import der
 from eval.metrics.attribution import utterance_attribution
+from eval.metrics.judge import BatchedJudge, local_runner
 from eval import report
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -60,7 +61,7 @@ def _within(segments, lo, hi):
     return [s for s in segments if lo <= (s["start_ms"] + s["end_ms"]) / 2 < hi]
 
 
-def score(fixture_dir, doc, peak_rss=0):
+def score(fixture_dir, doc, peak_rss=0, judge=None):
     with open(os.path.join(fixture_dir, "truth.json")) as f:
         truth = json.load(f)
     with open(os.path.join(fixture_dir, "meta.json")) as f:
@@ -86,6 +87,16 @@ def score(fixture_dir, doc, peak_rss=0):
     d = der(ref_segments, hyp_utterances)
     attribution = utterance_attribution(ref_segments, hyp_utterances, d.mapping)
 
+    # Minutes quality, when a judge is configured and the fixture carries reference minutes.
+    mom = None
+    minutes_path = os.path.join(fixture_dir, "minutes.json")
+    if judge is not None and os.path.exists(minutes_path):
+        with open(minutes_path) as f:
+            reference_minutes = json.load(f)
+        transcript_text = " ".join(s["text"] for s in
+                                   sorted(ref_segments, key=lambda s: s["start_ms"]))
+        mom = judge.score(reference_minutes, doc, transcript_text)
+
     timings = doc.get("timings", {})
     audio_ms = truth["audio_ms"] or 1
     realtime = {k.replace("_ms", "_xrt"): round(v / audio_ms, 4)
@@ -106,15 +117,17 @@ def score(fixture_dir, doc, peak_rss=0):
         "utterances": len(doc.get("transcript", [])),
         # Carried into the report so a partial-reference number is never read as whole-meeting.
         "scored_span_ms": [lo, hi] if lo is not None else None,
+        "mom": mom,
     }
 
 
-def rescore(run_dir, fixtures, out_dir, run_id):
+def rescore(run_dir, fixtures, out_dir, run_id, judge=None, results_judge=None):
     """Score the documents a previous run saved, without running the core again.
 
     Stage timings live in the document, so xrealtime survives; peak RSS was measured around the
     process and does not, so it reports n/a rather than carrying a stale number forward."""
-    results = {"run_id": run_id, "cli": f"rescored from {run_dir}", "fixtures": []}
+    results = {"run_id": run_id, "cli": f"rescored from {run_dir}", "judge": results_judge,
+               "fixtures": []}
     for name in sorted(os.listdir(run_dir)):
         if not name.endswith(".cli.json"):
             continue
@@ -125,15 +138,24 @@ def rescore(run_dir, fixtures, out_dir, run_id):
             continue
         with open(os.path.join(run_dir, name)) as f:
             doc = json.load(f)
-        r = score(fixture_dir, doc)
+        r = score(fixture_dir, doc, judge=judge)
         results["fixtures"].append(r)
         print(f"  {fid}: WER {r['wer']['wer'] * 100:.1f}%  DER {r['der']['der'] * 100:.1f}%")
     with open(os.path.join(out_dir, "results.json"), "w") as f:
         json.dump(results, f, indent=1)
-    md = report.render(results)
+    md = report.render(results, _calibration(out_dir))
     with open(os.path.join(out_dir, "report.md"), "w") as f:
         f.write(md)
     print("\n" + md)
+
+
+def _calibration(run_dir):
+    """A previous `eval.calibrate import` for this run, if one happened."""
+    path = os.path.join(run_dir, "calibration.json")
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        return json.load(f)
 
 
 def main():
@@ -142,6 +164,8 @@ def main():
     ap.add_argument("--models", required=True)
     ap.add_argument("--fixtures", default=os.path.join(ROOT, "eval", "fixtures"))
     ap.add_argument("--only", help="run a single fixture id")
+    ap.add_argument("--judge", metavar="BINARY", help="cpp/cli/build/audionotes_judge")
+    ap.add_argument("--judge-model", metavar="GGUF", help="a stronger GGUF than the shipped 1.5B")
     ap.add_argument("--rescore", metavar="RUN_DIR",
                     help="re-score the saved <fixture>.cli.json documents in RUN_DIR instead of "
                          "running the core again. A metric fix should not cost an hour of "
@@ -152,8 +176,15 @@ def main():
     out_dir = os.path.join(ROOT, "eval", "results", run_id)
     os.makedirs(out_dir, exist_ok=True)
 
+    judge = None
+    if args.judge and args.judge_model:
+        judge = BatchedJudge(local_runner(args.judge, args.judge_model))
+        results_judge = {"binary": args.judge, "model": os.path.basename(args.judge_model)}
+    else:
+        results_judge = None
+
     if args.rescore:
-        return rescore(args.rescore, args.fixtures, out_dir, run_id)
+        return rescore(args.rescore, args.fixtures, out_dir, run_id, judge, results_judge)
 
     ids = sorted(d for d in os.listdir(args.fixtures)
                  if os.path.isdir(os.path.join(args.fixtures, d)))
@@ -162,7 +193,7 @@ def main():
     if not ids:
         raise SystemExit("no fixtures found — run: python3 -m eval.corpus.build_fixture ES2002a")
 
-    results = {"run_id": run_id, "cli": args.cli, "fixtures": []}
+    results = {"run_id": run_id, "cli": args.cli, "judge": results_judge, "fixtures": []}
     for fid in ids:
         fixture_dir = os.path.join(args.fixtures, fid)
         if not os.path.exists(os.path.join(fixture_dir, "audio.wav")):
@@ -171,7 +202,7 @@ def main():
         print(f"running {fid} …")
         doc, peak_rss = run_cli(args.cli, args.models, fixture_dir,
                                 os.path.join(out_dir, f"{fid}.cli.json"))
-        r = score(fixture_dir, doc, peak_rss)
+        r = score(fixture_dir, doc, peak_rss, judge=judge)
         results["fixtures"].append(r)
         acc = r["attribution"]["accuracy"]
         print(f"  WER {r['wer']['wer'] * 100:.1f}%  "
@@ -181,7 +212,7 @@ def main():
 
     with open(os.path.join(out_dir, "results.json"), "w") as f:
         json.dump(results, f, indent=1)
-    md = report.render(results)
+    md = report.render(results, _calibration(out_dir))
     with open(os.path.join(out_dir, "report.md"), "w") as f:
         f.write(md)
     print("\n" + md)
