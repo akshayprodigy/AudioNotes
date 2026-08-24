@@ -12,6 +12,9 @@ scoreable today and measures the same underlying failure.
 """
 
 
+from eval.metrics.der import is_unassigned
+
+
 def _dominant_reference_speaker(reference, start_ms, end_ms):
     """The reference speaker holding the most of [start, end), or None if it is all silence."""
     best, best_overlap = None, 0
@@ -32,7 +35,7 @@ def utterance_attribution(reference, utterances, mapping):
     correct = scored = unassigned = 0
     for utt in utterances:
         cluster = utt.get("speaker", -1)
-        if cluster is None or (isinstance(cluster, int) and cluster < 0):
+        if is_unassigned(cluster):
             unassigned += 1
             continue
         truth = _dominant_reference_speaker(reference, utt["start_ms"], utt["end_ms"])

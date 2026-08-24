@@ -118,6 +118,22 @@ def _atomic_intervals(ref, hyp):
     return list(zip(ordered, ordered[1:]))
 
 
+def is_unassigned(label):
+    """True for the label meaning "diarization gave no answer" (-1, or None).
+
+    It is not a speaker and must not be treated as one: left in, the Hungarian assignment will
+    happily hand it a reference speaker, and then every second diarization gave up on scores as
+    correct — and it takes a mapping slot a real cluster needed. Time the hypothesis leaves
+    unlabelled over reference speech is *missed* speech, which is what dropping it here produces.
+    """
+    if label is None:
+        return True
+    try:
+        return int(label) < 0
+    except (TypeError, ValueError):
+        return False
+
+
 def _active(segments, start, end):
     """Labels of segments covering the interval (which lies wholly inside or outside each)."""
     mid = (start + end) / 2.0
@@ -127,7 +143,8 @@ def _active(segments, start, end):
 def der(reference, hypothesis):
     """`reference`/`hypothesis`: [{start_ms, end_ms, speaker}]. Hypothesis speakers may be ints."""
     reference = [s for s in reference if s["end_ms"] > s["start_ms"]]
-    hypothesis = [s for s in hypothesis if s["end_ms"] > s["start_ms"]]
+    hypothesis = [s for s in hypothesis
+                  if s["end_ms"] > s["start_ms"] and not is_unassigned(s["speaker"])]
 
     ref_labels = sorted({s["speaker"] for s in reference}, key=str)
     hyp_labels = sorted({s["speaker"] for s in hypothesis}, key=str)

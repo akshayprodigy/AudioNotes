@@ -65,3 +65,40 @@ class TestDer(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UnassignedClusterTest(unittest.TestCase):
+    """Cluster -1 means diarization declined to answer. It must never earn credit.
+
+    Caught on a real run: the mapping came back {'-1': 'A', '0': 'B', ...} — the no-answer
+    bucket had been handed a reference speaker by the Hungarian assignment, so every second
+    diarization gave up on scored as correct.
+    """
+
+    def test_unassigned_over_speech_is_missed_not_correct(self):
+        ref = [{"start_ms": 0, "end_ms": 10000, "speaker": "A"}]
+        hyp = [{"start_ms": 0, "end_ms": 10000, "speaker": -1}]
+        d = der(ref, hyp)
+        self.assertNotIn(-1, d.mapping)
+        self.assertNotIn("-1", d.mapping)
+        self.assertEqual(d.missed_ms, d.scored_ref_ms)
+        self.assertEqual(d.der, 1.0)
+
+    def test_unassigned_cannot_block_a_real_cluster_from_mapping(self):
+        # A's whole turn is unassigned; B's is cluster 0. Crediting -1 -> A would score this
+        # perfect. The honest answer is that half the meeting has no speaker.
+        ref = [{"start_ms": 0, "end_ms": 10000, "speaker": "A"},
+               {"start_ms": 10000, "end_ms": 20000, "speaker": "B"}]
+        hyp = [{"start_ms": 0, "end_ms": 10000, "speaker": -1},
+               {"start_ms": 10000, "end_ms": 20000, "speaker": 0}]
+        d = der(ref, hyp)
+        self.assertEqual(d.mapping.get(0), "B")
+        self.assertGreater(d.missed_ms, 0)
+        self.assertAlmostEqual(d.der, d.missed_ms / d.scored_ref_ms)
+        self.assertGreater(d.der, 0.4)
+
+    def test_string_minus_one_is_also_unassigned(self):
+        # JSON round-trips turn the label into a string in some fixtures.
+        ref = [{"start_ms": 0, "end_ms": 10000, "speaker": "A"}]
+        d = der(ref, [{"start_ms": 0, "end_ms": 10000, "speaker": "-1"}])
+        self.assertEqual(d.der, 1.0)
