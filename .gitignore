@@ -86,6 +86,8 @@ android/app/.cxx/
 
 # eval harness: corpus audio + generated fixtures/results are large and re-derivable
 eval/fixtures/*/audio.wav
+# your own recordings: audio, ground truth and minutes all stay on this machine
+eval/fixtures/real-*/
 eval/corpus/_cache/
 eval/results/
 eval/models/
