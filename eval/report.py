@@ -19,9 +19,19 @@ def render(results):
     for r in results["fixtures"]:
         w, d = r["wer"], r["der"]
         lines.append(
-            f"| {r['id']} | {r['source']} | {r['audio_ms'] / 1000:.0f}s | "
+            f"| {r['id']}{'*' if r.get('scored_span_ms') else ''} | {r['source']} | "
+            f"{r['audio_ms'] / 1000:.0f}s | "
             f"{w['wer'] * 100:.1f}% | {w['substitutions']} | {w['deletions']} | {w['insertions']} | "
             f"{d['der'] * 100:.1f}% | {_pct(r['attribution']['accuracy'])} |")
+
+    partial = [r for r in results["fixtures"] if r.get("scored_span_ms")]
+    if partial:
+        lines.append("")
+        for r in partial:
+            lo, hi = r["scored_span_ms"]
+            lines.append(f"\\* `{r['id']}` is scored over {lo / 1000:.0f}-{hi / 1000:.0f}s only "
+                         f"({(hi - lo) / 1000:.0f}s of {r['audio_ms'] / 1000:.0f}s), the span its "
+                         f"reference covers. Not comparable with a whole-meeting number.")
 
     total_err = sum(r["wer"]["errors"] for r in results["fixtures"])
     total_ref = sum(r["wer"]["ref_words"] for r in results["fixtures"])

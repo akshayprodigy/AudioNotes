@@ -71,6 +71,13 @@ HEADER = """\
 #     of the file; they get sorted by time on import. Rough timings are fine.
 #   * Lines starting with # are ignored, so leave yourself notes.
 #
+# YOU DO NOT HAVE TO CORRECT ALL OF IT. Correcting a few minutes carefully beats correcting an
+# hour carelessly. Set the line below to the span you actually corrected and scoring is
+# restricted to it on BOTH sides; delete the line once the whole recording is done. A few
+# hundred reference words is enough for a WER that means something.
+#
+# scored: 00:00:00.000 -> {span_end}
+#
 # Format:  [start -> end] Speaker: text        (timestamps are HH:MM:SS.mmm)
 #
 # audio_ms: {audio_ms}
@@ -83,7 +90,8 @@ HEADER = """\
 def render_draft(doc, fixture_id, gap_ms=GAP_MS):
     utts = sorted(doc.get("transcript", []), key=lambda u: u["start_ms"])
     audio_ms = doc.get("audio_ms") or (utts[-1]["end_ms"] if utts else 0)
-    out = [HEADER.format(fixture=fixture_id, audio_ms=audio_ms)]
+    out = [HEADER.format(fixture=fixture_id, audio_ms=audio_ms,
+                         span_end=format_timestamp(audio_ms))]
 
     def gap(prev_end, next_start):
         if next_start - prev_end >= gap_ms:
@@ -110,6 +118,7 @@ def parse_draft(text):
     insertions in every future score.
     """
     audio_ms = None
+    scored_from_ms = scored_to_ms = None
     segments = []
     dropped = 0
     if "UNCORRECTED" in text:
@@ -126,6 +135,12 @@ def parse_draft(text):
             m = re.match(r"#\s*audio_ms\s*:\s*(\d+)", line)
             if m:
                 audio_ms = int(m.group(1))
+            m = re.match(r"#\s*scored\s*:\s*(\S+)\s*(?:->|→)\s*(\S+)", line)
+            if m:
+                scored_from_ms = parse_timestamp(m.group(1))
+                scored_to_ms = parse_timestamp(m.group(2))
+                if scored_to_ms <= scored_from_ms:
+                    raise ValueError(f"line {n}: scored span ends before it starts")
             continue
         m = LINE.match(line)
         if not m:
@@ -147,7 +162,8 @@ def parse_draft(text):
     segments.sort(key=lambda s: (s["start_ms"], s["end_ms"]))
     if audio_ms is None:
         audio_ms = max((s["end_ms"] for s in segments), default=0)
-    return {"audio_ms": audio_ms, "segments": segments, "dropped": dropped}
+    return {"audio_ms": audio_ms, "segments": segments, "dropped": dropped,
+            "scored_from_ms": scored_from_ms, "scored_to_ms": scored_to_ms}
 
 
 def main(argv):
@@ -176,6 +192,9 @@ def main(argv):
                 # holding the file, not a bug in the parser.
                 raise SystemExit(f"{draft_path}\n{exc}") from None
         truth = {"audio_ms": parsed["audio_ms"], "segments": parsed["segments"]}
+        if parsed["scored_from_ms"] is not None:
+            truth["scored_from_ms"] = parsed["scored_from_ms"]
+            truth["scored_to_ms"] = parsed["scored_to_ms"]
         out = os.path.join(fixture_dir, "truth.json")
         with open(out, "w") as f:
             json.dump(truth, f, indent=1)

@@ -116,3 +116,32 @@ class RoundTripTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ScoredSpanTest(unittest.TestCase):
+    """Correcting a whole meeting is hours. Correcting three minutes of it is not.
+
+    A reference that covers part of the audio is perfectly sound as long as scoring is
+    restricted to the same window on both sides — what is NOT sound is a partial reference
+    scored against a whole-meeting transcript, where every uncorrected minute becomes a wall of
+    insertions.
+    """
+
+    def test_span_is_parsed(self):
+        out = parse_draft("# audio_ms: 600000\n"
+                          "# scored: 00:00:00.000 -> 00:03:00.000\n"
+                          "[10 -> 12] S1: x\n")
+        self.assertEqual(out["scored_from_ms"], 0)
+        self.assertEqual(out["scored_to_ms"], 180000)
+
+    def test_absent_span_means_the_whole_recording(self):
+        out = parse_draft("# audio_ms: 600000\n[10 -> 12] S1: x\n")
+        self.assertIsNone(out["scored_from_ms"])
+        self.assertIsNone(out["scored_to_ms"])
+
+    def test_the_draft_explains_the_span(self):
+        self.assertIn("# scored:", render_draft(DOC, "demo"))
+
+    def test_backwards_span_is_rejected(self):
+        with self.assertRaises(ValueError):
+            parse_draft("# scored: 00:03:00.000 -> 00:01:00.000\n[10 -> 12] S1: x\n")

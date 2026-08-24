@@ -51,23 +51,40 @@ def run_cli(cli, models, fixture_dir, out_json):
         return json.load(f), peak_rss
 
 
+def _within(segments, lo, hi):
+    """Segments whose midpoint falls in [lo, hi). Midpoint rather than overlap so a segment
+    straddling the boundary lands on exactly one side, and on the same side for reference and
+    hypothesis alike."""
+    if lo is None:
+        return segments
+    return [s for s in segments if lo <= (s["start_ms"] + s["end_ms"]) / 2 < hi]
+
+
 def score(fixture_dir, doc, peak_rss=0):
     with open(os.path.join(fixture_dir, "truth.json")) as f:
         truth = json.load(f)
     with open(os.path.join(fixture_dir, "meta.json")) as f:
         meta = json.load(f)
 
+    # A reference may cover only the span someone corrected. Both sides get clipped to it —
+    # scoring a partial reference against the whole transcript would turn every uncorrected
+    # minute into insertions and read as a catastrophic regression.
+    lo = truth.get("scored_from_ms")
+    hi = truth.get("scored_to_ms")
+    ref_segments = _within(truth["segments"], lo, hi)
+    hyp_utterances = _within(doc.get("transcript", []), lo, hi)
+
     # Whole-meeting WER: concatenate in time order on both sides. Segment-level alignment would
     # need the hypothesis split to match the reference split, which it never does.
     ref_tokens = []
-    for seg in sorted(truth["segments"], key=lambda s: s["start_ms"]):
+    for seg in sorted(ref_segments, key=lambda s: s["start_ms"]):
         ref_tokens.extend(normalize(seg["text"]))
     hyp_tokens = []
-    for utt in sorted(doc.get("transcript", []), key=lambda u: u["start_ms"]):
+    for utt in sorted(hyp_utterances, key=lambda u: u["start_ms"]):
         hyp_tokens.extend(normalize(utt["text"]))
 
-    d = der(truth["segments"], doc.get("transcript", []))
-    attribution = utterance_attribution(truth["segments"], doc.get("transcript", []), d.mapping)
+    d = der(ref_segments, hyp_utterances)
+    attribution = utterance_attribution(ref_segments, hyp_utterances, d.mapping)
 
     timings = doc.get("timings", {})
     audio_ms = truth["audio_ms"] or 1
@@ -87,6 +104,8 @@ def score(fixture_dir, doc, peak_rss=0):
         "realtime": realtime,
         "peak_rss_mb": round(peak_rss / 1048576, 1) if peak_rss else None,
         "utterances": len(doc.get("transcript", [])),
+        # Carried into the report so a partial-reference number is never read as whole-meeting.
+        "scored_span_ms": [lo, hi] if lo is not None else None,
     }
 
 
