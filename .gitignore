@@ -88,3 +88,4 @@ android/app/.cxx/
 eval/fixtures/*/audio.wav
 eval/corpus/_cache/
 eval/results/
+eval/models/
