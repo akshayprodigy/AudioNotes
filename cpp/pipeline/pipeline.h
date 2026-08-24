@@ -30,7 +30,7 @@ struct PipelineConfig {
   std::string llm_model;       // "" = rule-based minutes only
   std::string language = "auto";  // whisper language code, or "auto" to detect per chunk
   int num_speakers = 0;        // 0 = auto clustering
-  float diar_threshold = 0.5f; // auto-clustering merge distance; smaller splits more
+  float diar_threshold = 1.0f; // auto-clustering merge distance; smaller splits more
   int sample_rate = 16000;
   int asr_threads = 0;         // 0 = engine default
   int llm_threads = 4;

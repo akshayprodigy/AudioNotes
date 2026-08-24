@@ -10,19 +10,21 @@ where base has measured ~0.68x against ~0.01x here.
 
 ## Accuracy — AMI (4 meetings, 1h47m, 16 speakers)
 
-| fixture | audio | WER | S | D | I | DER | attribution |
+Diarization threshold 1.0 (the new default; the 0.5 column is what shipped before):
+
+| fixture | audio | WER | S | D | I | DER @0.5 -> @1.0 | attribution @0.5 -> @1.0 |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| ES2002a | 1273s | 30.8% | 329 | 304 | 159 | 60.4% | 48.7% |
-| ES2002b | 2280s | 27.3% | 690 | 1011 | 180 | 33.3% | 61.9% |
-| ES2003a | 1140s | 24.9% | 224 | 224 | 56 | 46.2% | 52.9% |
-| IS1000a | 1583s | 38.1% | 447 | 496 | 100 | 71.9% | 25.2% |
+| ES2002a | 1273s | 30.8% | 329 | 304 | 159 | 60.4% -> **28.7%** | 48.7% -> **86.6%** |
+| ES2002b | 2280s | 27.3% | 690 | 1011 | 180 | 33.3% -> **8.5%** | 61.9% -> **92.1%** |
+| ES2003a | 1140s | 24.9% | 224 | 224 | 56 | 46.2% -> **15.9%** | 52.9% -> **95.8%** |
+| IS1000a | 1583s | 38.1% | 447 | 496 | 100 | 71.9% -> **30.9%** | 25.2% -> **73.8%** |
 
 **WER 29.7%** (4220 errors / 14220 reference words) — published whisper-base on AMI headset audio
 sits around 20-30%, so ASR is where it should be for this model.
 
-**DER 48.8%** over 3465s of scored speech, and the split says where it comes from: confusion
-1190s against missed 227s and false alarm 275s. Segmentation is roughly fine; the *clustering* is
-the problem.
+**DER 18.3%**, down from 48.8%, on one changed constant — confusion time fell from 1190s to
+132s while missed (227s) and false alarm (275s) did not move at all. What remains is almost
+entirely segmentation, which is a different stage and a different fix.
 
 ## The finding: auto-clustering does not cluster
 
@@ -48,9 +50,14 @@ DER improves much less than attribution because DER is time-weighted and the rem
 segmentation (missed + false alarm), which forcing the count cannot touch. Attribution is the
 user-visible half — it is what decides whether an action item gets the right name next to it.
 
-Two levers, both cheap: tune the threshold (`--diar-threshold` now exists for exactly this
-sweep), or ask the user how many people are in the room. The app already has a manual Speakers
-screen, so the second is a product decision, not a research problem.
+**Resolved: the default is now 1.0** (`cpp/diar/diarizer.h`). Validated on ES2002b and IS1000a,
+which took no part in choosing it — DER 33.3% -> 8.5% and 71.9% -> 30.9%, attribution 61.9% ->
+92.1% and 25.2% -> 73.8%. The Android path picks it up automatically, since the JNI constructs
+Diarizer without an explicit threshold. NOT yet verified on device.
+
+Asking the user how many people are in the room remains available and is now worth less: at 1.0
+the sweep beats `--speakers 4` outright, because forcing an exact count makes merges the audio
+does not support.
 
 ## The other finding: the real meeting
 

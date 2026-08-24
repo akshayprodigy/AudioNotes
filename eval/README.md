@@ -37,17 +37,18 @@ whisper-base over 4 AMI meetings (1h47m), 2026-08-24:
 | metric | value |
 |---|---|
 | WER | **29.7%** (4220 errors / 14220 reference words) |
-| DER | **48.8%** — confusion 1190s vs missed 227s, false alarm 275s |
-| attribution | 25-62% per meeting |
+| DER | **18.3%** — was 48.8% before the diarization threshold fix |
+| attribution | **73.8-95.8%** per meeting — was 25-62% |
 | speed | 0.06-0.09x realtime on desktop |
 
 Published whisper-base on AMI headset audio sits around 20-30%, so WER is the right
 neighbourhood. A run far above it usually means VAD dropped speech before ASR saw it — the
 deletion count is the tell. Anything near 100% means the CLI failed and produced no transcript.
 
-DER is NOT in the right neighbourhood: auto-clustering returns 28-101 clusters for meetings with
-4 speakers. Forcing `--speakers 4` moves attribution from 52.9% to 80.1% on ES2003a, so the
-embeddings are fine and the merge threshold is wrong. `--diar-threshold` exists to sweep it.
+DER was 48.8% until the diarization merge threshold moved from sherpa's default 0.5 to 1.0:
+auto-clustering had been returning 28-101 clusters for 4-speaker meetings. Confusion time fell
+from 1190s to 132s while missed and false alarm did not move at all. Validated on two held-out
+meetings; `--diar-threshold` sweeps it.
 
 ## Your own recordings
 
