@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="ISO-8859-1" standalone="yes"?>
+<nite:root nite:id="ES9999a.A.segs" xmlns:nite="http://nite.sourceforge.net/">
+   <segment nite:id="ES9999a.sync.1" transcriber_start="1.00" transcriber_end="2.20">
+      <nite:child href="ES9999a.A.words.xml#id(ES9999a.A.words0)..id(ES9999a.A.words3)"/>
+   </segment>
+   <segment nite:id="ES9999a.sync.2" transcriber_start="9.00" transcriber_end="9.40">
+      <nite:child href="ES9999a.A.words.xml#id(ES9999a.A.words4)"/>
+   </segment>
+</nite:root>
