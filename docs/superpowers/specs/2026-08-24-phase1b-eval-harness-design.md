@@ -140,12 +140,15 @@ Normalisation, applied identically to reference and hypothesis, in order:
 3. Remove punctuation except apostrophes inside words (`don't` survives, `don't,` loses the comma)
 4. Expand a fixed contraction table (`don't` → `do not`, …) on both sides
 5. Delete a fixed disfluency list on both sides: `uh, um, mm, hmm, er, erm, mmhmm, uhhuh`
-6. Map number words to digits using a fixed table (zero–twenty, tens, hundred, thousand)
+6. Expand digit strings to number words (integers 0-999; larger left as-is), NOT the reverse —
+   `25` becomes `twenty five`, so a multi-word reference matches a digit hypothesis token for token.
+   Mapping words to digits would leave `twenty five` as two tokens against `25` as one, scoring a
+   correct transcription as an error.
 7. Collapse whitespace
 
 Step 5 matters more than it looks: AMI annotates disfluencies and Whisper mostly does not, so
 without it we would measure annotation convention rather than transcription quality — hundreds of
-spurious deletions per meeting. Step 6 likewise stops `2.1` vs `two point one` reading as an error.
+spurious deletions per meeting. Step 6 likewise stops `25` vs `twenty five` reading as an error.
 
 Reported: overall WER, per-meeting WER, and S/D/I counts (the breakdown is what tells you *how* a
 model is failing — insertions mean hallucination, deletions usually mean VAD dropped speech).
