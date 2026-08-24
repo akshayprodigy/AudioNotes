@@ -147,3 +147,29 @@ class AuditTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EvidenceIsAPointerTest(unittest.TestCase):
+    """The judge quotes the minutes as RENDERED, not as the CLI composed them.
+
+    render_minutes prints "text   [owner: Ana due: Friday]"; the CLI composes
+    "text — Ana (due Friday)". Re-parsing the judge's quote with the CLI's grammar therefore
+    finds no owner at all and scores every matched action as wrong. The evidence is a pointer to
+    a produced item — resolve it back to that item and read the fields off it.
+    """
+
+    def test_owner_read_from_the_produced_item_not_the_quote(self):
+        judge = Scripted(captures={
+            "The designer will work on the casing.":
+                Verdict(True, "I'll do the casing.   [owner: Ana due: Friday]"),
+        })
+        r = score_minutes(REFERENCE, DOCUMENT, judge, transcript="")
+        self.assertEqual(r["owner"], {"correct": 1, "checked": 1})
+        self.assertEqual(r["due"], {"correct": 1, "checked": 1})
+
+    def test_a_quote_matching_nothing_is_not_credited(self):
+        judge = Scripted(captures={
+            "The designer will work on the casing.": Verdict(True, "something else entirely"),
+        })
+        r = score_minutes(REFERENCE, DOCUMENT, judge, transcript="")
+        self.assertEqual(r["owner"], {"correct": 0, "checked": 1})

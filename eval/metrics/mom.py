@@ -65,6 +65,24 @@ def from_document(doc):
     return out
 
 
+def _resolve(evidence, produced_actions):
+    """The judge's evidence is a POINTER to a produced line, not a value to re-parse.
+
+    It quotes the minutes as rendered for the prompt, which is not the grammar the CLI composed
+    them in — re-parsing the quote finds no owner and scores every matched action wrong. So find
+    the produced item the quote refers to and read its fields directly.
+    """
+    ev = _norm(evidence)
+    if not ev:
+        return None
+    best, best_len = None, 0
+    for action in produced_actions:
+        t = _norm(action.get("text"))
+        if t and (t in ev or ev in t) and len(t) > best_len:
+            best, best_len = action, len(t)
+    return best
+
+
 def _text(item):
     return item["text"] if isinstance(item, dict) else item
 
@@ -94,13 +112,13 @@ def score_minutes(reference, doc, judge, transcript=""):
             verdicts.append({"kind": "recall", "category": category, "item": _text(item),
                              "matched": v.matched, "evidence": v.evidence, "note": v.note})
             if v.matched and category == "actions" and isinstance(item, dict):
-                _, got_owner, got_due = parse_action(v.evidence)
+                hit = _resolve(v.evidence, produced["actions"]) or {}
                 if item.get("owner"):
                     owner["checked"] += 1
-                    owner["correct"] += _norm(got_owner) == _norm(item["owner"])
+                    owner["correct"] += _norm(hit.get("owner")) == _norm(item["owner"])
                 if item.get("due"):
                     due["checked"] += 1
-                    due["correct"] += _norm(got_due) == _norm(item["due"])
+                    due["correct"] += _norm(hit.get("due")) == _norm(item["due"])
         recall[category] = (tally.captured / tally.total) if tally.total else None
 
     captured_total = sum(1 for v in verdicts if v["kind"] == "recall" and v["matched"])

@@ -21,13 +21,17 @@ SEPARATOR = "%%PROMPT%%"
 TERMINATOR = "%%END%%"
 
 _VERDICT = re.compile(r"^\s*verdict\s*:\s*(yes|no)\b", re.I | re.M)
+# A bare YES/NO alone on its line. Observed from Qwen2.5-7B on a terse prompt, and another judge
+# may do the same; scoring that as unparseable would silently understate recall. Anything with
+# prose around it stays unparseable — "yes, if you squint" is not a verdict.
+_BARE = re.compile(r"^\s*(yes|no)\s*[.!]?\s*$", re.I | re.M)
 _EVIDENCE = re.compile(r"^\s*evidence\s*:\s*(.*)$", re.I | re.M)
 
 SINGULAR = {"decisions": "decision", "actions": "action item", "questions": "open question"}
 
 
 def parse_verdict(text):
-    m = _VERDICT.search(text or "")
+    m = _VERDICT.search(text or "") or _BARE.search(text or "")
     if not m:
         return Verdict(False, note=f"unparseable judge output: {(text or '')[:120]!r}")
     evidence = ""

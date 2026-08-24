@@ -111,3 +111,23 @@ class BatchingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BareVerdictTest(unittest.TestCase):
+    """Smoke-tested against Qwen2.5-7B: with the real prompts it emits `VERDICT: YES`, but on a
+    terser prompt it answered with a bare `YES`. A different judge model may do the same, and
+    silently scoring that as NO would understate recall for a reason nobody would find."""
+
+    def test_bare_yes_on_its_own_line(self):
+        self.assertTrue(parse_verdict("YES\nEVIDENCE: the line").matched)
+        self.assertEqual(parse_verdict("YES\nEVIDENCE: the line").evidence, "the line")
+
+    def test_bare_no(self):
+        self.assertFalse(parse_verdict("NO\nEVIDENCE: NONE").matched)
+
+    def test_prose_containing_the_word_yes_is_still_unparseable(self):
+        # "Yes, if you squint" is not a verdict, and guessing at it is how a judge starts
+        # inventing agreement.
+        v = parse_verdict("Yes, this one is arguably captured if you read it generously.")
+        self.assertFalse(v.matched)
+        self.assertIn("unparseable", v.note)
