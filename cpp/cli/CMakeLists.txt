@@ -119,6 +119,15 @@ if(ORT_LIB)
 endif()
 
 # --- Core unit tests (ctest). Plain assert-based executables, no framework dep. ---
+# The eval harness's LLM judge: same engine, greedy sampling, batched over stdin.
+add_executable(audionotes_judge
+  ${CORE}/cli/judge_main.cpp
+  ${CORE}/llm/llama_engine.cpp
+  ${CORE}/util/utf8.cpp)
+target_include_directories(audionotes_judge PRIVATE ${CORE} ${CORE}/third_party)
+target_compile_definitions(audionotes_judge PRIVATE HAVE_LLAMA=1)
+target_link_libraries(audionotes_judge PRIVATE llama ${CMAKE_DL_LIBS})
+
 enable_testing()
 function(audionotes_add_test name)
   add_executable(${name} ${ARGN})

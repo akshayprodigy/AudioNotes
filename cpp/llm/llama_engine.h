@@ -10,7 +10,10 @@ class LlamaEngine {
   LlamaEngine();
   ~LlamaEngine();
 
-  bool load(const std::string& model_path, int n_ctx, int n_threads);
+  // greedy: always take the highest-probability token. The shipped path wants a little
+  // variation and uses a seeded low-temperature chain; a judge must not, because a score that
+  // moves between identical runs is not a measurement.
+  bool load(const std::string& model_path, int n_ctx, int n_threads, bool greedy = false);
   bool ok() const;
 
   // Wraps `prompt` in a ChatML user turn and generates up to max_tokens. KV cache is cleared

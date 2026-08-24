@@ -24,7 +24,7 @@ struct LlamaEngine::Impl {
   llama_sampler* smpl = nullptr;
 #endif
 
-  bool load(const std::string& path, int n_ctx, int n_threads) {
+  bool load(const std::string& path, int n_ctx, int n_threads, bool greedy) {
 #ifdef HAVE_LLAMA
     llama_backend_init();
 
@@ -41,15 +41,20 @@ struct LlamaEngine::Impl {
     if (!ctx) return false;
 
     smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
-    llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
-    llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.95f, 1));
-    llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.3f));  // low temp: factual, stable
-    llama_sampler_chain_add(smpl, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
+    if (greedy) {
+      llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
+    } else {
+      llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
+      llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.95f, 1));
+      llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.3f));  // low temp: factual, stable
+      llama_sampler_chain_add(smpl, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
+    }
 
     ready = true;
     return true;
 #else
     (void)path;
+    (void)greedy;
     (void)n_ctx;
     (void)n_threads;
     return false;
@@ -121,8 +126,9 @@ LlamaEngine::LlamaEngine() : impl_(new Impl()) {}
 LlamaEngine::~LlamaEngine() { delete impl_; }
 bool LlamaEngine::ok() const { return impl_->ready; }
 
-bool LlamaEngine::load(const std::string& model_path, int n_ctx, int n_threads) {
-  return impl_->load(model_path, n_ctx, n_threads);
+bool LlamaEngine::load(const std::string& model_path, int n_ctx, int n_threads,
+                       bool greedy) {
+  return impl_->load(model_path, n_ctx, n_threads, greedy);
 }
 
 std::string LlamaEngine::generate(const std::string& prompt, int max_tokens) {
