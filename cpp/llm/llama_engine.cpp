@@ -1,5 +1,7 @@
 #include "llm/llama_engine.h"
 
+#include <cstdio>
+
 #include "util/utf8.h"
 
 #include <string>
@@ -22,6 +24,7 @@ struct LlamaEngine::Impl {
   llama_context* ctx = nullptr;
   const llama_vocab* vocab = nullptr;
   llama_sampler* smpl = nullptr;
+  int n_ctx_cached = 0;
 #endif
 
   bool load(const std::string& path, int n_ctx, int n_threads, bool greedy) {
@@ -35,6 +38,12 @@ struct LlamaEngine::Impl {
 
     llama_context_params cparams = llama_context_default_params();
     cparams.n_ctx = n_ctx;
+    // A whole prompt is decoded in ONE llama_decode call, so the logical batch must be able to
+    // hold it. llama.cpp defaults n_batch to 2048 and asserts (aborts the process) when a batch
+    // exceeds it — a 6000-char map chunk is already ~1500 tokens, so the shipped path was one
+    // long meeting away from the same crash the eval judge hit.
+    cparams.n_batch = static_cast<uint32_t>(n_ctx);
+    n_ctx_cached = n_ctx;
     cparams.n_threads = n_threads;
     cparams.n_threads_batch = n_threads;
     ctx = llama_init_from_model(model, cparams);
@@ -83,6 +92,15 @@ struct LlamaEngine::Impl {
     std::vector<llama_token> tokens(n_prompt);
     if (llama_tokenize(vocab, text.c_str(), static_cast<int32_t>(text.size()),
                        tokens.data(), static_cast<int32_t>(tokens.size()), true, true) < 0) {
+      return out;
+    }
+
+    // Belt and braces: llama_decode ABORTS the process on an over-long batch rather than
+    // returning an error, and losing a whole meeting to a long prompt is not an acceptable
+    // failure. An empty result is; callers already treat it as "no enhancement".
+    if (static_cast<int>(tokens.size()) >= n_ctx_cached) {
+      std::fprintf(stderr, "llama: prompt is %zu tokens, over the %d-token context — skipping\n",
+                   tokens.size(), n_ctx_cached);
       return out;
     }
 

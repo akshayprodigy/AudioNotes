@@ -9,6 +9,30 @@ speed. Design: `docs/superpowers/specs/2026-08-24-phase1b-eval-harness-design.md
 
     python3 -m eval.run --cli cpp/cli/build/audionotes_cli --models <dir>
 
+With minutes quality (needs a judge model — anything stronger than the shipped 1.5B):
+
+    python3 -m eval.run --cli cpp/cli/build/audionotes_cli --models eval/models \
+      --judge cpp/cli/build/audionotes_judge \
+      --judge-model eval/models/judge-qwen2.5-7b-instruct-q4_k_m.gguf
+
+Re-score saved documents without re-running inference (after a metric change):
+
+    python3 -m eval.run --cli x --models x --rescore eval/results/<run-id>
+
+## Calibrate the judge — before believing any minutes number
+
+A model grading a model is not a measurement until someone has checked the grader.
+
+    python3 -m eval.calibrate export eval/results/<run-id>
+    # label the 20 items in judge-calibration.txt with YES/NO
+    python3 -m eval.calibrate import eval/results/<run-id>
+
+Below 85% agreement the report says the minutes numbers are noise instead of printing them as
+percentages. The sample is stratified across categories AND across the judge's own YES and NO
+verdicts — sampling only its agreements would measure half the instrument — and the judge's
+answer is hidden in the labelling file, because seeing it first is the quickest way to agree
+with it.
+
 ## Tests
 
     python3 -m unittest discover -s eval/tests -v
