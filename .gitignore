@@ -83,3 +83,8 @@ android/app/src/main/assets/*.onnx
 InnoCore_MeetingNoteTaker_PRD_v3.docx
 android/app/build/
 android/app/.cxx/
+
+# eval harness: corpus audio + generated fixtures/results are large and re-derivable
+eval/fixtures/*/audio.wav
+eval/corpus/_cache/
+eval/results/
