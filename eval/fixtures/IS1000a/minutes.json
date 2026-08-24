@@ -1,0 +1,30 @@
+{
+ "decisions": [
+  "The selling price of the product will be about twenty five Euros each.",
+  "The production cost will be twelve Euros and fifty cents.",
+  "The profit will be about fifty million Euro. -The remote will target an international market.",
+  "The remote will be for use with the television set.",
+  "The necessary buttons are on/off, channel up/down browsing, volume, and record button(s)."
+ ],
+ "actions": [
+  {
+   "text": "The interface designer will work on a general design.",
+   "owner": "",
+   "due": ""
+  },
+  {
+   "text": "The industrial designer will work on the technica function design.",
+   "owner": "",
+   "due": ""
+  },
+  {
+   "text": "The marketing expert will think about user requirements.",
+   "owner": "",
+   "due": ""
+  }
+ ],
+ "questions": [
+  "They have not decided what functions the remote can have, but they have discussed that they may not be able to produce something extremely fancy with the given budget.",
+  "They will need to examine user requirements before deciding on what functionalities are necessary."
+ ]
+}

@@ -1,0 +1,19 @@
+{
+ "decisions": [
+  "The remote will cost 12.50 Euro to produce.",
+  "The remote will sell for 25 Euro.",
+  "The remote will feature an ergonomic design."
+ ],
+ "actions": [
+  {
+   "text": "The team will decide how the user interface will work",
+   "owner": "",
+   "due": ""
+  }
+ ],
+ "questions": [
+  "Putting an LCD screen on the remote.",
+  "Having a remote that controls multiple devices.",
+  "Having a joystick on the remote."
+ ]
+}

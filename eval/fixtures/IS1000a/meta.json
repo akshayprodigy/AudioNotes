@@ -1,0 +1,12 @@
+{
+ "source": "ami",
+ "meeting": "IS1000a",
+ "speakers": [
+  "A",
+  "B",
+  "C",
+  "D"
+ ],
+ "licence": "CC BY 4.0",
+ "notes": "AMI Meeting Corpus (CC BY 4.0). 2000s meeting-room audio, headset/far-field mics, mostly British/European accents, scenario-driven, no code-switching. A proxy for detecting regressions, NOT evidence the product works for in-person phone capture."
+}

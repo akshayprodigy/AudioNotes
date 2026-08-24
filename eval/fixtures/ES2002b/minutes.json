@@ -1,0 +1,36 @@
+{
+ "decisions": [
+  "The team will not work with teletext.",
+  "The remote will only control televisions.",
+  "The corporate color and design must be incorporated into the design of the remote.",
+  "The remote will have buttons for the following functions: on and off, channel up and down, volume up and down, and entering channel numbers.",
+  "The remote has to look good and be easy to use.",
+  "The target demographic is people aged fifteen to thirty five.",
+  "The remote will use an infra-red sensor.",
+  "The remote will use regular batteries."
+ ],
+ "actions": [
+  {
+   "text": "The industrial designer will work on the components concept.",
+   "owner": "",
+   "due": ""
+  },
+  {
+   "text": "The user interface designer will work on the user interface.",
+   "owner": "",
+   "due": ""
+  },
+  {
+   "text": "The marketing expert will work on trend watching",
+   "owner": "",
+   "due": ""
+  }
+ ],
+ "questions": [
+  "How to categorize the functions on the remote.",
+  "How to implement the categorization of functions in the design of the remote.",
+  "Defining a target demographic.",
+  "Whether to include speech recognition as a feature in the remote.",
+  "How to incorporate more advanced functions into the remote while keeping the design and usability of the remote simple."
+ ]
+}
