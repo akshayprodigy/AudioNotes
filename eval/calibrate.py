@@ -18,16 +18,31 @@ from eval.metrics.calibration import THRESHOLD, agreement, sample_for_labelling
 HEADER = """\
 # Judge calibration — {n} of the judge's verdicts, for you to grade.
 #
-# For each item below, the judge decided whether our minutes CAPTURED a reference item (or, for
-# `support`, whether an item we produced is backed by the transcript). Its answer is hidden on
-# purpose: seeing it first is the fastest way to agree with it.
+# Each item shows a REFERENCE item that really happened in the meeting, and the minutes our
+# system produced. Decide whether our minutes captured it. The judge already decided; its answer
+# is hidden on purpose, because seeing it first is the fastest way to agree with it.
 #
-# Put YES or NO after `you:` on each line.
-#   YES = the minutes really do capture this item / the claim really is supported
-#   NO  = they do not
+# Put YES or NO after `you:`.
+#   YES = one of our lines conveys that same item, even in completely different words
+#   NO  = none of them do (merely being on the same topic is not capturing it)
 #
 # Then: python3 -m eval.calibrate import {run_dir}
 """
+
+
+def _render(produced, category):
+    """The produced items of one category — what the judge was asked to find the item among."""
+    items = produced.get(category) or []
+    if not items:
+        return ["(our minutes produced nothing in this category)"]
+    out = []
+    for item in items:
+        if isinstance(item, dict):
+            owner = f"   [owner: {item['owner']}]" if item.get("owner") else ""
+            out.append(f"- {item['text']}{owner}")
+        else:
+            out.append(f"- {item}")
+    return out
 
 
 def _items_path(run_dir):
@@ -37,16 +52,35 @@ def _items_path(run_dir):
 def export(run_dir, n=20):
     with open(os.path.join(run_dir, "results.json")) as f:
         results = json.load(f)
-    verdicts = [v for fx in results["fixtures"] for v in fx.get("mom", {}).get("verdicts", [])]
+    # RECALL verdicts only, and deliberately.
+    #
+    # A recall verdict is answerable from two things that fit on a page: the reference item, and
+    # the minutes we produced. A support verdict ("did anyone actually say this?") can only be
+    # checked against the full transcript of a meeting the labeller has never heard — for AMI
+    # that is an unanswerable question, and an agreement rate built on guesses would be worse
+    # than admitting the judge is unchecked. Recall is also the number the report leads with.
+    verdicts = []
+    for fx in results["fixtures"]:
+        for v in fx.get("mom", {}).get("verdicts", []):
+            if v.get("kind") == "recall":
+                verdicts.append({**v, "fixture": fx["id"]})
     if not verdicts:
-        raise SystemExit("no judge verdicts in that run — was the judge configured?")
+        raise SystemExit("no recall verdicts in that run — was the judge configured?")
     sampled = sample_for_labelling(verdicts, n=n)
+    produced_by_fixture = {fx["id"]: fx.get("mom", {}).get("produced", {})
+                           for fx in results["fixtures"]}
     lines = [HEADER.format(n=len(sampled), run_dir=run_dir)]
     for i, v in enumerate(sampled, 1):
-        lines.append(f"## {i}. [{v['kind']}/{v['category']}]")
-        lines.append(f"item: {v['item']}")
-        if v.get("evidence"):
-            lines.append(f"the line the judge pointed at: {v['evidence']}")
+        lines.append(f"## {i}. Did our minutes capture this {v['category'][:-1]}?"
+                     f"   [{v['fixture']}]")
+        lines.append("")
+        lines.append(f"REFERENCE {v['category'][:-1].upper()} (this really happened):")
+        lines.append(f"    {v['item']}")
+        lines.append("")
+        lines.append("WHAT OUR MINUTES SAID:")
+        for line in _render(produced_by_fixture.get(v["fixture"], {}), v["category"]):
+            lines.append(f"    {line}")
+        lines.append("")
         lines.append("you: ")
         lines.append("")
     path = _items_path(run_dir)

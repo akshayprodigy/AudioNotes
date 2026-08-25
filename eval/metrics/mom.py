@@ -164,6 +164,10 @@ def score_minutes(reference, doc, judge, transcript="", own_transcript=""):
         "owner": owner,
         "due": due,
         "produced_counts": {c: len(produced[c]) for c in CATEGORIES},
+        # Kept so calibration can show a labeller what the judge was looking at. A verdict nobody
+        # has the context to check is not checkable, and an agreement rate over guesses is worse
+        # than no agreement rate at all.
+        "produced": produced,
         "reference_counts": {c: len(reference.get(c) or []) for c in CATEGORIES},
         "verdicts": verdicts,
     }
