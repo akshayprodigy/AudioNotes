@@ -131,3 +131,61 @@ class BareVerdictTest(unittest.TestCase):
         v = parse_verdict("Yes, this one is arguably captured if you read it generously.")
         self.assertFalse(v.matched)
         self.assertIn("unparseable", v.note)
+
+
+class BatchedSupportTest(unittest.TestCase):
+    """Support checks must not re-send the transcript once per claim.
+
+    Measured: one claim against a 35k-char transcript costs ~9k tokens of prefill and ~40s. At 42
+    produced items per fixture that is an hour of GPU for a question the model could answer for
+    all of them from a single reading. The first run appeared fast only because a conservative
+    transcript cap made three fixtures skip the check entirely.
+    """
+
+    def test_one_prompt_carries_every_claim(self):
+        from eval.metrics.judge import support_batch_prompt
+        # A distinctive sentinel: the words "the transcript" also appear in the instructions.
+        p = support_batch_prompt(["claim one", "claim two"], "decisions", "ZZTRANSCRIPTBODYZZ")
+        self.assertEqual(p.count("ZZTRANSCRIPTBODYZZ"), 1)
+        self.assertIn("1.", p)
+        self.assertIn("2.", p)
+        self.assertIn("claim two", p)
+
+    def test_verdicts_parse_per_line(self):
+        from eval.metrics.judge import parse_batch_verdicts
+        vs = parse_batch_verdicts("1: YES\n2: NO\n3: YES", 3)
+        self.assertEqual([v.matched for v in vs], [True, False, True])
+
+    def test_a_missing_line_is_NO_not_a_shifted_answer(self):
+        """Padding with NO keeps every claim aligned with its own verdict. Returning a short list
+        would slide claim 3's answer onto claim 2."""
+        from eval.metrics.judge import parse_batch_verdicts
+        vs = parse_batch_verdicts("1: YES\n3: YES", 3)
+        self.assertEqual(len(vs), 3)
+        self.assertEqual([v.matched for v in vs], [True, False, True])
+
+    def test_garbage_yields_all_NO(self):
+        from eval.metrics.judge import parse_batch_verdicts
+        vs = parse_batch_verdicts("I could not determine this.", 2)
+        self.assertEqual([v.matched for v in vs], [False, False])
+        self.assertTrue(all("unparseable" in v.note for v in vs))
+
+    def test_end_to_end_uses_one_call_per_category(self):
+        seen = []
+
+        def fake_run(prompts):
+            seen.append(prompts)
+            out = []
+            for p in prompts:
+                out.append("1: NO\n2: NO" if "TRANSCRIPT" in p else "VERDICT: NO\nEVIDENCE: NONE")
+            return out
+
+        doc = {"minutes": [{"kind": "decision", "content": "alpha"},
+                           {"kind": "decision", "content": "beta"}]}
+        r = BatchedJudge(fake_run).score({"decisions": [], "actions": [], "questions": []},
+                                         doc, transcript="nothing like those",
+                                         own_transcript="alpha beta")
+        self.assertEqual(r["unsupported"]["decisions"], 2)
+        # decisions is the only non-empty category, so exactly one support prompt exists.
+        support_prompts = [p for batch in seen for p in batch if "TRANSCRIPT" in p]
+        self.assertEqual(len(support_prompts), 1)

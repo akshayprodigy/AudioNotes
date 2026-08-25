@@ -96,15 +96,63 @@ VERDICT: YES or NO
 EVIDENCE: the transcript sentence that supports it, or NONE"""
 
 
+BATCH_CLAIMS = 20   # keeps the answer well inside max_tokens and the prompt inside the context
+
+
+def support_batch_prompt(items, category, transcript):
+    """Every claim in one prompt, so the transcript is read once instead of once per claim.
+
+    Measured at ~9k tokens of prefill per support prompt against a full AMI transcript: asking
+    per item turned a minute of work into an hour.
+    """
+    numbered = "\n".join(f"{i}. {item}" for i, item in enumerate(items, 1))
+    return f"""You are checking a meeting-minutes system for invented content.
+
+TRANSCRIPT OF WHAT WAS ACTUALLY SAID:
+{transcript}
+
+{SINGULAR[category].upper()}S THE SYSTEM CLAIMS:
+{numbered}
+
+For EACH numbered claim, is it supported by the transcript? Answer NO if it asserts something
+the transcript does not say, even if it sounds plausible for this meeting.
+
+Reply with exactly {len(items)} lines, nothing else:
+1: YES or NO
+2: YES or NO
+... one line per claim, in the same order."""
+
+
+def parse_batch_verdicts(text, n):
+    """-> exactly `n` verdicts. A line the model omitted becomes NO rather than shifting every
+    later claim onto the wrong answer."""
+    found = {}
+    for m in re.finditer(r"^\s*(\d+)\s*[:.)-]\s*(yes|no)\b", text or "", re.I | re.M):
+        found[int(m.group(1))] = m.group(2).lower() == "yes"
+    out = []
+    for i in range(1, n + 1):
+        if i in found:
+            out.append(Verdict(found[i]))
+        else:
+            out.append(Verdict(False, note=f"unparseable judge output for claim {i}"))
+    return out
+
+
 def _norm(s):
     return " ".join(re.sub(r"[^\w\s]", " ", (s or "").lower()).split())
 
 
 class _Collector:
-    """Pass one: record every question, answer nothing."""
+    """Pass one: record every question, answer nothing.
+
+    Capture questions stay per-item (the minutes are short, so the prompt is cheap). Support
+    questions are collected per category and asked together, because each one would otherwise
+    carry the whole transcript.
+    """
 
     def __init__(self):
         self.prompts = []
+        self.support = {}
 
     def captures(self, item, category, produced):
         self.prompts.append(capture_prompt(item, category, produced))
@@ -113,7 +161,7 @@ class _Collector:
     def supported(self, item, category, transcript):
         if _norm(item) and _norm(item) in _norm(transcript):
             return Verdict(True, note="verbatim")     # answered without the model, see _Replay
-        self.prompts.append(support_prompt(item, category, transcript))
+        self.support.setdefault(category, []).append(item)
         return Verdict(False)
 
 
@@ -163,7 +211,19 @@ class BatchedJudge:
             transcript = ""
         collector = _Collector()
         score_minutes(reference, doc, collector, transcript, own_transcript)
-        answers = self._run(collector.prompts) if collector.prompts else []
+
+        answers = list(self._run(collector.prompts)) if collector.prompts else []
+
+        # score_minutes asks all capture questions first, then all support questions in CATEGORIES
+        # order, so the support answers are appended in exactly that order.
+        for category in CATEGORIES:
+            items = collector.support.get(category) or []
+            for start in range(0, len(items), BATCH_CLAIMS):
+                chunk = items[start:start + BATCH_CLAIMS]
+                reply = self._run([support_batch_prompt(chunk, category, transcript)])[0]
+                answers.extend("1: YES" if v.matched else "1: NO"
+                               for v in parse_batch_verdicts(reply, len(chunk)))
+
         result = score_minutes(reference, doc, _Replay(answers), transcript, own_transcript)
         result["notes"] = [skipped] if skipped else []
         return result
