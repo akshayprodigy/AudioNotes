@@ -147,6 +147,34 @@ Note that 0.8 beats forcing the true speaker count. Forcing exactly 4 clusters m
 where the audio does not support them; a higher merge threshold leaves the uncertain fragments
 in small clusters of their own instead, where they cost far less.
 
+## Device verification (Pixel 7 Pro, 2026-08-25)
+
+`scripts/device-verify.sh`. 12 instrumented tests pass; the LLM one skips because the Qwen GGUF
+is not installed on that phone.
+
+| | measured |
+|---|---|
+| diarization clusters, single-speaker fixture | **1** — the 1.0 threshold holds on ARM |
+| diarization speed | 2.7s for 15s audio (**0.18x realtime**) |
+| ASR | 7.8s for 7.8s of detected speech (**0.52x** against total audio) |
+| ASR output | "and so my fellow americans ask not what your country can do for you, ask what you can do for your country." — exact |
+| VAD | 15s audio to 7.8s speech across 5 segments |
+| minutes | byte-identical to the TypeScript goldens |
+
+The diarization number is the one that mattered: the threshold change was chosen on desktop AMI
+runs and supersedes behaviour that had been device-verified at the old value. One voice comes
+back as one speaker.
+
+What this run does NOT cover: the UTF-8 crash fix. The invalid bytes originate inside C++ from
+whisper, and Kotlin strings are always valid UTF-16, so no test on the Kotlin side can inject one
+to prove NewStringUTF survives it. `test_utf8` covers the logic on the host; the ARM-specific
+risk is low but unmeasured.
+
+Anchoring the model question: base ASR runs at 0.52x realtime here, and small measured 3.8x
+slower than base on desktop. If that ratio holds, small lands near **2x realtime on this phone** —
+roughly 17 minutes to process an 8.5-minute meeting. Still a ratio applied to a measurement
+rather than a measurement, and worth taking directly before it decides anything.
+
 ## Caveats that belong on every number here
 
 - AMI is a proxy for regressions, not evidence the product works: 2000s meeting-room audio,
