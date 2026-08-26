@@ -350,20 +350,85 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
   }
 
   /**
-   * Replace all minutes rows for a meeting in one transaction — mirrors db.replaceMinutes() in
-   * src/db/queries.ts and the DELETE+INSERT idiom used by replaceUtterancesJson/replaceSegments.
-   * `content_json` stores the plain string content (aliased `content` on the JS side).
+   * Replace ONE SOURCE's minutes rows for a meeting, leaving the other source untouched.
+   *
+   * This used to delete every row for the meeting. The rule extractor is extractive — measured
+   * invented=0 across four AMI fixtures, every item quoting something that was said — and the LLM
+   * is not, so an LLM pass that found 2 actions silently destroyed the 7 quoted ones. Both tiers
+   * coexist now: rules own the list items, the LLM owns the prose. See MinutesSourceTest.
+   *
+   * Mirrors db.replaceMinutes() in src/db/queries.ts and the DELETE+INSERT idiom used by
+   * replaceUtterancesJson/replaceSegments. `content_json` stores the plain string content
+   * (aliased `content` on the JS side).
    */
-  fun replaceMinutes(meetingId: String, rows: List<DraftMinute>) {
+  fun replaceMinutes(meetingId: String, source: String, rows: List<DraftMinute>) {
     db.beginTransaction()
     try {
-      db.execSQL("DELETE FROM minutes WHERE meeting_id=?", arrayOf<Any?>(meetingId))
+      db.execSQL("DELETE FROM minutes WHERE meeting_id=? AND source=?",
+                 arrayOf<Any?>(meetingId, source))
       for (r in rows) {
         db.execSQL(
           "INSERT INTO minutes(id,meeting_id,kind,content_json,source) VALUES(?,?,?,?,?)",
           arrayOf<Any?>(UUID.randomUUID().toString(), meetingId, r.kind, r.content, r.source),
         )
       }
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
+  }
+
+  fun minutesBySource(meetingId: String, source: String): List<DraftMinute> {
+    val out = ArrayList<DraftMinute>()
+    db.rawQuery(
+      "SELECT kind, content_json, source FROM minutes WHERE meeting_id=? AND source=? ORDER BY rowid",
+      arrayOf(meetingId, source),
+    ).use { c ->
+      while (c.moveToNext()) out.add(DraftMinute(c.getString(0), c.getString(1), c.getString(2)))
+    }
+    return out
+  }
+
+  /** Digests already generated for this meeting, by chunk index — the narration checkpoint. */
+  fun notes(meetingId: String): Map<Int, String> {
+    val out = HashMap<Int, String>()
+    db.rawQuery(
+      "SELECT chunk_index, note FROM llm_notes WHERE meeting_id=? ORDER BY chunk_index",
+      arrayOf(meetingId),
+    ).use { c ->
+      while (c.moveToNext()) out[c.getInt(0)] = c.getString(1)
+    }
+    return out
+  }
+
+  fun putNote(meetingId: String, chunkIndex: Int, note: String) {
+    db.execSQL(
+      "INSERT OR REPLACE INTO llm_notes(meeting_id,chunk_index,note) VALUES(?,?,?)",
+      arrayOf<Any?>(meetingId, chunkIndex, note),
+    )
+  }
+
+  fun clearNotes(meetingId: String) {
+    db.execSQL("DELETE FROM llm_notes WHERE meeting_id=?", arrayOf<Any?>(meetingId))
+  }
+
+  fun setSummaryLine(meetingId: String, line: String) {
+    db.execSQL("UPDATE meetings SET summary_line=? WHERE id=?", arrayOf<Any?>(line, meetingId))
+  }
+
+  fun summaryLine(meetingId: String): String? {
+    db.rawQuery("SELECT summary_line FROM meetings WHERE id=?", arrayOf(meetingId)).use { c ->
+      return if (c.moveToFirst()) c.getString(0) else null
+    }
+  }
+
+  /** Remove a meeting and, by ON DELETE CASCADE, everything derived from it. */
+  fun deleteMeeting(id: String) {
+    db.beginTransaction()
+    try {
+      // meetings_fts is an FTS5 virtual table, so it has no foreign key and never cascades.
+      db.execSQL("DELETE FROM meetings_fts WHERE meeting_id=?", arrayOf<Any?>(id))
+      db.execSQL("DELETE FROM meetings WHERE id=?", arrayOf<Any?>(id))
       db.setTransactionSuccessful()
     } finally {
       db.endTransaction()
@@ -449,6 +514,20 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       """CREATE TABLE IF NOT EXISTS models(
            id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, version TEXT,
            path TEXT, sha256 TEXT, size_bytes INTEGER, installed_at INTEGER);""",
+      // Per-chunk checkpoint for the narration stage. Keyed on (meeting, chunk) so a retried
+      // chunk overwrites rather than duplicating, and a process killed at chunk 5 of 9 resumes at
+      // 5 instead of regenerating eight minutes of work it already did.
+      """CREATE TABLE IF NOT EXISTS llm_notes(
+           meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+           chunk_index INTEGER NOT NULL, note TEXT NOT NULL,
+           PRIMARY KEY (meeting_id, chunk_index));""",
+      // Ticked-off actions, keyed by a hash of the item text rather than the minutes row id.
+      // Minutes rows are deleted and re-inserted whenever a meeting is reprocessed, so a row-id
+      // key would silently uncheck everything the user had worked through.
+      """CREATE TABLE IF NOT EXISTS action_done(
+           meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+           item_key TEXT NOT NULL, done_at INTEGER NOT NULL,
+           PRIMARY KEY (meeting_id, item_key));""",
       "CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT);",
       "CREATE VIRTUAL TABLE IF NOT EXISTS meetings_fts USING fts5(meeting_id UNINDEXED, text);",
     )
@@ -467,6 +546,9 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
      */
     private val ADDED_COLUMNS = arrayOf(
       Triple("meetings", "archived_at", "INTEGER"),
+      // The library row's one-line description. On the meeting row, not in minutes, so listing the
+      // library needs no join and no second query per row.
+      Triple("meetings", "summary_line", "TEXT"),
     )
 
     private fun addMissingColumns(db: SQLiteDatabase) {
