@@ -92,7 +92,7 @@ describe('PipelineController sweep()', () => {
 
     // This meeting has utterances AND speakers — under the old behavior sweep() would have
     // finished it locally via buildMinutes and never called AudioPipeline.process at all.
-    expect(mockProcess).toHaveBeenCalledWith('m1', { model: 'base', useLLM: true });
+    expect(mockProcess).toHaveBeenCalledWith('m1', { model: 'base' });
     expect(mockDb.replaceMinutes).not.toHaveBeenCalled();
   });
 
@@ -106,7 +106,7 @@ describe('PipelineController sweep()', () => {
     // propagate, so process() — and therefore the whole sweep — must resolve normally.
     await expect(PipelineController.processPending()).resolves.toBeUndefined();
 
-    expect(mockProcess).toHaveBeenCalledWith('m2', { model: 'base', useLLM: true });
+    expect(mockProcess).toHaveBeenCalledWith('m2', { model: 'base' });
     // outcome 'error' short-circuits process() before minutes are ever touched.
     expect(mockDb.replaceMinutes).not.toHaveBeenCalled();
   });
@@ -152,25 +152,33 @@ describe('PipelineController buildMinutes() — on-demand rebuild (SpeakersScree
   });
 });
 
-describe('PipelineController regenerateMinutes() — tier-preserving rebuild after a speaker merge', () => {
-  it('re-runs LLM enhancement when the meeting currently has LLM-enhanced minutes', async () => {
+describe('PipelineController regenerateMinutes() — rule rebuild after a speaker merge', () => {
+  // This used to have to be "tier-preserving": buildMinutes deleted every minutes row, so a
+  // speaker merge silently threw away the summary and the narrative, and regenerateMinutes had to
+  // detect that and re-run the LLM to put them back. Two things removed the need. replaceMinutes
+  // is scoped to source='rule', so rewriting the items cannot touch the prose; and narration is a
+  // native pipeline stage now, so JS has no LLM path to re-run even if it wanted one.
+
+  it('rebuilds the rule minutes without reaching for the LLM, even when the meeting has prose', async () => {
     mockDb.minutes.mockResolvedValue([
-      { id: 'm6:0', meetingId: 'm6', kind: 'summary', content: 'x', source: 'llm' },
+      { id: 'm6:llm:0', meetingId: 'm6', kind: 'summary', content: 'x', source: 'llm' },
     ]);
     mockDb.utterances.mockResolvedValue([utt('u1', 'm6')]);
     mockDb.speakers.mockResolvedValue([speaker('m6')]);
 
     await PipelineController.regenerateMinutes('m6');
 
-    // Rule floor rebuilt (buildMinutes ran) AND the LLM enhancement was attempted — Llm.available
-    // is enhanceMinutes' first gate, so its being called proves the tier-preserving branch ran.
     expect(mockDb.replaceMinutes).toHaveBeenCalled();
-    expect(mockLlm.available).toHaveBeenCalled();
+    // Every row handed to replaceMinutes is a rule row. The prose is not JS's to rewrite.
+    for (const [, rows] of mockDb.replaceMinutes.mock.calls) {
+      for (const row of rows) expect(row.source).toBe('rule');
+    }
+    expect(mockLlm.available).not.toHaveBeenCalled();
   });
 
-  it('does NOT run LLM enhancement when the meeting only has rule-based minutes', async () => {
+  it('rebuilds the rule minutes for a meeting that has never been narrated', async () => {
     mockDb.minutes.mockResolvedValue([
-      { id: 'm7:0', meetingId: 'm7', kind: 'summary', content: 'x', source: 'rule' },
+      { id: 'm7:rule:0', meetingId: 'm7', kind: 'summary', content: 'x', source: 'rule' },
     ]);
     mockDb.utterances.mockResolvedValue([utt('u1', 'm7')]);
     mockDb.speakers.mockResolvedValue([speaker('m7')]);

@@ -110,7 +110,7 @@ export default function RecordScreen({ navigation }: Props) {
       if (isRecording) {
         const meetingId = await stop();
         if (meetingId) {
-          PipelineController.process(meetingId, { model: 'base', useLLM: true }).catch(() => {});
+          PipelineController.process(meetingId, { model: 'base' }).catch(() => {});
           // Navigate on the NEXT frame, not inside this handler.
           //
           // Stopping flips `isRecording`, which re-renders this screen (the meter unmounts, the

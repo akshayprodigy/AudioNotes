@@ -11,8 +11,10 @@ export interface Spec extends TurboModule {
   stop(sessionId: string): Promise<void>;
 
   // Run the offline pipeline (vad -> asr -> diarize -> align -> structure) for a meeting.
-  // `useLLM` gates the on-device Qwen step; false falls back to the rule-based floor.
-  process(meetingId: string, options: { model: 'base' | 'small'; useLLM: boolean }): Promise<void>;
+  // Narration is a native pipeline stage now, so there is no flag for it here: it runs whenever
+  // the model is installed, the device is capable, and the transcript is long enough to summarise
+  // without inventing (see Narrator).
+  process(meetingId: string, options: { model: 'base' | 'small' }): Promise<void>;
   cancel(meetingId: string): void;
 
   // Promote meetings stranded in 'recording' (process killed mid-capture) to 'captured'.

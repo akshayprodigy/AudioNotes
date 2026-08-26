@@ -151,7 +151,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
     setFailure(null);
     startedAt.current = Date.now();
     try {
-      await PipelineController.process(meetingId, { model: 'base', useLLM: true });
+      await PipelineController.process(meetingId, { model: 'base' });
       await refresh();
     } catch (e: any) {
       Alert.alert('Could not reprocess', String(e?.message ?? e));

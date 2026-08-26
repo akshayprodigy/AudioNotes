@@ -202,9 +202,10 @@ Java_com_audionotes_pipeline_NativeBridge_nativeDiarize(
 // shipped code to parse two small arrays — the whole of nlohmann's template machinery pulled in
 // for a job this does in a loop.
 //
-// Deliberately rule-only, matching what MinutesExtractor did: LLM enhancement still runs JS-side
-// via PipelineController.enhanceMinutes. Moving that native too is a separate change with its own
-// timing consequences (it would run inside ProcessingService).
+// Rule-only by design, and that is now a division of labour rather than a limitation: the rules
+// own the list items (extractive, every one quoting the meeting) and Narrator owns the prose. The
+// JS enhancement this comment used to point at is gone — narration runs inside ProcessingService,
+// which is what makes a meeting stopped from the notification come out readable.
 // ---------------------------------------------------------------------------
 namespace {
 

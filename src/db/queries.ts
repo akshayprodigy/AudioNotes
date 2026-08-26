@@ -15,14 +15,14 @@ export const db = {
   listMeetings: () =>
     run<Meeting>(
       'SELECT id, title, created_at AS createdAt, duration_ms AS durationMs, language, ' +
-        'status, tier_used AS tierUsed, audio_retained AS audioRetained ' +
+        'status, tier_used AS tierUsed, audio_retained AS audioRetained, summary_line AS summaryLine ' +
         'FROM meetings WHERE archived_at IS NULL ORDER BY created_at DESC',
     ),
 
   listArchived: () =>
     run<Meeting>(
       'SELECT id, title, created_at AS createdAt, duration_ms AS durationMs, language, ' +
-        'status, tier_used AS tierUsed, audio_retained AS audioRetained ' +
+        'status, tier_used AS tierUsed, audio_retained AS audioRetained, summary_line AS summaryLine ' +
         'FROM meetings WHERE archived_at IS NOT NULL ORDER BY archived_at DESC',
     ),
 
@@ -63,7 +63,7 @@ export const db = {
   getMeeting: (id: string) =>
     run<Meeting>(
       'SELECT id, title, created_at AS createdAt, duration_ms AS durationMs, language, ' +
-        'status, tier_used AS tierUsed, audio_retained AS audioRetained ' +
+        'status, tier_used AS tierUsed, audio_retained AS audioRetained, summary_line AS summaryLine ' +
         'FROM meetings WHERE id = ?',
       [id],
     ).then(r => r[0]),
@@ -92,13 +92,21 @@ export const db = {
       [meetingId],
     ),
 
-  // Replace the rule-based minutes for a meeting.
+  /**
+   * Replace the RULE-based minutes for a meeting, leaving the LLM prose alone.
+   *
+   * Scoped to source='rule' deliberately, mirroring AudioDb.replaceMinutes. Deleting every row
+   * here is what used to throw away the summary and the narrative whenever a speaker merge
+   * rebuilt the items — the rules are extractive and cheap to regenerate, the prose is neither.
+   * Row ids are namespaced per source for the same reason: `${meetingId}:rule:${i}` cannot collide
+   * with a row Narrator wrote.
+   */
   replaceMinutes: async (meetingId: string, mins: { kind: string; content: string; source: string }[]) => {
-    await run('DELETE FROM minutes WHERE meeting_id = ?', [meetingId]);
+    await run("DELETE FROM minutes WHERE meeting_id = ? AND source = 'rule'", [meetingId]);
     for (let i = 0; i < mins.length; i++) {
       const m = mins[i];
       await run('INSERT INTO minutes(id, meeting_id, kind, content_json, source) VALUES(?,?,?,?,?)', [
-        `${meetingId}:${i}`,
+        `${meetingId}:rule:${i}`,
         meetingId,
         m.kind,
         m.content,

@@ -3,10 +3,8 @@
 // into app state. All ASR/diarization/LLM work happens off-thread in native/C++.
 import { NativeEventEmitter, NativeModules } from 'react-native';
 import AudioPipeline from '../native/NativeAudioPipeline';
-import Llm from '../native/NativeLlm';
 import { db } from '../db/queries';
 import { extractMinutes } from './minutes';
-import { enhanceMinutes } from './summarize';
 import type { PipelineOutcome, StageProgress, Utterance } from './types';
 
 type ProgressCb = (p: StageProgress) => void;
@@ -33,20 +31,16 @@ class PipelineControllerImpl {
   }
 
   // AudioPipeline.process() is fire-and-forget: it enqueues the meeting into the foreground
-  // service and resolves immediately, so the heavy stages (vad -> asr -> diarize -> minutes) run
-  // AFTER this call returns. We await the service's terminal event so callers can rely on
-  // process() resolving only once the meeting is fully finished — the native ProcessingEngine now
-  // builds the rule-based minutes, retitles, applies audio retention, and sets the terminal status
-  // itself. JS only adds the best-effort LLM upgrade on top when the app is open and the device is
-  // capable — enhanceMinutes() no-ops when there are no utterances or no LLM model.
-  async process(
-    meetingId: string,
-    opts: { model: 'base' | 'small'; useLLM: boolean },
-  ): Promise<void> {
-    const outcome = await this.awaitNativeComplete(meetingId, () => AudioPipeline.process(meetingId, opts));
-    // 'cancelled'/'error' already have their status set natively; nothing to enhance.
-    if (outcome !== 'done') return;
-    if (opts.useLLM !== false) await this.enhanceMinutes(meetingId);
+  // service and resolves immediately, so the heavy stages run AFTER this call returns. We await
+  // the service's terminal event so callers can rely on process() resolving only once the meeting
+  // is finished.
+  //
+  // Every stage is native now, narration included (ProcessingEngine -> Narrator). JS used to add
+  // the LLM pass on top here, which meant a meeting stopped from the PiP window or the
+  // notification — with no app in the foreground and no JS alive — never got one. It also meant
+  // two code paths wrote the same rows.
+  async process(meetingId: string, opts: { model: 'base' | 'small' }): Promise<void> {
+    await this.awaitNativeComplete(meetingId, () => AudioPipeline.process(meetingId, opts));
   }
 
   /**
@@ -137,7 +131,7 @@ class PipelineControllerImpl {
         // resumes only the missing stages (ResumePlan) — a meeting whose rows already exist but
         // whose status isn't 'done' has just its minutes step re-run natively, so this no longer
         // needs a JS-side shortcut for the "utterances + speakers already present" case.
-        await this.process(m.id, { model: 'base', useLLM: true });
+        await this.process(m.id, { model: 'base' });
       } catch {
         // leave the status as-is so the next sweep retries it
       } finally {
@@ -184,20 +178,15 @@ class PipelineControllerImpl {
   }
 
   /**
-   * Rebuild a meeting's minutes after a speaker merge WITHOUT downgrading its tier.
+   * Rebuild a meeting's rule-based minutes after a speaker merge.
    *
-   * SpeakersScreen's "Regenerate" used to call buildMinutes directly, which always rewrites the
-   * rule-based floor (source:'rule') — silently discarding any LLM-enhanced minutes the meeting
-   * had. Here we detect whether the meeting currently holds LLM minutes and, if so, re-run the LLM
-   * enhancement after the rule rebuild so the meeting keeps its enhanced tier. enhanceMinutes is
-   * already gated on the model being available/capable and falls back to keeping the rule minutes
-   * on any failure, so an LLM-less device degrades gracefully to the rebuilt rule floor.
+   * This used to detect whether the meeting held LLM minutes and re-run the enhancement, because
+   * buildMinutes wiped every row and would otherwise have thrown the prose away. It no longer
+   * needs to: replaceMinutes is scoped to a source, so rewriting the rule rows cannot touch the
+   * narrative, and narration is a pipeline stage rather than something JS bolts on.
    */
   async regenerateMinutes(meetingId: string): Promise<void> {
-    const existing = await db.minutes(meetingId);
-    const wasLlm = existing.some(m => m.source === 'llm');
     await this.buildMinutes(meetingId);
-    if (wasLlm) await this.enhanceMinutes(meetingId);
   }
 
   /**
@@ -232,30 +221,6 @@ class PipelineControllerImpl {
       await db.setTitle(meetingId, title);
     } catch {
       // Titling is cosmetic — never let it fail the pipeline.
-    }
-  }
-
-  // LLM enhancement (Pro) — replaces the minutes with a nicer LLM version IF a capable device has
-  // the Qwen model installed and generation+parsing succeed. On any failure the rule-based minutes
-  // written by buildMinutes() stay in place. Never throws to the caller.
-  async enhanceMinutes(meetingId: string): Promise<void> {
-    try {
-      const utterances = await db.utterances(meetingId);
-      if (utterances.length === 0) return;
-      if (!(await Llm.available()) || !(await Llm.capable())) return;
-      if (!(await Llm.load())) return;
-      try {
-        const speakers = await db.speakers(meetingId);
-        const mins = await enhanceMinutes(utterances, speakers, (p, mt) => Llm.generate(p, mt));
-        if (mins && mins.length > 0) {
-          await db.replaceMinutes(meetingId, mins);
-          await db.setStatus(meetingId, 'done');
-        }
-      } finally {
-        await Llm.unload();
-      }
-    } catch {
-      // keep the rule-based minutes; enhancement is best-effort
     }
   }
 
