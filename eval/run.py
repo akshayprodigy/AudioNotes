@@ -22,11 +22,18 @@ from eval import report
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def run_cli(cli, models, fixture_dir, out_json):
+def run_cli(cli, models, fixture_dir, out_json, llm_model=None):
     """Invoke the shared core. Returns (document, peak_rss_bytes).
 
     Diarization models are passed when present, so DER is scored whenever the models exist and the
     run degrades to transcript-only when they do not, rather than failing.
+
+    `llm_model` turns on narration, which is the configuration that ships. Without it the harness
+    scores rule-based minutes only — which was silently the case until 2026-08-26, so the numbers
+    described a configuration the phone does not run. Note what this does and does not buy: the
+    recall/invented metrics score ITEMS, and narration no longer writes items, so they measure the
+    rule extractor either way. What changes is that the run exercises the real code path and the
+    prose lands in the result document where a future prose metric can reach it.
     """
     cmd = [cli,
            os.path.join(models, "ggml-base-q5_1.bin"),
@@ -36,6 +43,8 @@ def run_cli(cli, models, fixture_dir, out_json):
     emb = os.path.join(models, "diar_embedding.onnx")
     if os.path.exists(seg) and os.path.exists(emb):
         cmd += ["--diar-seg", seg, "--diar-emb", emb]
+    if llm_model:
+        cmd += ["--llm", llm_model]
     cmd += ["--json", out_json]
 
     # /usr/bin/time -l reports peak RSS on macOS; it goes to stderr alongside the CLI's own output.
@@ -167,6 +176,9 @@ def main():
     ap.add_argument("--models", required=True)
     ap.add_argument("--fixtures", default=os.path.join(ROOT, "eval", "fixtures"))
     ap.add_argument("--only", help="run a single fixture id")
+    ap.add_argument("--llm", metavar="GGUF",
+                    help="the SHIPPED model (eval/models/qwen-instruct-q4_k_m.gguf) — turns on "
+                         "narration so the run matches what the phone does")
     ap.add_argument("--judge", metavar="BINARY", help="cpp/cli/build/audionotes_judge")
     ap.add_argument("--judge-model", metavar="GGUF", help="a stronger GGUF than the shipped 1.5B")
     ap.add_argument("--rescore", metavar="RUN_DIR",
@@ -204,7 +216,8 @@ def main():
             continue
         print(f"running {fid} …")
         doc, peak_rss = run_cli(args.cli, args.models, fixture_dir,
-                                os.path.join(out_dir, f"{fid}.cli.json"))
+                                os.path.join(out_dir, f"{fid}.cli.json"),
+                                llm_model=args.llm)
         r = score(fixture_dir, doc, peak_rss, judge=judge)
         results["fixtures"].append(r)
         acc = r["attribution"]["accuracy"]

@@ -297,9 +297,26 @@ in `llm_minutes.cpp`. Android links only the half it uses.
   this is where prefill gets measured.
 - **Resume test**: kill after chunk N, re-run, assert chunks 0..N-1 are not regenerated.
 - **Determinism test**: run twice, assert identical output.
-- **Eval harness**: score the narrated minutes with the judge built on 2026-08-25 before treating
-  the summary as production quality. Calibration is still ungated — the harness reports the numbers
-  as provisional until 20 items are human-labelled.
+- **Eval harness**: `eval/run.py` gained `--llm`, because it was never passing one. Every number it
+  had reported described rule-based minutes, which is not the configuration that ships.
+
+  **The harness still cannot score narration quality, and this is the honest limit of the work.**
+  Its `recall`, `unsupported` and `invented` metrics judge minute ITEMS — actions, decisions,
+  questions — and narration deliberately writes none of those. So those numbers measure the rule
+  extractor whether narration ran or not, and `invented = 0` is not evidence that the prose is
+  grounded.
+
+  The evidence that it is not: the on-device test found the model, given an 11-second clip,
+  describing participants who "resolved to participate in community service projects". `invented`
+  cannot see that, because the fabrication is in the summary rather than in an item. The
+  MIN_TRANSCRIPT_CHARS floor addresses the degenerate case; it does not measure the general one.
+
+  Scoring prose needs a metric the harness does not have — sentence-level support judging of the
+  summary and narrative against the transcript. That is follow-up work, and until it exists the
+  summary's quality rests on reading it, not on a number.
+
+  Calibration is also still ungated: the judge's verdicts have never been checked against a human,
+  so the harness prints every minutes-quality figure as provisional.
 
 ## Out of scope
 

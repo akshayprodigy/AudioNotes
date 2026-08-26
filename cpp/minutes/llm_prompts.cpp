@@ -173,9 +173,33 @@ std::string stripMarkdown(const std::string& s) {
   bool at_line_start = true;
   for (std::size_t i = 0; i < s.size();) {
     if (at_line_start) {
-      // Heading markers, and the space after them. Indentation before a marker is skipped too.
       std::size_t j = i;
       while (j < s.size() && (s[j] == ' ' || s[j] == '\t')) ++j;
+
+      // A horizontal rule ("---", "***", "___") is invisible in markdown and three literal dashes
+      // in plain text. Drop the whole line, including its newline, rather than leaving a stray row
+      // of punctuation mid-document.
+      std::size_t eol = s.find('\n', j);
+      const std::size_t line_end = (eol == std::string::npos) ? s.size() : eol;
+      if (line_end > j) {
+        const char c0 = s[j];
+        if (c0 == '-' || c0 == '*' || c0 == '_') {
+          bool rule = true;
+          std::size_t run = 0;
+          for (std::size_t k = j; k < line_end; ++k) {
+            if (s[k] == c0) { ++run; continue; }
+            if (s[k] == ' ' || s[k] == '\t' || s[k] == '\r') continue;
+            rule = false;
+            break;
+          }
+          if (rule && run >= 3) {
+            i = (eol == std::string::npos) ? s.size() : eol + 1;
+            continue;  // still at a line start
+          }
+        }
+      }
+
+      // Heading markers, and the space after them. Indentation before a marker is skipped too.
       if (j < s.size() && s[j] == '#') {
         while (j < s.size() && s[j] == '#') ++j;
         while (j < s.size() && (s[j] == ' ' || s[j] == '\t')) ++j;

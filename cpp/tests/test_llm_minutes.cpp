@@ -195,6 +195,13 @@ int main(int argc, char** argv) {
           "a mid-line hash is not a heading marker");
     CHECK(stripMarkdown("- one\n- two") == "- one\n- two",
           "bullet structure is left alone");
+    // A horizontal rule is invisible in markdown and three literal dashes in plain text.
+    CHECK(stripMarkdown("Above\n\n---\n\nBelow") == "Above\n\nBelow", "--- rule not dropped");
+    CHECK(stripMarkdown("Above\n***\nBelow") == "Above\nBelow", "*** rule not dropped");
+    CHECK(stripMarkdown("Above\n___\nBelow") == "Above\nBelow", "___ rule not dropped");
+    CHECK(stripMarkdown("- a\n- b") == "- a\n- b", "a two-item bullet list is not a rule");
+    CHECK(stripMarkdown("-- hyphens are not a rule") == "-- hyphens are not a rule",
+          "a two-dash line with words is not a rule");
     CHECK(stripMarkdown("A\n\n\n\nB") == "A\n\nB", "blank-line runs should collapse");
     CHECK(stripMarkdown("\n\n  Body.  \n\n") == "Body.", "surrounding whitespace not trimmed");
     CHECK(stripMarkdown("").empty(), "empty in, empty out");
