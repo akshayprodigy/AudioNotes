@@ -57,22 +57,41 @@ remains starts at **Task 6**.
 | 2 Fold planning | done |
 | 3 Determinism | done — verified identical across two full runs |
 | 4 Single-chunk fix | done |
-| 5 JNI entry points | done — seven, Android links, needed the `llm_prompts.cpp` split |
+| 5 JNI entry points | done — ten, after the D5-D8 amendment |
 | — Prose digests, repetition penalty, `stripMarkdown` | done, not originally planned (D5-D8) |
-| 6 Schema and source-scoped minutes | **next** |
-| 7 `Stage.NARRATE` | to do |
-| 8 `Narrator.kt` | to do |
-| 9 `ProcessingEngine` wiring | to do |
-| 10 On-device narration test + prefill measurement | to do |
-| 10b Resume test | to do |
-| 11 Retire the JS enhancement path | to do |
-| 12 `Segmented` primitive | to do |
-| 13 Summary / Minutes / Transcript tabs | to do |
-| 14 Actions tab with persistent checkboxes | to do |
-| 15 The shell | to do |
-| 16 Library row one-liner | to do |
-| 17 Model download at first run | to do |
-| 18 Full verification | to do |
+| 6 Schema and source-scoped minutes | done — 4 device tests |
+| 7 `Stage.NARRATE` | done — 8 JVM tests |
+| 8 `Narrator.kt` | done — device-verified |
+| 9 `ProcessingEngine` wiring | done — plus the MIN_TRANSCRIPT_CHARS floor |
+| 10 On-device narration test + prefill | done — prefill ~37 tok/s, corrected the spec |
+| 10b Resume test | done — sentinel proves the checkpoint is read |
+| 11 Retire the JS enhancement path | done |
+| 12 `Segmented` primitive | done |
+| 13 Summary / Minutes / Transcript tabs | done |
+| 14 Actions tab with persistent checkboxes | done — 4 JS tests |
+| 15 The shell | done — MeetingScreen 675 → 447 lines |
+| 16 Library row one-liner | done |
+| 17 Model download at first run | done |
+| 18 Full verification | **partial — see below** |
+
+### What Task 18 verified, and what it did not
+
+Green: **6 C++ tests**, **30 JS tests**, **8 Kotlin JVM tests**, `tsc` clean, both APKs build,
+and — before the phone disconnected — **4 MinutesSourceTest**, **7 MinutesParityTest** and a full
+**9-test NativePipelineTest** pass.
+
+Not done, both blocked on the same thing:
+
+1. **The device suite was not re-run after the last three commits.** The phone dropped off USB
+   twice and did not come back through an `adb kill-server` restart. Nothing since has touched
+   native code that the passing run did not already cover, but that is an argument, not a test.
+2. **Nobody has looked at the tabs.** Metro serves on 8088 with `adb reverse tcp:8081 tcp:8088`
+   wired, the bundle loads without a redbox, but the screen reported `mWakefulness=Dozing` behind a
+   lock screen. Layout on a real 6.1" display is unverified.
+
+Also open, and not blocked on hardware: **the harness cannot score prose.** See the spec — its
+metrics judge minute items, narration writes none, so `invented = 0` says nothing about whether the
+summary is grounded. That needs sentence-level support judging, which does not exist yet.
 
 ### Amendments from D5-D8
 
