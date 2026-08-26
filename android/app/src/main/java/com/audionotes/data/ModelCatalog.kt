@@ -139,8 +139,15 @@ object ModelCatalog {
       "https://huggingface.co/csukuangfj/speaker-embedding-models/resolve/main/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx",
       "aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2", 28_281_164L,
     ),
-    // On-device LLM for minutes enhancement (Pro). Qwen family is Apache-2.0. Swap to a Qwen3
-    // GGUF when you settle on one; Qwen2.5-1.5B-Instruct is a safe, widely available default.
+    // On-device LLM: writes the summary, the MOM narrative and the library one-liner (Narrator).
+    // Qwen family is Apache-2.0. Swap to a Qwen3 GGUF when you settle on one; Qwen2.5-1.5B-Instruct
+    // is a safe, widely available default.
+    //
+    // required=false is deliberate and is NOT the same as optional-in-practice: onboarding offers
+    // it switched ON, so most installs will have it (it filters this list by kind, rather than
+    // naming ids, so there is no second copy of "which models are offered" to drift). What the
+    // flag buys is that a declined or failed 1.1 GB download leaves a working app rather than a
+    // dead one — recording, transcription and rule-based minutes all function without it.
     ModelSpec(
       "llm-qwen", "Qwen2.5 1.5B Instruct",
       "Writes the minutes in plain English", "Without it you still get minutes, pulled out by rules rather than written as prose.",
@@ -152,6 +159,7 @@ object ModelCatalog {
 
   /** Everything a meeting needs to get from audio to minutes. Drives the first-run download. */
   val REQUIRED: List<ModelSpec> = ALL.filter { it.required }
+
 
   /**
    * Where to fetch a model from, in order of preference.

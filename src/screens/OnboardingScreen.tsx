@@ -7,7 +7,7 @@ import ModelManager from '../native/NativeModelManager';
 import AudioPipeline from '../native/NativeAudioPipeline';
 import Icon, { type IconName } from '../components/Icon';
 import Mascot from '../components/Mascot';
-import { Button, Pop, ProgressBar, Raised, SoftButton, Txt } from '../components/ui';
+import { Button, Pop, ProgressBar, Raised, SoftButton, Switch, Txt } from '../components/ui';
 import { db } from '../db/queries';
 import { radius, s, sv, useTheme, type Colors } from '../theme';
 
@@ -26,7 +26,13 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Onboarding'>;
  * discover that "who said what" — a headline feature — sat behind a Settings screen they had
  * never opened.
  */
-type Essential = { id: string; purpose: string; sizeBytes: number };
+type Essential = {
+  id: string;
+  purpose: string;
+  sizeBytes: number;
+  kind: string;
+  required: boolean;
+};
 
 const BULLETS: { icon: IconName; title: string; body: string; tone: 'primary' | 'success' | 'warning' }[] = [
   {
@@ -58,10 +64,19 @@ export default function OnboardingScreen({ navigation }: Props) {
   const [step, setStep] = useState(0);
   const [current, setCurrent] = useState('');
   const [essentials, setEssentials] = useState<Essential[]>([]);
+  const [writer, setWriter] = useState<Essential[]>([]);
+  // Defaulted on. A meeting app whose minutes read like a word count is not the product, and the
+  // model is what turns a transcript into something anyone will actually read. Off is one tap
+  // away, and the app records, transcribes and extracts action items either way.
+  const [wantWriter, setWantWriter] = useState(true);
 
   useEffect(() => {
     ModelManager.list()
-      .then(r => setEssentials(JSON.parse(r).filter((m: any) => m.required)))
+      .then(r => {
+        const all: Essential[] = JSON.parse(r);
+        setEssentials(all.filter(m => m.required));
+        setWriter(all.filter(m => !m.required && m.kind === 'llm'));
+      })
       .catch(() => {});
   }, []);
 
@@ -73,7 +88,11 @@ export default function OnboardingScreen({ navigation }: Props) {
     return () => sub.remove();
   }, []);
 
-  const totalMb = Math.round(essentials.reduce((a, m) => a + m.sizeBytes, 0) / 1e6);
+  // What the button will actually cost, including the writer when it is switched on. Saying
+  // "112 MB" and then downloading 1.2 GB is the kind of surprise that gets an app uninstalled.
+  const chosen = wantWriter ? [...essentials, ...writer] : essentials;
+  const totalMb = Math.round(chosen.reduce((a, m) => a + m.sizeBytes, 0) / 1e6);
+  const writerMb = Math.round(writer.reduce((a, m) => a + m.sizeBytes, 0) / 1e6);
 
   const finish = async () => {
     await db.setSetting('onboarded', '1');
@@ -88,15 +107,21 @@ export default function OnboardingScreen({ navigation }: Props) {
   const downloadAll = async () => {
     setStatus('downloading');
     AudioPipeline.requestBatteryExemption().catch(() => {});
-    for (let i = 0; i < essentials.length; i++) {
+    for (let i = 0; i < chosen.length; i++) {
       setStep(i);
-      setCurrent(essentials[i].purpose);
+      setCurrent(chosen[i].purpose);
       setPct(0);
       try {
-        await ModelManager.download(essentials[i].id);
+        await ModelManager.download(chosen[i].id);
       } catch {
-        setStatus('failed');
-        return;
+        // Only a REQUIRED model can fail the setup. Losing the writer means minutes pulled out by
+        // rule instead of written as prose — a smaller app, not a broken one — and it can be
+        // fetched later from Settings. Failing the whole first run over it would be a lie about
+        // how badly things went.
+        if (chosen[i].required) {
+          setStatus('failed');
+          return;
+        }
       }
     }
     setStatus('done');
@@ -206,11 +231,28 @@ export default function OnboardingScreen({ navigation }: Props) {
       </View>
 
       <Pop index={5} style={st.footer}>
+        {writer.length > 0 ? (
+          <Raised edge={colors.line} fill={colors.card} rad={radius.card} depth={5}>
+            <View style={st.bullet}>
+              <View style={[st.bulletIcon, { backgroundColor: colors.primarySoft }]}>
+                <Icon name="edit" size={s(20)} color={colors.primary} strokeWidth={2.4} />
+              </View>
+              <View style={st.flex}>
+                <Txt variant="cardTitleSm">Write the minutes in plain English</Txt>
+                <Txt variant="chip" color={colors.inkSoft} style={st.bulletBody}>
+                  Adds {writerMb} MB. Without it you still get minutes, pulled out by rule rather
+                  than written as prose.
+                </Txt>
+              </View>
+              <Switch on={wantWriter} onToggle={() => setWantWriter(v => !v)} />
+            </View>
+          </Raised>
+        ) : null}
         <Button
           label={totalMb > 0 ? `Download the AI (${totalMb} MB)` : 'Download the AI'}
           icon="download"
           onPress={downloadAll}
-          disabled={essentials.length === 0}
+          disabled={chosen.length === 0}
           full
         />
         {/* Said plainly, before the tap. The models are not in the app — shipping them would put
