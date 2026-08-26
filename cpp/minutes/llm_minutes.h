@@ -35,6 +35,21 @@ std::string narrativePrompt(const std::string& notes);
 std::string summaryPrompt(const std::string& narrative);
 std::string headlinePrompt(const std::string& summary);
 
+// Merge notes into notes, same format in and out, so the result can be folded again.
+std::string foldPrompt(const std::string& notes);
+
+// Groups of note indices to merge so the joined notes fit max_chars. Empty when they already fit.
+//
+// Without this, a long meeting overruns the context: measured density on real audio is ~671
+// chars/minute, so at ~14 chunks — about a two-hour meeting — the reduce prompt exceeds n_ctx,
+// LlamaEngine's token guard returns an empty string, and the meeting silently ends up with no
+// minutes at all.
+//
+// Groups always hold at least two notes: folding one note alone costs a generation and saves
+// nothing. A single note that exceeds max_chars on its own is left ungrouped rather than dropped —
+// the caller proceeds with an oversize prompt, which degrades output, rather than losing content.
+std::vector<std::vector<int>> foldPlan(const std::vector<std::string>& notes, std::size_t max_chars);
+
 // Returns std::nullopt when nothing parses / everything is placeholder — caller keeps the floor.
 std::optional<std::vector<DraftMinute>> parseMinutesJson(const std::string& raw);
 

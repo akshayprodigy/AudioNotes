@@ -112,6 +112,46 @@ int main(int argc, char** argv) {
     CHECK(h.find("15") != std::string::npos, "headlinePrompt must state a word budget");
   }
 
+  // foldPlan: empty when the notes already fit; otherwise groups of >= 2 covering every note in
+  // order, each group's joined length within budget.
+  {
+    std::vector<std::string> small = {std::string(10, 'a'), std::string(10, 'b')};
+    CHECK(audionotes::foldPlan(small, 100).empty(), "foldPlan should be empty when notes fit");
+
+    std::vector<std::string> big;
+    for (int i = 0; i < 6; ++i) big.push_back(std::string(40, 'x'));
+    const auto plan = audionotes::foldPlan(big, 100);
+    CHECK(!plan.empty(), "foldPlan should group when notes exceed the budget");
+
+    size_t covered = 0;
+    int last = -1;
+    for (const auto& group : plan) {
+      CHECK(group.size() >= 2, "a fold group of one note does no work");
+      size_t joined = 0;
+      for (int idx : group) {
+        CHECK(idx > last, "fold groups must cover notes in order without repeats");
+        last = idx;
+        joined += big[static_cast<size_t>(idx)].size() + 2;
+        ++covered;
+      }
+      CHECK(joined <= 100 + 2, "fold group %zu exceeds the budget", joined);
+    }
+    CHECK(covered == big.size(), "foldPlan covered %zu of %zu notes", covered, big.size());
+
+    // A single note larger than the whole budget cannot be folded with anything — it must not be
+    // silently dropped, and it must not wedge the caller in an infinite fold loop.
+    std::vector<std::string> huge = {std::string(500, 'y'), std::string(10, 'z')};
+    const auto hplan = audionotes::foldPlan(huge, 100);
+    for (const auto& group : hplan) CHECK(group.size() >= 2, "no single-note groups for oversize notes");
+  }
+
+  // foldPrompt keeps the notes format so folded output can be folded again.
+  {
+    const std::string f = audionotes::foldPrompt("ZZNOTESZZ");
+    CHECK(f.find("ZZNOTESZZ") != std::string::npos, "foldPrompt drops its input");
+    CHECK(f.find("DECISIONS") != std::string::npos, "foldPrompt must ask for the notes format back");
+  }
+
   if (failures) { std::fprintf(stderr, "%d failure(s)\n", failures); return 1; }
   std::printf("test_llm_minutes OK\n");
   return 0;

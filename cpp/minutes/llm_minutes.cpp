@@ -113,6 +113,38 @@ std::string headlinePrompt(const std::string& summary) {
          "sentence, with no label, no quotation marks and no trailing notes:";
 }
 
+std::string foldPrompt(const std::string& notes) {
+  return "These are notes from consecutive parts of ONE meeting. Merge them into a single set of "
+         "notes. Remove duplicates. Keep every distinct decision, action and question. Do not "
+         "summarise them away.\n\n"
+         "NOTES:\n" + notes + "\n\n"
+         "Format:\nDECISIONS:\n- ...\nACTIONS:\n- <task> \xE2\x80\x94 <owner> (due <when>)\n"
+         "QUESTIONS:\n- ...";
+}
+
+std::vector<std::vector<int>> foldPlan(const std::vector<std::string>& notes,
+                                       std::size_t max_chars) {
+  std::vector<std::vector<int>> plan;
+  std::size_t total = 0;
+  for (const auto& n : notes) total += n.size() + 2;  // "\n\n" join
+  if (total <= max_chars) return plan;
+
+  std::vector<int> group;
+  std::size_t joined = 0;
+  for (std::size_t i = 0; i < notes.size(); ++i) {
+    const std::size_t cost = notes[i].size() + 2;
+    if (!group.empty() && joined + cost > max_chars) {
+      if (group.size() >= 2) plan.push_back(group);
+      group.clear();
+      joined = 0;
+    }
+    group.push_back(static_cast<int>(i));
+    joined += cost;
+  }
+  if (group.size() >= 2) plan.push_back(group);
+  return plan;
+}
+
 std::optional<std::vector<DraftMinute>> parseMinutesJson(const std::string& raw) {
   const size_t start = raw.find('{');
   const size_t end = raw.rfind('}');
