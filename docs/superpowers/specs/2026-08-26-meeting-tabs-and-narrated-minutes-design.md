@@ -52,6 +52,24 @@ on what it managed to extract. Asked directly, the same weights write what happe
 | D3 | The LLM deletes grounded detail. `db.replaceMinutes` overwrites all rows | Rules found 7 actions with verbatim quotes; the LLM returned 2, with `"due": "After uploading the file"` on both. |
 | D4 | The reduce prompt overruns the context on long meetings, returning nothing | Measured density 671 chars/min → ~14 chunks ≈ **2 hours** exceeds `n_ctx` 8192. |
 
+### Four more, found while building (2026-08-26)
+
+Each of these was invisible until the real audio ran through the real code. They are recorded here
+because each one changed the design, not just the implementation.
+
+| # | Defect | Evidence | Fix |
+|---|---|---|---|
+| D5 | Greedy decoding degenerates into repetition loops | The map step emitted `- Speaker 2: "I'll do it."` **forty times** until it hit the token limit. Caused by the D2 fix. | A repetition penalty (1.15 over the last 256 tokens). Deterministic — it reshapes the distribution, and argmax over it is still argmax. |
+| D6 | The extraction notes manufacture absences | Every chunk came back with `DECISIONS: - No further action is required.` and `ACTIONS: - None`, which the narrative then reported to the reader as if it were the meeting. | Three rules on `mapPrompt`: leave empty sections empty, omit unsaid fields, never state that something was not said. Same chunk then yields real decisions. |
+| D7 | Prose written from the notes comes back as lists | Fed the notes, the model answered with `#### Actions:` and numbered bullets under every wording tried. A small model mirrors the shape of its input. | The prose chain no longer touches the notes. See "What the narrative is written from" below. |
+| D8 | Markdown survives every instruction not to use it | `**Meeting Topic:**` and `### Summary` persisted under all prompt wordings. The app renders plain text, so the reader would see the asterisks. | `stripMarkdown()`, applied to the narrative and the summary. Deterministic; leaves line structure alone. |
+
+**D5 is worth dwelling on.** The fix for D2 caused it. Determinism and degeneration are the two
+failure modes of the same knob, and only one of them is visible without running real audio through
+it. The repetition penalty is a **separate parameter** from `greedy`, never implied by it: the eval
+judge answers twenty claims per batch mostly with the same word, and penalising repeats there would
+push it off a correct verdict for no reason but having just given it.
+
 ### Cost on device (Pixel 7 Pro)
 
 - Model load: **2,427 ms**
@@ -95,13 +113,29 @@ The naive shape is three generations off the transcript, each paying a ~1,700-to
 expensive part on a phone. Instead, each output feeds the next:
 
 ```
-chunk notes ──► narrative (MOM prose)     one large prefill
-                  └──► summary (2-3 sentences)   tiny prefill
-                         └──► headline (<=15 words)  tiny prefill
+source ──► narrative (MOM prose)          one large prefill
+             └──► summary (2-3 sentences)      tiny prefill
+                    └──► headline (<=15 words)     tiny prefill
 ```
 
 One expensive call instead of three, and the tabs cannot contradict each other because each is a
 condensation of the one above.
+
+### What the narrative is written from
+
+**Not the extraction notes** — that was the original plan and D7 killed it. What the prose is
+written from decides how it reads:
+
+| Meeting length | Source for the narrative | Generations |
+|---|---|---|
+| Fits one prompt (≲ 9 min, ≲ 6000 chars) | The dialogue itself | 3 |
+| Longer | Per-chunk **prose digests**, condensed in groups until they fit | N + 3 |
+
+`digestPrompt` turns a chunk of transcript into three or four sentences of prose; `condensePrompt`
+merges several digests into a shorter account, same shape in and out so it can repeat. Neither ever
+produces a list. The DECISIONS/ACTIONS/QUESTIONS notes still exist for `enhanceMinutes`, but nothing
+in the shipping prose chain consumes them — the rule extractor owns the list items, so the prose
+chain never needed them.
 
 ### Division of labour
 
@@ -138,6 +172,17 @@ minutes.
 
 Fixes **D1**: with one chunk, run the narrative prompt directly against the transcript. Never hand a
 raw transcript to a prompt that calls it "notes".
+
+### The desktop pipeline ships the same configuration
+
+`cpp/pipeline/pipeline.cpp` no longer lets the LLM replace the rule minutes. It keeps every rule
+item, drops only the rules' own `summary` row (a count — "7 action items, 0 decisions"), and puts
+the LLM's `summary`, `narrative` and `headline` in front of them. `minutes_source` becomes
+`"rule+llm"`.
+
+This matters beyond tidiness: the eval harness scores what the CLI produces. Until the CLI was
+changed it scored LLM-authored items that the phone would never show, so its recall and invented
+numbers described a configuration that does not exist.
 
 ### Source-scoped writes
 
@@ -215,6 +260,16 @@ All schema changes go in `AudioDb.SCHEMA` (new tables, `CREATE TABLE IF NOT EXIS
 | `llm_notes(meeting_id, chunk_index, note)` | Per-chunk resume |
 | `action_done(meeting_id, item_key, done_at)` | Checkbox state surviving reprocessing |
 | `MinuteKind` gains `'narrative'` | The MOM prose body; update `src/pipeline/types.ts:47` and the C++ kinds |
+| `MinuteKind` gains `'headline'` | The one-line description, mirrored onto `meetings.summary_line` |
+
+## Code layout note
+
+`cpp/minutes/llm_minutes.cpp` is split in two. The Android target could not link it: nlohmann is
+deliberately absent from `libaudionotes` (see the note in `cpp/jni/audionotes_jni.cpp` about paying
+~200 KB of template machinery to parse two small arrays). Rather than silently reverse that
+decision, the prompt builders, chunking, `foldPlan`, `stripMarkdown` and `narrate` moved to
+`cpp/minutes/llm_prompts.cpp`, which needs no parser. `parseMinutesJson` and `enhanceMinutes` stay
+in `llm_minutes.cpp`. Android links only the half it uses.
 
 ## Testing
 

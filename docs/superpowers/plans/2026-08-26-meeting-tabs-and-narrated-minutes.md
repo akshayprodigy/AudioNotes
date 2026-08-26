@@ -42,6 +42,54 @@ $CMAKE --build cpp/cli/build -j8 && (cd cpp/cli/build && ctest --output-on-failu
 
 ---
 
+## Progress
+
+**Phase A and B are done** (commits `a4b437e`, `d784148`, `3940073`, `30b658b`). Building them
+turned up four more defects that are now recorded in the spec as D5-D8, and two of the fixes changed
+the design: the prose chain no longer reads the extraction notes, and greedy decoding needs a
+repetition penalty to stop it looping. Tasks 1-5 below are kept for the record; the work that
+remains starts at **Task 6**.
+
+| Task | State |
+|---|---|
+| 0 Branch | done — `feat/narrated-minutes-tabs` |
+| 1 Prompt builders | done |
+| 2 Fold planning | done |
+| 3 Determinism | done — verified identical across two full runs |
+| 4 Single-chunk fix | done |
+| 5 JNI entry points | done — seven, Android links, needed the `llm_prompts.cpp` split |
+| — Prose digests, repetition penalty, `stripMarkdown` | done, not originally planned (D5-D8) |
+| 6 Schema and source-scoped minutes | **next** |
+| 7 `Stage.NARRATE` | to do |
+| 8 `Narrator.kt` | to do |
+| 9 `ProcessingEngine` wiring | to do |
+| 10 On-device narration test + prefill measurement | to do |
+| 10b Resume test | to do |
+| 11 Retire the JS enhancement path | to do |
+| 12 `Segmented` primitive | to do |
+| 13 Summary / Minutes / Transcript tabs | to do |
+| 14 Actions tab with persistent checkboxes | to do |
+| 15 The shell | to do |
+| 16 Library row one-liner | to do |
+| 17 Model download at first run | to do |
+| 18 Full verification | to do |
+
+### Amendments from D5-D8
+
+These change tasks that were already written below. Apply them when you reach the task.
+
+- **Task 8 (`Narrator.kt`)** must mirror `narrate()` as it now stands, NOT the version in the task
+  text: a meeting that fits one chunk goes straight from dialogue to `nativeLlmNarrativePrompt`
+  with no map step at all; a longer one is digested with `nativeLlmDigestPrompt` and condensed with
+  `nativeLlmCondensePrompt`. `llm_notes` therefore checkpoints **digests**, not extraction notes.
+- **Task 5** needs two more JNI entry points, `nativeLlmDigestPrompt` and `nativeLlmCondensePrompt`,
+  and `nativeLlmLoad` takes a `repeatPenalty: Float` after `greedy`. Narration passes `1.15f`.
+- **Task 8** must apply `stripMarkdown` to the narrative and the summary. Expose it as
+  `nativeStripMarkdown` rather than reimplementing it in Kotlin.
+- **`MinuteKind`** gains `'headline'` as well as `'narrative'` (Tasks 11 and 13).
+
+---
+
 ## Task 0: Branch
 
 **Files:** none
