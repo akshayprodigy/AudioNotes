@@ -56,6 +56,9 @@ object Narrator {
   /** Rounds of condensing before we give up and let the prompt be oversized. */
   private const val MAX_CONDENSE_ROUNDS = 4
 
+  /** Below this much transcript, narration invents a meeting rather than describing one. */
+  private const val MIN_TRANSCRIPT_CHARS = 400
+
   interface Progress {
     fun onStage(stage: String, done: Int, total: Int)
     fun isCancelled(): Boolean
@@ -88,6 +91,25 @@ object Narrator {
     val db = AudioDb.get(ctx)
     val utts = db.utterances(meetingId)
     if (utts.isEmpty()) return false
+
+    // Too little was said to summarise, so do not ask a model to try.
+    //
+    // Measured 2026-08-26: given the 11-second jfk fixture — one sentence, one voice — the model
+    // returned "They resolved to participate in community service projects" and "Each participant
+    // committed to specific actions like volunteering at schools or assisting elderly neighbors
+    // with managing technology". No participants, no resolutions, no commitments exist in that
+    // audio. Asked to write minutes of a meeting that did not happen, it invents one.
+    //
+    // 400 characters is roughly 35 seconds of speech. Below that the rule-based floor is not just
+    // safer, it is more informative: it quotes what was actually said instead of describing a
+    // meeting around it.
+    val transcriptChars = utts.sumOf { it.text.length }
+    if (transcriptChars < MIN_TRANSCRIPT_CHARS) {
+      Log.i(TAG, "skipped for $meetingId (only $transcriptChars chars of transcript — too short " +
+        "to summarise without inventing)")
+      return false
+    }
+
     val spks = db.speakers(meetingId)
 
     val chunks = NativeBridge.nativeLlmChunks(

@@ -7,6 +7,7 @@ import com.audionotes.data.AudioDb
 import com.audionotes.data.ModelCatalog
 import com.audionotes.pipeline.NativeBridge
 import com.audionotes.pipeline.Narrator
+import com.audionotes.pipeline.ProcessingEngine
 import org.json.JSONArray
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -244,14 +245,25 @@ class NativePipelineTest {
 
   // ---- Narration (Narrator + the LLM plumbing) ----
 
-  /** Five lines of a plausible meeting: one decision, one owner, one unanswered question. */
+  /**
+   * A plausible short meeting: one decision, two owners, an unanswered question.
+   *
+   * Deliberately over 400 characters. Narration refuses anything shorter, because below roughly
+   * 35 seconds of speech it invents a meeting instead of describing one — see the fabrication note
+   * in Narrator, and a_recording_too_short_to_be_a_meeting_is_not_narrated below.
+   */
   private fun seedTranscript(db: AudioDb, id: String) {
     val lines = listOf(
-      "We need to decide the vendor code format before Friday.",
-      "The current codes are eight characters and SAP truncates them to six.",
-      "Ana will draft the mapping table and send it round.",
-      "Do we migrate the existing codes or only the new ones?",
-      "Let us agree the format first, then decide about migration.",
+      "We need to decide the vendor code format before Friday, because the import runs over the weekend.",
+      "The current codes are eight characters and SAP truncates them to six, so two of them collide.",
+      "That is why the last batch failed to import — three vendors ended up sharing one code.",
+      "Ana will draft the mapping table for the existing vendors and send it round tomorrow.",
+      "Do we migrate the existing codes as well, or only assign the new format to new vendors?",
+      "Migrating them means reissuing purchase orders, which finance would have to approve first.",
+      "Let us agree the format first and decide about migration once we know how many collide.",
+      "Ravi will check with finance about whether reissuing the orders is even acceptable to them.",
+      "If it is not, we keep the old codes for existing vendors and accept the inconsistency.",
+      "Agreed. Format on Friday, migration decided the week after.",
     )
     val arr = JSONArray()
     lines.forEachIndexed { i, t ->
@@ -391,6 +403,115 @@ class NativePipelineTest {
         narrative.contains("ZZSENTINELZZ", ignoreCase = true),
       )
       assertTrue("the checkpoint should be cleared after success", db.notes(id).isEmpty())
+    } finally {
+      db.deleteMeeting(id)
+    }
+  }
+
+  /**
+   * The whole point of the change: a meeting driven through ProcessingEngine — the path a
+   * recording stopped from the PiP window or the notification takes, with no app in the foreground
+   * and no JS runtime alive — comes out with prose, not just extracted items.
+   *
+   * Before this, LLM enhancement lived in PipelineController.enhanceMinutes and only ran when the
+   * app happened to be open, so a headless recording got a "summary" that was a count of its own
+   * action items.
+   *
+   * Seeded past ASR on purpose. Whisper is covered by its own test, and running it here would add
+   * a minute to a test about wiring; more to the point the only fixture available is 11 seconds of
+   * one voice, which is below the length narration will touch (see the fabrication note in
+   * Narrator).
+   */
+  @Test
+  fun processing_a_meeting_headlessly_leaves_it_narrated() {
+    val gguf = ModelCatalog.fileFor(ctx, "llm-qwen")?.takeIf { it.exists() }
+    assumeTrue("Qwen GGUF not installed", gguf != null)
+
+    val db = AudioDb.get(ctx)
+    val id = "headless-" + java.util.UUID.randomUUID()
+    // Its own copy of the fixture: retention deletes the audio once a transcript exists, and it
+    // must not take the shared jfk.pcm other tests read with it.
+    val audio = File(ctx.cacheDir, "$id.pcm")
+    fixturePcm().copyTo(audio, overwrite = true)
+    db.insertMeeting(id, "headless test", System.currentTimeMillis(), "free", audio.absolutePath)
+    db.markCaptured(id, audio.length() / 32, audio.absolutePath)
+    // Segments + utterances present -> ResumePlan leaves only DIARIZE and NARRATE to run.
+    db.replaceSegments(id, longArrayOf(0L, 25000L))
+    seedTranscript(db, id)
+
+    try {
+      val stages = ArrayList<String>()
+      var outcome: String? = null
+      val started = System.currentTimeMillis()
+      ProcessingEngine(ctx, id, "base", object : ProcessingEngine.Listener {
+        override fun onStage(stage: String, done: Int, total: Int) {
+          if (stages.lastOrNull() != stage) stages.add(stage)
+        }
+        override fun onComplete(o: String, message: String?) { outcome = o }
+      }).run()
+      val elapsed = System.currentTimeMillis() - started
+
+      println("HEADLESS: outcome=$outcome in ${elapsed}ms, stages=$stages")
+      assertEquals("done", outcome)
+      assertTrue("the narrate stage never ran: $stages", stages.contains("narrate"))
+
+      val llm = db.minutesBySource(id, "llm")
+      val rule = db.minutesBySource(id, "rule")
+      val summary = llm.firstOrNull { it.kind == "summary" }
+      println("HEADLESS summary: ${summary?.content}")
+      println("HEADLESS headline: ${db.summaryLine(id)}")
+      assertTrue("no llm summary after a headless run", summary != null && summary.content.isNotBlank())
+      assertTrue("no llm narrative", llm.any { it.kind == "narrative" && it.content.isNotBlank() })
+
+      // The rule floor must still be there. This is the regression the source-scoped write exists
+      // to prevent: narration writing over the items it cannot itself produce reliably.
+      assertTrue("the rule minutes were destroyed by narration", rule.isNotEmpty())
+
+      // Re-running must NOT re-narrate: ResumePlan sees the summary row and skips the stage.
+      val second = ArrayList<String>()
+      ProcessingEngine(ctx, id, "base", object : ProcessingEngine.Listener {
+        override fun onStage(stage: String, done: Int, total: Int) {
+          if (second.lastOrNull() != stage) second.add(stage)
+        }
+        override fun onComplete(o: String, message: String?) {}
+      }).run()
+      assertFalse("a narrated meeting was narrated again: $second", second.contains("narrate"))
+    } finally {
+      db.deleteMeeting(id)
+      audio.delete()
+    }
+  }
+
+  /**
+   * A recording too short to have been a meeting is left with its rule-based minutes.
+   *
+   * The jfk fixture is 11 seconds of one voice. Asked to write minutes of it, the model produced
+   * participants who resolved to run community service projects and volunteer at schools — none of
+   * which is in the audio. Narration has a floor for exactly this.
+   */
+  @Test
+  fun a_recording_too_short_to_be_a_meeting_is_not_narrated() {
+    val gguf = ModelCatalog.fileFor(ctx, "llm-qwen")?.takeIf { it.exists() }
+    assumeTrue("Qwen GGUF not installed", gguf != null)
+
+    val db = AudioDb.get(ctx)
+    val id = "tiny-" + java.util.UUID.randomUUID()
+    db.insertMeeting(id, "tiny", System.currentTimeMillis(), "free", "/dev/null")
+    try {
+      val arr = JSONArray()
+      arr.put(
+        org.json.JSONObject()
+          .put("start_ms", 0L).put("end_ms", 4000L)
+          .put("text", "Ask not what your country can do for you."),
+      )
+      db.replaceUtterancesJson(id, arr.toString())
+
+      val narrated = Narrator.run(ctx, id, object : Narrator.Progress {
+        override fun onStage(stage: String, done: Int, total: Int) {}
+        override fun isCancelled() = false
+      })
+      assertFalse("a 40-character transcript was narrated", narrated)
+      assertTrue("llm rows were written anyway", db.minutesBySource(id, "llm").isEmpty())
     } finally {
       db.deleteMeeting(id)
     }

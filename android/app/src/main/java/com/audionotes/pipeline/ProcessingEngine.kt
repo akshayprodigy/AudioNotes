@@ -144,7 +144,7 @@ class ProcessingEngine(
         }
       }
 
-      // ---- Minutes / MOM (rule-based, native) + retitle + retention, then done ----
+      // ---- Minutes / MOM (rule-based, native), then narration, retitle, retention, done ----
       // Gate only on utterances existing — NOT on `transcribed`/diarize success. Diarize can
       // legitimately produce no speakers (single-speaker meeting, or no diar models installed
       // yet) and the meeting still deserves a full MOM from whatever transcript it has.
@@ -155,10 +155,42 @@ class ProcessingEngine(
         val minutes = Minutes.extract(utts, speakers)
         db.replaceMinutes(meetingId, "rule", minutes)
         retitleFromTranscript(meetingId, utts)
-        applyRetention(meetingId, utts.size)
-        db.setStatus(meetingId, "done")
         listener.onStage("minutes", 1, 1)
         Log.i(TAG, "Minutes produced ${minutes.size} items for $meetingId")
+
+        // ---- Narration (on-device LLM): the summary, the MOM prose, the library one-liner ----
+        //
+        // This is the whole reason a meeting stopped from the PiP window or the notification now
+        // ends up readable: the enhancement used to live in JS (PipelineController.enhanceMinutes)
+        // and only ran when the app happened to be in the foreground, so a headless recording got
+        // rule-based minutes and a summary that was a count of its own items.
+        //
+        // Placed BEFORE applyRetention deliberately. Retention deletes the audio, which is what
+        // makes a meeting unrecoverable; if narration fails we want the recording still on disk so
+        // a later sweep can try again. It also writes source='llm' rows only, so a failure here
+        // costs the meeting nothing it already had.
+        if (Stage.NARRATE in remaining) {
+          val t0 = System.currentTimeMillis()
+          val narrated = try {
+            Narrator.run(ctx, meetingId, object : Narrator.Progress {
+              override fun onStage(stage: String, done: Int, total: Int) =
+                listener.onStage(stage, done, total)
+
+              override fun isCancelled(): Boolean = cancelled
+            })
+          } catch (e: Throwable) {
+            // Throwable, not Exception: an OutOfMemoryError while a 1.1 GB model is resident is
+            // the plausible failure on a 3 GB phone, and it must not cost the user the transcript
+            // and rule minutes already committed above.
+            Log.w(TAG, "narration failed for $meetingId", e)
+            false
+          }
+          if (narrated) stageDone("narrate", t0)
+          if (checkCancelled()) return
+        }
+
+        applyRetention(meetingId, utts.size)
+        db.setStatus(meetingId, "done")
       } else {
         // No transcript. Port of PipelineController.buildMinutes' empty-utterances branch
         // (src/pipeline/PipelineController.ts ~183-208, post-33b0c94) — terminal classification

@@ -35,9 +35,12 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Meeting'>;
  */
 const STAGES: { key: string; label: string; weight: number }[] = [
   { key: 'vad', label: 'Audio cleaned up', weight: 0.03 },
-  { key: 'asr', label: 'Words written down', weight: 0.62 },
-  { key: 'diarize', label: 'Speakers separated', weight: 0.28 },
-  { key: 'minutes', label: 'Pulling out the minutes', weight: 0.07 },
+  { key: 'asr', label: 'Words written down', weight: 0.55 },
+  { key: 'diarize', label: 'Speakers separated', weight: 0.25 },
+  { key: 'minutes', label: 'Pulling out the minutes', weight: 0.04 },
+  // Narration, measured on a Pixel 7 Pro: 90-120 s for an 8.5-minute meeting against roughly
+  // 12.5 minutes of ASR for the same recording. Prefill runs at ~37 tok/s and dominates it.
+  { key: 'narrate', label: 'Written up in plain English', weight: 0.13 },
 ];
 
 function kindMeta(kind: string, c: Colors): { label: string; color: string; soft: string; icon: IconName } {
