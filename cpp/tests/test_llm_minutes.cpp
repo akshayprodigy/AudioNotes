@@ -94,6 +94,24 @@ int main(int argc, char** argv) {
   CHECK(!audionotes::enhanceMinutes({}, {}, [](const std::string&, int) { return std::string(); }),
         "empty utterances must return nullopt");
 
+  // Prompt builders: each must embed its input and must NOT ask for JSON. The summary prompt in
+  // particular must not inherit the extraction schema's framing, which made the model describe
+  // what it failed to find instead of what happened.
+  {
+    const std::string n = audionotes::narrativePrompt("ZZNOTESZZ");
+    CHECK(n.find("ZZNOTESZZ") != std::string::npos, "narrativePrompt drops its input");
+    CHECK(n.find("JSON") == std::string::npos, "narrativePrompt must not ask for JSON");
+
+    const std::string s = audionotes::summaryPrompt("ZZNARRATIVEZZ");
+    CHECK(s.find("ZZNARRATIVEZZ") != std::string::npos, "summaryPrompt drops its input");
+    CHECK(s.find("JSON") == std::string::npos, "summaryPrompt must not ask for JSON");
+    CHECK(s.find("2") != std::string::npos, "summaryPrompt must state a sentence count");
+
+    const std::string h = audionotes::headlinePrompt("ZZSUMMARYZZ");
+    CHECK(h.find("ZZSUMMARYZZ") != std::string::npos, "headlinePrompt drops its input");
+    CHECK(h.find("15") != std::string::npos, "headlinePrompt must state a word budget");
+  }
+
   if (failures) { std::fprintf(stderr, "%d failure(s)\n", failures); return 1; }
   std::printf("test_llm_minutes OK\n");
   return 0;

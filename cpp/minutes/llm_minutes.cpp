@@ -88,6 +88,31 @@ std::string reducePrompt(const std::string& notes) {
          "\"questions\":[\"<a question left unanswered>\"]}";
 }
 
+std::string narrativePrompt(const std::string& notes) {
+  return "Below is the record of one meeting. Write the minutes as plain prose for someone who was "
+         "not there.\n\n"
+         "RECORD:\n" + notes + "\n\n"
+         "Write three or four short paragraphs: what the meeting was about, what the group worked "
+         "through, what was settled, and what was left open. Use only what the record supports. "
+         "Do not use headings, bullet points, or numbered lists. Do not comment on what the record "
+         "does or does not contain. Start writing the minutes now:";
+}
+
+std::string summaryPrompt(const std::string& narrative) {
+  return "Below are the minutes of a meeting.\n\n"
+         "MINUTES:\n" + narrative + "\n\n"
+         "Write 2 to 3 sentences saying what the meeting was about and where it ended up. Write "
+         "plain prose. Do not list items, do not use headings, and do not comment on what the "
+         "minutes do or do not contain. Start writing the summary now:";
+}
+
+std::string headlinePrompt(const std::string& summary) {
+  return "Below is a summary of a meeting.\n\n"
+         "SUMMARY:\n" + summary + "\n\n"
+         "In ONE sentence of at most 15 words, say what this meeting was about. Write only that "
+         "sentence, with no label, no quotation marks and no trailing notes:";
+}
+
 std::optional<std::vector<DraftMinute>> parseMinutesJson(const std::string& raw) {
   const size_t start = raw.find('{');
   const size_t end = raw.rfind('}');
