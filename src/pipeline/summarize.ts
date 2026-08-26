@@ -45,6 +45,15 @@ export function mapPrompt(chunk: string): string {
     'List decisions, action items (with owner and any due date), and open questions. ' +
     'Be concise and factual; do not invent anything.\n\n' +
     `TRANSCRIPT:\n${chunk}\n\n` +
+    // Measured 2026-08-26: without these the model writes "DECISIONS: - No further action is
+    // required." and "ACTIONS: - None" into every chunk, and the narrative built on those notes
+    // then reports the absences back to the reader as if they were the meeting.
+    'Rules:\n' +
+    '- Leave a section with nothing under it EMPTY. Never write None, N/A, or a sentence saying ' +
+    'there were none.\n' +
+    '- Omit the owner or the due date when it was not said. Never write that it was not said, ' +
+    'not specified or not mentioned.\n' +
+    '- Put a line under QUESTIONS only if someone actually asked it and nobody answered.\n' +
     'Format:\nDECISIONS:\n- ...\nACTIONS:\n- <task> — <owner> (due <when>)\nQUESTIONS:\n- ...'
   );
 }

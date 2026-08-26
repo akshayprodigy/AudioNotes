@@ -148,8 +148,17 @@ bool Pipeline::run(const std::string& pcm_path, PipelineResult* out,
 
   out->transcript = alignSpeakers(utts, diar);
 
-  // ---- Minutes: rule floor, then optional LLM enhancement that REPLACES on success ----
-  // (parity: ProcessingEngine minutes stage + PipelineController.enhanceMinutes:249-252)
+  // ---- Minutes: rule items always, LLM prose on top ----
+  //
+  // The LLM used to REPLACE the rule minutes wholesale. It should not: the rules are extractive and
+  // every item quotes something that was said (measured invented=0 across four AMI fixtures), while
+  // a 1.5B model writing abstractively carries no such guarantee. On the real NeoSym recording the
+  // rules found 7 actions with quotes and the LLM returned 2, with "After uploading the file" in
+  // both due-date fields — and the 7 were deleted to keep the 2.
+  //
+  // So the split is by what each is good at: rules own the list items, the LLM owns the prose it
+  // alone can write. This mirrors what ProcessingEngine + Narrator do on device, which is the
+  // point — the eval harness must score the configuration that ships, not a different one.
   if (!out->transcript.empty()) {
     const int64_t t0 = nowMs();
     report("minutes", 0, 1);
@@ -168,13 +177,28 @@ bool Pipeline::run(const std::string& pcm_path, PipelineResult* out,
       // The eval harness has always judged greedy output, while this path sampled at temperature
       // 0.3 — so every score the harness reported described something the user never saw. Two runs
       // over the NeoSym fixture on 2026-08-26 produced completely different summaries.
-      if (llm.load(cfg_.llm_model, cfg_.llm_n_ctx, cfg_.llm_threads, /*greedy=*/true)) {
-        auto enhanced = enhanceMinutes(mutts, speakers, [&llm](const std::string& p, int t) {
+      // repeat_penalty 1.15: greedy decoding over a repetitive transcript loops. Measured on the
+      // NeoSym recording, the map step emitted one line forty times and the minutes built on those
+      // notes were worthless.
+      if (llm.load(cfg_.llm_model, cfg_.llm_n_ctx, cfg_.llm_threads, /*greedy=*/true,
+                   /*repeat_penalty=*/1.15f)) {
+        const auto n = narrate(mutts, speakers, [&llm](const std::string& p, int t) {
           return llm.generate(p, t);
         });
-        if (enhanced) {
-          out->minutes = *enhanced;
-          out->minutes_source = "llm";
+        // Prose goes in front of the extracted items — summary first is the whole point of the
+        // screen it feeds. A failed generation leaves the rule floor exactly as it was.
+        std::vector<DraftMinute> prose;
+        if (!n.summary.empty()) prose.push_back({"summary", n.summary, "llm"});
+        if (!n.narrative.empty()) prose.push_back({"narrative", n.narrative, "llm"});
+        if (!n.headline.empty()) prose.push_back({"headline", n.headline, "llm"});
+        if (!prose.empty()) {
+          // Drop the rules' own "summary" row: it is a count ("7 action items, 0 decisions") and
+          // the LLM's replaces it. Every other rule item stays.
+          for (const auto& m : out->minutes) {
+            if (m.kind != "summary") prose.push_back(m);
+          }
+          out->minutes = std::move(prose);
+          out->minutes_source = "rule+llm";
         }
       }
     }

@@ -27,7 +27,8 @@ struct LlamaEngine::Impl {
   int n_ctx_cached = 0;
 #endif
 
-  bool load(const std::string& path, int n_ctx, int n_threads, bool greedy) {
+  bool load(const std::string& path, int n_ctx, int n_threads, bool greedy,
+            float repeat_penalty) {
 #ifdef HAVE_LLAMA
     llama_backend_init();
 
@@ -51,6 +52,19 @@ struct LlamaEngine::Impl {
 
     smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
     if (greedy) {
+      // Argmax alone degenerates. Measured 2026-08-26 on the real NeoSym recording: greedy
+      // decoding over a repetitive meeting transcript emitted "- Speaker 2: \"I'll do it.\""
+      // forty times until it hit the token limit, and the minutes built on those notes were
+      // worthless. A repetition penalty breaks the loop while keeping the run reproducible —
+      // it reshapes the distribution deterministically, and argmax over it is still argmax.
+      //
+      // 1.15 over the last 256 tokens is enough to escape a loop without suppressing the
+      // legitimate repetition of a speaker's name down a list of action items.
+      if (repeat_penalty > 1.0f) {
+        llama_sampler_chain_add(smpl, llama_sampler_init_penalties(
+                                          /*penalty_last_n=*/256, repeat_penalty,
+                                          /*penalty_freq=*/0.0f, /*penalty_present=*/0.0f));
+      }
       llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
     } else {
       llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
@@ -64,6 +78,7 @@ struct LlamaEngine::Impl {
 #else
     (void)path;
     (void)greedy;
+    (void)repeat_penalty;
     (void)n_ctx;
     (void)n_threads;
     return false;
@@ -145,8 +160,8 @@ LlamaEngine::~LlamaEngine() { delete impl_; }
 bool LlamaEngine::ok() const { return impl_->ready; }
 
 bool LlamaEngine::load(const std::string& model_path, int n_ctx, int n_threads,
-                       bool greedy) {
-  return impl_->load(model_path, n_ctx, n_threads, greedy);
+                       bool greedy, float repeat_penalty) {
+  return impl_->load(model_path, n_ctx, n_threads, greedy, repeat_penalty);
 }
 
 std::string LlamaEngine::generate(const std::string& prompt, int max_tokens) {

@@ -38,6 +38,16 @@ std::string headlinePrompt(const std::string& summary);
 // Merge notes into notes, same format in and out, so the result can be folded again.
 std::string foldPrompt(const std::string& notes);
 
+// Prose digests, used to build the narrative for a meeting too long to fit one prompt.
+//
+// The narrative is NOT built from the DECISIONS/ACTIONS/QUESTIONS notes, though it was at first.
+// A 1.5B model mirrors the shape of its input: fed those notes it answered with "#### Actions:"
+// and a bullet list, however firmly the prompt forbade headings. Fed dialogue or prose it writes
+// prose. Since the list items now come from the rule extractor, nothing in the prose chain needs
+// the notes at all — so each chunk is digested into prose and the digests are condensed.
+std::string digestPrompt(const std::string& chunk);
+std::string condensePrompt(const std::string& prose);
+
 // Groups of note indices to merge so the joined notes fit max_chars. Empty when they already fit.
 //
 // Without this, a long meeting overruns the context: measured density on real audio is ~671
@@ -56,5 +66,43 @@ std::optional<std::vector<DraftMinute>> parseMinutesJson(const std::string& raw)
 std::optional<std::vector<DraftMinute>> enhanceMinutes(const std::vector<MinuteUtt>& utterances,
                                                        const std::vector<MinuteSpk>& speakers,
                                                        const GenerateFn& generate);
+
+// Strip markdown from generated prose: heading markers, bold/italic runs, inline code ticks, and
+// any leading blank lines.
+//
+// The prompts forbid markdown and a 1.5B model writes "**Meeting Topic:**" and "### Summary"
+// anyway — measured repeatedly on the real NeoSym recording, under several wordings. Prompt text
+// reduces how often it happens and cannot make it never happen. The app renders these strings as
+// plain text, so the asterisks would be shown to the reader literally.
+//
+// Line structure is left alone: a "- " bullet reads fine in a text block, and rewriting it would
+// mean guessing at sentence boundaries.
+std::string stripMarkdown(const std::string& s);
+
+// The prose the UI leads with. Empty strings on failure; callers keep the rule-based floor.
+struct Narration {
+  std::string narrative;  // MOM body, three or four paragraphs
+  std::string summary;    // 2-3 sentences, the Summary tab
+  std::string headline;   // <= 15 words, the library row
+};
+
+// Notes characters one prompt may carry: ~4 chars/token against an 8192 context, holding back room
+// for the instruction text and the answer, so foldPlan triggers before LlamaEngine's own token
+// guard would fire and silently return "".
+constexpr std::size_t kNotesBudgetChars = (8192 - 1600) * 4;
+
+/**
+ * map -> fold -> narrative -> summary -> headline.
+ *
+ * Deliberately mirrored by Narrator.kt rather than called from it: Android needs to commit each
+ * chunk's note to the database as it lands and to check for cancellation between generations, and
+ * neither is expressible through a single JNI call. What the two share is everything that decides
+ * the OUTPUT — the prompts, the chunking and the fold plan. What differs is only checkpointing.
+ * If you change the sequence here, change it there; test_llm_minutes pins the call order so the
+ * drift is visible.
+ */
+Narration narrate(const std::vector<MinuteUtt>& utterances,
+                  const std::vector<MinuteSpk>& speakers, const GenerateFn& generate,
+                  std::size_t notes_budget_chars = kNotesBudgetChars);
 
 }  // namespace audionotes

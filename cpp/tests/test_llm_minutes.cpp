@@ -176,6 +176,86 @@ int main(int argc, char** argv) {
     CHECK(f.find("DECISIONS") != std::string::npos, "foldPrompt must ask for the notes format back");
   }
 
+  // stripMarkdown: the 1.5B model opens the narrative with "### Meeting Summary" despite
+  // being told not to, and that heading is the first thing the reader sees.
+  {
+    using audionotes::stripMarkdown;
+    CHECK(stripMarkdown("### Meeting Summary\n\nThe group met.") ==
+              "Meeting Summary\n\nThe group met.",
+          "heading marker not stripped");
+    CHECK(stripMarkdown("**Meeting Topic:**\nThe group met.") ==
+              "Meeting Topic:\nThe group met.",
+          "bold markers not stripped");
+    CHECK(stripMarkdown("Use the `--json` flag.") == "Use the --json flag.",
+          "inline code ticks not stripped");
+    CHECK(stripMarkdown("__Bold__ start.") == "Bold start.", "underscore emphasis not stripped");
+    CHECK(stripMarkdown("No markdown at all.") == "No markdown at all.",
+          "plain prose must pass through untouched");
+    CHECK(stripMarkdown("A sentence with a # inside it.") == "A sentence with a # inside it.",
+          "a mid-line hash is not a heading marker");
+    CHECK(stripMarkdown("- one\n- two") == "- one\n- two",
+          "bullet structure is left alone");
+    CHECK(stripMarkdown("A\n\n\n\nB") == "A\n\nB", "blank-line runs should collapse");
+    CHECK(stripMarkdown("\n\n  Body.  \n\n") == "Body.", "surrounding whitespace not trimmed");
+    CHECK(stripMarkdown("").empty(), "empty in, empty out");
+    CHECK(stripMarkdown("###").empty(), "a reply that is only a marker has no body");
+  }
+
+  // narrate() on a meeting that fits one prompt: the transcript goes straight to the narrative,
+  // then summary, then headline, each fed the one above. No digest step and — critically — the
+  // extraction notes never appear, because their list shape is what made the model answer with
+  // "#### Actions:" instead of prose.
+  {
+    std::vector<std::string> seen;
+    int n = 0;
+    auto gen = [&](const std::string& p, int) {
+      seen.push_back(p);
+      return "GEN" + std::to_string(n++);
+    };
+    const auto out = audionotes::narrate({{"Hello there.", "S0"}}, {{"S0", "Ana"}}, gen);
+    CHECK(seen.size() == 3, "narrate made %zu generate calls, want 3", seen.size());
+    CHECK(seen[0].find("Ana: Hello there.") != std::string::npos,
+          "the narrative should be written from the transcript itself");
+    CHECK(seen[0].find("DECISIONS") == std::string::npos,
+          "the narrative prompt must not carry the list-shaped notes format");
+    CHECK(seen[1].find("GEN0") != std::string::npos, "summary should be fed the narrative");
+    CHECK(seen[2].find("GEN1") != std::string::npos, "headline should be fed the summary");
+    CHECK(out.narrative == "GEN0" && out.summary == "GEN1" && out.headline == "GEN2",
+          "narrate returned the wrong generations");
+  }
+
+  // A long meeting is digested into PROSE per chunk, never into notes.
+  {
+    std::vector<std::string> seen;
+    int n = 0;
+    auto gen = [&](const std::string& p, int) {
+      seen.push_back(p);
+      return "GEN" + std::to_string(n++);
+    };
+    // Two chunks: each line is over half the 6000-char chunk budget.
+    std::vector<audionotes::MinuteUtt> utts = {{std::string(4000, 'a'), ""},
+                                               {std::string(4000, 'b'), ""}};
+    audionotes::narrate(utts, {}, gen);
+    CHECK(seen.size() == 5, "two chunks should be 2 digests + narrative + summary + headline, got %zu",
+          seen.size());
+    for (size_t i = 0; i < 2 && i < seen.size(); ++i) {
+      CHECK(seen[i].find("DECISIONS") == std::string::npos,
+            "digest %zu must not ask for the notes format", i);
+      CHECK(seen[i].find("plain prose") != std::string::npos,
+            "digest %zu should ask for prose", i);
+    }
+  }
+
+  // A narrative that never arrives stops the chain — no summary built on nothing.
+  {
+    int calls = 0;
+    auto gen = [&](const std::string&, int) { ++calls; return std::string(); };
+    const auto out = audionotes::narrate({{"Hi.", ""}}, {}, gen);
+    CHECK(out.narrative.empty() && out.summary.empty() && out.headline.empty(),
+          "an empty narrative must not produce a summary or headline");
+    CHECK(calls == 1, "narrate should stop after the failed narrative, made %d calls", calls);
+  }
+
   if (failures) { std::fprintf(stderr, "%d failure(s)\n", failures); return 1; }
   std::printf("test_llm_minutes OK\n");
   return 0;
