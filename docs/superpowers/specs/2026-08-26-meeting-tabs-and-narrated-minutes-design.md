@@ -72,11 +72,26 @@ push it off a correct verdict for no reason but having just given it.
 
 ### Cost on device (Pixel 7 Pro)
 
-- Model load: **2,427 ms**
-- Decode: **~10 tokens/sec**
-- Prefill on a ~1,700-token prompt: **not measured** — must be measured during implementation.
-- Estimated total for a short single-chunk meeting: **15–40 s**, against ASR at 0.68× realtime. The
-  LLM is a small fraction of total processing time.
+Prefill was the term left open here, and measuring it moved the answer a long way. The 15–40 s
+estimate below it was wrong — recorded rather than deleted, because the gap is the point.
+
+| | Measured |
+|---|---|
+| Model load | **2,590–3,264 ms** |
+| Decode | **~10 tokens/sec** |
+| Prefill | **~37 tokens/sec** (25,036 ms for ~920 tokens) |
+| Narration, 5-line meeting, 1 chunk | **41.5 s** end to end |
+| Narration, 2-chunk meeting (1 digest generated, 1 resumed) | **78.2 s** end to end |
+
+Prefill at ~37 tok/s is the dominant cost, and it is why the progressive-condensation chain matters:
+only the narrative pays a full-transcript prefill, the summary reads a few hundred characters of
+narrative, and the headline a couple of hundred of summary.
+
+Extrapolating to the real 8.5-minute NeoSym meeting (5,705 chars ≈ 1,425 tokens, one chunk):
+narrative ≈ 68 s, summary ≈ 18 s, headline ≈ 5 s, load ≈ 3 s — call it **90–120 s**, not the 15–40 s
+originally estimated. Against ASR at 0.68× realtime (12.5 minutes for this recording) narration is
+roughly **12% on top of processing**, which is affordable, but it is a minute and a half during
+which the library row must have something honest to say.
 
 ### Incidental confirmation
 

@@ -3,9 +3,13 @@ package com.audionotes
 import android.content.Context
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.audionotes.data.AudioDb
 import com.audionotes.data.ModelCatalog
 import com.audionotes.pipeline.NativeBridge
+import com.audionotes.pipeline.Narrator
 import org.json.JSONArray
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -235,6 +239,160 @@ class NativePipelineTest {
       assertTrue("utterance $i starts before zero: $s", s >= 0)
       assertTrue("utterance $i ends past the end of the audio ($e > $totalMs)", e <= totalMs + 2000)
       assertTrue("utterance $i has end before start", e >= s)
+    }
+  }
+
+  // ---- Narration (Narrator + the LLM plumbing) ----
+
+  /** Five lines of a plausible meeting: one decision, one owner, one unanswered question. */
+  private fun seedTranscript(db: AudioDb, id: String) {
+    val lines = listOf(
+      "We need to decide the vendor code format before Friday.",
+      "The current codes are eight characters and SAP truncates them to six.",
+      "Ana will draft the mapping table and send it round.",
+      "Do we migrate the existing codes or only the new ones?",
+      "Let us agree the format first, then decide about migration.",
+    )
+    val arr = JSONArray()
+    lines.forEachIndexed { i, t ->
+      arr.put(
+        org.json.JSONObject()
+          .put("start_ms", i * 5000L)
+          .put("end_ms", i * 5000L + 4000L)
+          .put("text", t),
+      )
+    }
+    db.replaceUtterancesJson(id, arr.toString())
+  }
+
+  private fun newMeeting(db: AudioDb, tag: String): String {
+    val id = "$tag-" + java.util.UUID.randomUUID()
+    db.insertMeeting(id, "narration test", System.currentTimeMillis(), "free", "/dev/null")
+    return id
+  }
+
+  /**
+   * Narration end to end, and the measurement the design spec left open: prefill on a long prompt.
+   *
+   * The spec recorded model load at 2,427 ms and decode at ~10 tok/s but marked prefill "not
+   * measured", which is the term that decides whether a short meeting costs 15 s or 40 s.
+   */
+  @Test
+  fun narration_writes_a_summary_a_narrative_and_a_headline() {
+    val gguf = ModelCatalog.fileFor(ctx, "llm-qwen")?.takeIf { it.exists() }
+    assumeTrue("Qwen GGUF not installed", gguf != null)
+
+    val db = AudioDb.get(ctx)
+    val id = newMeeting(db, "narrate")
+    try {
+      seedTranscript(db, id)
+
+      val stages = ArrayList<String>()
+      val started = System.currentTimeMillis()
+      val narrated = Narrator.run(ctx, id, object : Narrator.Progress {
+        override fun onStage(stage: String, done: Int, total: Int) {
+          stages.add("$stage $done/$total")
+        }
+        override fun isCancelled() = false
+      })
+      val elapsed = System.currentTimeMillis() - started
+      println("NARRATE: ok=$narrated in ${elapsed}ms, progress=$stages")
+      assertTrue("narration produced nothing", narrated)
+
+      val llm = db.minutesBySource(id, "llm")
+      val summary = llm.firstOrNull { it.kind == "summary" }
+      val narrative = llm.firstOrNull { it.kind == "narrative" }
+      println("NARRATE summary: ${summary?.content}")
+      println("NARRATE headline: ${db.summaryLine(id)}")
+      assertTrue("no summary row", summary != null && summary.content.isNotBlank())
+      assertTrue("no narrative row", narrative != null && narrative.content.isNotBlank())
+      assertTrue("no headline on the meeting row", !db.summaryLine(id).isNullOrBlank())
+
+      // The app renders these as plain text, so a stray asterisk is shown to the reader literally.
+      for (m in llm) {
+        assertFalse("markdown survived into ${m.kind}: ${m.content}", m.content.contains("**"))
+        assertFalse("markdown survived into ${m.kind}: ${m.content}", m.content.contains("##"))
+      }
+
+      // Single chunk: no digests, so nothing should be checkpointed, and the chain is 3 steps.
+      assertTrue("notes should be empty after a successful run", db.notes(id).isEmpty())
+
+      // ---- prefill: same 32-token generation, ~1700-token prompt vs a 10-token one ----
+      val handle = NativeBridge.nativeLlmLoad(
+        gguf!!.absolutePath, 8192, 4, /*greedy=*/true, /*repeatPenalty=*/1.15f,
+      )
+      try {
+        val long = "Summarise this meeting.\n" +
+          List(60) { "The vendor code format was discussed at length by the group. " }.joinToString("")
+        val t1 = System.currentTimeMillis()
+        NativeBridge.nativeLlmGenerate(handle, "Say hello.", 32)
+        val shortMs = System.currentTimeMillis() - t1
+        val t2 = System.currentTimeMillis()
+        NativeBridge.nativeLlmGenerate(handle, long, 32)
+        val longMs = System.currentTimeMillis() - t2
+        println("PREFILL: short=${shortMs}ms long=${longMs}ms delta=${longMs - shortMs}ms " +
+          "promptChars=${long.length}")
+      } finally {
+        NativeBridge.nativeLlmFree(handle)
+      }
+    } finally {
+      db.deleteMeeting(id)
+    }
+  }
+
+  /**
+   * A digest already committed for a chunk is never regenerated.
+   *
+   * Seeded with a sentinel no model would produce from this transcript, so the assertion cannot
+   * pass by coincidence — without it, a checkpoint that is written and then ignored looks exactly
+   * like one that works.
+   */
+  @Test
+  fun narration_resumes_from_committed_digests() {
+    val gguf = ModelCatalog.fileFor(ctx, "llm-qwen")?.takeIf { it.exists() }
+    assumeTrue("Qwen GGUF not installed", gguf != null)
+
+    val db = AudioDb.get(ctx)
+    val id = newMeeting(db, "resume")
+    try {
+      // Two chunks: chunkTranscript splits at 6000 chars, so two 4000-char lines cannot share one.
+      val arr = JSONArray()
+      listOf("a", "b").forEachIndexed { i, ch ->
+        arr.put(
+          org.json.JSONObject()
+            .put("start_ms", i * 5000L)
+            .put("end_ms", i * 5000L + 4000L)
+            .put("text", "The team discussed the plan. " + ch.repeat(4000)),
+        )
+      }
+      db.replaceUtterancesJson(id, arr.toString())
+
+      val chunks = NativeBridge.nativeLlmChunks(
+        arrayOf("x"), arrayOf(""), arrayOf(), arrayOf(),
+      )
+      assertTrue("sanity: chunking works", chunks.isNotEmpty())
+
+      val sentinel = "The group settled the ZZSENTINELZZ protocol and moved on."
+      db.putNote(id, 0, sentinel)
+      assertEquals(sentinel, db.notes(id)[0])
+
+      val narrated = Narrator.run(ctx, id, object : Narrator.Progress {
+        override fun onStage(stage: String, done: Int, total: Int) {}
+        override fun isCancelled() = false
+      })
+      assertTrue("narration produced nothing", narrated)
+
+      // The sentinel must have reached the narrative. The transcript never mentions it, so its
+      // presence proves chunk 0 came from the checkpoint rather than being regenerated.
+      val narrative = db.minutesBySource(id, "llm").first { it.kind == "narrative" }.content
+      println("RESUME narrative: $narrative")
+      assertTrue(
+        "chunk 0 was regenerated instead of resumed — the committed digest never reached the model",
+        narrative.contains("ZZSENTINELZZ", ignoreCase = true),
+      )
+      assertTrue("the checkpoint should be cleared after success", db.notes(id).isEmpty())
+    } finally {
+      db.deleteMeeting(id)
     }
   }
 }
