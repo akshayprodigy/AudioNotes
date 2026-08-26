@@ -170,7 +170,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
   }
 
   /**
-   * The four facts the resume planner needs, in one read: current status and whether each stage's
+   * The facts the resume planner needs, in one read: current status and whether each stage's
    * output rows exist. Rows (not status) decide what to skip — see ResumePlan.
    *
    * Callers must resolve a meeting still in 'recording' to 'captured'/'error' (via
@@ -182,11 +182,19 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     val status = db.rawQuery("SELECT status FROM meetings WHERE id=? LIMIT 1", arrayOf(meetingId)).use {
       if (it.moveToFirst()) it.getString(0) else "captured"
     }
+    // Narration is done when its summary row exists. Keyed on the row for the same reason every
+    // other stage is: status advances when a stage STARTS, so a process killed mid-generation
+    // leaves status claiming work that was never committed.
+    val hasNarrative = db.rawQuery(
+      "SELECT 1 FROM minutes WHERE meeting_id=? AND source='llm' AND kind='summary' LIMIT 1",
+      arrayOf(meetingId),
+    ).use { it.moveToFirst() }
     return ResumePlan.State(
       status = status,
       hasSegments = exists("segments"),
       hasUtterances = exists("utterances"),
       hasSpeakers = exists("speakers"),
+      hasNarrative = hasNarrative,
     )
   }
 
