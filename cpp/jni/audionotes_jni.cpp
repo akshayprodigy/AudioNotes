@@ -122,11 +122,12 @@ Java_com_audionotes_pipeline_NativeBridge_nativeTranscribe(
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_audionotes_pipeline_NativeBridge_nativeLlmLoad(
-    JNIEnv* env, jobject /*thiz*/, jstring jModelPath, jint nCtx, jint nThreads, jboolean jGreedy) {
+    JNIEnv* env, jobject /*thiz*/, jstring jModelPath, jint nCtx, jint nThreads, jboolean jGreedy,
+    jfloat jRepeatPenalty) {
   const std::string path = jstr(env, jModelPath);
   auto* engine = new audionotes::LlamaEngine();
   if (!engine->load(path, static_cast<int>(nCtx), static_cast<int>(nThreads),
-                    jGreedy == JNI_TRUE)) {
+                    jGreedy == JNI_TRUE, static_cast<float>(jRepeatPenalty))) {
     delete engine;
     return 0;
   }
@@ -347,6 +348,26 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_com_audionotes_pipeline_NativeBridge_nativeLlmFoldPrompt(
     JNIEnv* env, jobject /*thiz*/, jstring jNotes) {
   return promptCall(env, jNotes, &audionotes::foldPrompt);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_audionotes_pipeline_NativeBridge_nativeLlmDigestPrompt(
+    JNIEnv* env, jobject /*thiz*/, jstring jChunk) {
+  return promptCall(env, jChunk, &audionotes::digestPrompt);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_audionotes_pipeline_NativeBridge_nativeLlmCondensePrompt(
+    JNIEnv* env, jobject /*thiz*/, jstring jProse) {
+  return promptCall(env, jProse, &audionotes::condensePrompt);
+}
+
+// Not a prompt: post-processing. Exposed rather than reimplemented in Kotlin so there is one
+// definition of what counts as markdown, tested once, in the language the CLI also runs.
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_audionotes_pipeline_NativeBridge_nativeStripMarkdown(
+    JNIEnv* env, jobject /*thiz*/, jstring jText) {
+  return promptCall(env, jText, &audionotes::stripMarkdown);
 }
 
 extern "C" JNIEXPORT jstring JNICALL

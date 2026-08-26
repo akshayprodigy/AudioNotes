@@ -5,8 +5,8 @@ import com.audionotes.data.ModelCatalog
 import java.io.File
 
 /**
- * JNI bridge into the shared C++ core (libaudionotes). Milestone 1 exposes VAD only;
- * ASR / diarization / LLM entry points land in later milestones.
+ * JNI bridge into the shared C++ core (libaudionotes): VAD, ASR, diarization, rule-based minutes,
+ * and the LLM plumbing that Narrator drives.
  */
 object NativeBridge {
   @Volatile private var loaded = false
@@ -73,8 +73,20 @@ object NativeBridge {
    *   recording are not minutes, and the eval harness has always judged greedy output — so while
    *   this defaulted to sampling at temperature 0.3, every score it reported described something
    *   the user never saw.
+   * @param repeatPenalty 1.0f disables it. Argmax alone degenerates into loops on repetitive input
+   *   — measured emitting one transcript line forty times — and a penalty breaks the loop while
+   *   staying reproducible, since it reshapes the distribution deterministically. Separate from
+   *   [greedy] on purpose: the eval judge answers many claims per batch mostly with the same word,
+   *   and penalising repeats there would push it off a correct verdict for no reason but having
+   *   just given it. Narration passes 1.15f.
    */
-  external fun nativeLlmLoad(modelPath: String, nCtx: Int, nThreads: Int, greedy: Boolean): Long
+  external fun nativeLlmLoad(
+    modelPath: String,
+    nCtx: Int,
+    nThreads: Int,
+    greedy: Boolean,
+    repeatPenalty: Float,
+  ): Long
   external fun nativeLlmGenerate(handle: Long, prompt: String, maxTokens: Int): String
   external fun nativeLlmFree(handle: Long)
 
@@ -90,14 +102,34 @@ object NativeBridge {
   ): Array<String>
 
   // Prompt builders. Kotlin never composes prompt text itself — every word of every prompt lives
-  // in cpp/minutes/llm_minutes.cpp, which is what the desktop CLI and the eval harness exercise.
-  // A Kotlin copy would be the third after summarize.ts and llm_minutes.cpp, and the one nothing
+  // in cpp/minutes/llm_prompts.cpp, which is what the desktop CLI and the eval harness exercise.
+  // A Kotlin copy would be the third after summarize.ts and llm_prompts.cpp, and the one nothing
   // holds in sync.
   external fun nativeLlmMapPrompt(chunk: String): String
+
+  /**
+   * Prose digest of one transcript chunk, and the merge of several digests into a shorter account.
+   *
+   * The narrative is NOT written from the DECISIONS/ACTIONS/QUESTIONS notes, though it was at
+   * first: a 1.5B model mirrors the shape of its input, so fed those notes it answers with
+   * "#### Actions:" and a bullet list however firmly the prompt forbids headings. Fed dialogue or
+   * prose it writes prose. The rule extractor owns the list items, so nothing in the prose chain
+   * needs the notes at all.
+   */
+  external fun nativeLlmDigestPrompt(chunk: String): String
+  external fun nativeLlmCondensePrompt(prose: String): String
+
   external fun nativeLlmFoldPrompt(notes: String): String
   external fun nativeLlmNarrativePrompt(notes: String): String
   external fun nativeLlmSummaryPrompt(narrative: String): String
   external fun nativeLlmHeadlinePrompt(summary: String): String
+
+  /**
+   * Strip markdown markers from generated prose. The app renders these strings as plain text, and
+   * the model writes "**Meeting Topic:**" under every prompt wording tried, so the reader would
+   * otherwise see the asterisks. One definition, shared with the CLI, rather than a Kotlin copy.
+   */
+  external fun nativeStripMarkdown(text: String): String
 
   /**
    * Which notes to merge so they fit one prompt. Flat [groupIndex, noteIndex, ...] pairs; empty
