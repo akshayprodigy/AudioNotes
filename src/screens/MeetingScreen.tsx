@@ -1,30 +1,32 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Easing, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Animated, Easing, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { db } from '../db/queries';
 import { PipelineController } from '../pipeline/PipelineController';
 import FileExport from '../native/NativeFileExport';
-import Icon, { type IconName } from '../components/Icon';
+import Icon from '../components/Icon';
 import Mascot from '../components/Mascot';
 import { confirmDestructive, quoted } from '../components/confirm';
 import {
   Badge,
   IconButton,
-  Pop,
   ProgressRing,
   GradientFill,
   Raised,
-  SectionRule,
+  Segmented,
   Sheet,
-  Slide,
   SoftButton,
   Txt,
   type SheetAction,
 } from '../components/ui';
+import SummaryTab from './meeting/SummaryTab';
+import MinutesTab from './meeting/MinutesTab';
+import ActionsTab from './meeting/ActionsTab';
+import TranscriptTab from './meeting/TranscriptTab';
 import type { Meeting, Minute, Speaker, Utterance } from '../pipeline/types';
-import { radius, s, sv, text, tilt, useTheme, type Colors } from '../theme';
+import { radius, s, sv, text, useTheme, type Colors } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Meeting'>;
 
@@ -43,38 +45,6 @@ const STAGES: { key: string; label: string; weight: number }[] = [
   { key: 'narrate', label: 'Written up in plain English', weight: 0.13 },
 ];
 
-function kindMeta(kind: string, c: Colors): { label: string; color: string; soft: string; icon: IconName } {
-  switch (kind) {
-    case 'action':
-      return { label: 'ACTION', color: c.warning, soft: c.warningSoft, icon: 'check' };
-    case 'decision':
-      return { label: 'DECISION', color: c.primary, soft: c.primarySoft, icon: 'check' };
-    case 'question':
-      return { label: 'OPEN QUESTION', color: c.success, soft: c.successSoft, icon: 'help' };
-    default:
-      return { label: 'NOTE', color: c.inkSoft, soft: c.cardAlt, icon: 'list' };
-  }
-}
-
-/**
- * Avatar initials. "First two letters" gives every auto-named speaker "SP" — a column of
- * identical circles carrying no information — because they are all "Speaker N". For generated
- * names the digit is the distinguishing part; a renamed speaker gets proper initials.
- */
-function initials(name: string): string {
-  const gen = name.match(/^Speaker\s*(\d+)$/i);
-  if (gen) return `S${gen[1]}`;
-  const w = name.trim().split(/\s+/).filter(Boolean);
-  if (!w.length) return '?';
-  if (w.length === 1) return w[0].slice(0, 2).toUpperCase();
-  return (w[0][0] + w[w.length - 1][0]).toUpperCase();
-}
-
-const stamp = (ms: number) => {
-  const sec = Math.max(0, Math.floor(ms / 1000));
-  return `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`;
-};
-
 export default function MeetingScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
   const st = useMemo(() => makeStyles(colors), [colors]);
@@ -92,6 +62,9 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const [failure, setFailure] = useState<string | null>(null);
   const [settled, setSettled] = useState(false);
   const [sheet, setSheet] = useState(false);
+  // Always lands on Summary. A remembered tab means tapping two meetings in a row opens them on
+  // different screens, which reads as a bug rather than a convenience.
+  const [tab, setTab] = useState('summary');
   const startedAt = useRef(Date.now());
 
   const refresh = useCallback(async () => {
@@ -325,230 +298,76 @@ export default function MeetingScreen({ route, navigation }: Props) {
     );
   }
 
-  const nameById = new Map(speakers.map(x => [x.id, x.displayName]));
-  const speakerIndex = new Map(speakers.map((x, i) => [x.id, i]));
-  const summary = minutes.find(m => m.kind === 'summary');
-  const items = minutes.filter(m => m.kind !== 'summary');
-  const actions = minutes.filter(m => m.kind === 'action').length;
-  const questions = minutes.filter(m => m.kind === 'question').length;
+  const TABS = [
+    { key: 'summary', label: 'Summary' },
+    { key: 'mom', label: 'MOM' },
+    { key: 'actions', label: 'Actions' },
+    { key: 'transcript', label: 'Script' },
+  ];
 
   return (
-    <View style={st.root}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: insets.top + s(6), paddingBottom: insets.bottom + s(30) }}>
-        <View style={st.navRowDetail}>
-          <IconButton icon="chevronLeft" label="Back" onPress={() => navigation.goBack()} />
-          <View style={st.flex}>
-            <Txt variant="sectionTitle" numberOfLines={1}>
-              {meeting?.title || 'Meeting'}
-            </Txt>
-            <Txt variant="chipSoft" color={colors.inkFaint}>
-              {meeting?.createdAt
-                ? new Date(meeting.createdAt).toLocaleString(undefined, {
-                    day: 'numeric',
-                    month: 'short',
-                    hour: 'numeric',
-                    minute: '2-digit',
-                  })
-                : ''}
-            </Txt>
-          </View>
-          {meeting?.status === 'done' ? (
-            <Badge label="READY" color={colors.success} soft={colors.successSoft} small />
-          ) : null}
-          <IconButton icon="more" label="More actions" onPress={() => setSheet(true)} />
+    <View style={[st.root, { paddingTop: insets.top + s(6) }]}>
+      <View style={st.navRowDetail}>
+        <IconButton icon="chevronLeft" label="Back" onPress={() => navigation.goBack()} />
+        <View style={st.flex}>
+          <Txt variant="sectionTitle" numberOfLines={1}>
+            {meeting?.title || 'Meeting'}
+          </Txt>
+          <Txt variant="chipSoft" color={colors.inkFaint}>
+            {meeting?.createdAt
+              ? new Date(meeting.createdAt).toLocaleString(undefined, {
+                  day: 'numeric',
+                  month: 'short',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })
+              : ''}
+          </Txt>
         </View>
-
-        {/* Stats: uneven flex (1.2 / 1.5 / 1) and alternating tilt, as the design has them. */}
-        <View style={st.statRow}>
-          <Pop index={0} style={{ flex: 1.2 }}>
-            <Raised
-              edge={colors.successEdge}
-              gradient={{ from: colors.successSoft, to: colors.successSoft2, angle: 160 }}
-              rad={radius.xl}
-              depth={5}
-              rotate="-1.2deg">
-              <View style={st.stat}>
-                <Txt variant="statNum" color={colors.successDeep}>
-                  {segCount}
-                </Txt>
-                <Txt variant="chipSoft" color={colors.success}>
-                  {segCount === 1 ? 'segment' : 'segments'}
-                </Txt>
-              </View>
-            </Raised>
-          </Pop>
-          <Pop index={1} style={{ flex: 1.5 }}>
-            <Raised
-              edge={colors.primarySoftEdge}
-              gradient={{ from: colors.primarySoft, to: colors.primarySoft2, angle: 160 }}
-              rad={radius.xl}
-              depth={5}
-              rotate="0.9deg">
-              <View style={st.stat}>
-                <Txt variant="statNum" color={colors.primaryEdge}>
-                  {Math.round(speechMs / 1000)}s
-                </Txt>
-                <Txt variant="chipSoft" color={colors.primary}>
-                  of speech
-                </Txt>
-              </View>
-            </Raised>
-          </Pop>
-          <Pop index={2} style={{ flex: 1 }}>
-            <Raised
-              edge={colors.warningEdge}
-              gradient={{ from: colors.warningSoft, to: colors.warningSoft2, angle: 160 }}
-              rad={radius.xl}
-              depth={5}
-              rotate="-0.7deg">
-              <View style={st.stat}>
-                <Txt variant="statNum" color={colors.warningDeep}>
-                  {speakers.length || '—'}
-                </Txt>
-                <Txt variant="chipSoft" color={colors.warning}>
-                  {speakers.length === 1 ? 'speaker' : 'speakers'}
-                </Txt>
-              </View>
-            </Raised>
-          </Pop>
-        </View>
-
-        <View style={st.actionRow}>
-          <SoftButton icon="users" label="Speakers" stacked onPress={() => navigation.navigate('Speakers', { meetingId })} />
-          <SoftButton icon="share" label="Export" stacked onPress={onExport} />
-          <SoftButton icon="refresh" label={reprocessing ? 'Working…' : 'Redo'} stacked onPress={onReprocess} disabled={reprocessing} />
-        </View>
-
-        {failure ? (
-          <View style={st.failCard}>
-            <Icon name="alert" size={s(18)} color={colors.danger} strokeWidth={2.4} />
-            <Txt variant="bodyStrong" color={colors.danger} style={st.flex}>
-              {failure}
-            </Txt>
-          </View>
+        {meeting?.status === 'done' ? (
+          <Badge label="READY" color={colors.success} soft={colors.successSoft} small />
         ) : null}
+        <IconButton icon="more" label="More actions" onPress={() => setSheet(true)} />
+      </View>
 
-        {empty ? (
-          <View style={st.emptyWrap}>
-            <Mascot mood="asleep" size={sv(130)} />
-            <Txt variant="display" style={st.emptyTitle}>
-              Nothing to show
-            </Txt>
-            <Txt variant="body" color={colors.inkSoft} style={st.emptyBody}>
-              Pip could not hear any speech in this recording. If the mic was covered or the room
-              was very quiet, try again a little closer.
-            </Txt>
+      {failure ? (
+        <View style={st.failCard}>
+          <Icon name="alert" size={s(18)} color={colors.danger} strokeWidth={2.4} />
+          <Txt variant="bodyStrong" color={colors.danger} style={st.flex}>
+            {failure}
+          </Txt>
+        </View>
+      ) : null}
+
+      {empty ? (
+        <View style={st.emptyWrap}>
+          <Mascot mood="asleep" size={sv(130)} />
+          <Txt variant="display" style={st.emptyTitle}>
+            Nothing to show
+          </Txt>
+          <Txt variant="body" color={colors.inkSoft} style={st.emptyBody}>
+            Pip could not hear any speech in this recording. If the mic was covered or the room was
+            very quiet, try again a little closer.
+          </Txt>
+        </View>
+      ) : (
+        <>
+          <Segmented items={TABS} value={tab} onChange={setTab} style={st.tabs} />
+          {/* Each tab owns its own scroll. Hosting them in one page scroll is what the split was
+              for: the transcript can be a virtualised list only if it is the thing scrolling. */}
+          <View style={st.flex}>
+            {tab === 'summary' ? (
+              <SummaryTab minutes={minutes} speakers={speakers} speechMs={speechMs} />
+            ) : tab === 'mom' ? (
+              <MinutesTab minutes={minutes} onExport={onExport} />
+            ) : tab === 'actions' ? (
+              <ActionsTab meetingId={meetingId} minutes={minutes} />
+            ) : (
+              <TranscriptTab utterances={utterances} speakers={speakers} />
+            )}
           </View>
-        ) : (
-          <>
-            <View style={st.ruleWrap}>
-              <SectionRule label="MINUTES" />
-            </View>
-
-            <View style={st.list}>
-              <Slide>
-                <Raised
-                  edge={colors.primaryEdge}
-                  gradient={{ from: colors.primary, to: colors.primaryLight, angle: 135 }}
-                  rad={radius.card24}
-                  depth={6}>
-                  <View style={st.gist}>
-                    <Txt variant="overlineSm" color={colors.onPrimary} style={st.gistLabel}>
-                      THE GIST
-                    </Txt>
-                    <Txt variant="gist" color={colors.onPrimary} style={st.gistText}>
-                      {summary?.content ?? 'No summary yet.'}
-                    </Txt>
-                    <View style={st.gistChips}>
-                      <View style={st.gistChip}>
-                        <Txt variant="chip" color={colors.onPrimary}>
-                          {actions} {actions === 1 ? 'action' : 'actions'}
-                        </Txt>
-                      </View>
-                      <View style={st.gistChip}>
-                        <Txt variant="chip" color={colors.onPrimary}>
-                          {questions} {questions === 1 ? 'question' : 'questions'}
-                        </Txt>
-                      </View>
-                    </View>
-                  </View>
-                </Raised>
-              </Slide>
-
-              {items.map((m, i) => {
-                const meta = kindMeta(m.kind, colors);
-                return (
-                  <Slide key={m.id ?? i} index={i + 1}>
-                    <View style={st.minuteRow}>
-                      <View style={[st.minuteIcon, { backgroundColor: meta.soft }]}>
-                        <Icon name={meta.icon} size={s(19)} color={meta.color} strokeWidth={2.8} />
-                      </View>
-                      <View style={st.flex}>
-                        <Raised
-                          edge={colors.line}
-                          fill={colors.card}
-                          rad={radius.xl}
-                          depth={5}
-                          rotate={tilt(i)}>
-                          <View style={st.minuteCard}>
-                            <Badge label={meta.label} color={meta.color} soft={meta.soft} small />
-                            <Txt variant="minuteBody" style={st.minuteText}>
-                              {m.content}
-                            </Txt>
-                          </View>
-                        </Raised>
-                      </View>
-                    </View>
-                  </Slide>
-                );
-              })}
-            </View>
-
-            {utterances.length > 0 ? (
-              <>
-                <View style={st.ruleWrap}>
-                  <SectionRule label="TRANSCRIPT" />
-                </View>
-                <View style={st.list}>
-                  {utterances.map((u, i) => {
-                    const who = u.speakerId ? nameById.get(u.speakerId) ?? 'Speaker' : 'Unlabelled';
-                    const idx = u.speakerId ? speakerIndex.get(u.speakerId) ?? 0 : 0;
-                    const tint = colors.speakers[idx % colors.speakers.length];
-                    const tintSoft = colors.speakersSoft[idx % colors.speakersSoft.length];
-                    return (
-                      <View key={u.id ?? i} style={st.uttRow}>
-                        <View style={[st.uttAvatar, { backgroundColor: tintSoft }]}>
-                          <Txt variant="chip" color={tint}>
-                            {initials(who)}
-                          </Txt>
-                        </View>
-                        <Raised
-                          edge="#E9ECF5"
-                          fill={colors.card}
-                          rad={radius.ctl}
-                          depth={4}
-                          grow
-                          style={st.bubbleShape}>
-                          <View style={st.uttCard}>
-                            <Txt variant="chip" color={tint}>
-                              {who} · {stamp(u.startMs)}
-                            </Txt>
-                            <Txt variant="transcript" style={st.uttText}>
-                              {u.text}
-                            </Txt>
-                          </View>
-                        </Raised>
-                      </View>
-                    );
-                  })}
-                </View>
-              </>
-            ) : null}
-          </>
-        )}
-      </ScrollView>
+        </>
+      )}
 
       <Sheet
         visible={sheet}
@@ -593,6 +412,21 @@ function makeStyles(c: Colors) {
     spacer: { flex: 1 },
 
     navRow: { flexDirection: 'row', alignItems: 'center', gap: s(12) },
+    footer: { flexDirection: 'row', gap: s(10) },
+
+    failCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: s(10),
+      backgroundColor: c.dangerSoft,
+      borderRadius: radius.xl,
+      padding: s(14),
+      marginHorizontal: s(16),
+      marginTop: s(4),
+      marginBottom: s(10),
+    },
+
+    tabs: { marginHorizontal: s(16), marginBottom: s(10) },
     navRowDetail: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -616,60 +450,9 @@ function makeStyles(c: Colors) {
     checkDot: { width: s(30), height: s(30), borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
     divider: { height: 1, backgroundColor: c.cardAlt, marginHorizontal: s(14) },
 
-    statRow: { flexDirection: 'row', gap: s(10), paddingHorizontal: s(20), paddingTop: s(18) },
-    stat: { padding: s(14) },
-    actionRow: { flexDirection: 'row', gap: s(10), paddingHorizontal: s(20), paddingTop: s(14) },
-    footer: { flexDirection: 'row', gap: s(10) },
 
-    failCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: s(10),
-      backgroundColor: c.dangerSoft,
-      borderRadius: radius.xl,
-      padding: s(14),
-      marginHorizontal: s(20),
-      marginTop: s(14),
-    },
 
-    ruleWrap: { marginHorizontal: s(20), marginTop: s(22), marginBottom: s(10) },
-    list: { paddingHorizontal: s(20), gap: s(12) },
-
-    gist: { padding: s(18) },
-    gistLabel: { opacity: 0.8 },
-    gistText: { marginTop: s(8) },
-    gistChips: { flexDirection: 'row', gap: s(8), marginTop: s(14) },
-    gistChip: {
-      backgroundColor: 'rgba(255,255,255,0.2)',
-      paddingHorizontal: s(11),
-      paddingVertical: s(6),
-      borderRadius: radius.pill,
-    },
-
-    minuteRow: { flexDirection: 'row', gap: s(12), alignItems: 'flex-start' },
-    minuteIcon: {
-      width: s(38),
-      height: s(38),
-      borderRadius: s(14),
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginTop: s(6),
-    },
-    minuteCard: { paddingVertical: s(15), paddingHorizontal: s(16) },
-    minuteText: { marginTop: s(9) },
-
-    uttRow: { flexDirection: 'row', gap: s(11), alignItems: 'flex-start' },
-    uttAvatar: {
-      width: s(36),
-      height: s(36),
-      borderRadius: radius.pill,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
     // The bubble points at its speaker: the corner nearest the avatar is squared off.
-    bubbleShape: { borderTopLeftRadius: s(6) },
-    uttCard: { padding: s(13), paddingHorizontal: s(15) },
-    uttText: { marginTop: s(4) },
 
     emptyWrap: { alignItems: 'center', paddingTop: sv(60), paddingHorizontal: s(30) },
     emptyTitle: { marginTop: s(18) },

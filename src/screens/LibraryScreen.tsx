@@ -42,6 +42,36 @@ function statusOf(status: string, c: Colors) {
   }
 }
 
+/**
+ * The line under a card's title.
+ *
+ * A row must never be blank while work is in flight — that reads as broken. Processing a meeting
+ * takes tens of minutes (ASR alone runs at 0.68x realtime) and narration adds another minute and a
+ * half at the end, so for most of a recording's life this is the only thing the row can say.
+ *
+ * Once narration has run it is replaced by the one-liner the model wrote, which is the whole point:
+ * a library of rows reading "Okay so um yeah let's start" is a folder of recordings, and a library
+ * of rows saying what each meeting was about is a record of what happened.
+ */
+function subtitleOf(m: Meeting): string | null {
+  if (m.summaryLine) return m.summaryLine;
+  switch (m.status) {
+    case 'recording':
+      return null; // the live chip is already saying it, louder
+    case 'captured':
+      return 'Waiting to start…';
+    case 'vad':
+    case 'asr':
+      return 'Writing down the words…';
+    case 'diarized':
+      return 'Telling the voices apart…';
+    case 'done':
+      return null; // narrated meetings have a line; un-narrated ones say nothing rather than guess
+    default:
+      return null;
+  }
+}
+
 const when = (ts: number) =>
   ts ? new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
 
@@ -227,6 +257,15 @@ export default function LibraryScreen({ navigation }: Props) {
             <Txt variant="cardTitle" style={st.cardTitle} numberOfLines={2}>
               {m.title || 'Untitled meeting'}
             </Txt>
+            {subtitleOf(m) ? (
+              <Txt
+                variant="chipSoft"
+                color={m.summaryLine ? colors.inkSoft : colors.inkFaint}
+                numberOfLines={2}
+                style={st.cardLine}>
+                {subtitleOf(m)}
+              </Txt>
+            ) : null}
             {m.status === 'done' ? <MiniWave seed={m.id} /> : null}
           </View>
         </Raised>
@@ -585,6 +624,7 @@ function makeStyles(c: Colors) {
 
     cardPad: { padding: s(18) },
     cardTop: { flexDirection: 'row', alignItems: 'center', gap: s(10) },
+    cardLine: { marginTop: s(4) },
     cardTitle: { marginTop: s(12) },
     liveChip: {
       flexDirection: 'row',
