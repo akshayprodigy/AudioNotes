@@ -96,6 +96,7 @@ add_executable(audionotes_cli
   ${CORE}/pipeline/result_json.cpp
   ${CORE}/minutes/minutes_extractor.cpp
   ${CORE}/minutes/llm_minutes.cpp
+  ${CORE}/minutes/llm_prompts.cpp
   ${CORE}/capi/audionotes_capi.cpp)
 
 target_include_directories(audionotes_cli PRIVATE
@@ -146,6 +147,7 @@ audionotes_add_test(test_minutes
 audionotes_add_test(test_llm_minutes
   ${CORE}/tests/test_llm_minutes.cpp
   ${CORE}/minutes/llm_minutes.cpp
+  ${CORE}/minutes/llm_prompts.cpp
   ${CORE}/minutes/minutes_extractor.cpp)
 
 audionotes_add_test(test_pipeline_align
@@ -153,6 +155,7 @@ audionotes_add_test(test_pipeline_align
   ${CORE}/pipeline/pipeline.cpp
   ${CORE}/minutes/minutes_extractor.cpp
   ${CORE}/minutes/llm_minutes.cpp
+  ${CORE}/minutes/llm_prompts.cpp
   ${CORE}/asr/whisper_asr.cpp
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
@@ -178,6 +181,7 @@ audionotes_add_test(test_cancel
   ${CORE}/pipeline/result_json.cpp
   ${CORE}/minutes/minutes_extractor.cpp
   ${CORE}/minutes/llm_minutes.cpp
+  ${CORE}/minutes/llm_prompts.cpp
   ${CORE}/asr/whisper_asr.cpp
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
@@ -203,6 +207,7 @@ audionotes_add_test(test_capi
   ${CORE}/pipeline/result_json.cpp
   ${CORE}/minutes/minutes_extractor.cpp
   ${CORE}/minutes/llm_minutes.cpp
+  ${CORE}/minutes/llm_prompts.cpp
   ${CORE}/asr/whisper_asr.cpp
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp

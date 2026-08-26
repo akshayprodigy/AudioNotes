@@ -10,6 +10,7 @@
 #include "asr/whisper_asr.h"
 #include "diar/diarizer.h"
 #include "llm/llama_engine.h"
+#include "minutes/llm_minutes.h"
 #include "minutes/minutes_extractor.h"
 #include "vad/silero_vad.h"
 
@@ -121,10 +122,11 @@ Java_com_audionotes_pipeline_NativeBridge_nativeTranscribe(
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_audionotes_pipeline_NativeBridge_nativeLlmLoad(
-    JNIEnv* env, jobject /*thiz*/, jstring jModelPath, jint nCtx, jint nThreads) {
+    JNIEnv* env, jobject /*thiz*/, jstring jModelPath, jint nCtx, jint nThreads, jboolean jGreedy) {
   const std::string path = jstr(env, jModelPath);
   auto* engine = new audionotes::LlamaEngine();
-  if (!engine->load(path, static_cast<int>(nCtx), static_cast<int>(nThreads))) {
+  if (!engine->load(path, static_cast<int>(nCtx), static_cast<int>(nThreads),
+                    jGreedy == JNI_TRUE)) {
     delete engine;
     return 0;
   }
@@ -267,6 +269,127 @@ Java_com_audionotes_pipeline_NativeBridge_nativeMinutes(
       env->SetObjectArrayElement(out, static_cast<jsize>(i * 3 + f), s);
       if (s) env->DeleteLocalRef(s);
     }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// LLM minutes plumbing.
+//
+// C++ owns every prompt, the chunking rule and the fold plan; Kotlin owns only the loop that runs
+// them, so it can report progress, honour cancellation and checkpoint each chunk to the DB without
+// becoming a fourth copy of this logic. summarize.ts and llm_minutes.cpp are already two; a Kotlin
+// port would be the third to keep in sync, which is exactly the drift nativeMinutes was written to
+// end when it replaced MinutesExtractor.kt.
+// ---------------------------------------------------------------------------
+
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_com_audionotes_pipeline_NativeBridge_nativeLlmChunks(
+    JNIEnv* env, jobject /*thiz*/, jobjectArray jTexts, jobjectArray jSpeakerIds,
+    jobjectArray jSpkIds, jobjectArray jSpkNames) {
+  jclass string_cls = env->FindClass("java/lang/String");
+  if (!string_cls) return nullptr;
+
+  std::vector<std::string> chunks;
+  try {
+    const auto texts = jstrArray(env, jTexts);
+    const auto speaker_ids = jstrArray(env, jSpeakerIds);
+    const auto spk_ids = jstrArray(env, jSpkIds);
+    const auto spk_names = jstrArray(env, jSpkNames);
+
+    std::vector<audionotes::MinuteUtt> utts;
+    utts.reserve(texts.size());
+    for (size_t i = 0; i < texts.size(); ++i) {
+      utts.push_back({texts[i], i < speaker_ids.size() ? speaker_ids[i] : std::string()});
+    }
+    std::vector<audionotes::MinuteSpk> spks;
+    spks.reserve(spk_ids.size());
+    for (size_t i = 0; i < spk_ids.size(); ++i) {
+      spks.push_back({spk_ids[i], i < spk_names.size() ? spk_names[i] : std::string()});
+    }
+    chunks = audionotes::chunkTranscript(audionotes::transcriptLines(utts, spks));
+  } catch (const std::exception& e) {
+    throwRuntime(env, e.what());
+    return env->NewObjectArray(0, string_cls, nullptr);
+  }
+
+  jobjectArray out = env->NewObjectArray(static_cast<jsize>(chunks.size()), string_cls, nullptr);
+  if (!out) return nullptr;
+  for (size_t i = 0; i < chunks.size(); ++i) {
+    jstring s = env->NewStringUTF(chunks[i].c_str());
+    env->SetObjectArrayElement(out, static_cast<jsize>(i), s);
+    if (s) env->DeleteLocalRef(s);
+  }
+  return out;
+}
+
+namespace {
+
+// Every prompt builder has the same shape: one jstring in, one jstring out.
+jstring promptCall(JNIEnv* env, jstring jIn, std::string (*fn)(const std::string&)) {
+  try {
+    return env->NewStringUTF(fn(jstr(env, jIn)).c_str());
+  } catch (const std::exception& e) {
+    throwRuntime(env, e.what());
+    return env->NewStringUTF("");
+  }
+}
+
+}  // namespace
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_audionotes_pipeline_NativeBridge_nativeLlmMapPrompt(
+    JNIEnv* env, jobject /*thiz*/, jstring jChunk) {
+  return promptCall(env, jChunk, &audionotes::mapPrompt);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_audionotes_pipeline_NativeBridge_nativeLlmFoldPrompt(
+    JNIEnv* env, jobject /*thiz*/, jstring jNotes) {
+  return promptCall(env, jNotes, &audionotes::foldPrompt);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_audionotes_pipeline_NativeBridge_nativeLlmNarrativePrompt(
+    JNIEnv* env, jobject /*thiz*/, jstring jNotes) {
+  return promptCall(env, jNotes, &audionotes::narrativePrompt);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_audionotes_pipeline_NativeBridge_nativeLlmSummaryPrompt(
+    JNIEnv* env, jobject /*thiz*/, jstring jNarrative) {
+  return promptCall(env, jNarrative, &audionotes::summaryPrompt);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_audionotes_pipeline_NativeBridge_nativeLlmHeadlinePrompt(
+    JNIEnv* env, jobject /*thiz*/, jstring jSummary) {
+  return promptCall(env, jSummary, &audionotes::headlinePrompt);
+}
+
+// Flat [groupIndex, noteIndex, ...] pairs — the same flat-array convention as nativeDiarize, so no
+// nested array marshalling is needed.
+extern "C" JNIEXPORT jintArray JNICALL
+Java_com_audionotes_pipeline_NativeBridge_nativeLlmFoldPlan(
+    JNIEnv* env, jobject /*thiz*/, jobjectArray jNotes, jint jMaxChars) {
+  std::vector<jint> flat;
+  try {
+    const auto notes = jstrArray(env, jNotes);
+    const auto plan = audionotes::foldPlan(notes, static_cast<std::size_t>(jMaxChars));
+    for (size_t g = 0; g < plan.size(); ++g) {
+      for (int idx : plan[g]) {
+        flat.push_back(static_cast<jint>(g));
+        flat.push_back(static_cast<jint>(idx));
+      }
+    }
+  } catch (const std::exception& e) {
+    throwRuntime(env, e.what());
+    return env->NewIntArray(0);
+  }
+  jintArray out = env->NewIntArray(static_cast<jsize>(flat.size()));
+  if (!out) return nullptr;
+  if (!flat.empty()) {
+    env->SetIntArrayRegion(out, 0, static_cast<jsize>(flat.size()), flat.data());
   }
   return out;
 }

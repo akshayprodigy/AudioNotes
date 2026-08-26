@@ -73,21 +73,45 @@ int main(int argc, char** argv) {
           "transcriptLines: %s | %s", lines[0].c_str(), lines[1].c_str());
   }
 
-  // enhanceMinutes single-chunk path: notes = raw chunk (no map), one reduce call at 768 tokens.
+  // enhanceMinutes single-chunk path: map (512) THEN reduce (768).
+  //
+  // This used to assert one call, skipping the map phase and handing the raw transcript straight
+  // to reducePrompt — which opens "These are notes from consecutive parts of ONE meeting". Every
+  // meeting under ~9 minutes took that path, which is most of them.
   {
     int calls = 0;
-    std::string seen_prompt;
+    std::vector<std::string> seen;
+    std::vector<int> budgets;
     auto fake = [&](const std::string& prompt, int max_tokens) {
       ++calls;
-      seen_prompt = prompt;
-      CHECK(max_tokens == 768, "single-chunk reduce max_tokens %d != 768", max_tokens);
+      seen.push_back(prompt);
+      budgets.push_back(max_tokens);
       return std::string(
           "{\"summary\":\"Short meeting.\",\"decisions\":[],\"actions\":[],\"questions\":[]}");
     };
     auto out = audionotes::enhanceMinutes({{"Hi there.", "S0"}}, {{"S0", "Speaker 1"}}, fake);
-    CHECK(calls == 1, "single-chunk path made %d generate calls, want 1", calls);
-    CHECK(seen_prompt.find("Speaker 1: Hi there.") != std::string::npos, "notes not in prompt");
+    CHECK(calls == 2, "single-chunk path made %d generate calls, want 2 (map then reduce)", calls);
+    CHECK(budgets.size() == 2 && budgets[0] == 512 && budgets[1] == 768,
+          "single-chunk budgets should be map=512 then reduce=768");
+    CHECK(seen.size() == 2 && seen[0].find("Speaker 1: Hi there.") != std::string::npos,
+          "the transcript should reach the MAP prompt");
     CHECK(out && out->size() == 1 && (*out)[0].kind == "summary", "single-chunk parse");
+  }
+
+  // Whatever the chunk count, dialogue must never reach a prompt that calls its input "notes".
+  {
+    std::vector<std::string> seen;
+    auto gen = [&seen](const std::string& p, int) {
+      seen.push_back(p);
+      return std::string(R"({"summary":"x","decisions":[],"actions":[],"questions":[]})");
+    };
+    audionotes::enhanceMinutes({{"we should ship on Friday", "s1"}}, {{"s1", "Ana"}}, gen);
+    CHECK(!seen.empty(), "enhanceMinutes never called generate");
+    for (const auto& p : seen) {
+      const bool claims_notes = p.find("These are notes from consecutive parts") != std::string::npos;
+      const bool holds_dialogue = p.find("we should ship on Friday") != std::string::npos;
+      CHECK(!(claims_notes && holds_dialogue), "a raw transcript was handed to the notes prompt");
+    }
   }
 
   // enhanceMinutes empty input -> nullopt.

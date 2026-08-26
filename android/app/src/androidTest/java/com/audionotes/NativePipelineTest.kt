@@ -188,7 +188,8 @@ class NativePipelineTest {
     assumeTrue("Qwen GGUF not installed", gguf != null)
 
     val loaded = System.currentTimeMillis()
-    val handle = NativeBridge.nativeLlmLoad(gguf!!.absolutePath, /*nCtx=*/2048, /*nThreads=*/4)
+    val handle =
+      NativeBridge.nativeLlmLoad(gguf!!.absolutePath, /*nCtx=*/2048, /*nThreads=*/4, /*greedy=*/true)
     val loadMs = System.currentTimeMillis() - loaded
     assertTrue("llama failed to load the model (handle=0)", handle != 0L)
 

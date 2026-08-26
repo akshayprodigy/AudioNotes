@@ -164,7 +164,11 @@ bool Pipeline::run(const std::string& pcm_path, PipelineResult* out,
 
     if (!cfg_.llm_model.empty()) {
       LlamaEngine llm;
-      if (llm.load(cfg_.llm_model, cfg_.llm_n_ctx, cfg_.llm_threads)) {
+      // greedy=true: minutes that change between two runs of the same recording are not minutes.
+      // The eval harness has always judged greedy output, while this path sampled at temperature
+      // 0.3 — so every score the harness reported described something the user never saw. Two runs
+      // over the NeoSym fixture on 2026-08-26 produced completely different summaries.
+      if (llm.load(cfg_.llm_model, cfg_.llm_n_ctx, cfg_.llm_threads, /*greedy=*/true)) {
         auto enhanced = enhanceMinutes(mutts, speakers, [&llm](const std::string& p, int t) {
           return llm.generate(p, t);
         });

@@ -22,6 +22,10 @@ add_library(audionotes SHARED
   # Kotlin because ProcessingEngine owns DB-backed resume-by-stage, which the capture-agnostic
   # an_process facade has no notion of. Add them when that changes.
   minutes/minutes_extractor.cpp
+  # The LLM minutes plumbing: chunking, the fold plan and every prompt. Android drives the loop
+  # from Kotlin (Narrator) so it can checkpoint each chunk and honour cancellation, but it must not
+  # own a word of the prompts — those live here, where the CLI and the eval harness exercise them.
+  minutes/llm_prompts.cpp
   jni/audionotes_jni.cpp)
 
 # ---------------------------------------------------------------------------

@@ -68,9 +68,42 @@ object NativeBridge {
   ): LongArray
 
   // ---- LLM (llama.cpp). Handle-based: load once, generate many, then free. ----
-  external fun nativeLlmLoad(modelPath: String, nCtx: Int, nThreads: Int): Long
+  /**
+   * @param greedy true pins argmax sampling. Minutes that differ between two runs of the same
+   *   recording are not minutes, and the eval harness has always judged greedy output — so while
+   *   this defaulted to sampling at temperature 0.3, every score it reported described something
+   *   the user never saw.
+   */
+  external fun nativeLlmLoad(modelPath: String, nCtx: Int, nThreads: Int, greedy: Boolean): Long
   external fun nativeLlmGenerate(handle: Long, prompt: String, maxTokens: Int): String
   external fun nativeLlmFree(handle: Long)
+
+  /**
+   * Transcript split into prompt-sized chunks by the shared core (transcriptLines +
+   * chunkTranscript). Same parallel-array shape as [nativeMinutes].
+   */
+  external fun nativeLlmChunks(
+    texts: Array<String>,
+    speakerIds: Array<String>,
+    spkIds: Array<String>,
+    spkNames: Array<String>,
+  ): Array<String>
+
+  // Prompt builders. Kotlin never composes prompt text itself — every word of every prompt lives
+  // in cpp/minutes/llm_minutes.cpp, which is what the desktop CLI and the eval harness exercise.
+  // A Kotlin copy would be the third after summarize.ts and llm_minutes.cpp, and the one nothing
+  // holds in sync.
+  external fun nativeLlmMapPrompt(chunk: String): String
+  external fun nativeLlmFoldPrompt(notes: String): String
+  external fun nativeLlmNarrativePrompt(notes: String): String
+  external fun nativeLlmSummaryPrompt(narrative: String): String
+  external fun nativeLlmHeadlinePrompt(summary: String): String
+
+  /**
+   * Which notes to merge so they fit one prompt. Flat [groupIndex, noteIndex, ...] pairs; empty
+   * when the notes already fit.
+   */
+  external fun nativeLlmFoldPlan(notes: Array<String>, maxChars: Int): IntArray
 
   /**
    * Rule-based minutes from the shared core — the same code path `src/pipeline/minutes.ts` and the
