@@ -115,6 +115,30 @@ export const db = {
     }
   },
 
+  /**
+   * Ticked-off actions, keyed by a hash of the item text rather than the minutes row id.
+   *
+   * Minutes rows are deleted and re-inserted whenever a meeting is reprocessed or its speakers are
+   * merged, so a row-id key would silently uncheck everything the user had worked through. Keying
+   * on the normalised text means a tick survives anything that does not change the wording.
+   */
+  doneActions: async (meetingId: string): Promise<Set<string>> => {
+    const rows = await run<{ itemKey: string }>(
+      'SELECT item_key AS itemKey FROM action_done WHERE meeting_id = ?',
+      [meetingId],
+    );
+    return new Set(rows.map(r => r.itemKey));
+  },
+
+  setActionDone: (meetingId: string, itemKey: string, done: boolean) =>
+    done
+      ? run('INSERT OR REPLACE INTO action_done(meeting_id, item_key, done_at) VALUES(?,?,?)', [
+          meetingId,
+          itemKey,
+          Date.now(),
+        ])
+      : run('DELETE FROM action_done WHERE meeting_id = ? AND item_key = ?', [meetingId, itemKey]),
+
   setStatus: (meetingId: string, status: string) =>
     run('UPDATE meetings SET status = ? WHERE id = ?', [status, meetingId]),
 
