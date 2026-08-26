@@ -566,6 +566,75 @@ export function SectionRule({ label, right }: { label: string; right?: React.Rea
 // Progress
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * Segmented control — the meeting screen's tab bar.
+ *
+ * Four segments is the practical ceiling on a 360dp phone; past that the labels truncate and the
+ * control stops being readable at a glance, which is the one thing a tab bar has to be.
+ *
+ * Segments are equal width so the row does not reflow as the selection moves, and the selected pill
+ * is a raised surface on a recessed track — the same figure/ground the rest of the app uses, at the
+ * smallest size it still reads at.
+ */
+export function Segmented({
+  items,
+  value,
+  onChange,
+  style,
+}: {
+  items: { key: string; label: string }[];
+  value: string;
+  onChange: (key: string) => void;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { colors } = useTheme();
+  const st = React.useMemo(() => makeSegmentedStyles(colors), [colors]);
+  return (
+    <View style={[st.track, style]} accessibilityRole="tablist">
+      {items.map(it => {
+        const on = it.key === value;
+        return (
+          <Pressable
+            key={it.key}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: on }}
+            accessibilityLabel={it.label}
+            onPress={() => onChange(it.key)}
+            style={[st.seg, on && { backgroundColor: colors.card, borderColor: colors.line }]}>
+            <Txt
+              variant={on ? 'chip' : 'chipSoft'}
+              color={on ? colors.primary : colors.inkDim}
+              numberOfLines={1}>
+              {it.label}
+            </Txt>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function makeSegmentedStyles(c: Colors) {
+  return StyleSheet.create({
+    track: {
+      flexDirection: 'row',
+      backgroundColor: c.cardAlt,
+      borderRadius: radius.ctl,
+      padding: s(3),
+    },
+    seg: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: s(9),
+      paddingHorizontal: s(4),
+      borderRadius: radius.ctl - s(3),
+      borderWidth: 1,
+      borderColor: 'transparent',
+    },
+  });
+}
+
 export function ProgressBar({ pct, color, track }: { pct: number; color: string; track: string }) {
   const w = useRef(new Animated.Value(0)).current;
   useEffect(() => {
