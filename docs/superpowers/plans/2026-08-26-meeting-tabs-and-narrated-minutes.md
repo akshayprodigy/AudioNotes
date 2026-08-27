@@ -72,26 +72,29 @@ remains starts at **Task 6**.
 | 15 The shell | done — MeetingScreen 675 → 447 lines |
 | 16 Library row one-liner | done |
 | 17 Model download at first run | done |
-| 18 Full verification | **partial — see below** |
+| 18 Full verification | done — see below |
 
-### What Task 18 verified, and what it did not
+### What Task 18 verified, and the one thing it cannot
 
-Green: **6 C++ tests**, **30 JS tests**, **8 Kotlin JVM tests**, `tsc` clean, both APKs build,
-and — before the phone disconnected — **4 MinutesSourceTest**, **7 MinutesParityTest** and a full
-**9-test NativePipelineTest** pass.
+Verified 2026-08-27 against the branch tip, on a Pixel 7 Pro:
 
-Not done, both blocked on the same thing:
+- **6 C++ tests**, **30 JS tests**, **8 Kotlin JVM tests**, `tsc` clean, both APKs build.
+- **20 instrumentation tests**: NativePipelineTest (9, 358 s), MinutesSourceTest (4),
+  MinutesParityTest (7).
+- **All four tabs on a real screen.** Summary / MOM / Actions / Script all fit the segmented
+  control at 360dp with no truncation. The meeting used predates narration, so Summary and MOM
+  both showed their honest fallbacks — "Written minutes need the language model" — which is the
+  degradation path working rather than a gap.
+- **A tick survives a tab switch.** Ticking an action struck it through and moved the header from
+  "TO DO · 30 LEFT" to "29 LEFT", and it was still ticked after leaving the tab and returning.
+- **The eval harness runs the shipping configuration** now that `--llm` exists: ES2002a comes back
+  `rule+llm` with recall 85.7% and invented 0, unchanged from before, which is the correct result —
+  narration writes prose and must not move the item metrics.
 
-1. **The device suite was not re-run after the last three commits.** The phone dropped off USB
-   twice and did not come back through an `adb kill-server` restart. Nothing since has touched
-   native code that the passing run did not already cover, but that is an argument, not a test.
-2. **Nobody has looked at the tabs.** Metro serves on 8088 with `adb reverse tcp:8081 tcp:8088`
-   wired, the bundle loads without a redbox, but the screen reported `mWakefulness=Dozing` behind a
-   lock screen. Layout on a real 6.1" display is unverified.
-
-Also open, and not blocked on hardware: **the harness cannot score prose.** See the spec — its
-metrics judge minute items, narration writes none, so `invented = 0` says nothing about whether the
-summary is grounded. That needs sentence-level support judging, which does not exist yet.
+**What it cannot verify: whether the prose is true.** The harness scores minute items; narration
+writes none; so `invented = 0` is silent on the summary. See the spec — this needs sentence-level
+support judging, and until it exists the summary rests on being read rather than measured. That is
+the honest state of this branch, not a missing checkbox.
 
 ### Amendments from D5-D8
 
