@@ -1,41 +1,62 @@
 import React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { Raised, Slide, Txt } from '../../components/ui';
+import { Raised, Slide, SoftButton, Txt } from '../../components/ui';
 import { radius, s, useTheme, type Colors } from '../../theme';
 import type { Minute, Speaker } from '../../pipeline/types';
-import { MinuteCard } from './shared';
+import Llm from '../../native/NativeLlm';
 
 /**
- * The landing tab — the first thing anyone sees when they open a meeting.
+ * The landing tab: what the conversation was about, in prose.
  *
- * Holds the LLM's prose when narration ran, and an honest at-a-glance card when it did not: no
- * model downloaded, a device under the RAM gate, or a recording too short to summarise without
- * inventing one. Either way the tab is worth landing on, which is why the facts and the top actions
- * sit under the prose rather than the prose sitting alone — two or three sentences on their own is
- * a near-empty screen, and people learn to skip past those.
+ * Deliberately NOT a work list. It used to fall back to "30 actions, 0 decisions and 17 open
+ * questions came out of this meeting" and carry the top three action items underneath, which meant
+ * the first thing you read about a meeting was a count of its own output. Counting is not
+ * summarising, and the Actions tab already exists.
+ *
+ * When there is no prose the tab says so and offers the fix, rather than filling the space with
+ * something that looks like an answer.
  */
 export default function SummaryTab({
   minutes,
   speakers,
   speechMs,
+  onWrite,
+  writing,
 }: {
   minutes: Minute[];
   speakers: Speaker[];
   speechMs: number;
+  onWrite: () => void;
+  writing: boolean;
 }) {
   const { colors } = useTheme();
   const st = React.useMemo(() => makeStyles(colors), [colors]);
 
   const prose = minutes.find(m => m.kind === 'summary' && m.source === 'llm')?.content;
-  const actions = minutes.filter(m => m.kind === 'action');
-  const decisions = minutes.filter(m => m.kind === 'decision').length;
-  const questions = minutes.filter(m => m.kind === 'question').length;
   const mins = Math.max(1, Math.round(speechMs / 60000));
 
-  const fallback =
-    `${actions.length} ${actions.length === 1 ? 'action' : 'actions'}, ` +
-    `${decisions} ${decisions === 1 ? 'decision' : 'decisions'} and ` +
-    `${questions} open ${questions === 1 ? 'question' : 'questions'} came out of this meeting.`;
+  // Why there is no summary decides what we can honestly offer. A missing model is a Settings
+  // trip; a capable phone that simply has not run narration yet — every meeting recorded before
+  // this feature shipped — just needs the pipeline run again.
+  const [reason, setReason] = React.useState<'checking' | 'no-model' | 'weak-device' | 'not-run'>(
+    'checking',
+  );
+  React.useEffect(() => {
+    if (prose) return;
+    let alive = true;
+    (async () => {
+      try {
+        const [available, capable] = await Promise.all([Llm.available(), Llm.capable()]);
+        if (!alive) return;
+        setReason(!available ? 'no-model' : !capable ? 'weak-device' : 'not-run');
+      } catch {
+        if (alive) setReason('not-run');
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [prose]);
 
   return (
     <ScrollView contentContainerStyle={st.pad} showsVerticalScrollIndicator={false}>
@@ -49,17 +70,36 @@ export default function SummaryTab({
             <Txt variant="overlineSm" color={colors.onPrimary}>
               SUMMARY
             </Txt>
-            <Txt variant="gist" color={colors.onPrimary} style={st.gistText}>
-              {prose ?? fallback}
-            </Txt>
-            {!prose ? (
+            {prose ? (
+              <Txt variant="gist" color={colors.onPrimary} style={st.gistText}>
+                {prose}
+              </Txt>
+            ) : (
+              <Txt variant="gist" color={colors.onPrimary} style={st.gistText}>
+                {reason === 'no-model'
+                  ? 'The summary is written on your phone by a language model that has not been downloaded yet.'
+                  : reason === 'weak-device'
+                    ? 'This phone does not have enough memory to write the summary on-device.'
+                    : 'This meeting was processed before summaries were written. Run it again and one will be.'}
+              </Txt>
+            )}
+            {!prose && reason === 'no-model' ? (
               <Txt variant="chipSoft" color={colors.onPrimary} style={st.note}>
-                Written minutes need the language model — see Settings.
+                Settings → Models
               </Txt>
             ) : null}
           </View>
         </Raised>
       </Slide>
+
+      {!prose && reason === 'not-run' ? (
+        <SoftButton
+          icon="refresh"
+          label={writing ? 'Working…' : 'Write the summary'}
+          onPress={onWrite}
+          disabled={writing}
+        />
+      ) : null}
 
       <View style={st.factRow}>
         <Fact value={`${mins}`} label={mins === 1 ? 'minute' : 'minutes'} c={colors} />
@@ -68,30 +108,7 @@ export default function SummaryTab({
           label={speakers.length === 1 ? 'speaker' : 'speakers'}
           c={colors}
         />
-        <Fact
-          value={`${actions.length}`}
-          label={actions.length === 1 ? 'action' : 'actions'}
-          c={colors}
-        />
       </View>
-
-      {actions.length > 0 ? (
-        <>
-          <Txt variant="overlineSm" color={colors.inkFaint} style={st.heading}>
-            TOP ACTIONS
-          </Txt>
-          <View style={st.list}>
-            {actions.slice(0, 3).map((m, i) => (
-              <MinuteCard key={m.id ?? i} m={m} i={i} colors={colors} />
-            ))}
-          </View>
-          {actions.length > 3 ? (
-            <Txt variant="chipSoft" color={colors.inkFaint} style={st.more}>
-              {actions.length - 3} more in Actions
-            </Txt>
-          ) : null}
-        </>
-      ) : null}
     </ScrollView>
   );
 }
@@ -123,8 +140,5 @@ function makeStyles(c: Colors) {
     factRow: { flexDirection: 'row', gap: s(10) },
     factFlex: { flex: 1 },
     fact: { paddingVertical: s(14), alignItems: 'center', gap: s(2) },
-    heading: { marginTop: s(4) },
-    list: { gap: s(12) },
-    more: { textAlign: 'center', marginTop: s(2) },
   });
 }

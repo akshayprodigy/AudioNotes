@@ -145,11 +145,36 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const empty = settled && !working && minutes.length === 0 && utterances.length === 0;
 
   /**
-   * Overflow actions. Both leave this screen, so both pop back to the library first — a detail
-   * screen for a meeting that has just been archived out of the library, or deleted outright, has
-   * nothing left to show and its polling refresh would query a row that no longer exists.
+   * Per-meeting actions, in the overflow sheet.
+   *
+   * Speakers, Export and Redo used to sit in a button row on the results page. The tab refactor
+   * dropped that row, which left a finished meeting with no way to reprocess it — and reprocessing
+   * is exactly what every meeting recorded before narration shipped needs. They live here now
+   * rather than as a permanent row, which would cost vertical space on all four tabs.
+   *
+   * Archive and Delete both leave this screen, so both pop back to the library first — a detail
+   * screen for a meeting just archived out of the library, or deleted outright, has nothing left
+   * to show and its polling refresh would query a row that no longer exists.
    */
   const sheetActions: SheetAction[] = [
+    {
+      icon: 'users',
+      label: 'Speakers',
+      hint: 'Rename people, or merge two speakers the app split apart.',
+      onPress: () => navigation.navigate('Speakers', { meetingId }),
+    },
+    {
+      icon: 'share',
+      label: 'Export',
+      hint: 'Share the minutes as Markdown, plain text or subtitles.',
+      onPress: onExport,
+    },
+    {
+      icon: 'refresh',
+      label: reprocessing ? 'Working…' : 'Redo',
+      hint: 'Run the whole pipeline again — the only way to add a summary to an older meeting.',
+      onPress: onReprocess,
+    },
     {
       icon: 'archive',
       label: 'Archive',
@@ -298,11 +323,14 @@ export default function MeetingScreen({ route, navigation }: Props) {
     );
   }
 
+  // Order is what people reach for, in order: what was this about, then the written minutes, then
+  // the record itself, then the worklist. Actions is last because it is the one you go to
+  // deliberately — the other three are what you read.
   const TABS = [
     { key: 'summary', label: 'Summary' },
     { key: 'mom', label: 'MOM' },
-    { key: 'actions', label: 'Actions' },
     { key: 'transcript', label: 'Script' },
+    { key: 'actions', label: 'Actions' },
   ];
 
   return (
@@ -357,13 +385,19 @@ export default function MeetingScreen({ route, navigation }: Props) {
               for: the transcript can be a virtualised list only if it is the thing scrolling. */}
           <View style={st.flex}>
             {tab === 'summary' ? (
-              <SummaryTab minutes={minutes} speakers={speakers} speechMs={speechMs} />
+              <SummaryTab
+                minutes={minutes}
+                speakers={speakers}
+                speechMs={speechMs}
+                onWrite={onReprocess}
+                writing={reprocessing}
+              />
             ) : tab === 'mom' ? (
               <MinutesTab minutes={minutes} onExport={onExport} />
-            ) : tab === 'actions' ? (
-              <ActionsTab meetingId={meetingId} minutes={minutes} />
-            ) : (
+            ) : tab === 'transcript' ? (
               <TranscriptTab utterances={utterances} speakers={speakers} />
+            ) : (
+              <ActionsTab meetingId={meetingId} minutes={minutes} />
             )}
           </View>
         </>
