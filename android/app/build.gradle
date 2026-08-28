@@ -184,6 +184,14 @@ android {
         buildConfigField "String", "MODEL_BASE_URL",
             "\"${project.findProperty('modelBaseUrl') ?: ''}\""
 
+        // The licence server's ECDSA P-256 public key, base64 X.509 — see billing/Licence.kt.
+        // Empty is the safe default and the development one: with no key, no token can verify,
+        // so every build without it treats everyone as a free user rather than as a subscriber.
+        // Set `licencePublicKey` in gradle.properties, or -PlicencePublicKey= on the release
+        // build. This is a PUBLIC key; the signing half never leaves the licence server.
+        buildConfigField "String", "LICENCE_PUBLIC_KEY",
+            "\"${project.findProperty('licencePublicKey') ?: ''}\""
+
         externalNativeBuild {
             cmake {
                 cppFlags "-std=c++17"
