@@ -71,7 +71,11 @@ export default function SummaryTab({
               SUMMARY
             </Txt>
             {prose ? (
-              <Txt variant="gist" color={colors.onPrimary} style={st.gistText}>
+              // `minuteBody`, not `gist`. The gist face is 17/900 black, drawn for the one or two
+              // lines it was named after; a real summary runs a paragraph, and at that length the
+              // display weight stops being emphasis and becomes a wall. The MOM tab already sets
+              // its prose this way.
+              <Txt variant="minuteBody" color={colors.onPrimary} style={st.gistText}>
                 {prose}
               </Txt>
             ) : (
@@ -92,10 +96,14 @@ export default function SummaryTab({
         </Raised>
       </Slide>
 
-      {!prose && reason === 'not-run' ? (
+      {/* Offered once there IS prose too. A summary is a judgement call, not a lookup, and the
+          only recourse when the model has written a poor one is to ask it again — there is
+          nothing else on the screen that can change the answer. Withheld when the model is
+          missing or the phone cannot run it, where the button would be an empty promise. */}
+      {prose || reason === 'not-run' ? (
         <SoftButton
           icon="refresh"
-          label={writing ? 'Working…' : 'Write the summary'}
+          label={writing ? 'Working…' : prose ? 'Write it again' : 'Write the summary'}
           onPress={onWrite}
           disabled={writing}
         />
@@ -131,7 +139,7 @@ function Fact({ value, label, c }: { value: string; label: string; c: Colors }) 
   );
 }
 
-function makeStyles(c: Colors) {
+function makeStyles(_c: Colors) {
   return StyleSheet.create({
     pad: { paddingHorizontal: s(16), paddingBottom: s(30), gap: s(14) },
     gist: { padding: s(18), gap: s(8) },

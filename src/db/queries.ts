@@ -116,6 +116,22 @@ export const db = {
   },
 
   /**
+   * Drop a meeting's LLM prose, so the next run writes it again.
+   *
+   * ResumePlan decides what still needs doing from the rows that exist, which is what makes a
+   * killed run resumable — but it also means a finished meeting has nothing left to run, and
+   * "Redo" on one returned instantly having done nothing at all. Clearing the prose is what turns
+   * that button back into an action: narration becomes outstanding work again.
+   *
+   * Scoped to source='llm', the mirror of replaceMinutes above. The rule-based items are the
+   * guaranteed floor and stay put, so the screen never blanks out while the model reruns.
+   */
+  clearNarration: async (meetingId: string) => {
+    await run("DELETE FROM minutes WHERE meeting_id = ? AND source = 'llm'", [meetingId]);
+    await run('UPDATE meetings SET summary_line = NULL WHERE id = ?', [meetingId]);
+  },
+
+  /**
    * Ticked-off actions, keyed by a hash of the item text rather than the minutes row id.
    *
    * Minutes rows are deleted and re-inserted whenever a meeting is reprocessed or its speakers are

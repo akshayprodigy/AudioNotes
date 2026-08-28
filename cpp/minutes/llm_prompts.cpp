@@ -74,28 +74,48 @@ std::string reducePrompt(const std::string& notes) {
 }
 
 std::string narrativePrompt(const std::string& notes) {
-  return "Below is the record of one meeting. Write the minutes as plain prose for someone who was "
-         "not there.\n\n"
+  // "Write the minutes" is itself the trigger: asked for minutes, the model reaches for the
+  // MINUTES FORM it has seen thousands of times and fills it in — "Meeting Minutes", a Date &
+  // Time line, an Attendees list, a numbered Agenda. On the IPD meeting it shipped the literal
+  // string "Date & Time: [Current Date] at [Time]" to the reader and promoted an ASR mis-hearing
+  // into a named attendee. So the word is gone from the instruction, and the form is refused
+  // field by field rather than in the general terms the model was happy to ignore.
+  return "Below is the record of one meeting. Write an account of it in plain prose, for someone "
+         "who was not there.\n\n"
          "RECORD:\n" + notes + "\n\n"
-         "Write three or four short paragraphs: what the meeting was about, what the group worked "
-         "through, what was settled, and what was left open. Use only what the record supports.\n"
+         "Write three or four short paragraphs covering what the meeting was about, what the "
+         "group worked through, what was settled and what was left open. Those four things are "
+         "what to cover, NOT labels to copy down. Use only what the record supports.\n"
          "Rules:\n"
-         "- Begin with the first sentence of the minutes. No title, no heading, no markdown.\n"
-         "- No bullet points and no numbered lists.\n"
+         "- Prose only, in full sentences grouped into paragraphs. This is NOT a form to fill in: "
+         "no title, no heading, no Date line, no Attendees list, no Agenda, no numbered sections, "
+         "no bullet points, no markdown.\n"
+         "- Never write a placeholder such as [Date], [Time] or [Name]. If you do not know a "
+         "detail, leave it out.\n"
+         "- Do not list who was there, and do not give anyone a name or a title that the record "
+         "does not give them.\n"
+         "- Do not open with a title such as \"Meeting Summary\", and do not head or label any "
+         "paragraph. No Topic line, no Date line, no Attendees line — not even to say they are "
+         "unknown. The first thing you write is the first sentence of the account.\n"
          "- Write about the MEETING, never about the record. Never write the words transcript, "
          "record, notes, or minutes.\n"
          "- Never say that something was not stated, not specified, not mentioned, not decided or "
          "not clarified. If a detail is missing, leave it out silently.\n"
          "- Do not mention how long the meeting was or when it started or ended.\n"
-         "Start writing the minutes now:";
+         "Start writing now:";
 }
 
 std::string summaryPrompt(const std::string& narrative) {
-  return "Below are the minutes of a meeting.\n\n"
-         "MINUTES:\n" + narrative + "\n\n"
-         "Write 2 to 3 sentences saying what the meeting was about and where it ended up.\n"
+  return "Below is an account of a meeting.\n\n"
+         "ACCOUNT:\n" + narrative + "\n\n"
+         "In about 70 words, say what the meeting was about and where it ended up.\n"
          "Rules:\n"
-         "- Plain prose. No list, no heading, no markdown.\n"
+         "- Write at most 4 sentences, then stop. This is the short version: name the subject "
+         "and where it ended up, and leave the detail out.\n"
+         "- Plain prose. One paragraph. No list, no heading, no markdown.\n"
+         "- Write flowing sentences. Do not string the subjects together as one long comma-"
+         "separated list of everything that came up.\n"
+         "- No title and no label. Start with the first sentence of the summary itself.\n"
          "- Write about the MEETING, never about the record. Never write the words transcript, "
          "record, notes, or minutes.\n"
          "- Never say that something was not stated, not specified, not mentioned, not decided or "
@@ -241,6 +261,189 @@ std::string stripMarkdown(const std::string& s) {
   return collapsed.substr(a, b - a + 1);
 }
 
+namespace {
+// Longer than this and a line is prose, whatever punctuation it ends with.
+constexpr std::size_t kMaxLabelChars = 60;
+// A form field name ("Date & Time", "Attendees") is short. Anything longer before the colon is a
+// clause, and the line is prose.
+constexpr std::size_t kMaxFieldNameChars = 30;
+
+std::string trimLine(const std::string& l) {
+  const std::size_t a = l.find_first_not_of(" \t\r");
+  if (a == std::string::npos) return std::string();
+  const std::size_t b = l.find_last_not_of(" \t\r");
+  return l.substr(a, b - a + 1);
+}
+}  // namespace
+
+std::string stripLabels(const std::string& s) {
+  std::vector<std::string> lines;
+  for (std::size_t start = 0;;) {
+    const std::size_t nl = s.find('\n', start);
+    if (nl == std::string::npos) { lines.push_back(s.substr(start)); break; }
+    lines.push_back(s.substr(start, nl - start));
+    start = nl + 1;
+  }
+
+  // "Prose so far" gates the header rules: they apply only above the first real sentence, so a
+  // colon inside the body can never be mistaken for a form field.
+  bool prose_seen = false;
+  std::vector<std::string> kept;
+  for (std::size_t i = 0; i < lines.size(); ++i) {
+    const std::string t = trimLine(lines[i]);
+    bool drop = false;
+    if (!t.empty()) {
+      const char last = t.back();
+      const bool ends_sentence = last == '.' || last == '!' || last == '?';
+      if (!ends_sentence) {
+        if (last == ':' && t.size() <= kMaxLabelChars) {
+          drop = true;  // "What was settled:"
+        } else if (!prose_seen) {
+          // The header block of the form the model keeps reaching for: "Meeting Topic: ...",
+          // "Date & Time: Not specified", "Attendees: Not listed". Denied the placeholders it
+          // used to invent, it now asserts the absence instead — which is exactly what the
+          // prompt forbids and the worse of the two failures.
+          const std::size_t colon = t.find(':');
+          const bool header_field =
+              colon != std::string::npos && colon > 0 && colon <= kMaxFieldNameChars &&
+              t.find_first_of(".!?") > colon && colon + 1 < t.size();
+          // A lead title: the opening line, alone, with a blank line under it. Without the blank
+          // line this is just a paragraph that has not reached its full stop yet.
+          const bool lead_title = kept.empty() && t.size() <= kMaxLabelChars &&
+                                  i + 1 < lines.size() && trimLine(lines[i + 1]).empty();
+          drop = header_field || lead_title;
+        }
+      }
+      if (!drop) prose_seen = true;
+    }
+    if (!drop) kept.push_back(lines[i]);
+  }
+
+  std::string out;
+  for (std::size_t i = 0; i < kept.size(); ++i) {
+    if (i) out += '\n';
+    out += kept[i];
+  }
+
+  // Removing a label leaves the blank line that separated it behind.
+  std::string collapsed;
+  collapsed.reserve(out.size());
+  int newlines = 0;
+  for (char c : out) {
+    if (c == '\n') {
+      if (++newlines > 2) continue;
+    } else if (c != '\r') {
+      newlines = 0;
+    }
+    collapsed += c;
+  }
+  const std::size_t a = collapsed.find_first_not_of(" \t\r\n");
+  if (a == std::string::npos) return "";
+  const std::size_t b = collapsed.find_last_not_of(" \t\r\n");
+  return collapsed.substr(a, b - a + 1);
+}
+
+std::string trimToSentence(const std::string& s) {
+  // Closing punctuation may follow the terminator: a quoted sentence ends `."` and a parenthetical
+  // ends `.)`. Keep those, so the cut does not leave an orphaned opener behind.
+  auto is_closer = [](char c) { return c == '"' || c == '\'' || c == ')' || c == ']'; };
+
+  std::size_t end = s.find_last_not_of(" \t\r\n");
+  if (end == std::string::npos) return s;
+
+  for (std::size_t i = end + 1; i-- > 0;) {
+    const char c = s[i];
+    if (c != '.' && c != '!' && c != '?') continue;
+
+    // Everything between the terminator and the next real character must be closers or space,
+    // otherwise this is a mid-word dot rather than the end of a sentence.
+    std::size_t j = i + 1;
+    while (j < s.size() && is_closer(s[j])) ++j;
+    const bool ends_here = j >= s.size() || s[j] == ' ' || s[j] == '\t' || s[j] == '\r' ||
+                           s[j] == '\n';
+    if (!ends_here) continue;
+
+    std::string cut = s.substr(0, j);
+    std::size_t last = cut.find_last_not_of(" \t\r\n");
+    if (last == std::string::npos) return s;
+    return cut.substr(0, last + 1);
+  }
+  return s;
+}
+
+namespace {
+// The formulaic closers the model reaches for, lowercased. Deliberately specific: each one is a
+// statement ABOUT the meeting having failed to produce something, not an ordinary use of "not".
+const char* const kAbsencePhrases[] = {
+    "did not specify",   "did not conclude",    "did not state",      "did not mention",
+    "did not decide",    "did not clarify",     "did not result in",  "was not specified",
+    "were not specified", "was not mentioned",  "were not mentioned", "was not decided",
+    "were not decided",  "no decisions were",   "no specific actions", "no further action",
+    "not explicitly",    "remains unclear",     "remain unclear",
+};
+
+std::string toLower(const std::string& s) {
+  std::string out;
+  out.reserve(s.size());
+  for (char c : s) out += static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
+  return out;
+}
+
+// Index just past the terminator that closes the second-to-last sentence, or npos when the text
+// holds only one sentence.
+std::size_t lastSentenceStart(const std::string& s) {
+  const std::size_t end = s.find_last_not_of(" \t\r\n");
+  if (end == std::string::npos) return std::string::npos;
+  // Skip the final sentence's own terminator so it cannot match itself.
+  std::size_t i = end;
+  while (i > 0 && (s[i] == '.' || s[i] == '!' || s[i] == '?' || s[i] == '"' || s[i] == '\'' ||
+                   s[i] == ')' || s[i] == ']')) {
+    --i;
+  }
+  for (; i > 0; --i) {
+    const char c = s[i];
+    if (c != '.' && c != '!' && c != '?') continue;
+    std::size_t j = i + 1;
+    while (j < s.size() && (s[j] == '"' || s[j] == '\'' || s[j] == ')' || s[j] == ']')) ++j;
+    if (j >= s.size()) continue;
+    if (s[j] == ' ' || s[j] == '\t' || s[j] == '\r' || s[j] == '\n') return j;
+  }
+  return std::string::npos;
+}
+}  // namespace
+
+namespace {
+// Everything between a raw generation and the reader, in order: strip the markup, then the labels
+// it was hiding under, then the closing caveat, and only then cut to a whole sentence — so
+// trimming is the last word. Narrator.clean mirrors this exactly.
+std::string clean(const std::string& raw) {
+  return trimToSentence(dropAbsenceTail(stripLabels(stripMarkdown(raw))));
+}
+}  // namespace
+
+std::string dropAbsenceTail(const std::string& s) {
+  std::string out = s;
+  // Two caveats in a row happen; more than that and something else is wrong, so stop rather than
+  // eat the answer a sentence at a time.
+  for (int round = 0; round < 2; ++round) {
+    const std::size_t start = lastSentenceStart(out);
+    if (start == std::string::npos) break;
+
+    const std::string tail = toLower(out.substr(start));
+    bool absence = false;
+    for (const char* phrase : kAbsencePhrases) {
+      if (tail.find(phrase) != std::string::npos) { absence = true; break; }
+    }
+    if (!absence) break;
+
+    const std::string head = out.substr(0, start);
+    const std::size_t last = head.find_last_not_of(" \t\r\n");
+    if (last == std::string::npos) break;  // nothing would be left
+    out = head.substr(0, last + 1);
+  }
+  return out.empty() ? s : out;
+}
+
 Narration narrate(const std::vector<MinuteUtt>& utterances,
                   const std::vector<MinuteSpk>& speakers, const GenerateFn& generate,
                   std::size_t notes_budget_chars) {
@@ -301,9 +504,9 @@ Narration narrate(const std::vector<MinuteUtt>& utterances,
 
   // Progressive condensation. Only the narrative pays a full prefill; the other two read a few
   // hundred characters, and neither can contradict the one above it.
-  out.narrative = stripMarkdown(generate(narrativePrompt(source), 640));
+  out.narrative = clean(generate(narrativePrompt(source), 640));
   if (out.narrative.empty()) return out;
-  out.summary = stripMarkdown(generate(summaryPrompt(out.narrative), 192));
+  out.summary = clean(generate(summaryPrompt(out.narrative), 192));
   if (out.summary.empty()) return out;
   out.headline = generate(headlinePrompt(out.summary), 48);
   return out;

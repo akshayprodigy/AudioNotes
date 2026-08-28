@@ -131,6 +131,12 @@ object NativeBridge {
    */
   external fun nativeStripMarkdown(text: String): String
 
+  external fun nativeTrimToSentence(text: String): String
+
+  external fun nativeStripLabels(text: String): String
+
+  external fun nativeDropAbsenceTail(text: String): String
+
   /**
    * Which notes to merge so they fit one prompt. Flat [groupIndex, noteIndex, ...] pairs; empty
    * when the notes already fit.

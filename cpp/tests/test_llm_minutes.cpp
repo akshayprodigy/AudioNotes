@@ -125,11 +125,26 @@ int main(int argc, char** argv) {
     const std::string n = audionotes::narrativePrompt("ZZNOTESZZ");
     CHECK(n.find("ZZNOTESZZ") != std::string::npos, "narrativePrompt drops its input");
     CHECK(n.find("JSON") == std::string::npos, "narrativePrompt must not ask for JSON");
+    // Asked to "write the minutes", the model filled in the minutes FORM instead of writing:
+    // a title, an Attendees list, a numbered Agenda, and the literal "Date & Time: [Current Date]
+    // at [Time]" shown to the reader. The instruction must not name the artefact it triggers, and
+    // must refuse the form field by field.
+    CHECK(n.find("the minutes as plain prose") == std::string::npos,
+          "narrativePrompt must not ask for 'the minutes' — that is what summons the form");
+    CHECK(n.find("Attendees list") != std::string::npos,
+          "narrativePrompt must refuse an attendee list by name");
+    CHECK(n.find("Agenda") != std::string::npos, "narrativePrompt must refuse an agenda by name");
+    CHECK(n.find("placeholder") != std::string::npos,
+          "narrativePrompt must forbid unfilled placeholders");
 
     const std::string s = audionotes::summaryPrompt("ZZNARRATIVEZZ");
     CHECK(s.find("ZZNARRATIVEZZ") != std::string::npos, "summaryPrompt drops its input");
     CHECK(s.find("JSON") == std::string::npos, "summaryPrompt must not ask for JSON");
-    CHECK(s.find("2") != std::string::npos, "summaryPrompt must state a sentence count");
+    // A length budget, and a hard one. Told only "2 to 3 sentences" the 1.5B model wrote eight
+    // and ran into the token cap mid-clause.
+    CHECK(s.find("70 words") != std::string::npos, "summaryPrompt must state a word budget");
+    CHECK(s.find("at most 4 sentences") != std::string::npos,
+          "summaryPrompt must cap the sentence count");
 
     const std::string h = audionotes::headlinePrompt("ZZSUMMARYZZ");
     CHECK(h.find("ZZSUMMARYZZ") != std::string::npos, "headlinePrompt drops its input");
@@ -206,6 +221,109 @@ int main(int argc, char** argv) {
     CHECK(stripMarkdown("\n\n  Body.  \n\n") == "Body.", "surrounding whitespace not trimmed");
     CHECK(stripMarkdown("").empty(), "empty in, empty out");
     CHECK(stripMarkdown("###").empty(), "a reply that is only a marker has no body");
+  }
+
+  // trimToSentence: a generation that runs into its token cap stops mid-word. The first summary
+  // written on a real 18-minute meeting ended "...direct transfers to banks which", and that
+  // fragment was shown to the reader.
+  {
+    using audionotes::trimToSentence;
+    CHECK(trimToSentence("It was settled. Payment went to banks which") == "It was settled.",
+          "a severed clause should be cut back to the last full sentence");
+    CHECK(trimToSentence("The group met. They agreed.") == "The group met. They agreed.",
+          "text that already ends on a sentence is left alone");
+    CHECK(trimToSentence("The group met.  \n") == "The group met.",
+          "trailing whitespace should not defeat the check");
+    CHECK(trimToSentence("Was it settled? Not yet, because") == "Was it settled?",
+          "a question mark ends a sentence");
+    CHECK(trimToSentence("Stop! Then they went on to") == "Stop!",
+          "an exclamation ends a sentence");
+    // A dot inside a number or an abbreviation is not the end of a thought. Cutting there would
+    // throw away a whole good sentence to save a fragment.
+    CHECK(trimToSentence("The budget is 3.5 lakh and the team") ==
+              "The budget is 3.5 lakh and the team",
+          "a decimal point should not be read as a sentence end");
+    CHECK(trimToSentence("He said \"we will ship it.\" Then he left the") ==
+              "He said \"we will ship it.\"",
+          "closing punctuation after the terminator is kept");
+    CHECK(trimToSentence("One long clause with no end at all") ==
+              "One long clause with no end at all",
+          "with no terminator anywhere the text is returned untouched");
+    CHECK(trimToSentence("").empty(), "empty in, empty out");
+  }
+
+  // stripLabels: told "no title, no heading" five ways, the model still opened with "Meeting
+  // Summary" and labelled each paragraph by echoing the topics the instruction listed.
+  {
+    using audionotes::stripLabels;
+    CHECK(stripLabels("Meeting Summary\n\nThe group met. They agreed.") ==
+              "The group met. They agreed.",
+          "a lead title over a blank line should be dropped");
+    CHECK(stripLabels("What was settled:\nConsent forms were pre-printed.") ==
+              "Consent forms were pre-printed.",
+          "a section label should be dropped");
+    CHECK(stripLabels("Title\n\nWhat was settled:\nIt shipped.") == "It shipped.",
+          "a title and a label in the same answer both go");
+    CHECK(stripLabels("The group met. They agreed.") == "The group met. They agreed.",
+          "prose is left alone");
+    // Without a blank line under it, a short opening line is a paragraph that has not reached its
+    // full stop yet — not a heading.
+    CHECK(stripLabels("The group met\nand then agreed.") == "The group met\nand then agreed.",
+          "a wrapped opening line is not a title");
+    CHECK(stripLabels("Ship it.\n\nThey agreed.") == "Ship it.\n\nThey agreed.",
+          "a first line ending in a full stop is a sentence, not a title");
+    // Length is the other guard: a real sentence that happens to end in a colon is prose.
+    CHECK(stripLabels("The team raised one point that mattered more than all the others: cost.") ==
+              "The team raised one point that mattered more than all the others: cost.",
+          "a long line ending in a colon is prose");
+    CHECK(stripLabels("").empty(), "empty in, empty out");
+    CHECK(stripLabels("Meeting Summary").empty() == false,
+          "a title with no body under it is all there is, so it stays");
+
+    // Denied its placeholders, the model kept the header block and asserted the absence instead:
+    // "Date & Time: Not specified", "Attendees: Not listed". Stating what was not said, as fact,
+    // is the worse of the two failures.
+    CHECK(stripLabels("Meeting Topic: Streamlining Registration\n"
+                      "Date & Time: Not specified\n"
+                      "Attendees: Not listed\n"
+                      "\nThe group met. They agreed.") == "The group met. They agreed.",
+          "the form header block should be dropped whole");
+    // Below the first sentence the rule is off, so a colon in the body cannot trigger it.
+    CHECK(stripLabels("They met. It went well.\nCost: still open") ==
+              "They met. It went well.\nCost: still open",
+          "a colon below the first sentence is body text");
+    // A sentence that happens to contain a colon and runs to a full stop is prose wherever it is.
+    CHECK(stripLabels("The problem: nobody owns it.") == "The problem: nobody owns it.",
+          "a colon inside a finished sentence is not a form field");
+  }
+
+  // dropAbsenceTail: the model closes with a caveat about what the meeting did NOT do, which the
+  // prompts forbid in five wordings and it writes anyway. It contradicts the Actions tab sitting
+  // next to it.
+  {
+    using audionotes::dropAbsenceTail;
+    CHECK(dropAbsenceTail("They agreed on the barcode. The session did not conclude specific "
+                          "actions or decisions made.") == "They agreed on the barcode.",
+          "a closing absence caveat should go");
+    CHECK(dropAbsenceTail("They met. It shipped.") == "They met. It shipped.",
+          "ordinary prose is left alone");
+    // Two caveats in a row happen.
+    CHECK(dropAbsenceTail("They agreed. No decisions were reached. Timing was not specified.") ==
+              "They agreed.",
+          "a second caveat behind the first should also go");
+    // Only the CLOSING sentence is examined, so a caveat mid-text stays: cutting there would take
+    // every good sentence after it too.
+    CHECK(dropAbsenceTail("Timing was not specified. They agreed on the barcode.") ==
+              "Timing was not specified. They agreed on the barcode.",
+          "a caveat that is not the closing sentence is left alone");
+    // A real refusal is content, not a caveat about the record.
+    CHECK(dropAbsenceTail("They met. The team did not want to change the form.") ==
+              "They met. The team did not want to change the form.",
+          "an ordinary use of 'did not' is not an absence caveat");
+    // Never return nothing: a single sentence, however unhelpful, is all there is.
+    CHECK(dropAbsenceTail("No decisions were reached.") == "No decisions were reached.",
+          "the only sentence is kept even when it is a caveat");
+    CHECK(dropAbsenceTail("").empty(), "empty in, empty out");
   }
 
   // narrate() on a meeting that fits one prompt: the transcript goes straight to the narrative,

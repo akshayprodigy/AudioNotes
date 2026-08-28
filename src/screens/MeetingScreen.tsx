@@ -26,24 +26,42 @@ import MinutesTab from './meeting/MinutesTab';
 import ActionsTab from './meeting/ActionsTab';
 import TranscriptTab from './meeting/TranscriptTab';
 import type { Meeting, Minute, Speaker, Utterance } from '../pipeline/types';
-import { radius, s, sv, text, useTheme, type Colors } from '../theme';
+import { radius, s, sv, useTheme, type Colors } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Meeting'>;
 
 /**
- * Pipeline stages, phrased as what they achieve, with weights measured on device (the `stage=`
- * timings logged by AudioPipelineModule). The weights drive both the ring and the ETA, so
- * progress advances at a roughly even rate rather than sitting at 5% then jumping to done.
+ * Pipeline stages, phrased as what they achieve, with the cost of each measured on device (the
+ * `stage=` timings logged by AudioPipelineModule) as seconds of work per second of audio.
+ *
+ * Cost is held as a RATE rather than as a share of the whole, because a share only describes the
+ * run it was measured on. A re-run that still has its transcript skips VAD, ASR and diarization
+ * outright, so those four stages complete in well under a second — and an ETA that divided
+ * elapsed time by percent-complete read that as the pace of the entire job. The screen said
+ * "92% · about 1s left" with eight minutes of writing still ahead of it. A rate against the
+ * meeting's own length survives a skipped stage, because a stage that does not run costs nothing.
+ *
+ * The rates also drive the ring, so progress advances at a roughly even pace rather than sitting
+ * at 5% and then jumping to done.
  */
-const STAGES: { key: string; label: string; weight: number }[] = [
-  { key: 'vad', label: 'Audio cleaned up', weight: 0.03 },
-  { key: 'asr', label: 'Words written down', weight: 0.55 },
-  { key: 'diarize', label: 'Speakers separated', weight: 0.25 },
-  { key: 'minutes', label: 'Pulling out the minutes', weight: 0.04 },
-  // Narration, measured on a Pixel 7 Pro: 90-120 s for an 8.5-minute meeting against roughly
-  // 12.5 minutes of ASR for the same recording. Prefill runs at ~37 tok/s and dominates it.
-  { key: 'narrate', label: 'Written up in plain English', weight: 0.13 },
+const STAGES: { key: string; label: string; rate: number }[] = [
+  { key: 'vad', label: 'Audio cleaned up', rate: 0.08 },
+  // whisper-base runs at about 0.68x realtime, two threads.
+  { key: 'asr', label: 'Words written down', rate: 1.47 },
+  { key: 'diarize', label: 'Speakers separated', rate: 0.67 },
+  { key: 'minutes', label: 'Pulling out the minutes', rate: 0.11 },
+  // 460 s of narration against a 24-minute recording, three chunks, on the IPD meeting. Prefill
+  // at ~37 tok/s dominates, so the cost tracks transcript length rather than anything else.
+  { key: 'narrate', label: 'Written up in plain English', rate: 0.32 },
 ];
+const TOTAL_RATE = STAGES.reduce((a, x) => a + x.rate, 0);
+
+/** Seconds into a human wait. "480s left" is a number; "about 8 min left" is an answer. */
+function etaLabel(sec: number): string {
+  if (sec <= 0) return '';
+  if (sec < 90) return ` · about ${sec}s left`;
+  return ` · about ${Math.round(sec / 60)} min left`;
+}
 
 export default function MeetingScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
@@ -56,7 +74,6 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const [utterances, setUtterances] = useState<Utterance[]>([]);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
   const [speechMs, setSpeechMs] = useState(0);
-  const [segCount, setSegCount] = useState(0);
   const [reprocessing, setReprocessing] = useState(false);
   const [stage, setStage] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -65,7 +82,6 @@ export default function MeetingScreen({ route, navigation }: Props) {
   // Always lands on Summary. A remembered tab means tapping two meetings in a row opens them on
   // different screens, which reads as a bug rather than a convenience.
   const [tab, setTab] = useState('summary');
-  const startedAt = useRef(Date.now());
 
   const refresh = useCallback(async () => {
     const [mtg, mins, utts, segs, spk] = await Promise.all([
@@ -79,7 +95,6 @@ export default function MeetingScreen({ route, navigation }: Props) {
     setMinutes(mins);
     setUtterances(utts);
     setSpeakers(spk);
-    setSegCount(segs.length);
     setSpeechMs(segs.reduce((a, x) => a + (x.end_ms - x.start_ms), 0));
     return mins.length;
   }, [meetingId]);
@@ -118,20 +133,35 @@ export default function MeetingScreen({ route, navigation }: Props) {
     };
   }, [meetingId, refresh]);
 
-  const onReprocess = useCallback(async () => {
-    if (reprocessing) return;
-    setReprocessing(true);
-    setFailure(null);
-    startedAt.current = Date.now();
-    try {
-      await PipelineController.process(meetingId, { model: 'base' });
-      await refresh();
-    } catch (e: any) {
-      Alert.alert('Could not reprocess', String(e?.message ?? e));
-    } finally {
-      setReprocessing(false);
-    }
-  }, [meetingId, refresh, reprocessing]);
+  /**
+   * Run the pipeline again.
+   *
+   * `rewriteProse` clears the LLM rows first. Without it a meeting that already has a summary has
+   * no outstanding stages, so the run returns instantly and the button appears to do nothing —
+   * see db.clearNarration. The Summary tab passes it; the Redo button in the overflow sheet does
+   * not, because Redo is there to recover a run that fell over, not to spend eight minutes of
+   * model time on prose that is already written.
+   */
+  const onReprocess = useCallback(
+    async (rewriteProse = false) => {
+      if (reprocessing) return;
+      setReprocessing(true);
+      setFailure(null);
+      try {
+        if (rewriteProse) {
+          await db.clearNarration(meetingId);
+          await refresh();
+        }
+        await PipelineController.process(meetingId, { model: 'base' });
+        await refresh();
+      } catch (e: any) {
+        Alert.alert('Could not reprocess', String(e?.message ?? e));
+      } finally {
+        setReprocessing(false);
+      }
+    },
+    [meetingId, refresh, reprocessing],
+  );
 
   const onExport = () =>
     Alert.alert('Export minutes', 'Choose a format', [
@@ -172,8 +202,8 @@ export default function MeetingScreen({ route, navigation }: Props) {
     {
       icon: 'refresh',
       label: reprocessing ? 'Working…' : 'Redo',
-      hint: 'Run the whole pipeline again — the only way to add a summary to an older meeting.',
-      onPress: onReprocess,
+      hint: 'Run any stage that has not finished. To rewrite the summary, use the Summary tab.',
+      onPress: () => onReprocess(),
     },
     {
       icon: 'archive',
@@ -219,7 +249,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
         icon="refresh"
         label={reprocessing ? 'Working…' : 'Redo'}
         stacked
-        onPress={onReprocess}
+        onPress={() => onReprocess()}
         disabled={reprocessing}
       />
     </View>
@@ -229,11 +259,16 @@ export default function MeetingScreen({ route, navigation }: Props) {
   if (working) {
     const found = STAGES.findIndex(x => x.key === (stage ?? 'vad'));
     const idx = found < 0 ? 0 : found;
-    const pct = Math.round(
-      STAGES.slice(0, idx).reduce((a, x) => a + x.weight, 0) * 100 + STAGES[idx].weight * 40,
-    );
-    const elapsed = Date.now() - startedAt.current;
-    const eta = pct > 8 ? Math.max(1, Math.round(((elapsed / pct) * (100 - pct)) / 1000)) : 0;
+    // A stage reports only that it started, so treat the running one as 40% through.
+    const RUNNING = 0.4;
+    const doneRate = STAGES.slice(0, idx).reduce((a, x) => a + x.rate, 0);
+    const pct = Math.round(((doneRate + STAGES[idx].rate * RUNNING) / TOTAL_RATE) * 100);
+    // Remaining work priced from the recording's own length rather than from elapsed time, which
+    // is what made a transcript-only re-run promise a finish it was nowhere near.
+    const audioSec = (meeting?.durationMs ?? 0) / 1000;
+    const remainingRate =
+      STAGES.slice(idx).reduce((a, x) => a + x.rate, 0) - STAGES[idx].rate * RUNNING;
+    const eta = audioSec > 0 ? Math.max(1, Math.round(remainingRate * audioSec)) : 0;
 
     return (
       <View style={[st.root, { paddingTop: insets.top + s(8), paddingBottom: insets.bottom + s(20) }]}>
@@ -261,7 +296,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
             </Txt>
             <View style={st.pctPill}>
               <Txt variant="metaBlack" color={colors.primary}>
-                {pct}%{eta > 0 ? ` · about ${eta}s left` : ''}
+                {pct}%{etaLabel(eta)}
               </Txt>
             </View>
           </View>
@@ -389,7 +424,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 minutes={minutes}
                 speakers={speakers}
                 speechMs={speechMs}
-                onWrite={onReprocess}
+                onWrite={() => onReprocess(true)}
                 writing={reprocessing}
               />
             ) : tab === 'mom' ? (

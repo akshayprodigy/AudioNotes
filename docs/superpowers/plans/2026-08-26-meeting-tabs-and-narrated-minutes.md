@@ -110,6 +110,78 @@ These change tasks that were already written below. Apply them when you reach th
   `nativeStripMarkdown` rather than reimplementing it in Kotlin.
 - **`MinuteKind`** gains `'headline'` as well as `'narrative'` (Tasks 11 and 13).
 
+### Amendments from D9-D12 (found on the user's own 24-minute IPD meeting)
+
+The first narration of a real recording surfaced four more defects. All four are fixed on the
+branch; they are recorded here because each one was invisible to every test that existed.
+
+- **D9 — a meeting whose audio was reclaimed could never be narrated.** `ProcessingEngine.run()`
+  returned early whenever the recording file was missing, on the reasoning that a re-run has
+  nothing to work from. Narration reads the transcript, never the audio, so the guard locked out
+  precisely the population that needs a summary: every meeting recorded before narration shipped.
+  A missing file now skips only the stages that read audio (VAD, ASR, diarize) and retention.
+- **D10 — the summary was shown severed mid-clause.** The generation ran into its 192-token cap
+  and the screen displayed "...addressed through direct transfers to banks which". A cap is a
+  safety limit, not an edit. `trimToSentence` (C++, mirrored onto Android as
+  `nativeTrimToSentence`) now cuts the narrative and the summary back to their last complete
+  sentence.
+- **D11 — "2 to 3 sentences" is not a length instruction a 1.5B model obeys.** It wrote eight and
+  hit the cap. `summaryPrompt` now gives a word budget ("about 70 words") *and* a hard sentence
+  cap, and `trimToSentence` is the backstop for when it ignores both.
+- **D12 — the ETA was computed from a share of the whole run.** `elapsed / pct * (100 - pct)`
+  assumes every percent costs the same wall time. On a transcript-only re-run four stages finish
+  in under a second, so the screen read "92% · about 1s left" with eight minutes of writing still
+  to go. `STAGES` now carries a measured **rate** (seconds of work per second of audio) instead of
+  a weight, and the ETA is priced from the recording's own length. Same screen now reads
+  "93% · about 5 min left".
+
+- **D13 — the narrative was a filled-in form, not writing.** The MOM tab rendered "Meeting
+  Minutes", a Date & Time line reading literally `[Current Date] at [Time]`, an Attendees list
+  (which promoted the ASR mis-hearing "Arumal" into "Dr. Arumal"), and a numbered Agenda. The
+  prompt already forbade headings and lists; the model ignored it, because the instruction itself
+  said **"write the minutes"** and a minutes form is what that phrase names. The instruction now
+  asks for "an account", and refuses the form field by field — Date line, Attendees list, Agenda,
+  numbered sections — plus an explicit ban on unfilled placeholders and on naming anyone the
+  record does not name. `summaryPrompt` reads an "ACCOUNT" rather than "MINUTES" for the same
+  reason: a 1.5B model mirrors the shape of its input, and the form-shaped narrative is what made
+  the summary answer with nine subjects in one comma-spliced clause.
+
+- **D14 — the form came back in every shape the guard did not cover.** Denied "write the minutes",
+  the model opened with a `Meeting Summary` title and turned the instruction's own four topics
+  into headings ("Meeting was about:", "What was settled:"). Denied those, it wrote a header block
+  — `Meeting Topic: ...`, `Date & Time: Not specified`, `Attendees: Not listed` — which is worse
+  than the placeholder it replaced, because it asserts the absence as fact. `stripLabels` now
+  removes a lead title, a trailing-colon label line, and a leading `Label: value` header block.
+  The header rules are gated to the region above the first real sentence, so `Cost: still open` in
+  the body survives and `The problem: nobody owns it.` survives anywhere.
+- **D15 — the summary closed by contradicting the Actions tab.** "...but did not conclude specific
+  actions or decisions made", written while the Actions tab listed items off the same meeting.
+  Forbidden by the prompt in five wordings and produced anyway, in runs 2 and 4.
+  `dropAbsenceTail` drops a CLOSING sentence matching a fixed list of the formulaic phrases the
+  model actually writes. Only the closing sentence, so a caveat mid-text keeps the good sentences
+  after it; only those phrases, so "the team did not want to change the form" is untouched; and
+  never the only sentence, so it cannot return nothing.
+
+**The general lesson, for whoever picks this up.** Five rounds against the same real meeting went:
+fix the visible failure, watch the model reach for the next variant of the same form. Prompt
+wording shifts the odds and never closes the door — the four post-processing steps are what
+actually hold, which is why they are one `clean()` mirrored exactly in C++ and `Narrator.kt`
+(strip markup, strip labels, drop the caveat, cut to a whole sentence — trimming last). Add to
+that list rather than to the prompt when a failure is one you can detect deterministically.
+
+Bullets in the narrative were deliberately LEFT: the MOM tab is minutes, bullets are right for
+minutes, and `stripMarkdown` had already made that call. Not every deviation from the prompt is a
+defect.
+
+Two smaller things fell out of the same session:
+
+- The Summary tab renders prose as `minuteBody`, not `gist`. The gist face is 17/900 black, drawn
+  for the one or two lines it is named after; a real summary runs a paragraph and that weight
+  becomes a wall.
+- `db.clearNarration` + `onReprocess(true)` back a **"Write it again"** button. Without it a
+  finished meeting has no outstanding stages, so Redo returned instantly having done nothing — and
+  a summary is a judgement call whose only recourse is to ask the model again.
+
 ---
 
 ## Task 0: Branch

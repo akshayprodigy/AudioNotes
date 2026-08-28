@@ -79,6 +79,44 @@ std::optional<std::vector<DraftMinute>> enhanceMinutes(const std::vector<MinuteU
 // mean guessing at sentence boundaries.
 std::string stripMarkdown(const std::string& s);
 
+// Cut a generation back to its last complete sentence.
+//
+// Every prose generation runs under a token cap, and a model that ignores the length instruction
+// hits it mid-word: the first summary written on a real 18-minute meeting ended "...addressed
+// through direct transfers to banks which". A cap is a safety limit, not an edit, so what it
+// severs must not reach the reader.
+//
+// A terminator only counts when the next character is whitespace or the end of the string, which
+// keeps "3.5 lakh" and "e.g." from being mistaken for the end of a thought. When the text holds no
+// terminator at all it is returned untouched — a long fragment still says more than nothing.
+std::string trimToSentence(const std::string& s);
+
+// Drop title and section-label lines from a prose generation.
+//
+// Told "no title, no heading" in five different wordings, the model still opened with "Meeting
+// Summary" and then labelled each paragraph — "Meeting was about:", "What the group worked
+// through:", "What was settled:" — by echoing the very topics the instruction listed. Prompt
+// wording reduces how often that happens and cannot make it never happen, so the guarantee is
+// made here instead.
+//
+// A line is a label when it is short, does not end in sentence punctuation, and either ends in a
+// colon or is the first line with a blank line under it. Prose that runs to a full stop is never
+// touched, and neither is a long line, so an ordinary sentence cannot be mistaken for a heading.
+std::string stripLabels(const std::string& s);
+
+// Drop a closing sentence whose content is that the meeting did NOT do something.
+//
+// The prompts forbid this in five wordings and the model writes it anyway, always as a final
+// caveat: "...but did not conclude specific actions or decisions made". It is unhelpful at best
+// and self-contradicting at worst — the Actions tab is listing items off the same meeting while
+// the summary says none were reached.
+//
+// Only the closing sentence is examined, and only against a fixed list of the formulaic phrases
+// the model actually produces, so a sentence that reports a real refusal ("the team did not want
+// to change the form") is untouched. Never returns empty: if every sentence would go, the text is
+// returned as it was.
+std::string dropAbsenceTail(const std::string& s);
+
 // The prose the UI leads with. Empty strings on failure; callers keep the rule-based floor.
 struct Narration {
   std::string narrative;  // MOM body, three or four paragraphs

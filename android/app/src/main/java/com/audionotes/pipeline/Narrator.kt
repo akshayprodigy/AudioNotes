@@ -59,6 +59,25 @@ object Narrator {
   /** Below this much transcript, narration invents a meeting rather than describing one. */
   private const val MIN_TRANSCRIPT_CHARS = 400
 
+  /**
+   * Everything that stands between a raw generation and the reader, in order.
+   *
+   * Each step exists because the prompt asked for the same thing and the model did it anyway —
+   * markdown it was told not to emit, a form header it was told not to write, a caveat about what
+   * the meeting failed to decide, and a final sentence severed by the token cap. Prompt wording
+   * shifts the odds; these make the guarantee. The logic lives in C++ so the CLI and the phone
+   * clean prose identically — see llm_prompts.cpp.
+   *
+   * Order matters: strip the markup, then the labels it was hiding under, then the closing
+   * caveat, and only then cut to a whole sentence — so trimming is the last word.
+   */
+  private fun clean(raw: String): String =
+    NativeBridge.nativeTrimToSentence(
+      NativeBridge.nativeDropAbsenceTail(
+        NativeBridge.nativeStripLabels(NativeBridge.nativeStripMarkdown(raw)),
+      ),
+    )
+
   interface Progress {
     fun onStage(stage: String, done: Int, total: Int)
     fun isCancelled(): Boolean
@@ -206,9 +225,7 @@ object Narrator {
       // hundred characters, and neither can contradict the one above it.
       if (tick()) return false
       step++
-      val narrative = NativeBridge.nativeStripMarkdown(
-        gen(NativeBridge.nativeLlmNarrativePrompt(source), NARRATIVE_TOKENS),
-      )
+      val narrative = clean(gen(NativeBridge.nativeLlmNarrativePrompt(source), NARRATIVE_TOKENS))
       if (narrative.isEmpty()) {
         Log.w(TAG, "no narrative produced for $meetingId")
         return false
@@ -216,9 +233,7 @@ object Narrator {
 
       if (tick()) return false
       step++
-      val summary = NativeBridge.nativeStripMarkdown(
-        gen(NativeBridge.nativeLlmSummaryPrompt(narrative), SUMMARY_TOKENS),
-      )
+      val summary = clean(gen(NativeBridge.nativeLlmSummaryPrompt(narrative), SUMMARY_TOKENS))
       if (summary.isEmpty()) {
         Log.w(TAG, "no summary produced for $meetingId")
         return false

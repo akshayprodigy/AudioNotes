@@ -372,6 +372,24 @@ Java_com_audionotes_pipeline_NativeBridge_nativeStripMarkdown(
 }
 
 extern "C" JNIEXPORT jstring JNICALL
+Java_com_audionotes_pipeline_NativeBridge_nativeTrimToSentence(
+    JNIEnv* env, jobject /*thiz*/, jstring jText) {
+  return promptCall(env, jText, &audionotes::trimToSentence);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_audionotes_pipeline_NativeBridge_nativeStripLabels(
+    JNIEnv* env, jobject /*thiz*/, jstring jText) {
+  return promptCall(env, jText, &audionotes::stripLabels);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_audionotes_pipeline_NativeBridge_nativeDropAbsenceTail(
+    JNIEnv* env, jobject /*thiz*/, jstring jText) {
+  return promptCall(env, jText, &audionotes::dropAbsenceTail);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
 Java_com_audionotes_pipeline_NativeBridge_nativeLlmNarrativePrompt(
     JNIEnv* env, jobject /*thiz*/, jstring jNotes) {
   return promptCall(env, jNotes, &audionotes::narrativePrompt);
