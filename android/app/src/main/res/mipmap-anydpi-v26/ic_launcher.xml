@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 8+ masks the foreground to whatever shape the launcher uses (circle, squircle,
+     teardrop), so the background is a flat colour and the character is drawn inside the safe
+     zone. The legacy PNGs in mipmap-<density>/ carry their own background for older launchers. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>
