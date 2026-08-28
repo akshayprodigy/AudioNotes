@@ -38,17 +38,25 @@ class ProcessingEngine(
       val audioPath = db.getAudioPath(meetingId)
         ?: throw IllegalStateException("no audio for $meetingId")
 
-      // Retention deletes the recording once it has been transcribed, so a re-run can arrive
-      // with a path that no longer resolves. VAD over a missing file returns nothing, and the
-      // old code committed that nothing — replaceSegments wiped the spans of a meeting that
-      // still had a perfectly good transcript, leaving it reading "0 segments, 0s of speech".
-      // With no audio there is nothing to re-derive, so leave the stored results alone and let
-      // the caller rebuild the minutes from the transcript it already has.
-      if (!File(audioPath).exists()) {
-        Log.i(TAG, "re-run skipped for $meetingId (audio deleted by retention)")
+      // Retention deletes the recording once it has been transcribed, so a re-run can arrive with
+      // a path that no longer resolves. VAD over a missing file returns nothing, and committing
+      // that nothing wiped the spans of a meeting that still had a perfectly good transcript,
+      // leaving it reading "0 segments, 0s of speech". So every stage that reads audio is skipped.
+      //
+      // Narration is NOT one of them. It reads the transcript and the speakers, never the audio —
+      // and every meeting recorded before narration shipped is in exactly this state: transcribed,
+      // audio long since reclaimed, no summary. Returning early here meant those meetings could
+      // never get one, which is the entire population that needs it. Measured on a real 18-minute
+      // recording from 2026-08-25 that answered "re-run skipped (audio deleted by retention)" to
+      // the Summary tab's own "Write the summary" button.
+      val audioGone = !File(audioPath).exists()
+      if (audioGone && db.utterances(meetingId).isEmpty()) {
+        // No audio AND no transcript: nothing to derive anything from, in either direction.
+        Log.i(TAG, "re-run skipped for $meetingId (audio deleted, no transcript to fall back on)")
         listener.onComplete("done")
         return
       }
+      if (audioGone) Log.i(TAG, "audio gone for $meetingId — transcript-only re-run")
 
       val state = db.pipelineState(meetingId)
       val remaining = ResumePlan.remaining(state)
@@ -71,7 +79,7 @@ class ProcessingEngine(
           .format(stage, ms, rt, audioMs / 1000, meetingId))
       }
 
-      if (Stage.VAD in remaining) {
+      if (Stage.VAD in remaining && !audioGone) {
         listener.onStage("vad", 0, 1)
         val modelPath = ensureVadModel()
         val t0 = System.currentTimeMillis()
@@ -91,7 +99,7 @@ class ProcessingEngine(
       // Stage.ASR not being in `remaining` means utterances already exist from a prior session —
       // treat that the same as "transcribed" so a diarize-only resume still runs below.
       var transcribed = Stage.ASR !in remaining
-      if (Stage.ASR in remaining) {
+      if (Stage.ASR in remaining && !audioGone) {
         val asrFile = ModelCatalog.fileFor(ctx, ModelCatalog.asrIdForModel(model))
         if (spans.isNotEmpty() && asrFile != null && asrFile.exists()) {
           listener.onStage("asr", 0, 1)
@@ -118,7 +126,7 @@ class ProcessingEngine(
       }
 
       // ---- Diarization (sherpa-onnx), if the models are installed and we have a transcript ----
-      if (Stage.DIARIZE in remaining) {
+      if (Stage.DIARIZE in remaining && !audioGone) {
         if (checkCancelled()) return
         val segModel = ModelCatalog.fileFor(ctx, "diar-seg")
         val embModel = ModelCatalog.fileFor(ctx, "diar-emb")
@@ -189,7 +197,7 @@ class ProcessingEngine(
           if (checkCancelled()) return
         }
 
-        applyRetention(meetingId, utts.size)
+        if (!audioGone) applyRetention(meetingId, utts.size)
         db.setStatus(meetingId, "done")
       } else {
         // No transcript. Port of PipelineController.buildMinutes' empty-utterances branch
