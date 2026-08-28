@@ -152,6 +152,17 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     }
   }
 
+  /**
+   * Write a user setting from native.
+   *
+   * The JS layer owns most of this table, but the licence lives here too and is read and written
+   * by code that runs with no React context — the capture and processing services, and the
+   * opportunistic token refresh. See billing/LicenceStore.
+   */
+  fun putSetting(key: String, value: String) {
+    db.execSQL("INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)", arrayOf<Any?>(key, value))
+  }
+
   fun getAudioPath(id: String): String? {
     db.rawQuery("SELECT audio_path FROM meetings WHERE id=?", arrayOf(id)).use { c ->
       return if (c.moveToFirst()) c.getString(0) else null

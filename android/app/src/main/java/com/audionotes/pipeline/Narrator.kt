@@ -3,6 +3,7 @@ package com.audionotes.pipeline
 import android.app.ActivityManager
 import android.content.Context
 import android.util.Log
+import com.audionotes.billing.LicenceStore
 import com.audionotes.data.AudioDb
 import com.audionotes.data.ModelCatalog
 
@@ -97,6 +98,19 @@ object Narrator {
    * Requires [NativeBridge.ensureLoaded] to have run.
    */
   fun run(ctx: Context, meetingId: String, progress: Progress): Boolean {
+    // The paid gate, and the only one in the app: every caller of narration comes through here —
+    // the processing service, the headless stop-from-notification path, and the Summary tab's
+    // "Write it again". Checked before the model is even looked for, because a lapsed subscriber
+    // still has the weights on disk.
+    //
+    // Failing here is not an error and not a dead end. The meeting still gets its transcript, its
+    // speakers and its rule-based minutes — the free floor is a whole product, not a teaser — so
+    // the only thing withheld is the prose. Nothing the user already has is ever taken away.
+    if (!LicenceStore.current(ctx).isPaid) {
+      Log.i(TAG, "skipped for $meetingId (no active subscription)")
+      return false
+    }
+
     val model = modelFile(ctx)
     if (model == null) {
       Log.i(TAG, "skipped for $meetingId (Qwen model not installed)")

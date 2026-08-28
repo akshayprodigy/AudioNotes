@@ -242,9 +242,29 @@ android {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
             signingConfig signingConfigs.debug
+
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
+    }
+}
+
+// A release with no licence key is an app that hands the paid tier to everyone. LicenceStore
+// treats a missing key as "licensing is not wired up yet" and unlocks — the right failure for a
+// development build, a silent giveaway in a shipped one. Caught here rather than in the store
+// listing.
+//
+// Against the task graph rather than inside buildTypes.release: that block is configured on every
+// invocation, so a check placed there fails debug builds as well.
+gradle.taskGraph.whenReady { graph ->
+    def releasing = graph.allTasks.any { t ->
+        t.project == project && t.name ==~ /(?i)(assemble|bundle|install)Release/
+    }
+    if (releasing && !project.findProperty('licencePublicKey')) {
+        throw new GradleException(
+            "No licencePublicKey set — a release built this way unlocks the paid tier for " +
+            "everyone. Pass -PlicencePublicKey=<base64 X.509 P-256 public key>, or set it in " +
+            "android/gradle.properties.")
     }
 }
 
