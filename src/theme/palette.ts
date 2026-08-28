@@ -233,6 +233,11 @@ export const type = {
   gist: { family: font.black, size: 17, line: 23, tracking: 0 }, // 17/900 lh1.35
   cardTitleSm: { family: font.black, size: 16, line: 21, tracking: 0 }, // 16/900
   minuteBody: { family: font.extrabold, size: 16, line: 22, tracking: 0 }, // 16/800 lh1.35
+  // 16/600 lh1.6 — the only token meant for READING rather than scanning. Everything else in this
+  // scale is 800 or 900, which is right for a label, a stat or a one-line gist and wrong for a
+  // paragraph: set at that weight a summary stops being emphasis and becomes a wall. Loose leading
+  // for the same reason.
+  prose: { family: font.semibold, size: 16, line: 26, tracking: 0 },
   bodyBlack: { family: font.black, size: 15, line: 20, tracking: 0 }, // 15/900
   bodyStrong: { family: font.extrabold, size: 15, line: 20, tracking: 0 }, // 15/800
   transcript: { family: font.bold, size: 15, line: 21, tracking: 0 }, // 15/700 lh1.4

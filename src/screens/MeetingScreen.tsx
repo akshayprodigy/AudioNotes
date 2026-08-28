@@ -425,6 +425,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 speakers={speakers}
                 speechMs={speechMs}
                 onWrite={() => onReprocess(true)}
+                onOpenTab={setTab}
                 writing={reprocessing}
               />
             ) : tab === 'mom' ? (

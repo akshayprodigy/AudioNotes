@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { Raised, SoftButton, Txt } from '../../components/ui';
 import { radius, s, useTheme, type Colors } from '../../theme';
 import type { Minute } from '../../pipeline/types';
-import { MinuteCard } from './shared';
+import { DocItem, Prose, SectionHead } from './shared';
 
 /**
  * MOM — the document you would send someone.
@@ -33,13 +33,11 @@ export default function MinutesTab({
     <ScrollView contentContainerStyle={st.pad} showsVerticalScrollIndicator={false}>
       <Raised edge={colors.line} fill={colors.card} rad={radius.card24} depth={5}>
         <View style={st.doc}>
-          <Txt variant="overlineSm" color={colors.inkFaint}>
-            MINUTES
-          </Txt>
+          <SectionHead label="MINUTES" colors={colors} />
           {narrative ? (
-            <Txt variant="minuteBody" style={st.prose}>
-              {narrative}
-            </Txt>
+            // Parsed into paragraphs and list items. Set as one block, the model's "- " lines
+            // rendered as stray dashes running into the words after them.
+            <Prose text={narrative} colors={colors} />
           ) : (
             <>
               <Txt variant="bodyStrong" color={colors.inkDim}>
@@ -55,45 +53,42 @@ export default function MinutesTab({
       </Raised>
 
       {decisions.length > 0 ? (
-        <>
-          <Txt variant="overlineSm" color={colors.inkFaint} style={st.heading}>
-            DECISIONS
-          </Txt>
-          <View style={st.list}>
-            {decisions.map((m, i) => (
-              <MinuteCard key={m.id ?? i} m={m} i={i} colors={colors} />
-            ))}
+        <Raised edge={colors.line} fill={colors.card} rad={radius.card24} depth={5}>
+          <View style={st.doc}>
+            <SectionHead label="DECISIONS" count={decisions.length} colors={colors} />
+            <View style={st.list}>
+              {decisions.map((m, i) => (
+                <DocItem key={m.id ?? i} m={m} colors={colors} />
+              ))}
+            </View>
           </View>
-        </>
+        </Raised>
       ) : null}
 
       {actions.length > 0 ? (
-        <>
-          <Txt variant="overlineSm" color={colors.inkFaint} style={st.heading}>
-            ACTION ITEMS
-          </Txt>
-          <View style={st.list}>
-            {actions.map((m, i) => (
-              <MinuteCard key={m.id ?? i} m={m} i={i} colors={colors} />
-            ))}
+        <Raised edge={colors.line} fill={colors.card} rad={radius.card24} depth={5}>
+          <View style={st.doc}>
+            <SectionHead label="ACTION ITEMS" count={actions.length} colors={colors} />
+            <View style={st.list}>
+              {actions.map((m, i) => (
+                <DocItem key={m.id ?? i} m={m} colors={colors} />
+              ))}
+            </View>
           </View>
-        </>
+        </Raised>
       ) : null}
 
-      <View style={st.exportRow}>
-        <SoftButton icon="share" label="Export minutes" onPress={onExport} />
-      </View>
+      <SoftButton icon="share" label="Export minutes" onPress={onExport} />
     </ScrollView>
   );
 }
 
-function makeStyles(c: Colors) {
+function makeStyles(_c: Colors) {
   return StyleSheet.create({
     pad: { paddingHorizontal: s(16), paddingBottom: s(30), gap: s(14) },
-    doc: { padding: s(18), gap: s(8) },
-    prose: { lineHeight: s(24) },
-    heading: { marginTop: s(4) },
-    list: { gap: s(12) },
-    exportRow: { marginTop: s(10) },
+    // One card per section rather than one card per item: a document reads as a document, and
+    // twenty-nine separately raised, separately tilted cards read as a pile.
+    doc: { padding: s(18), gap: s(14) },
+    list: { gap: s(14) },
   });
 }

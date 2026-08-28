@@ -1,9 +1,11 @@
 import React from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import Icon, { type IconName } from '../../components/Icon';
 import { Raised, Slide, SoftButton, Txt } from '../../components/ui';
 import { radius, s, useTheme, type Colors } from '../../theme';
 import type { Minute, Speaker } from '../../pipeline/types';
 import Llm from '../../native/NativeLlm';
+import { Prose } from './shared';
 
 /**
  * The landing tab: what the conversation was about, in prose.
@@ -21,12 +23,14 @@ export default function SummaryTab({
   speakers,
   speechMs,
   onWrite,
+  onOpenTab,
   writing,
 }: {
   minutes: Minute[];
   speakers: Speaker[];
   speechMs: number;
   onWrite: () => void;
+  onOpenTab: (tab: string) => void;
   writing: boolean;
 }) {
   const { colors } = useTheme();
@@ -34,6 +38,9 @@ export default function SummaryTab({
 
   const prose = minutes.find(m => m.kind === 'summary' && m.source === 'llm')?.content;
   const mins = Math.max(1, Math.round(speechMs / 60000));
+  const actions = minutes.filter(m => m.kind === 'action').length;
+  const decisions = minutes.filter(m => m.kind === 'decision').length;
+  const questions = minutes.filter(m => m.kind === 'question').length;
 
   // Why there is no summary decides what we can honestly offer. A missing model is a Settings
   // trip; a capable phone that simply has not run narration yet — every meeting recorded before
@@ -67,19 +74,22 @@ export default function SummaryTab({
           rad={radius.card24}
           depth={6}>
           <View style={st.gist}>
-            <Txt variant="overlineSm" color={colors.onPrimary}>
-              SUMMARY
-            </Txt>
-            {prose ? (
-              // `minuteBody`, not `gist`. The gist face is 17/900 black, drawn for the one or two
-              // lines it was named after; a real summary runs a paragraph, and at that length the
-              // display weight stops being emphasis and becomes a wall. The MOM tab already sets
-              // its prose this way.
-              <Txt variant="minuteBody" color={colors.onPrimary} style={st.gistText}>
-                {prose}
+            {/* The meeting's shape, on the card rather than in tiles of its own below. Two large
+                white boxes to hold the numerals 18 and 3 was most of a screen spent on a fact
+                that fits on one line. */}
+            <View style={st.headRow}>
+              <Txt variant="overlineSm" color={colors.onPrimary}>
+                SUMMARY
               </Txt>
+              <Txt variant="chipSoft" color={colors.onPrimary} style={st.dim}>
+                {mins} min · {speakers.length || '—'}{' '}
+                {speakers.length === 1 ? 'speaker' : 'speakers'}
+              </Txt>
+            </View>
+            {prose ? (
+              <Prose text={prose} colors={colors} color={colors.onPrimary} />
             ) : (
-              <Txt variant="gist" color={colors.onPrimary} style={st.gistText}>
+              <Txt variant="prose" color={colors.onPrimary}>
                 {reason === 'no-model'
                   ? 'The summary is written on your phone by a language model that has not been downloaded yet.'
                   : reason === 'weak-device'
@@ -96,6 +106,40 @@ export default function SummaryTab({
         </Raised>
       </Slide>
 
+      {/* What came out of the meeting, as a way in rather than as a readout. Each one opens the
+          tab that holds it, which is the question a count actually raises. */}
+      {actions + decisions + questions > 0 ? (
+        <View style={st.glance}>
+          <Glance
+            icon="check"
+            n={actions}
+            label={actions === 1 ? 'action' : 'actions'}
+            color={colors.warning}
+            soft={colors.warningSoft}
+            onPress={() => onOpenTab('actions')}
+            c={colors}
+          />
+          <Glance
+            icon="check"
+            n={decisions}
+            label={decisions === 1 ? 'decision' : 'decisions'}
+            color={colors.primary}
+            soft={colors.primarySoft}
+            onPress={() => onOpenTab('mom')}
+            c={colors}
+          />
+          <Glance
+            icon="help"
+            n={questions}
+            label="open"
+            color={colors.success}
+            soft={colors.successSoft}
+            onPress={() => onOpenTab('actions')}
+            c={colors}
+          />
+        </View>
+      ) : null}
+
       {/* Offered once there IS prose too. A summary is a judgement call, not a lookup, and the
           only recourse when the model has written a poor one is to ask it again — there is
           nothing else on the screen that can change the answer. Withheld when the model is
@@ -108,45 +152,68 @@ export default function SummaryTab({
           disabled={writing}
         />
       ) : null}
-
-      <View style={st.factRow}>
-        <Fact value={`${mins}`} label={mins === 1 ? 'minute' : 'minutes'} c={colors} />
-        <Fact
-          value={`${speakers.length || '—'}`}
-          label={speakers.length === 1 ? 'speaker' : 'speakers'}
-          c={colors}
-        />
-      </View>
     </ScrollView>
   );
 }
 
-function Fact({ value, label, c }: { value: string; label: string; c: Colors }) {
+function Glance({
+  icon,
+  n,
+  label,
+  color,
+  soft,
+  onPress,
+  c,
+}: {
+  icon: IconName;
+  n: number;
+  label: string;
+  color: string;
+  soft: string;
+  onPress: () => void;
+  c: Colors;
+}) {
   const st = React.useMemo(() => makeStyles(c), [c]);
   return (
-    <View style={st.factFlex}>
+    <Pressable
+      style={st.glanceFlex}
+      accessibilityRole="button"
+      accessibilityLabel={`${n} ${label}`}
+      onPress={onPress}>
       <Raised edge={c.line} fill={c.card} rad={radius.xl} depth={4}>
-        <View style={st.fact}>
-          <Txt variant="statNum" color={c.ink}>
-            {value}
+        <View style={st.glanceCard}>
+          <View style={[st.glanceIcon, { backgroundColor: soft }]}>
+            <Icon name={icon} size={s(14)} color={color} strokeWidth={2.8} />
+          </View>
+          <Txt variant="statNumSm" color={c.ink}>
+            {n}
           </Txt>
           <Txt variant="chipSoft" color={c.inkDim}>
             {label}
           </Txt>
         </View>
       </Raised>
-    </View>
+    </Pressable>
   );
 }
 
 function makeStyles(_c: Colors) {
   return StyleSheet.create({
     pad: { paddingHorizontal: s(16), paddingBottom: s(30), gap: s(14) },
-    gist: { padding: s(18), gap: s(8) },
-    gistText: { marginTop: s(2) },
-    note: { opacity: 0.85, marginTop: s(4) },
-    factRow: { flexDirection: 'row', gap: s(10) },
-    factFlex: { flex: 1 },
-    fact: { paddingVertical: s(14), alignItems: 'center', gap: s(2) },
+    gist: { padding: s(18), gap: s(12) },
+    headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    dim: { opacity: 0.8 },
+    note: { opacity: 0.85 },
+    glance: { flexDirection: 'row', gap: s(10) },
+    glanceFlex: { flex: 1 },
+    glanceCard: { paddingVertical: s(12), alignItems: 'center', gap: s(4) },
+    glanceIcon: {
+      width: s(26),
+      height: s(26),
+      borderRadius: s(9),
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: s(2),
+    },
   });
 }
