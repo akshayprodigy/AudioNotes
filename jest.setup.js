@@ -52,6 +52,21 @@ const mockNativeModules = {
     generate: jest.fn(async () => ''),
     unload: jest.fn(async () => {}),
   },
+  Licence: {
+    // Default to an active subscription, matching a development build: with no licence key
+    // configured the app unlocks, and tests should exercise the path most code takes.
+    status: jest.fn(async () => ({
+      plan: 'unlicensed-build',
+      state: 'active',
+      paid: true,
+      expiresAt: 0,
+      account: null,
+      lapsedCopy: 'Your subscription has ended.',
+    })),
+    store: jest.fn(async () => true),
+    clear: jest.fn(async () => {}),
+    deviceId: jest.fn(async () => 'test-device'),
+  },
   Pip: {
     isSupported: jest.fn(async () => false),
     addListener: jest.fn(),

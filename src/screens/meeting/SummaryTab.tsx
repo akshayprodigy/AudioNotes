@@ -5,6 +5,7 @@ import { Raised, Slide, SoftButton, Txt } from '../../components/ui';
 import { radius, s, useTheme, type Colors } from '../../theme';
 import type { Minute, Speaker } from '../../pipeline/types';
 import Llm from '../../native/NativeLlm';
+import Licence from '../../native/NativeLicence';
 import { Prose } from './shared';
 
 /**
@@ -42,17 +43,29 @@ export default function SummaryTab({
   const decisions = minutes.filter(m => m.kind === 'decision').length;
   const questions = minutes.filter(m => m.kind === 'question').length;
 
-  // Why there is no summary decides what we can honestly offer. A missing model is a Settings
-  // trip; a capable phone that simply has not run narration yet — every meeting recorded before
-  // this feature shipped — just needs the pipeline run again.
-  const [reason, setReason] = React.useState<'checking' | 'no-model' | 'weak-device' | 'not-run'>(
-    'checking',
-  );
+  // Why there is no summary decides what we can honestly offer. A lapsed subscription is a
+  // sentence, not a fix we can offer from here; a missing model is a Settings trip; a capable
+  // phone that simply has not run narration yet — every meeting recorded before this feature
+  // shipped — just needs the pipeline run again.
+  //
+  // Checked even when prose EXISTS, because a lapsed subscriber keeps every summary already
+  // written and must not be offered a "Write it again" that would silently do nothing.
+  const [reason, setReason] = React.useState<
+    'checking' | 'expired' | 'no-model' | 'weak-device' | 'not-run'
+  >('checking');
+  const [lapsedCopy, setLapsedCopy] = React.useState('');
   React.useEffect(() => {
-    if (prose) return;
     let alive = true;
     (async () => {
       try {
+        const licence = await Licence.status();
+        if (!alive) return;
+        setLapsedCopy(licence.lapsedCopy);
+        if (licence.state === 'expired') {
+          setReason('expired');
+          return;
+        }
+        if (prose) return;
         const [available, capable] = await Promise.all([Llm.available(), Llm.capable()]);
         if (!alive) return;
         setReason(!available ? 'no-model' : !capable ? 'weak-device' : 'not-run');
@@ -90,11 +103,13 @@ export default function SummaryTab({
               <Prose text={prose} colors={colors} color={colors.onPrimary} />
             ) : (
               <Txt variant="prose" color={colors.onPrimary}>
-                {reason === 'no-model'
-                  ? 'The summary is written on your phone by a language model that has not been downloaded yet.'
-                  : reason === 'weak-device'
-                    ? 'This phone does not have enough memory to write the summary on-device.'
-                    : 'This meeting was processed before summaries were written. Run it again and one will be.'}
+                {reason === 'expired'
+                  ? lapsedCopy
+                  : reason === 'no-model'
+                    ? 'The summary is written on your phone by a language model that has not been downloaded yet.'
+                    : reason === 'weak-device'
+                      ? 'This phone does not have enough memory to write the summary on-device.'
+                      : 'This meeting was processed before summaries were written. Run it again and one will be.'}
               </Txt>
             )}
             {!prose && reason === 'no-model' ? (
@@ -144,13 +159,22 @@ export default function SummaryTab({
           only recourse when the model has written a poor one is to ask it again — there is
           nothing else on the screen that can change the answer. Withheld when the model is
           missing or the phone cannot run it, where the button would be an empty promise. */}
-      {prose || reason === 'not-run' ? (
+      {(prose || reason === 'not-run') && reason !== 'expired' ? (
         <SoftButton
           icon="refresh"
           label={writing ? 'Working…' : prose ? 'Write it again' : 'Write the summary'}
           onPress={onWrite}
           disabled={writing}
         />
+      ) : null}
+
+      {/* A lapsed subscriber keeps every summary already written — they are notes about the
+          user's own meetings, not a rented view of them. What stops is writing new ones, and
+          saying so once here is better than a button that fails silently. */}
+      {reason === 'expired' && prose ? (
+        <Txt variant="chipSoft" color={colors.inkDim} style={st.lapsed}>
+          {lapsedCopy}
+        </Txt>
       ) : null}
     </ScrollView>
   );
@@ -204,6 +228,7 @@ function makeStyles(_c: Colors) {
     headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     dim: { opacity: 0.8 },
     note: { opacity: 0.85 },
+    lapsed: { textAlign: 'center', paddingHorizontal: s(12) },
     glance: { flexDirection: 'row', gap: s(10) },
     glanceFlex: { flex: 1 },
     glanceCard: { paddingVertical: s(12), alignItems: 'center', gap: s(4) },
