@@ -52,6 +52,10 @@ const mockNativeModules = {
     generate: jest.fn(async () => ''),
     unload: jest.fn(async () => {}),
   },
+  Backup: {
+    exportAndShare: jest.fn(async () => 'audionotes-test.anbak'),
+    pickAndRestore: jest.fn(async () => null),
+  },
   Licence: {
     // Default to an active subscription, matching a development build: with no licence key
     // configured the app unlocks, and tests should exercise the path most code takes.

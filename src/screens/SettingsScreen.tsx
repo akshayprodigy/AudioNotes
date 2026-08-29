@@ -1,5 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { NativeEventEmitter, NativeModules, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  Alert,
+  NativeEventEmitter,
+  NativeModules,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -8,7 +17,8 @@ import { db } from '../db/queries';
 import { PipelineController } from '../pipeline/PipelineController';
 import Icon from '../components/Icon';
 import { confirmDestructive } from '../components/confirm';
-import { IconButton, Pop, ProgressBar, Raised, SectionRule, Switch, Txt } from '../components/ui';
+import { IconButton, Pop, ProgressBar, Raised, SectionRule, SoftButton, Switch, Txt } from '../components/ui';
+import Backup from '../native/NativeBackup';
 import { radius, s, useTheme, type Colors } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
@@ -43,6 +53,41 @@ const NOTICES: { name: string; licence: string; by: string }[] = [
 
 export default function SettingsScreen({ navigation }: Props) {
   const { colors } = useTheme();
+  // Backup lives entirely in this screen: a passphrase the user types, and two calls.
+  const [pass, setPass] = React.useState('');
+  const [busy, setBusy] = React.useState<'export' | 'restore' | null>(null);
+
+  const onBackup = React.useCallback(async () => {
+    setBusy('export');
+    try {
+      const name = await Backup.exportAndShare(pass);
+      // The share sheet is already open by now; this is what to do with what it hands over.
+      Alert.alert('Backup ready', `${name} — save it somewhere you will still have it when this phone is gone.`);
+    } catch (e: any) {
+      Alert.alert('Could not back up', String(e?.message ?? e));
+    } finally {
+      setBusy(null);
+    }
+  }, [pass]);
+
+  const onRestore = React.useCallback(async () => {
+    setBusy('restore');
+    try {
+      const count = await Backup.pickAndRestore(pass);
+      // null means the picker was dismissed, which is a choice, not a failure.
+      if (count !== null) {
+        Alert.alert(
+          'Restored',
+          count === 1 ? '1 meeting is back.' : `${count} meetings are back.`,
+        );
+      }
+    } catch (e: any) {
+      Alert.alert('Could not restore', String(e?.message ?? e));
+    } finally {
+      setBusy(null);
+    }
+  }, [pass]);
+
   const st = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const [models, setModels] = useState<Model[]>([]);
@@ -250,6 +295,56 @@ export default function SettingsScreen({ navigation }: Props) {
         </View>
 
         <View style={st.ruleWrap}>
+          <SectionRule label="MOVING DEVICES" />
+        </View>
+        <View style={st.list}>
+          <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={5}>
+            <View style={st.rowPad}>
+              <Txt variant="bodyStrong">Back up your meetings</Txt>
+              <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
+                A single encrypted file you can carry to another phone. Nothing is uploaded — this
+                app has no server to upload it to.
+              </Txt>
+              {/* The passphrase is the whole security of the file, and forgetting it is
+                  unrecoverable BY DESIGN — an export only you can decrypt is one nobody, us
+                  included, can open for you later. Said here rather than after the fact. */}
+              <TextInput
+                style={[st.pass, { borderColor: colors.line, color: colors.ink }]}
+                value={pass}
+                onChangeText={setPass}
+                placeholder="Passphrase"
+                placeholderTextColor={colors.inkFaint}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
+                Write this down. If you lose it the backup cannot be opened — not by you, and not
+                by us.
+              </Txt>
+              <View style={st.backupRow}>
+                <View style={st.flex}>
+                  <SoftButton
+                    icon="share"
+                    label={busy === 'export' ? 'Working…' : 'Back up'}
+                    onPress={onBackup}
+                    disabled={busy !== null || pass.length < 6}
+                  />
+                </View>
+                <View style={st.flex}>
+                  <SoftButton
+                    icon="restore"
+                    label={busy === 'restore' ? 'Working…' : 'Restore'}
+                    onPress={onRestore}
+                    disabled={busy !== null || pass.length < 6}
+                  />
+                </View>
+              </View>
+            </View>
+          </Raised>
+        </View>
+
+        <View style={st.ruleWrap}>
           <SectionRule label="PRIVACY" />
         </View>
         <View style={st.list}>
@@ -332,6 +427,14 @@ function makeStyles(c: Colors) {
     list: { paddingHorizontal: s(20), gap: s(10) },
     rowPad: { padding: s(16) },
     row: { flexDirection: 'row', alignItems: 'center', gap: s(12) },
+    pass: {
+      borderWidth: 1,
+      borderRadius: s(12),
+      paddingHorizontal: s(12),
+      paddingVertical: s(10),
+      marginTop: s(10),
+    },
+    backupRow: { flexDirection: 'row', gap: s(10), marginTop: s(12) },
     tiny: { marginTop: s(4) },
     modelMeta: { flexDirection: 'row', alignItems: 'center', gap: s(8), marginTop: s(12) },
     tag: { paddingHorizontal: s(8), paddingVertical: s(4), borderRadius: radius.pill },

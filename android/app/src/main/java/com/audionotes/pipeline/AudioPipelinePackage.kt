@@ -1,6 +1,7 @@
 package com.audionotes.pipeline
 
 import com.audionotes.billing.LicenceModule
+import com.audionotes.data.BackupModule
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule
 import com.facebook.react.bridge.ReactApplicationContext
@@ -20,6 +21,7 @@ class AudioPipelinePackage : ReactPackage {
       FileExportModule(ctx),
       PipModule(ctx),
       LicenceModule(ctx),
+      BackupModule(ctx),
     )
 
   override fun createViewManagers(ctx: ReactApplicationContext): List<ViewManager<*, *>> =

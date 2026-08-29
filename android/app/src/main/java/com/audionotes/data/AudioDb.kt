@@ -152,6 +152,30 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     }
   }
 
+  // ---- Backup support. See BackupManager, which is the only caller. ----
+
+  /**
+   * Attach a second SQLCipher database under its own key.
+   *
+   * The path and passphrase are bound rather than interpolated: a passphrase is user-chosen text
+   * and may contain a quote, which string-building would turn into a syntax error at best.
+   */
+  fun attach(path: String, passphrase: String, alias: String) {
+    db.execSQL("ATTACH DATABASE ? AS $alias KEY ?", arrayOf<Any?>(path, passphrase))
+  }
+
+  fun detach(alias: String) = db.execSQL("DETACH DATABASE $alias")
+
+  /** SQLCipher's whole-database copy into an attached, differently-keyed database. */
+  fun exportInto(alias: String) {
+    db.rawQuery("SELECT sqlcipher_export(?)", arrayOf(alias)).use { it.moveToFirst() }
+  }
+
+  fun exec(sql: String) = db.execSQL(sql)
+
+  fun count(sql: String): Int =
+    db.rawQuery(sql, null).use { if (it.moveToFirst()) it.getInt(0) else 0 }
+
   /**
    * Write a user setting from native.
    *
