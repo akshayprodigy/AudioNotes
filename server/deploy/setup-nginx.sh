@@ -2,7 +2,7 @@
 #
 # Put the licence server on a hostname, with TLS. Run ON the server, once.
 #
-#   AUDIONOTES_HOSTNAME=audionotes.innocorelabs.com ./setup-nginx.sh
+#   VERBALE_HOSTNAME=verbale.innocorelabs.com ./setup-nginx.sh
 #
 # Obtains a Let's Encrypt certificate, installs the nginx site and reloads. Everything it does is
 # idempotent, so re-running after a config change is the intended way to apply one.
@@ -12,8 +12,8 @@
 # below fails early rather than burning one of the five-per-week rate-limited attempts.
 set -euo pipefail
 
-HOSTNAME_="${AUDIONOTES_HOSTNAME:?set AUDIONOTES_HOSTNAME, e.g. audionotes.innocorelabs.com}"
-EMAIL="${AUDIONOTES_ADMIN_EMAIL:-admin@innocorelabs.com}"
+HOSTNAME_="${VERBALE_HOSTNAME:?set VERBALE_HOSTNAME, e.g. verbale.innocorelabs.com}"
+EMAIL="${VERBALE_ADMIN_EMAIL:-admin@innocorelabs.com}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 command -v nginx >/dev/null || { echo "!! nginx is not installed" >&2; exit 1; }
@@ -50,7 +50,7 @@ else
 fi
 
 echo "==> installing the nginx site"
-sed "s/AUDIONOTES_HOSTNAME/$HOSTNAME_/g" "$HERE/nginx/audionotes.conf" \
+sed "s/VERBALE_HOSTNAME/$HOSTNAME_/g" "$HERE/nginx/verbale.conf" \
   > "/etc/nginx/sites-available/$HOSTNAME_"
 ln -sfn "/etc/nginx/sites-available/$HOSTNAME_" "/etc/nginx/sites-enabled/$HOSTNAME_"
 

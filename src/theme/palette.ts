@@ -1,4 +1,4 @@
-// AudioNotes design tokens — transcribed from the Claude Design source
+// Verbale design tokens — transcribed from the Claude Design source
 // ("Mobile app redesign concept" / Meetings App.dc.html). Values here are the DESIGN's values,
 // not approximations: where the design says #4A56D2, this says #4A56D2.
 //

@@ -305,7 +305,7 @@ import com.facebook.react.modules.core.DeviceEventManagerModule
 
 class MainActivity : ReactActivity() {
 
-  override fun getMainComponentName(): String = "AudioNotes"
+  override fun getMainComponentName(): String = "Verbale"
 
   override fun createReactActivityDelegate(): ReactActivityDelegate =
     DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled)

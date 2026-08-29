@@ -2,15 +2,15 @@
 #
 # Ship the licence server to its host and bring it up.
 #
-#   AUDIONOTES_HOST=root@69.62.82.85 ./deploy/deploy.sh
+#   VERBALE_HOST=root@69.62.82.85 ./deploy/deploy.sh
 #
 # Idempotent, and safe to run against a live server: it never touches .env or the database volume,
 # so secrets and accounts survive every deploy. The first run on a new host needs an .env there —
 # see "First run on a new host" in the README.
 set -euo pipefail
 
-HOST="${AUDIONOTES_HOST:?set AUDIONOTES_HOST, e.g. root@69.62.82.85}"
-REMOTE_DIR="${AUDIONOTES_REMOTE_DIR:-/opt/audionotes}"
+HOST="${VERBALE_HOST:?set VERBALE_HOST, e.g. root@69.62.82.85}"
+REMOTE_DIR="${VERBALE_REMOTE_DIR:-/opt/verbale}"
 LOCAL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "==> deploying $LOCAL_DIR -> $HOST:$REMOTE_DIR"

@@ -14,7 +14,7 @@ Overridable by environment so the server can be renamed without a redeploy of th
 
 import os
 
-PRODUCT_NAME = os.environ.get("PRODUCT_NAME", "AudioNotes")
+PRODUCT_NAME = os.environ.get("PRODUCT_NAME", "Verbale")
 COMPANY_NAME = os.environ.get("COMPANY_NAME", "InnoCore Labs")
 CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "admin@innocorelabs.com")
 

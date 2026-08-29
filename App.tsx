@@ -1,5 +1,5 @@
 /**
- * AudioNotes — on-device meeting note-taker.
+ * Verbale — on-device meeting note-taker.
  * @format
  */
 import React, { useEffect } from 'react';

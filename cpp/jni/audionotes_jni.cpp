@@ -1,4 +1,4 @@
-// JNI bridge: com.audionotes.pipeline.NativeBridge -> libaudionotes.
+// JNI bridge: com.innocorelabs.verbale.pipeline.NativeBridge -> libaudionotes.
 #include <jni.h>
 
 #include <cstdio>
@@ -52,7 +52,7 @@ void jsonEscape(const std::string& in, std::string& out) {
 }  // namespace
 
 extern "C" JNIEXPORT jlongArray JNICALL
-Java_com_audionotes_pipeline_NativeBridge_nativeVad(
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeVad(
     JNIEnv* env, jobject /*thiz*/, jstring jPcmPath, jstring jModelPath, jint sampleRate) {
   const std::string pcm = jstr(env, jPcmPath);
   const std::string model = jstr(env, jModelPath);
@@ -79,7 +79,7 @@ Java_com_audionotes_pipeline_NativeBridge_nativeVad(
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_audionotes_pipeline_NativeBridge_nativeTranscribe(
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeTranscribe(
     JNIEnv* env, jobject /*thiz*/, jstring jPcmPath, jstring jModelPath, jint sampleRate,
     jlongArray jStarts, jlongArray jEnds, jint threads) {
   const std::string pcm = jstr(env, jPcmPath);
@@ -121,7 +121,7 @@ Java_com_audionotes_pipeline_NativeBridge_nativeTranscribe(
 // ---- LLM (llama.cpp) — handle-based so the model loads once and is reused across generate() ----
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_audionotes_pipeline_NativeBridge_nativeLlmLoad(
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmLoad(
     JNIEnv* env, jobject /*thiz*/, jstring jModelPath, jint nCtx, jint nThreads, jboolean jGreedy,
     jfloat jRepeatPenalty) {
   const std::string path = jstr(env, jModelPath);
@@ -135,7 +135,7 @@ Java_com_audionotes_pipeline_NativeBridge_nativeLlmLoad(
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_audionotes_pipeline_NativeBridge_nativeLlmGenerate(
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmGenerate(
     JNIEnv* env, jobject /*thiz*/, jlong handle, jstring jPrompt, jint maxTokens) {
   auto* engine = reinterpret_cast<audionotes::LlamaEngine*>(handle);
   if (!engine) return env->NewStringUTF("");
@@ -151,14 +151,14 @@ Java_com_audionotes_pipeline_NativeBridge_nativeLlmGenerate(
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_audionotes_pipeline_NativeBridge_nativeLlmFree(
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmFree(
     JNIEnv* /*env*/, jobject /*thiz*/, jlong handle) {
   auto* engine = reinterpret_cast<audionotes::LlamaEngine*>(handle);
   delete engine;
 }
 
 extern "C" JNIEXPORT jlongArray JNICALL
-Java_com_audionotes_pipeline_NativeBridge_nativeDiarize(
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeDiarize(
     JNIEnv* env, jobject /*thiz*/, jstring jPcmPath, jstring jSegModel, jstring jEmbModel,
     jint sampleRate, jint numSpeakers) {
   const std::string pcm = jstr(env, jPcmPath);
@@ -225,7 +225,7 @@ std::vector<std::string> jstrArray(JNIEnv* env, jobjectArray arr) {
 }  // namespace
 
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_com_audionotes_pipeline_NativeBridge_nativeMinutes(
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeMinutes(
     JNIEnv* env, jobject /*thiz*/, jobjectArray jTexts, jobjectArray jSpeakerIds,
     jobjectArray jSpkIds, jobjectArray jSpkNames) {
   jclass string_cls = env->FindClass("java/lang/String");
@@ -286,7 +286,7 @@ Java_com_audionotes_pipeline_NativeBridge_nativeMinutes(
 // ---------------------------------------------------------------------------
 
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_com_audionotes_pipeline_NativeBridge_nativeLlmChunks(
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmChunks(
     JNIEnv* env, jobject /*thiz*/, jobjectArray jTexts, jobjectArray jSpeakerIds,
     jobjectArray jSpkIds, jobjectArray jSpkNames) {
   jclass string_cls = env->FindClass("java/lang/String");
@@ -340,25 +340,25 @@ jstring promptCall(JNIEnv* env, jstring jIn, std::string (*fn)(const std::string
 }  // namespace
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_audionotes_pipeline_NativeBridge_nativeLlmMapPrompt(
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmMapPrompt(
     JNIEnv* env, jobject /*thiz*/, jstring jChunk) {
   return promptCall(env, jChunk, &audionotes::mapPrompt);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_audionotes_pipeline_NativeBridge_nativeLlmFoldPrompt(
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmFoldPrompt(
     JNIEnv* env, jobject /*thiz*/, jstring jNotes) {
   return promptCall(env, jNotes, &audionotes::foldPrompt);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_audionotes_pipeline_NativeBridge_nativeLlmDigestPrompt(
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmDigestPrompt(
     JNIEnv* env, jobject /*thiz*/, jstring jChunk) {
   return promptCall(env, jChunk, &audionotes::digestPrompt);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_audionotes_pipeline_NativeBridge_nativeLlmCondensePrompt(
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmCondensePrompt(
     JNIEnv* env, jobject /*thiz*/, jstring jProse) {
   return promptCall(env, jProse, &audionotes::condensePrompt);
 }
@@ -366,43 +366,43 @@ Java_com_audionotes_pipeline_NativeBridge_nativeLlmCondensePrompt(
 // Not a prompt: post-processing. Exposed rather than reimplemented in Kotlin so there is one
 // definition of what counts as markdown, tested once, in the language the CLI also runs.
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_audionotes_pipeline_NativeBridge_nativeStripMarkdown(
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeStripMarkdown(
     JNIEnv* env, jobject /*thiz*/, jstring jText) {
   return promptCall(env, jText, &audionotes::stripMarkdown);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_audionotes_pipeline_NativeBridge_nativeTrimToSentence(
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeTrimToSentence(
     JNIEnv* env, jobject /*thiz*/, jstring jText) {
   return promptCall(env, jText, &audionotes::trimToSentence);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_audionotes_pipeline_NativeBridge_nativeStripLabels(
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeStripLabels(
     JNIEnv* env, jobject /*thiz*/, jstring jText) {
   return promptCall(env, jText, &audionotes::stripLabels);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_audionotes_pipeline_NativeBridge_nativeDropAbsenceTail(
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeDropAbsenceTail(
     JNIEnv* env, jobject /*thiz*/, jstring jText) {
   return promptCall(env, jText, &audionotes::dropAbsenceTail);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_audionotes_pipeline_NativeBridge_nativeLlmNarrativePrompt(
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmNarrativePrompt(
     JNIEnv* env, jobject /*thiz*/, jstring jNotes) {
   return promptCall(env, jNotes, &audionotes::narrativePrompt);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_audionotes_pipeline_NativeBridge_nativeLlmSummaryPrompt(
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmSummaryPrompt(
     JNIEnv* env, jobject /*thiz*/, jstring jNarrative) {
   return promptCall(env, jNarrative, &audionotes::summaryPrompt);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_audionotes_pipeline_NativeBridge_nativeLlmHeadlinePrompt(
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmHeadlinePrompt(
     JNIEnv* env, jobject /*thiz*/, jstring jSummary) {
   return promptCall(env, jSummary, &audionotes::headlinePrompt);
 }
@@ -410,7 +410,7 @@ Java_com_audionotes_pipeline_NativeBridge_nativeLlmHeadlinePrompt(
 // Flat [groupIndex, noteIndex, ...] pairs — the same flat-array convention as nativeDiarize, so no
 // nested array marshalling is needed.
 extern "C" JNIEXPORT jintArray JNICALL
-Java_com_audionotes_pipeline_NativeBridge_nativeLlmFoldPlan(
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmFoldPlan(
     JNIEnv* env, jobject /*thiz*/, jobjectArray jNotes, jint jMaxChars) {
   std::vector<jint> flat;
   try {

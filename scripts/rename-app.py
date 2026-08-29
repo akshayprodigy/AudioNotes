@@ -49,7 +49,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OLD_ID = "com.audionotes"
-OLD_NAME = "AudioNotes"
+OLD_NAME = "Verbale"
 
 SKIP_DIRS = {"node_modules", "build", ".git", ".venv", "third_party", "graphify-out",
              "_to_delete", "Pods", ".gradle", "mirror", ".model-check"}
@@ -84,7 +84,7 @@ class Plan:
         Replace `old` with `new`, but never on a line containing a URL.
 
         ModelCatalog.kt fetches the ONNX Runtime shared library from
-        github.com/akshayprodigy/AudioNotes/releases/... — a real address that does not change
+        github.com/akshayprodigy/Verbale/releases/... — a real address that does not change
         because the product did. Rewriting it would 404 every first run, and the sha256 check
         would not save anyone because the download never completes.
         """
@@ -93,11 +93,20 @@ class Plan:
         text = self.texts.get(path)
         if text is None:
             text = path.read_text(encoding="utf-8")
+        # "an AudioNotes backup" becomes "an Verbale backup" if you only swap the noun. English
+        # picks the article from the sound that follows it, so the article has to move too.
+        vowel = new[:1].lower() in "aeiou"
         out, hits = [], 0
         for line in text.splitlines(keepends=True):
             if old in line and "://" not in line:
                 hits += line.count(old)
                 line = line.replace(old, new)
+                if not vowel:
+                    line = re.sub(rf"\ban {re.escape(new)}\b", f"a {new}", line)
+                    line = re.sub(rf"\bAn {re.escape(new)}\b", f"A {new}", line)
+                else:
+                    line = re.sub(rf"\ba {re.escape(new)}\b", f"an {new}", line)
+                    line = re.sub(rf"\bA {re.escape(new)}\b", f"An {new}", line)
             out.append(line)
         if hits:
             self.texts[path] = "".join(out)
@@ -178,8 +187,9 @@ def build_plan(name: str | None, app_id: str | None, package: str | None,
 
     # --- the licence server's address ---
     if domain:
+        # Matches whatever is there now, so this keeps working after the first rename.
         plan.edit(ROOT / "android/gradle.properties",
-                  re.escape("licenceBaseUrl=https://audionotes.innocorelabs.com"),
+                  r"licenceBaseUrl=\S*",
                   f"licenceBaseUrl=https://{domain}", "where the app signs in", regex=True)
 
     # --- the optional, risky part ---

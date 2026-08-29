@@ -1,6 +1,6 @@
 # Licence server
 
-Accounts, subscriptions and licence tokens for AudioNotes. Also the web pages where a subscription
+Accounts, subscriptions and licence tokens for Verbale. Also the web pages where a subscription
 is actually bought.
 
 Python, FastAPI, SQLite. One container on a localhost port, with the host's nginx in front.
@@ -58,7 +58,7 @@ free tier, sign-in and the web pages all work with billing unconfigured.
 ## Deploying
 
 ```bash
-AUDIONOTES_HOST=root@your.server ./deploy/deploy.sh
+VERBALE_HOST=root@your.server ./deploy/deploy.sh
 ```
 
 rsync, then `docker compose up -d --build`, then wait for health. It never transfers `.env` or a
@@ -67,10 +67,10 @@ database, so secrets and accounts live on the server and survive every deploy.
 ### First run on a new host
 
 ```bash
-ssh root@your.server 'mkdir -p /opt/audionotes'
-scp .env.example root@your.server:/opt/audionotes/.env
-ssh root@your.server 'vi /opt/audionotes/.env'    # paste the signing key
-AUDIONOTES_HOST=root@your.server ./deploy/deploy.sh
+ssh root@your.server 'mkdir -p /opt/verbale'
+scp .env.example root@your.server:/opt/verbale/.env
+ssh root@your.server 'vi /opt/verbale/.env'    # paste the signing key
+VERBALE_HOST=root@your.server ./deploy/deploy.sh
 ```
 
 ### Putting it on a hostname
@@ -79,8 +79,8 @@ The container publishes on `127.0.0.1:9100` and nothing else can reach it. To se
 point an A record at the host and then, **on the server**:
 
 ```bash
-cd /opt/audionotes
-AUDIONOTES_HOSTNAME=audionotes.innocorelabs.com ./deploy/setup-nginx.sh
+cd /opt/verbale
+VERBALE_HOSTNAME=verbale.innocorelabs.com ./deploy/setup-nginx.sh
 ```
 
 That obtains a certificate, installs the nginx site and reloads. It refuses to start if DNS does
@@ -95,7 +95,7 @@ the machine, not only this one, before anything is reloaded.
 ### Backups
 
 ```bash
-AUDIONOTES_HOST=root@your.server ./deploy/backup.sh
+VERBALE_HOST=root@your.server ./deploy/backup.sh
 ```
 
 Everything the server knows is one SQLite file, so this is the whole disaster plan. It uses

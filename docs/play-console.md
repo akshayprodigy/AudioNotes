@@ -3,7 +3,7 @@
 Everything Google will ask for, answered against what the app actually does. Written before
 filing so the answers are checked against the code rather than composed under a rejection.
 
-**The name is not settled.** "AudioNotes" is taken. Nothing here should be filed until it is, and
+**The name is not settled.** "Verbale" is taken. Nothing here should be filed until it is, and
 until `scripts/rename-app.py` has run — `applicationId` is permanent from the first upload.
 
 ---

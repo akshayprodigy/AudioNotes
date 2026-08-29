@@ -2,7 +2,7 @@
 #
 # Give one account a paid subscription, without Razorpay.
 #
-#   AUDIONOTES_HOST=root@69.62.82.85 ./deploy/seed-test-account.sh you@example.com 'a good password'
+#   VERBALE_HOST=root@69.62.82.85 ./deploy/seed-test-account.sh you@example.com 'a good password'
 #
 # For testing Pro on a device before billing is live. Normally the ONLY thing that may mark a
 # subscription paid is the Razorpay webhook; this is the deliberate exception, kept as a script
@@ -12,8 +12,8 @@
 # the subscription row. They are indistinguishable from a real subscriber to everything upstream.
 set -euo pipefail
 
-HOST="${AUDIONOTES_HOST:?set AUDIONOTES_HOST, e.g. root@69.62.82.85}"
-REMOTE_DIR="${AUDIONOTES_REMOTE_DIR:-/opt/audionotes}"
+HOST="${VERBALE_HOST:?set VERBALE_HOST, e.g. root@69.62.82.85}"
+REMOTE_DIR="${VERBALE_REMOTE_DIR:-/opt/verbale}"
 EMAIL="${1:?usage: seed-test-account.sh <email> <password> [days]}"
 PASSWORD="${2:?usage: seed-test-account.sh <email> <password> [days]}"
 DAYS="${3:-30}"

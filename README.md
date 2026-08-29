@@ -1,4 +1,4 @@
-# AudioNotes
+# Verbale
 
 On-device meeting note-taker. Records in-person meetings and produces structured
 minutes **entirely on the device** — no audio or text leaves the phone, no account,

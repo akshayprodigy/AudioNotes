@@ -217,7 +217,7 @@ export default function OnboardingScreen({ navigation }: Props) {
         </Pop>
         <Pop index={1}>
           <Txt variant="screenTitle" style={st.centerText}>
-            AudioNotes
+            Verbale
           </Txt>
           <Txt variant="label" color={colors.inkDim} style={st.centerText}>
             Your private meeting note-taker

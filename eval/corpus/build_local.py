@@ -27,7 +27,7 @@ CAVEAT = ("A real recording, held locally and never committed. This is the valid
 MINUTES_TEMPLATE = {
     "_how": [
         "The minutes a good human note-taker would have written for this meeting. Write them",
-        "from the MEETING, not from our output — a template pre-filled with what AudioNotes",
+        "from the MEETING, not from our output — a template pre-filled with what Verbale",
         "produced would only measure how well it agrees with itself, and every miss it made",
         "would be missing from the yardstick too.",
         "Then rename this file to minutes.json.",

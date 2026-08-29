@@ -10,7 +10,7 @@ Parent: `docs/superpowers/specs/2026-08-12-in-person-mom-cross-platform-roadmap.
 Put a number on transcript, attribution, minutes, and speed quality, so Phase 2 accuracy work can be
 engineered instead of guessed at.
 
-Today every accuracy claim about AudioNotes rests on reading a couple of sample outputs. Phase 2 is
+Today every accuracy claim about Verbale rests on reading a couple of sample outputs. Phase 2 is
 *entirely* accuracy work — multilingual Whisper tiers, promoting the LLM to primary minutes writer,
 diarization tuning — and none of it is decidable without measurement: swap whisper-base for a
 multilingual small model and nobody can currently say whether it helped.

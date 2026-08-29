@@ -1,4 +1,4 @@
-// AudioNotes desktop CLI — the desktop host for the shared core.
+// Verbale desktop CLI — the desktop host for the shared core.
 //
 // Full pipeline: WAV in -> VAD -> ASR -> diarize -> align -> minutes (rule floor, optionally
 // LLM-enhanced) via the core's Pipeline orchestrator — the same brain every platform shell

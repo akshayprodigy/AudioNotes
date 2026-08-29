@@ -1,6 +1,6 @@
-# AudioNotes — MVP Technical Build Plan
+# Verbale — MVP Technical Build Plan
 
-**Product:** InnoCore Meeting Note-Taker ("AudioNotes")
+**Product:** InnoCore Meeting Note-Taker ("Verbale")
 **Owner:** Akshay Ghosh, InnoCore Labs Pvt. Ltd.
 **Scope of this document:** Engineering plan for the Android MVP (Free + Pro tiers), structured so the same app layer extends to iOS and the Deep (server) tier later.
 **Companion document:** `InnoCore_MeetingNoteTaker_PRD_v3.docx` (product requirements). This plan implements it; where they disagree, the PRD wins on *what* and this plan wins on *how*.
@@ -210,7 +210,7 @@ Ordered to get to a dogfoodable alpha fast, then layer quality. Each milestone e
 ## 11. Repository layout
 
 ```
-AudioNotes/
+Verbale/
 ├── BUILD_PLAN.md                  ← this document
 ├── InnoCore_MeetingNoteTaker_PRD_v3.docx
 ├── package.json

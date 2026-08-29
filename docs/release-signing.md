@@ -27,7 +27,7 @@ keytool -genkeypair -v \
   -alias audionotes \
   -keyalg RSA -keysize 4096 \
   -validity 10000 \
-  -dname "CN=AudioNotes, O=InnoCore Labs, L=Kolkata, C=IN"
+  -dname "CN=Verbale, O=InnoCore Labs, L=Kolkata, C=IN"
 ```
 
 `-validity 10000` is about 27 years. Play refuses keys that expire before 2033, and a key that

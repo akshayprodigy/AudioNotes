@@ -25,7 +25,7 @@ This proves the toolchain, the RN New-Architecture module wiring, capture, stora
 ONNX Runtime is needed (pulled automatically by Gradle) — no git submodules yet.
 
 ```bash
-cd /Users/akshayghosh/ReactNative/InnoCoreLabs/AudioNotes
+cd /Users/akshayghosh/ReactNative/InnoCoreLabs/Verbale
 npm install
 # connect a device or boot an emulator, then:
 npx react-native run-android

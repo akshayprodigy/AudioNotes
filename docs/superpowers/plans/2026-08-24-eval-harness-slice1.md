@@ -1043,7 +1043,7 @@ date. Future readers need to know what "normal" looks like to spot when a run is
 
 - [ ] **Step 3: Update memory**
 
-Edit `~/.claude/projects/-Users-akshayghosh-ReactNative-InnoCoreLabs-AudioNotes/memory/portable-core.md`:
+Edit `~/.claude/projects/-Users-akshayghosh-ReactNative-InnoCoreLabs-Verbale/memory/portable-core.md`:
 Phase 1b slice 1 done, the AMI URLs and sizes above, the baseline WER, and that slices 2 (DER +
 perf) and 3 (LLM judge + MOM) still need their plans.
 

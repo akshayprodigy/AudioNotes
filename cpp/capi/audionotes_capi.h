@@ -1,4 +1,4 @@
-/* C ABI over the AudioNotes pipeline (pipeline/pipeline.h). This header must stay C-compilable:
+/* C ABI over the Verbale pipeline (pipeline/pipeline.h). This header must stay C-compilable:
  * no C++ types, no exceptions across the boundary. Strings are UTF-8; the result is a JSON
  * document (see an_result_json) so bindings never chase struct layouts across versions.
  */

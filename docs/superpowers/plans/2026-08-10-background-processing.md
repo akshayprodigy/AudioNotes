@@ -434,7 +434,7 @@ class ProcessingService : Service() {
   private fun buildNotification(text: String) =
     NotificationCompat.Builder(this, CHANNEL_ID)
       .setSmallIcon(applicationInfo.icon)
-      .setContentTitle("AudioNotes")
+      .setContentTitle("Verbale")
       .setContentText(text)
       .setOngoing(true)
       .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)

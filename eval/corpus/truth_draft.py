@@ -56,7 +56,7 @@ HEADER = """\
 # Ground-truth transcript for `{fixture}` — correct this file, then run:
 #     python3 -m eval.corpus.truth_draft import {fixture}
 #
-# This is what AudioNotes HEARD, not what was said. Fix it and it becomes the yardstick every
+# This is what Verbale HEARD, not what was said. Fix it and it becomes the yardstick every
 # accuracy number is measured against.
 #
 # HOW TO CORRECT

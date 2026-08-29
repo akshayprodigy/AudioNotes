@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">AudioNotes</string>
+    <string name="app_name">Verbale</string>
 
     <!--
       Recording notification. This is the only control the user has while another app is in front,

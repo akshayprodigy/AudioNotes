@@ -1,6 +1,6 @@
 # cpp/ — shared C++ inference core (`libaudionotes`)
 
-This is the platform-agnostic heart of AudioNotes. Both Android (JNI) and iOS
+This is the platform-agnostic heart of Verbale. Both Android (JNI) and iOS
 (Swift/Objective-C++) call into this same code, so the pipeline behaves identically
 across platforms. Layers, bottom to top: the engines (`vad/`, `asr/`, `diar/`, `llm/`),
 the minutes logic (`minutes/` — parity ports of `src/pipeline/minutes.ts` +
@@ -40,3 +40,14 @@ The product promise is **no third-party AI, Apache-2.0 / MIT only**. This exclud
 Llama (community license) and Gemma (Google terms). Verify each sherpa/pyannote
 model *weight* license individually — sherpa-onnx being Apache-2.0 does not cover
 every checkpoint it can load.
+
+## Why the native artifacts are still called `audionotes`
+
+`libaudionotes.so`, `audionotes_jni.cpp` and `audionotes_capi.h` kept their names when the app was
+renamed to Verbale. That is deliberate, not an oversight.
+
+The library name is a string in three places that must agree: the CMake target, the filename in the
+APK, and `System.loadLibrary` in `NativeBridge`. Nothing checks that they agree at compile time —
+a mismatch is an `UnsatisfiedLinkError` on a user's phone. The names are invisible to users and to
+the Play listing, so renaming them is pure risk for no benefit, and the same reasoning that kept
+the Kotlin package rename opt-in applies here with less to gain.

@@ -2,7 +2,7 @@
 #
 # Copy the licence database off the server.
 #
-#   AUDIONOTES_HOST=root@69.62.82.85 ./deploy/backup.sh [destination-dir]
+#   VERBALE_HOST=root@69.62.82.85 ./deploy/backup.sh [destination-dir]
 #
 # Everything the server knows is in one SQLite file: accounts, subscriptions, devices. Losing it
 # means every paying customer has to sign up again, so this should run on a schedule, not by hand.
@@ -11,8 +11,8 @@
 # a database that looks fine and is not.
 set -euo pipefail
 
-HOST="${AUDIONOTES_HOST:?set AUDIONOTES_HOST, e.g. root@69.62.82.85}"
-REMOTE_DIR="${AUDIONOTES_REMOTE_DIR:-/opt/audionotes}"
+HOST="${VERBALE_HOST:?set VERBALE_HOST, e.g. root@69.62.82.85}"
+REMOTE_DIR="${VERBALE_REMOTE_DIR:-/opt/verbale}"
 DEST="${1:-./backups}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
