@@ -419,8 +419,9 @@ export default function SettingsScreen({ navigation }: Props) {
             <View style={st.rowPad}>
               <Txt variant="bodyStrong">Back up your meetings</Txt>
               <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
-                A single encrypted file you can carry to another phone. Nothing is uploaded — this
-                app has no server to upload it to.
+                A single encrypted file you can carry to another phone. Nothing is uploaded — the
+                only server this app contacts handles subscriptions, and it has nowhere to put a
+                meeting.
               </Txt>
               {/* The passphrase is the whole security of the file, and forgetting it is
                   unrecoverable BY DESIGN — an export only you can decrypt is one nobody, us

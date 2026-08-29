@@ -137,7 +137,7 @@ export default function OnboardingScreen({ navigation }: Props) {
           Getting things ready
         </Txt>
         <Txt variant="meta" color={colors.inkDim} style={st.sub}>
-          Downloading once so everything works offline, forever.
+          Downloading once. After this, recording and transcription never need the network.
         </Txt>
         <View style={st.progress}>
           <View style={st.progressHead}>
@@ -256,11 +256,20 @@ export default function OnboardingScreen({ navigation }: Props) {
           full
         />
         {/* Said plainly, before the tap. The models are not in the app — shipping them would put
-            it well past a gigabyte on the store — so this download is what makes AudioNotes work
-            at all, and it is the only time the app touches the network. */}
+            it well past a gigabyte on the store — so this download is what makes the app work at
+            all.
+
+            It used to say this was "the only time the app touches the network" and that everything
+            worked "offline, forever". Neither survived the subscription: a paid install checks its
+            licence every week or so. That check carries an account id and a device id and nothing
+            else — no recording, no transcript, no title, not even a count — so the sentence that
+            actually matters is still true and is the one left standing. Overclaiming the rest
+            would trade a privacy promise for a line of copy, and this app has nothing else to
+            sell. */}
         <Txt variant="chip" color={colors.inkFaint} style={[st.centerText, st.note]}>
-          The speech models are not bundled in the app, so they download once — after that
-          everything runs offline, and nothing you record is ever uploaded.
+          The speech models are not bundled in the app, so they download once. After that your
+          recordings, transcripts and minutes are all made on this phone — none of it is ever
+          uploaded.
         </Txt>
         <View style={st.skipRow}>
           <SoftButton label="Later, from Settings" onPress={finish} />
