@@ -3,7 +3,7 @@
 Accounts, subscriptions and licence tokens for AudioNotes. Also the web pages where a subscription
 is actually bought.
 
-Python, FastAPI, SQLite, one container behind Caddy.
+Python, FastAPI, SQLite. One container on a localhost port, with the host's nginx in front.
 
 ## What it deliberately does not do
 
@@ -43,8 +43,7 @@ docker compose up --build
 | Variable | Needed for | Notes |
 |---|---|---|
 | `LICENCE_PRIVATE_KEY_PEM` | everything | The server refuses to boot without it |
-| `AUDIONOTES_SITE_ADDRESS` | TLS | A hostname, and Caddy gets a certificate itself. `:80` for no domain yet |
-| `BIND_ADDRESS` | exposure | `127.0.0.1` (default) keeps it reachable only over SSH; `0.0.0.0` publishes it |
+| `BIND_ADDRESS` / `HOST_PORT` | exposure | `127.0.0.1:9100`. nginx is the only thing that should reach it |
 | `DATABASE_PATH` | optional | `/data/licences.db` in the container |
 | `PORT` | optional | Defaults to 8787 |
 | `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | buying | Subscribe answers 503 without them |
@@ -72,17 +71,24 @@ ssh root@your.server 'vi /opt/audionotes/.env'    # paste the signing key
 AUDIONOTES_HOST=root@your.server ./deploy/deploy.sh
 ```
 
-### Going public
+### Putting it on a hostname
 
-`BIND_ADDRESS=127.0.0.1` until there is a hostname, because this server takes passwords and a
-certificate needs a name to be issued against. When DNS points at the host:
+The container publishes on `127.0.0.1:9100` and nothing else can reach it. To serve it publicly,
+point an A record at the host and then, **on the server**:
 
+```bash
+cd /opt/audionotes
+AUDIONOTES_HOSTNAME=audionotes.innocorelabs.com ./deploy/setup-nginx.sh
 ```
-AUDIONOTES_SITE_ADDRESS=audionotes.example.com
-BIND_ADDRESS=0.0.0.0
-```
 
-then deploy again. Caddy obtains and renews the certificate on its own — no certbot, no cron.
+That obtains a certificate, installs the nginx site and reloads. It refuses to start if DNS does
+not point here yet, because a failed challenge spends one of Let's Encrypt's five-per-week
+attempts on that name.
+
+**Why nginx and not a proxy in this compose file.** The host already runs nginx on 80/443 in front
+of several other projects, each a container on a localhost port. A second proxy competing for
+those ports would take all of them down. `nginx -t` in the setup script validates every site on
+the machine, not only this one, before anything is reloaded.
 
 ### Backups
 

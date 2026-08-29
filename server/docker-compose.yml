@@ -1,7 +1,12 @@
-# The whole deployment: a Python process and a reverse proxy that terminates TLS.
+# The licence server: one Python process and one SQLite volume.
 #
-# The api container publishes nothing. Caddy is the only way in, which is what makes it safe for
-# uvicorn to trust forwarded headers.
+# No reverse proxy here. This host already runs nginx on 80/443 in front of several other
+# projects, and every one of them binds a container to a localhost port and lets nginx terminate
+# TLS. A second proxy trying to take those ports would break the lot, so this follows the
+# convention that is already on the machine — see deploy/nginx/.
+#
+# The port is published on 127.0.0.1 only. Nothing reaches this container except nginx, which is
+# what makes it safe for uvicorn to trust forwarded headers.
 
 services:
   api:
@@ -12,28 +17,10 @@ services:
       DATABASE_PATH: /data/licences.db
     volumes:
       - licences:/data
-    expose:
-      - "8787"
-
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    environment:
-      AUDIONOTES_SITE_ADDRESS: ${AUDIONOTES_SITE_ADDRESS:-:80}
     ports:
-      - "${BIND_ADDRESS:-127.0.0.1}:80:80"
-      - "${BIND_ADDRESS:-127.0.0.1}:443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - api
+      - "${BIND_ADDRESS:-127.0.0.1}:${HOST_PORT:-9100}:8787"
 
 volumes:
-  # The database. Backing this up is backing up everything the server knows.
+  # Everything the server knows: accounts, subscriptions, devices. Backing this up is the whole
+  # disaster plan — see deploy/backup.sh.
   licences:
-  # Certificates and account keys. Losing this means re-issuing certificates, which Let's Encrypt
-  # rate-limits, so it is worth keeping.
-  caddy_data:
-  caddy_config:
