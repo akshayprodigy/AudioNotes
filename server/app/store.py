@@ -30,6 +30,13 @@ from dataclasses import dataclass
 #: enough that sharing a login is inconvenient rather than free.
 DEVICE_LIMIT = 3
 
+#: How long a password reset link works for.
+#:
+#: Short, because the link is a bearer credential sitting in an inbox — which is exactly where a
+#: stolen laptop or a shared family screen finds it. Long enough that someone who opens their mail
+#: on the train can still use it.
+PASSWORD_RESET_TTL_SECONDS = 60 * 60
+
 #: scrypt cost. These are Node's ``scryptSync`` defaults, kept identical so a database written by
 #: the previous server still authenticates against this one.
 _SCRYPT_N, _SCRYPT_R, _SCRYPT_P, _SCRYPT_DKLEN = 16384, 8, 1, 64
@@ -93,7 +100,22 @@ SCHEMA = [
          id TEXT PRIMARY KEY,
          received_at INTEGER NOT NULL
        )""",
+    """CREATE TABLE IF NOT EXISTS password_resets(
+         -- The token is stored hashed, so this table cannot be read out of a database dump and
+         -- used. SHA-256 rather than scrypt: the token is 32 random bytes, so there is nothing to
+         -- brute force and a lookup should not cost 100ms.
+         token_hash TEXT PRIMARY KEY,
+         account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+         created_at INTEGER NOT NULL,
+         expires_at INTEGER NOT NULL,
+         used_at INTEGER
+       )""",
 ]
+
+
+def _token_hash(token: str) -> str:
+    """Reset tokens are high-entropy already; a fast digest is the right tool and an indexable one."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def hash_password(password: str, salt: bytes | None = None) -> str:
@@ -341,6 +363,78 @@ class Store:
         with self._lock:
             self._db.execute(
                 "DELETE FROM devices WHERE account_id=? AND device_id=?", (account_id, device_id)
+            )
+            self._db.commit()
+
+    # ---- password resets ----
+
+    def create_password_reset(self, account_id: str, now: int | None = None) -> str:
+        """
+        Issue a single-use reset token and return it once, in the clear.
+
+        Any outstanding tokens for the account are dropped first. Two live reset links means a
+        request someone did not make stays usable after they have made one they did.
+        """
+        now = int(time.time()) if now is None else now
+        token = secrets.token_urlsafe(32)
+        with self._lock:
+            self._db.execute("DELETE FROM password_resets WHERE account_id=?", (account_id,))
+            self._db.execute(
+                "INSERT INTO password_resets(token_hash,account_id,created_at,expires_at) "
+                "VALUES(?,?,?,?)",
+                (_token_hash(token), account_id, now, now + PASSWORD_RESET_TTL_SECONDS),
+            )
+            self._db.commit()
+        return token
+
+    def peek_password_reset(self, token: str, now: int | None = None) -> str | None:
+        """The account a token is good for, without spending it. For rendering the form."""
+        now = int(time.time()) if now is None else now
+        with self._lock:
+            row = self._db.execute(
+                "SELECT account_id,expires_at,used_at FROM password_resets WHERE token_hash=?",
+                (_token_hash(token),),
+            ).fetchone()
+        if row is None or row["used_at"] is not None or row["expires_at"] <= now:
+            return None
+        return row["account_id"]
+
+    def consume_password_reset(self, token: str, now: int | None = None) -> str | None:
+        """
+        Spend a token, returning the account it belonged to.
+
+        The UPDATE carries the used_at IS NULL condition rather than checking first and writing
+        after, so two submissions of the same link race in SQLite and exactly one wins.
+        """
+        now = int(time.time()) if now is None else now
+        with self._lock:
+            cursor = self._db.execute(
+                "UPDATE password_resets SET used_at=? "
+                "WHERE token_hash=? AND used_at IS NULL AND expires_at > ?",
+                (now, _token_hash(token), now),
+            )
+            if cursor.rowcount != 1:
+                self._db.commit()
+                return None
+            row = self._db.execute(
+                "SELECT account_id FROM password_resets WHERE token_hash=?",
+                (_token_hash(token),),
+            ).fetchone()
+            self._db.commit()
+        return row["account_id"] if row else None
+
+    def clear_refresh_keys(self, account_id: str) -> None:
+        """
+        Retire every device's renewal credential, without removing the devices.
+
+        Called on a password reset. A reset is the moment you want anyone who got in evicted, and
+        the password alone does not do that: a device that already signed in holds a refresh key
+        that never expires and is not derived from the password. The rows stay, so the owner is
+        not pushed over the device limit by their own reset — they simply sign in again.
+        """
+        with self._lock:
+            self._db.execute(
+                "UPDATE devices SET refresh_hash=NULL WHERE account_id=?", (account_id,)
             )
             self._db.commit()
 

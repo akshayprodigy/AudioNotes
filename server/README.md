@@ -46,6 +46,8 @@ docker compose up --build
 | `BIND_ADDRESS` / `HOST_PORT` | exposure | `127.0.0.1:9100`. nginx is the only thing that should reach it |
 | `DATABASE_PATH` | optional | `/data/licences.db` in the container |
 | `PORT` | optional | Defaults to 8787 |
+| `SMTP_HOST` / `SMTP_FROM` (+ `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`) | password reset | Unconfigured, the mail is logged instead of sent |
+| `PUBLIC_BASE_URL` | emailed links | Without it, links are built from the request's Host header |
 | `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | buying | Subscribe answers 503 without them |
 | `RAZORPAY_PLAN_ID` | buying | The monthly plan created in the Razorpay dashboard |
 | `RAZORPAY_WEBHOOK_SECRET` | renewals | The webhook answers 503 without it |
@@ -139,8 +141,8 @@ fixture with `python scripts/contract_fixture.py`, and expect to re-run
 | `POST /api/billing/webhook` | Razorpay events. The **only** thing that marks a subscription paid |
 | `GET /healthz` | |
 
-Pages: `/` (what it is and what Pro adds), `/signup`, `/account`, and the `/subscribe` and
-`/devices/forget` actions they post to.
+Pages: `/` (what it is and what Pro adds), `/signup`, `/account`, `/forgot`, `/reset`, and the
+`/subscribe` and `/devices/forget` actions they post to.
 
 There is no `/docs`: six endpoints are documented above, and a generated explorer is only an
 invitation to poke at the billing routes.
@@ -179,9 +181,24 @@ happily and failing every request. Uvicorn is run with `--factory` for this reas
 few requests a minute a global lock costs nothing and removes an entire class of interleaving bug;
 `Store` is the only module that touches SQL, so Postgres later is one file.
 
+## Password reset
+
+`/forgot` emails a link; `/reset` spends it. Two rules shape the whole flow:
+
+**The pages never reveal whether an address has an account.** `/forgot` returns byte-identical HTML
+either way, and sends nothing when there is no account. Otherwise this page is a way to ask who has
+registered here.
+
+**A link is worth nothing once used or aged out.** Single-use, one hour, and asking again retires
+the previous one — two live links means a request somebody did not make stays usable after one they
+did. Opening the link does *not* spend it, because mail clients prefetch.
+
+Resetting also clears every device's refresh key. A reset is the moment to evict whoever got in,
+and changing the password alone does not do that: a device that already signed in holds a renewal
+credential that is not derived from the password. The device rows survive, so nobody is pushed over
+the limit by their own reset — they sign in again.
+
 ## Not built yet
 
-- Password reset, and email of any kind: nothing is sent, so signup has no confirmation and there
-  is no way to reach a customer. Needs SMTP credentials.
 - Gating the model download on entitlement, which is the real piracy barrier: the licence flag is a
   boolean someone can patch, whereas 1.1 GB of weights they have to source is not.

@@ -11,12 +11,14 @@ a title or a count of anything the user made. See store.py.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 
+from . import mailer
 from .billing import apply_webhook, start_subscription
 from .entitlement import issue
 from .licence import signing_key_from_env
@@ -58,6 +60,12 @@ def create_app(
     )
     store = Store() if store is None else store
     key = signing_key_from_env() if signing_key is None else signing_key
+
+    # Said once at boot rather than discovered by a customer who never got their reset link.
+    if not mailer.is_configured():
+        logging.getLogger("audionotes").warning(
+            "SMTP is not configured — password reset links will be logged, not sent."
+        )
 
     # ---- accounts ----
 

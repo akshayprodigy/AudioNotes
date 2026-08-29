@@ -19,9 +19,10 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from . import mailer
 from .billing import start_subscription
 from .entitlement import is_entitled
-from .store import DEVICE_LIMIT, Store
+from .store import DEVICE_LIMIT, PASSWORD_RESET_TTL_SECONDS, Store
 
 CSS = """
   :root { color-scheme: light dark; --ink:#16192C; --dim:#6B7185; --line:#E4E7F1;
@@ -175,7 +176,8 @@ def register_pages(app: FastAPI, store: Store) -> None:
            <input id="password" name="password" type="password" required autocomplete="current-password">
            <button type="submit">Sign in</button>
          </form>
-         <p class="muted">No account? <a href="/signup">Create one</a>.</p>""",
+         <p class="muted">No account? <a href="/signup">Create one</a>.
+            Forgotten your password? <a href="/forgot">Reset it</a>.</p>""",
         )
 
     def _signed_out() -> HTMLResponse:
@@ -274,6 +276,122 @@ def register_pages(app: FastAPI, store: Store) -> None:
         <p class="ok">That device will stop renewing this subscription. Nothing on it was
            deleted.</p>
         <a href="/account"><button>Back to my account</button></a>""",
+        )
+
+    # ---- password reset ----
+    #
+    # The one thing this server sends email for. Everything about the flow below is shaped by two
+    # rules: the page may never reveal whether an address has an account, and a link that has been
+    # used or has aged out is worth nothing.
+
+    @app.get("/forgot", response_class=HTMLResponse)
+    def forgot_form() -> HTMLResponse:
+        return _page(
+            "Reset your password",
+            """<h1>Reset your password</h1>
+         <p>We will email you a link. It works once, and for an hour.</p>
+         <form class="card" method="post" action="/forgot">
+           <label for="email">Email</label>
+           <input id="email" name="email" type="email" required autocomplete="email">
+           <button type="submit">Send the link</button>
+         </form>
+         <p class="muted"><a href="/account">Back to sign in</a></p>""",
+        )
+
+    @app.post("/forgot", response_class=HTMLResponse)
+    async def forgot(request: Request) -> HTMLResponse:
+        form = await request.form()
+        email = str(form.get("email") or "")
+        account = store.account_by_email(email) if "@" in email else None
+
+        if account is not None:
+            token = store.create_password_reset(account.id)
+            base = mailer.public_base_url(str(request.base_url))
+            mailer.send(
+                account.email,
+                "Reset your AudioNotes password",
+                f"""Someone asked to reset the password for this account.
+
+Open this link to choose a new one:
+
+  {base}/reset?token={token}
+
+It works once, and stops working in {PASSWORD_RESET_TTL_SECONDS // 60} minutes.
+
+If it was not you, nothing has happened and you can ignore this. Your password has not changed.
+""",
+            )
+
+        # The same answer either way, and no hint in the timing worth chasing: telling the two
+        # apart turns this page into a way to ask whether somebody has an account here.
+        return _page(
+            "Check your email",
+            """<h1>Check your email</h1>
+         <p class="ok">If that address has an account, a reset link is on its way.</p>
+         <p class="muted">It works once, and for an hour. <a href="/account">Back to sign in</a></p>""",
+        )
+
+    def _dead_link() -> HTMLResponse:
+        return _page(
+            "Reset your password",
+            """<h1>That link has expired</h1>
+         <p class="err">Reset links work once, and for an hour.</p>
+         <a href="/forgot"><button>Send me a new one</button></a>""",
+            status=400,
+        )
+
+    @app.get("/reset", response_class=HTMLResponse)
+    def reset_form(token: str = "") -> HTMLResponse:
+        # Checked but not spent: a mail client that prefetches links would otherwise burn the
+        # token before the person ever saw the form.
+        if not token or store.peek_password_reset(token) is None:
+            return _dead_link()
+        return _page(
+            "Choose a new password",
+            f"""<h1>Choose a new password</h1>
+         <form class="card" method="post" action="/reset">
+           <input type="hidden" name="token" value="{esc(token)}">
+           <label for="password">New password</label>
+           <input id="password" name="password" type="password" required minlength="8"
+                  autocomplete="new-password">
+           <button type="submit">Save it</button>
+         </form>
+         <p class="muted">Your phones will ask you to sign in again afterwards.</p>""",
+        )
+
+    @app.post("/reset", response_class=HTMLResponse)
+    async def reset(request: Request) -> HTMLResponse:
+        form = await request.form()
+        token = str(form.get("token") or "")
+        password = str(form.get("password") or "")
+
+        if len(password) < 8:
+            return _page(
+                "Choose a new password",
+                f"""<h1>Too short</h1>
+             <p class="err">A password of at least 8 characters, please.</p>
+             <a href="/reset?token={esc(token)}">Back</a>""",
+                status=400,
+            )
+
+        account_id = store.consume_password_reset(token)
+        if account_id is None:
+            return _dead_link()
+
+        store.set_password(account_id, password)
+        # A reset is the moment to evict anyone who got in. The password alone does not do that:
+        # a device that already signed in holds a refresh key that is not derived from it.
+        store.clear_refresh_keys(account_id)
+
+        return _page(
+            "Password changed",
+            """<h1>Password changed</h1>
+         <p class="ok">You can sign in with it now.</p>
+         <div class="card">
+           <p>Every device signed into this account has been signed out, including your own.
+              Open the app, go to Settings then Subscription, and sign in once more.</p>
+           <a href="/account"><button>Sign in</button></a>
+         </div>""",
         )
 
     @app.post("/subscribe")
