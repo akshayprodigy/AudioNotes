@@ -329,7 +329,7 @@ def register_pages(app: FastAPI, store: Store) -> None:
             base = mailer.public_base_url(str(request.base_url))
             mailer.send(
                 account.email,
-                "Reset your AudioNotes password",
+                f"Reset your {PRODUCT_NAME} password",
                 f"""Someone asked to reset the password for this account.
 
 Open this link to choose a new one:

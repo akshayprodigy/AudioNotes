@@ -79,6 +79,30 @@ class Plan:
     changes: list[Change] = field(default_factory=list)
     moves: list[tuple[Path, Path]] = field(default_factory=list)
 
+    def edit_lines(self, path: Path, old: str, new: str, note: str) -> None:
+        """
+        Replace `old` with `new`, but never on a line containing a URL.
+
+        ModelCatalog.kt fetches the ONNX Runtime shared library from
+        github.com/akshayprodigy/AudioNotes/releases/... — a real address that does not change
+        because the product did. Rewriting it would 404 every first run, and the sha256 check
+        would not save anyone because the download never completes.
+        """
+        if not path.exists():
+            return
+        text = self.texts.get(path)
+        if text is None:
+            text = path.read_text(encoding="utf-8")
+        out, hits = [], 0
+        for line in text.splitlines(keepends=True):
+            if old in line and "://" not in line:
+                hits += line.count(old)
+                line = line.replace(old, new)
+            out.append(line)
+        if hits:
+            self.texts[path] = "".join(out)
+            self.changes.append(Change(path, note, hits))
+
     def edit(self, path: Path, pattern: str, replacement: str, note: str, regex: bool = False) -> None:
         if not path.exists():
             return
@@ -132,9 +156,25 @@ def build_plan(name: str | None, app_id: str | None, package: str | None,
                   f'PRODUCT_NAME = os.environ.get("PRODUCT_NAME", "{OLD_NAME}")',
                   f'PRODUCT_NAME = os.environ.get("PRODUCT_NAME", "{name}")',
                   "the name in the web pages, the legal documents and reset emails")
-        # User-visible prose in the app.
-        for path in walk(suffixes=(".tsx", ".ts")):
-            plan.edit(path, OLD_NAME, name, "user-visible text")
+        # User-visible prose, in the app and on the server. The server is swept too because
+        # branding.py only helps where it is actually referenced: the first real rename found the
+        # password-reset email subject still naming a product that no longer existed.
+        for path in walk(suffixes=(".tsx", ".ts", ".py", ".md")):
+            plan.edit_lines(path, OLD_NAME, name, "user-visible text")
+
+        # Kotlin carries the name too, and two of those are not comments:
+        #
+        #   MainActivity.getMainComponentName() MUST equal app.json's `name`, because that is what
+        #   index.js registers with AppRegistry. Change one without the other and the app launches
+        #   and dies with "Application <old> has not been registered" — at runtime, on a device,
+        #   with a green build behind it. The first real rename hit exactly this.
+        #
+        #   ProcessingService puts the name in a notification the user reads.
+        for path in walk(suffixes=(".kt", ".java")):
+            plan.edit_lines(path, OLD_NAME, name, "name in Kotlin (component name, notifications)")
+
+        plan.edit(ROOT / "package.json", f'"name": "{OLD_NAME}"', f'"name": "{name}"',
+                  "npm package name")
 
     # --- the licence server's address ---
     if domain:
@@ -164,6 +204,36 @@ def build_plan(name: str | None, app_id: str | None, package: str | None,
                   "namespace — where BuildConfig and R are generated")
 
     return plan
+
+
+def verify_component_name() -> list[str]:
+    """
+    app.json's `name` and MainActivity.getMainComponentName() must be the same string.
+
+    index.js does `AppRegistry.registerComponent(appName, ...)` with the value from app.json, and
+    the Activity asks for its component by name. A mismatch is invisible to the compiler and fatal
+    on launch.
+    """
+    import json
+
+    app_json = ROOT / "app.json"
+    if not app_json.exists():
+        return ["app.json is missing"]
+    registered = json.loads(app_json.read_text()).get("name")
+
+    activities = list((ROOT / "android/app/src/main/java").rglob("MainActivity.kt"))
+    if not activities:
+        return ["MainActivity.kt not found"]
+    text = activities[0].read_text()
+    match = re.search(r'getMainComponentName\(\):\s*String\s*=\s*"([^"]+)"', text)
+    if not match:
+        return ["could not read getMainComponentName() from MainActivity.kt"]
+    if match.group(1) != registered:
+        return [
+            f'app.json registers "{registered}" but MainActivity asks for "{match.group(1)}". '
+            "The app will launch and die with \"Application ... has not been registered\"."
+        ]
+    return []
 
 
 def verify_jni(package: str) -> list[str]:
@@ -276,6 +346,15 @@ def main() -> int:
         print("cleared React Native's autolinking cache: " + ", ".join(removed))
 
     print("written.\n")
+
+    problems = verify_component_name()
+    if problems:
+        print("COMPONENT NAME CHECK FAILED:")
+        for problem in problems:
+            print(f"  - {problem}")
+        return 1
+    print("component name check: app.json and MainActivity agree.")
+
     if args.package:
         problems = verify_jni(args.package)
         if problems:

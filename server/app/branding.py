@@ -1,10 +1,13 @@
 """
 The product's name, in one place.
 
-The app is being renamed before launch — "AudioNotes" is taken — and the name appears in page
-titles, email subjects and both legal documents. One constant means the rename is one edit here
-rather than a search across prose, where a missed instance reads as carelessness in exactly the
-documents where carelessness is expensive.
+The name appears in page titles, email subjects and both legal documents. One constant means a
+rename is one edit here rather than a search across prose, where a missed instance reads as
+carelessness in exactly the documents where carelessness is expensive.
+
+It only helps where it is actually referenced, so everything that says the name says it from here:
+page titles, the reset email's subject, both legal documents. The one place that had been missed
+offered to reset a password for a product by name, and would have kept doing so after a rename.
 
 Overridable by environment so the server can be renamed without a redeploy of the image.
 """

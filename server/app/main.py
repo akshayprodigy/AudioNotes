@@ -19,6 +19,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from . import mailer
+from .branding import PRODUCT_NAME
 from .billing import apply_webhook, start_subscription
 from .entitlement import issue
 from .licence import signing_key_from_env
@@ -51,7 +52,7 @@ def create_app(
     imports without a key, which is what lets the tests construct it with their own.
     """
     app = FastAPI(
-        title="AudioNotes licence server",
+        title=f"{PRODUCT_NAME} licence server",
         # No interactive docs in production: this API has five endpoints documented in the README
         # and a generated explorer is only an invitation to poke at the billing routes.
         docs_url=None,

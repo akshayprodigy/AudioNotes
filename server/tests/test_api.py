@@ -8,6 +8,7 @@ only through the functions underneath them.
 import pytest
 from fastapi.testclient import TestClient
 
+from app.branding import PRODUCT_NAME
 from app.main import create_app
 from app.store import DEVICE_LIMIT, Subscription
 
@@ -151,7 +152,7 @@ def test_subscribing_without_razorpay_configured_says_so(client, store, monkeypa
 @pytest.mark.parametrize("path", ["/", "/signup", "/account"])
 def test_the_public_pages_render(client, path):
     r = client.get(path)
-    assert r.status_code == 200 and "AudioNotes" in r.text
+    assert r.status_code == 200 and PRODUCT_NAME in r.text
 
 
 def test_the_account_page_shows_a_subscription_and_its_devices(client, store):
@@ -230,3 +231,20 @@ def test_the_product_name_is_not_hardcoded_in_the_legal_pages(client, monkeypatc
     monkeypatch.setattr(legal, "PRODUCT_NAME", "Renamed")
     assert "Renamed" in legal._privacy()
     assert "Renamed" in legal._terms()
+
+
+def test_the_reset_email_names_the_product_not_a_hardcoded_string(store, signing_key, monkeypatch):
+    """
+    The one place the product name had been hardcoded past branding.py.
+
+    It was found by renaming the app and watching three tests fail, which is the argument for
+    asserting on PRODUCT_NAME rather than on whatever the product happens to be called today.
+    """
+    sent: list[tuple[str, str, str]] = []
+    from app import mailer
+
+    monkeypatch.setattr(mailer, "send", lambda to, s_, b: sent.append((to, s_, b)) or True)
+    client = TestClient(create_app(store=store, signing_key=signing_key))
+    store.create_account("a@example.com", "password123")
+    client.post("/forgot", data={"email": "a@example.com"})
+    assert PRODUCT_NAME in sent[0][1]
