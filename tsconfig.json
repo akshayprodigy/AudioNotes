@@ -1,7 +1,10 @@
 {
   "extends": "@react-native/typescript-config",
   "compilerOptions": {
-    "types": ["jest"]
+    // "node" alongside "jest" because the golden-file tests read fixtures from disk. Without it
+    // tsc cannot find 'fs', 'path' or __dirname, and those three errors were sitting in the tree
+    // unnoticed — an explicit "types" list silently excludes every @types package not named in it.
+    "types": ["jest", "node"]
   },
   "include": ["**/*.ts", "**/*.tsx"],
   "exclude": [
