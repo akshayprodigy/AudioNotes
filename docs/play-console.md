@@ -113,15 +113,36 @@ than one and a half.
 
 ## Listing copy
 
-**Short description (80 max)**
+Character limits are Play's, and it truncates silently rather than warning you. Counts verified.
 
-> Records meetings and writes the minutes. Entirely on your phone. Nothing uploaded.
+### App title — 30 characters, the single heaviest ASO field
 
-**Full description**
+> **Verbale: Offline Meeting Notes**  *(30/30)*
 
-> Every meeting app sends your conversation to a server. This one does not have one.
+"Offline" is the one claim no competitor can make and the reason to install; "meeting notes" is the
+phrase people actually search. The brand alone would rank for nothing — nobody is looking for
+"Verbale" yet.
+
+Alternates, if you would rather lead differently:
+
+| Title | Chars | Trade |
+|---|---|---|
+| `Verbale: Offline Meeting Notes` | 30 | **Recommended.** Differentiator + highest-volume term |
+| `Verbale: Meeting Notes & MOM` | 28 | "MOM" is standard business vocabulary in India and high intent; loses "offline" |
+| `Verbale: Private Meeting Notes` | 30 | "Private" is vaguer than "offline" and everyone claims it |
+
+### Short description — 80 characters, also indexed
+
+> **Records meetings and writes the MOM on your phone. Offline, private, no upload.**  *(79/80)*
+
+This is where "MOM" earns its place if the title does not carry it. Avoid going to exactly 80;
+Play's counting and yours will not always agree.
+
+### Full description
+
+> Every meeting app sends your conversation to a server. Verbale does not have one.
 >
-> Record a meeting and it is transcribed, separated by speaker and turned into notes on your own
+> Record a meeting and it is transcribed, separated by speaker and turned into minutes on your own
 > phone. No account, no upload, no cloud. The recording, the transcript and the minutes never
 > leave the device — there is no server here that could hold them.
 >
@@ -132,14 +153,14 @@ than one and a half.
 > • Search everything, export anything
 >
 > **Pro, by subscription**
-> • The summary and the minutes written in plain English, by a language model that also runs on
->   your phone
+> • The summary and the minutes of the meeting written in plain English, by a language model that
+>   also runs on your phone
 > • Up to 3 devices on one subscription
 >
 > **How it works**
-> The speech models download once, on first run, and everything after that happens on the device.
-> Recording continues when you switch apps or lock the screen. Long meetings keep processing in
-> the background and tell you when the notes are ready.
+> The speech models download once, on first run — about 114 MB. Everything after that happens on
+> the device. Recording continues when you switch apps or lock the screen. Long meetings keep
+> processing in the background and tell you when the notes are ready.
 >
 > Your notes stay yours if you stop paying: everything already written stays readable and you can
 > export it all at any time.
@@ -147,7 +168,41 @@ than one and a half.
 > Please respect the law and the room. Recording rules differ by country, and telling people they
 > are being recorded is both the decent thing and often the legal one.
 
+Keywords worth appearing naturally in the long description, since Play indexes it: meeting
+recorder, minutes of meeting, MOM, transcription, transcribe, speaker diarization, action items,
+offline, private, voice recorder, audio to text.
+
 **Category:** Productivity · **Content rating:** Everyone · **Ads:** none · **IAP:** none in-app
+
+---
+
+## Website SEO
+
+Implemented in `server/app/pages.py`; these are the values it serves.
+
+**Title tag** *(50 chars — under the ~60 Google renders)*
+
+> Meeting notes that never leave your phone · Verbale
+
+Keywords first, brand last. The usual advice is the reverse, but that assumes a brand somebody is
+already searching for — nobody is searching "Verbale" yet, so the phrase has to do the work.
+
+**Meta description** *(152 chars — inside the 150–160 that survives truncation)*
+
+> Verbale records meetings and writes the minutes entirely on your phone. Transcripts, speakers and
+> action items — no cloud, no upload, no account needed.
+
+`/privacy` and `/terms` carry their own descriptions. Duplicate descriptions across a site get
+ignored and then every page loses, so there is a test asserting they differ.
+
+**Link previews.** og: and twitter: tags with a 1200×630 card at `/static/og.png`, generated from
+the mascot geometry by `scripts/make-og-image.py`. `og:image` is absolute — most crawlers drop a
+relative one, and the card silently loses its picture. This matters more than it sounds: the URL
+gets pasted into WhatsApp and Slack, and a bare link converts far worse than a card.
+
+**robots.txt** allows `/`, `/privacy` and `/terms` and disallows the account pages and the API.
+They have nothing to index, and keeping "sign in to Verbale" out of search results also keeps it
+off the phishing surface.
 
 ---
 

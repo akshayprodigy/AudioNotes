@@ -248,3 +248,51 @@ def test_the_reset_email_names_the_product_not_a_hardcoded_string(store, signing
     store.create_account("a@example.com", "password123")
     client.post("/forgot", data={"email": "a@example.com"})
     assert PRODUCT_NAME in sent[0][1]
+
+
+# ---- SEO and link previews ----
+
+def test_every_page_carries_a_description(client):
+    """A page with no meta description gets whatever Google scrapes off it, which for a form is
+    the form."""
+    for path in ("/", "/privacy", "/terms", "/signup"):
+        assert 'name="description"' in client.get(path).text, path
+
+
+def test_the_legal_pages_do_not_reuse_the_home_page_description(client):
+    """Duplicate descriptions across a site are ignored, and then all of them lose."""
+    home = client.get("/").text
+    privacy = client.get("/privacy").text
+
+    def described(html: str) -> str:
+        import re
+        return re.search(r'name="description" content="([^"]*)"', html).group(1)
+
+    assert described(home) != described(privacy)
+
+
+def test_link_previews_have_a_card(client):
+    """Pasted into WhatsApp or Slack, this URL should not render as a bare link."""
+    html = client.get("/").text
+    for tag in ("og:title", "og:description", "og:image", "twitter:card"):
+        assert tag in html, tag
+    assert "1200" in html and "630" in html
+
+
+def test_the_social_image_is_actually_served(client):
+    r = client.get("/static/og.png")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/png"
+    assert len(r.content) > 10_000
+
+
+def test_the_og_image_url_is_absolute_when_configured(client, monkeypatch):
+    """Most crawlers ignore a relative og:image, so the card silently loses its picture."""
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://verbale.example.com")
+    assert 'content="https://verbale.example.com/static/og.png"' in client.get("/").text
+
+
+def test_robots_keeps_crawlers_off_the_account_pages(client):
+    body = client.get("/robots.txt").text
+    assert "Disallow: /account" in body and "Disallow: /api/" in body
+    assert "Allow: /privacy" in body

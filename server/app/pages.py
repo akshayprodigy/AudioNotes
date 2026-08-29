@@ -16,8 +16,11 @@ import html
 import time
 from datetime import datetime, timezone
 
+from pathlib import Path
+
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from . import mailer
 from .billing import cancel_subscription, start_subscription
@@ -55,11 +58,44 @@ CSS = """
 """
 
 
-def layout(title: str, body: str) -> str:
+#: What search engines and link previews show. One sentence, under 160 characters, saying what the
+#: product is rather than what page you are on — most pages here are forms, and "Sign in" is not
+#: worth indexing.
+DEFAULT_DESCRIPTION = (
+    f"{PRODUCT_NAME} records meetings and writes the minutes entirely on your phone. "
+    "Transcripts, speakers and action items — no cloud, no upload, no account needed."
+)
+
+
+def layout(title: str, body: str, description: str | None = None) -> str:
+    """
+    One page shell.
+
+    The Open Graph block is not decoration: this URL gets pasted into WhatsApp and Slack, and
+    without it the preview is a bare link, which converts far worse than a card. og:image is an
+    absolute path because relative ones are ignored by most crawlers — PUBLIC_BASE_URL is what
+    makes it absolute, and is the same setting the reset emails need.
+    """
+    description = description or DEFAULT_DESCRIPTION
+    base = mailer.public_base_url("")
+    image = f"{base}/static/og.png" if base else "/static/og.png"
+    full_title = f"{title} · {PRODUCT_NAME}"
     return (
         "<!doctype html>\n<html lang=\"en\"><head>\n"
         "<meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
-        f"<title>{html.escape(title)} · {html.escape(PRODUCT_NAME)}</title><style>{CSS}</style>\n"
+        f"<title>{html.escape(full_title)}</title>\n"
+        f"<meta name=\"description\" content=\"{html.escape(description)}\">\n"
+        "<meta name=\"theme-color\" content=\"#4A56D2\">\n"
+        "<link rel=\"icon\" href=\"/static/logo.svg\" type=\"image/svg+xml\">\n"
+        f"<meta property=\"og:title\" content=\"{html.escape(full_title)}\">\n"
+        f"<meta property=\"og:description\" content=\"{html.escape(description)}\">\n"
+        "<meta property=\"og:type\" content=\"website\">\n"
+        f"<meta property=\"og:site_name\" content=\"{html.escape(PRODUCT_NAME)}\">\n"
+        f"<meta property=\"og:image\" content=\"{html.escape(image)}\">\n"
+        "<meta property=\"og:image:width\" content=\"1200\">\n"
+        "<meta property=\"og:image:height\" content=\"630\">\n"
+        "<meta name=\"twitter:card\" content=\"summary_large_image\">\n"
+        f"<style>{CSS}</style>\n"
         f"</head><body><div class=\"wrap\">{body}</div></body></html>"
     )
 
@@ -68,8 +104,9 @@ def esc(s: str) -> str:
     return html.escape(s, quote=True)
 
 
-def _page(title: str, body: str, status: int = 200) -> HTMLResponse:
-    return HTMLResponse(layout(title, body), status_code=status)
+def _page(title: str, body: str, status: int = 200,
+          description: str | None = None) -> HTMLResponse:
+    return HTMLResponse(layout(title, body, description), status_code=status)
 
 
 def _date(seconds: int) -> str:
@@ -79,6 +116,24 @@ def _date(seconds: int) -> str:
 def register_pages(app: FastAPI, store: Store) -> None:
     # Play requires a privacy policy at a public URL, and a subscription sold direct needs terms.
     register_legal(app, layout)
+
+    app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+
+    @app.get("/robots.txt", response_class=PlainTextResponse)
+    def robots() -> PlainTextResponse:
+        # The account pages are forms behind a password and have nothing to index; keeping them
+        # out of results also keeps them out of the "sign in to <product>" phishing surface.
+        return PlainTextResponse(
+            "User-agent: *\n"
+            "Allow: /$\n"
+            "Allow: /privacy\n"
+            "Allow: /terms\n"
+            "Disallow: /account\n"
+            "Disallow: /signup\n"
+            "Disallow: /forgot\n"
+            "Disallow: /reset\n"
+            "Disallow: /api/\n"
+        )
 
     @app.get("/", response_class=HTMLResponse)
     def home() -> HTMLResponse:
