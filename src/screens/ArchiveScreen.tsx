@@ -5,7 +5,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { db } from '../db/queries';
 import { PipelineController } from '../pipeline/PipelineController';
-import Icon from '../components/Icon';
 import Mascot from '../components/Mascot';
 import { confirmDestructive, quoted } from '../components/confirm';
 import { IconButton, Pop, Raised, SoftButton, Txt } from '../components/ui';

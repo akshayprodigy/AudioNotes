@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import Icon, { type IconName } from './Icon';
-import { motion, radius, s, spacing, text, useTheme, type Colors, type TypeKey } from '../theme';
+import { motion, radius, s, text, useTheme, type Colors, type TypeKey } from '../theme';
 
 /**
  * Shared primitives, built to the design's two defining devices:

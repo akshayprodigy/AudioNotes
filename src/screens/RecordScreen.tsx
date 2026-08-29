@@ -20,7 +20,7 @@ import LiveWaveform from '../components/LiveWaveform';
 import Mascot from '../components/Mascot';
 import Icon, { type IconName } from '../components/Icon';
 import { Button, IconButton, Pop, Raised, SoftButton, Txt } from '../components/ui';
-import { radius, s, sv, screen, useTheme, type Colors } from '../theme';
+import { radius, s, sv, useTheme, type Colors } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Record'>;
 

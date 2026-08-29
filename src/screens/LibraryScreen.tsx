@@ -23,7 +23,7 @@ import {
   type SheetAction,
 } from '../components/ui';
 import type { Meeting } from '../pipeline/types';
-import { radius, s, spacing, text, tilt, useTheme, type Colors } from '../theme';
+import { radius, s, tilt, useTheme, type Colors } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Library'>;
 
@@ -281,7 +281,7 @@ export default function LibraryScreen({ navigation }: Props) {
   const MiniWave = ({ seed }: { seed: string }) => {
     let h = 0;
     for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-    const bars = Array.from({ length: 12 }, (_, i) => {
+    const bars = Array.from({ length: 12 }, (_, _i) => {
       h = (h * 1103515245 + 12345) >>> 0;
       return 0.3 + ((h >>> 16) % 71) / 100; // 0.30 - 1.00
     });
