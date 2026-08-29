@@ -180,7 +180,7 @@ offline, private, voice recorder, audio to text.
 
 Implemented in `server/app/pages.py`; these are the values it serves.
 
-**Title tag** *(50 chars — under the ~60 Google renders)*
+**Title tag** *(51 chars — under the ~60 Google renders)*
 
 > Meeting notes that never leave your phone · Verbale
 
