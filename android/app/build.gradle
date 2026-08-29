@@ -233,15 +233,33 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        // The upload key. Deliberately configured from properties that live OUTSIDE this repo —
+        // ~/.gradle/gradle.properties on a developer machine, or CI secrets — so the keystore and
+        // its passwords are never a git object. See docs/release-signing.md.
+        //
+        // Guarded by findProperty rather than assumed: Gradle configures this block on every
+        // invocation, including a plain debug build on a machine that has never seen the key.
+        release {
+            if (project.findProperty('AUDIONOTES_STORE_FILE')) {
+                storeFile file(project.property('AUDIONOTES_STORE_FILE'))
+                storePassword project.property('AUDIONOTES_STORE_PASSWORD')
+                keyAlias project.property('AUDIONOTES_KEY_ALIAS')
+                keyPassword project.property('AUDIONOTES_KEY_PASSWORD')
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // Falls back to the debug key ONLY so that a release-flavoured build is still
+            // possible locally for measuring size or startup. Shipping one that way is what the
+            // task-graph guard below exists to prevent: Play rejects a debug-signed upload, and
+            // an unnoticed debug-signed AAB is a wasted submission round trip.
+            signingConfig project.findProperty('AUDIONOTES_STORE_FILE')
+                ? signingConfigs.release
+                : signingConfigs.debug
 
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
@@ -260,11 +278,29 @@ gradle.taskGraph.whenReady { graph ->
     def releasing = graph.allTasks.any { t ->
         t.project == project && t.name ==~ /(?i)(assemble|bundle|install)Release/
     }
-    if (releasing && !project.findProperty('licencePublicKey')) {
+    if (!releasing) return
+
+    if (!project.findProperty('licencePublicKey')) {
         throw new GradleException(
             "No licencePublicKey set — a release built this way unlocks the paid tier for " +
             "everyone. Pass -PlicencePublicKey=<base64 X.509 P-256 public key>, or set it in " +
             "android/gradle.properties.")
+    }
+
+    // A debug-signed release is not a release. Play rejects the upload, and finding that out at
+    // submission costs a round trip; worse, a debug-signed APK handed to a tester establishes a
+    // signature that the real one cannot replace without an uninstall.
+    //
+    // Opt out consciously for a local size or startup measurement — the flag has to be typed,
+    // which is the point.
+    if (!project.findProperty('AUDIONOTES_STORE_FILE') &&
+        !project.findProperty('allowDebugSignedRelease')) {
+        throw new GradleException(
+            "Release signing is not configured, so this build would be signed with the DEBUG " +
+            "key and Play would reject it. Set AUDIONOTES_STORE_FILE / _STORE_PASSWORD / " +
+            "_KEY_ALIAS / _KEY_PASSWORD in ~/.gradle/gradle.properties — see " +
+            "docs/release-signing.md. For a throwaway local build, pass " +
+            "-PallowDebugSignedRelease=true.")
     }
 }
 
