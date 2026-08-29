@@ -5,6 +5,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import ModelManager from '../native/NativeModelManager';
 import AudioPipeline from '../native/NativeAudioPipeline';
+import Licence from '../native/NativeLicence';
 import Icon, { type IconName } from '../components/Icon';
 import Mascot from '../components/Mascot';
 import { Button, Pop, ProgressBar, Raised, SoftButton, Switch, Txt } from '../components/ui';
@@ -32,6 +33,7 @@ type Essential = {
   sizeBytes: number;
   kind: string;
   required: boolean;
+  needsSubscription: boolean;
 };
 
 const BULLETS: { icon: IconName; title: string; body: string; tone: 'primary' | 'success' | 'warning' }[] = [
@@ -65,12 +67,25 @@ export default function OnboardingScreen({ navigation }: Props) {
   const [current, setCurrent] = useState('');
   const [essentials, setEssentials] = useState<Essential[]>([]);
   const [writer, setWriter] = useState<Essential[]>([]);
-  // Defaulted on. A meeting app whose minutes read like a word count is not the product, and the
-  // model is what turns a transcript into something anyone will actually read. Off is one tap
-  // away, and the app records, transcribes and extracts action items either way.
-  const [wantWriter, setWantWriter] = useState(true);
+  // Whether the writer model may be fetched at all. ModelManager.download refuses it without a
+  // subscription — that refusal is the enforcement — so offering the switch to someone who has
+  // not subscribed would be offering a button that cannot work.
+  //
+  // On a first run this is always false, which makes the opening download 114 MB instead of
+  // 1.2 GB. That is a better first impression than the one it replaces, not a worse one.
+  const [paid, setPaid] = useState(false);
+  const [wantWriter, setWantWriter] = useState(false);
 
   useEffect(() => {
+    Licence.status()
+      .then(st => {
+        setPaid(st.paid);
+        // Defaulted on for a subscriber: a meeting app whose minutes read like a word count is
+        // not the product, and this model is what turns a transcript into something anyone will
+        // actually read. Off is one tap away.
+        setWantWriter(st.paid);
+      })
+      .catch(() => {});
     ModelManager.list()
       .then(r => {
         const all: Essential[] = JSON.parse(r);
@@ -90,7 +105,7 @@ export default function OnboardingScreen({ navigation }: Props) {
 
   // What the button will actually cost, including the writer when it is switched on. Saying
   // "112 MB" and then downloading 1.2 GB is the kind of surprise that gets an app uninstalled.
-  const chosen = wantWriter ? [...essentials, ...writer] : essentials;
+  const chosen = paid && wantWriter ? [...essentials, ...writer] : essentials;
   const totalMb = Math.round(chosen.reduce((a, m) => a + m.sizeBytes, 0) / 1e6);
   const writerMb = Math.round(writer.reduce((a, m) => a + m.sizeBytes, 0) / 1e6);
 
@@ -240,11 +255,14 @@ export default function OnboardingScreen({ navigation }: Props) {
               <View style={st.flex}>
                 <Txt variant="cardTitleSm">Write the minutes in plain English</Txt>
                 <Txt variant="chip" color={colors.inkSoft} style={st.bulletBody}>
-                  Adds {writerMb} MB. Without it you still get minutes, pulled out by rule rather
-                  than written as prose.
+                  {paid
+                    ? `Adds ${writerMb} MB. Without it you still get minutes, pulled out by rule rather than written as prose.`
+                    : `Part of the subscription — a ${writerMb} MB model that runs on your phone. You still get minutes without it, pulled out by rule rather than written as prose.`}
                 </Txt>
               </View>
-              <Switch on={wantWriter} onToggle={() => setWantWriter(v => !v)} />
+              {/* No switch when there is nothing to switch on. A control that reports a
+                  subscription error on tap is worse than an honest sentence. */}
+              {paid ? <Switch on={wantWriter} onToggle={() => setWantWriter(v => !v)} /> : null}
             </View>
           </Raised>
         ) : null}

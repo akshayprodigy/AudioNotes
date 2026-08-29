@@ -182,6 +182,26 @@ object ModelCatalog {
     return listOf("$base/models/v1/${spec.filename}", spec.upstream)
   }
 
+  /**
+   * Whether a model may only be downloaded by a subscriber.
+   *
+   * The LLM writes the summary and the narrated minutes, which is exactly what Pro is, and
+   * Narrator already refuses to run without an active subscription. Gating the *download* as well
+   * does two further things:
+   *
+   * It is the only real barrier there is. The entitlement flag is a boolean in a database on a
+   * phone its owner controls, and anyone willing to patch it has Pro; 1.1 GB of weights they have
+   * to source themselves is a different proposition. Serving those weights only to subscribers is
+   * what makes the boolean worth checking.
+   *
+   * And it stops taking a gigabyte of a free user's storage — and our bandwidth — for a file
+   * nothing on their phone is ever allowed to load.
+   *
+   * Deliberately keyed on `kind`, not on an id: a second LLM added to the catalog is behind the
+   * subscription by default, which is the safe direction for this to be wrong in.
+   */
+  fun needsSubscription(spec: ModelSpec): Boolean = spec.kind == "llm"
+
   fun byId(id: String): ModelSpec? = ALL.firstOrNull { it.id == id }
 
   fun modelsDir(context: Context): File = File(context.filesDir, "models").apply { mkdirs() }

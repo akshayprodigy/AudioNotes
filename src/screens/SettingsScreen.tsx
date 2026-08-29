@@ -32,6 +32,7 @@ type Model = {
   required: boolean;
   installed: boolean;
   sizeBytes: number;
+  needsSubscription: boolean;
 };
 
 const mb = (bytes: number) => `${(bytes / 1e6).toFixed(0)} MB`;
@@ -215,12 +216,30 @@ export default function SettingsScreen({ navigation }: Props) {
   };
 
   const onToggle = async (m: Model) => {
-    if (m.installed) await ModelManager.remove(m.id);
-    else {
-      setProgress(p => ({ ...p, [m.id]: 0 }));
-      try {
-        await ModelManager.download(m.id);
-      } catch {}
+    // Removing is always allowed, including for a model bought and then cancelled: it is their
+    // storage. Adding one is what the subscription gates.
+    if (m.installed) {
+      await ModelManager.remove(m.id);
+      refresh();
+      return;
+    }
+    if (m.needsSubscription && !lic?.paid) {
+      // ModelManager.download would refuse this anyway — that refusal is the enforcement. Saying
+      // so here is what stops the tap looking broken. The old code swallowed the error entirely,
+      // so the button did nothing and explained nothing.
+      Alert.alert(
+        `${m.name} is part of the subscription`,
+        'Sign in with a subscribed account and it will download. Everything else in the app ' +
+          'works without it.',
+      );
+      return;
+    }
+    setProgress(p => ({ ...p, [m.id]: 0 }));
+    try {
+      await ModelManager.download(m.id);
+    } catch (e: any) {
+      Alert.alert('Could not download', String(e?.message ?? e));
+    } finally {
       setProgress(p => {
         const n = { ...p };
         delete n[m.id];
@@ -282,9 +301,27 @@ export default function SettingsScreen({ navigation }: Props) {
                     </View>
 
                     <View style={st.modelMeta}>
-                      <View style={[st.tag, { backgroundColor: m.required ? colors.primarySoft : colors.cardAlt }]}>
-                        <Txt variant="chipSm" color={m.required ? colors.primary : colors.inkFaint}>
-                          {m.required ? 'REQUIRED' : 'OPTIONAL'}
+                      <View
+                        style={[
+                          st.tag,
+                          {
+                            backgroundColor: m.needsSubscription
+                              ? colors.successSoft
+                              : m.required
+                                ? colors.primarySoft
+                                : colors.cardAlt,
+                          },
+                        ]}>
+                        <Txt
+                          variant="chipSm"
+                          color={
+                            m.needsSubscription
+                              ? colors.success
+                              : m.required
+                                ? colors.primary
+                                : colors.inkFaint
+                          }>
+                          {m.needsSubscription ? 'PRO' : m.required ? 'REQUIRED' : 'OPTIONAL'}
                         </Txt>
                       </View>
                       <Txt variant="chipSoft" color={colors.inkFaint}>

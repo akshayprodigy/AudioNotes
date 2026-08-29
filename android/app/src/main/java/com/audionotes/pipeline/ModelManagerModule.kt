@@ -1,6 +1,7 @@
 package com.audionotes.pipeline
 
 import android.util.Log
+import com.audionotes.billing.LicenceStore
 import com.audionotes.data.AudioDb
 import com.audionotes.data.ModelCatalog
 import com.facebook.react.bridge.Promise
@@ -47,6 +48,9 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
           // list() call, and hashing the 1.1 GB LLM each time to catch a rare case is not worth
           // it. The full sha256 is still verified after every download.
           .put("installed", f.exists() && f.length() == spec.sizeBytes)
+          // So the UI can say "Pro" against it rather than offering a download that will be
+          // refused. The refusal in download() is the enforcement; this is only the honesty.
+          .put("needsSubscription", ModelCatalog.needsSubscription(spec))
           .put("sizeBytes", spec.sizeBytes),
       )
     }
@@ -58,6 +62,15 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
     val spec = ModelCatalog.byId(id)
     if (spec == null) {
       promise.reject("no_model", "unknown model $id")
+      return
+    }
+    // Checked here rather than in JS, for the same reason Narrator.run checks there: a gate in
+    // the bundle is a gate anyone can edit. This is the one that has to hold.
+    if (ModelCatalog.needsSubscription(spec) && !LicenceStore.current(ctx).isPaid) {
+      promise.reject(
+        "subscription_required",
+        "${spec.name} is part of the subscription.",
+      )
       return
     }
     Thread {
