@@ -20,7 +20,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from . import mailer
-from .billing import start_subscription
+from .billing import cancel_subscription, start_subscription
+from .branding import PRODUCT_NAME
+from .legal import register_legal
 from .entitlement import is_entitled
 from .store import DEVICE_LIMIT, PASSWORD_RESET_TTL_SECONDS, Store
 
@@ -57,7 +59,7 @@ def layout(title: str, body: str) -> str:
     return (
         "<!doctype html>\n<html lang=\"en\"><head>\n"
         "<meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
-        f"<title>{html.escape(title)} · AudioNotes</title><style>{CSS}</style>\n"
+        f"<title>{html.escape(title)} · {html.escape(PRODUCT_NAME)}</title><style>{CSS}</style>\n"
         f"</head><body><div class=\"wrap\">{body}</div></body></html>"
     )
 
@@ -75,11 +77,14 @@ def _date(seconds: int) -> str:
 
 
 def register_pages(app: FastAPI, store: Store) -> None:
+    # Play requires a privacy policy at a public URL, and a subscription sold direct needs terms.
+    register_legal(app, layout)
+
     @app.get("/", response_class=HTMLResponse)
     def home() -> HTMLResponse:
         return _page(
             "Meeting notes that never leave your phone",
-            f"""<h1>AudioNotes</h1>
+            f"""<h1>{esc(PRODUCT_NAME)}</h1>
          <p>Records a meeting, writes the minutes, and does all of it on your phone. No recording,
             no transcript and no summary is ever uploaded &mdash; there is no server here that could
             hold one.</p>
@@ -108,7 +113,11 @@ def register_pages(app: FastAPI, store: Store) -> None:
            <p class="muted" style="text-align:center;margin-top:14px">
              Already have one? <a href="/account">Sign in</a>
            </p>
-         </div>""",
+         </div>
+
+         <p class="muted" style="text-align:center">
+           <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
+         </p>""",
         )
 
     @app.get("/signup", response_class=HTMLResponse)
@@ -249,6 +258,17 @@ def register_pages(app: FastAPI, store: Store) -> None:
            {device_rows}
            <p class="muted">Removing a device does not delete anything on it. Its meetings stay
               where they are; it simply stops renewing this subscription.</p>
+         </div>
+         <div class="card">
+           <h2 style="margin-top:0">Delete this account</h2>
+           <p class="muted">Cancels the subscription and erases the account. Your meetings are on
+              your phones and are not touched — nothing here has ever held one.</p>
+           <form method="post" action="/account/delete">
+             <input type="hidden" name="email" value="{esc(acct.email)}">
+             <label for="dp">Confirm your password</label>
+             <input id="dp" name="password" type="password" required autocomplete="current-password">
+             <button class="secondary" type="submit">Delete my account</button>
+           </form>
          </div>""",
         )
 
@@ -391,6 +411,52 @@ If it was not you, nothing has happened and you can ignore this. Your password h
            <p>Every device signed into this account has been signed out, including your own.
               Open the app, go to Settings then Subscription, and sign in once more.</p>
            <a href="/account"><button>Sign in</button></a>
+         </div>""",
+        )
+
+    # ---- deleting an account ----
+    #
+    # Play requires an app with accounts to offer deletion, and to offer it from the web as well as
+    # in the app. It is also just correct: an account somebody cannot get rid of is not theirs.
+
+    @app.post("/account/delete", response_class=HTMLResponse)
+    async def delete_account(request: Request) -> HTMLResponse:
+        form = await request.form()
+        acct = store.authenticate(
+            str(form.get("email") or ""), str(form.get("password") or "")
+        )
+        if acct is None:
+            return _signed_out()
+
+        sub = store.subscription(acct.id)
+        if sub.provider_id and sub.status in ("active", "past_due"):
+            # Deleting our row stops us knowing about a subscription; it does not stop Razorpay
+            # charging the card. Being billed monthly for an account you deleted is the worst
+            # thing this system could do to somebody, so a failure here stops the deletion rather
+            # than being logged and stepped over.
+            cancelled, error = cancel_subscription(sub.provider_id)
+            if not cancelled:
+                return _page(
+                    "Delete this account",
+                    f"""<h1>Could not cancel the subscription</h1>
+                 <p class="err">{esc(error or "Unknown error")}</p>
+                 <p>Nothing has been deleted. Your account and subscription are exactly as they
+                    were — we will not erase the account while the card could still be charged.</p>
+                 <p class="muted">Email admin@innocorelabs.com and we will sort it out.</p>
+                 <a href="/account">Back to my account</a>""",
+                    status=502,
+                )
+
+        store.delete_account(acct.id)
+        return _page(
+            "Account deleted",
+            """<h1>Account deleted</h1>
+         <p class="ok">The subscription is cancelled and the account is gone. You will not be
+            charged again.</p>
+         <div class="card">
+           <p>Your meetings were never here. They are on your phones, where they were made, and
+              nothing about this has touched them — they keep working, minus the written summary.</p>
+           <a href="/"><button>Done</button></a>
          </div>""",
         )
 

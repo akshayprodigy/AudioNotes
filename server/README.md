@@ -141,8 +141,8 @@ fixture with `python scripts/contract_fixture.py`, and expect to re-run
 | `POST /api/billing/webhook` | Razorpay events. The **only** thing that marks a subscription paid |
 | `GET /healthz` | |
 
-Pages: `/` (what it is and what Pro adds), `/signup`, `/account`, `/forgot`, `/reset`, and the
-`/subscribe` and `/devices/forget` actions they post to.
+Pages: `/` (what it is and what Pro adds), `/signup`, `/account`, `/forgot`, `/reset`, `/privacy`,
+`/terms`, and the `/subscribe`, `/devices/forget` and `/account/delete` actions they post to.
 
 There is no `/docs`: six endpoints are documented above, and a generated explorer is only an
 invitation to poke at the billing routes.
@@ -197,6 +197,30 @@ Resetting also clears every device's refresh key. A reset is the moment to evict
 and changing the password alone does not do that: a device that already signed in holds a renewal
 credential that is not derived from the password. The device rows survive, so nobody is pushed over
 the limit by their own reset — they sign in again.
+
+## Deleting an account
+
+`/account/delete`, from the account page, with the password. Play requires an app with accounts to
+offer this from the web, and it is correct anyway: an account somebody cannot get rid of is not
+theirs.
+
+The subscription is cancelled at Razorpay **first**, and a failure there stops the deletion. Our
+row going away does not stop Razorpay charging the card — being billed monthly for an account you
+deleted is the worst thing this system could do to somebody, so that path refuses rather than
+logging and stepping over it.
+
+Everything else cascades from the foreign keys, which is why `PRAGMA foreign_keys = ON` at connect
+time is load-bearing and not tidiness.
+
+## Privacy policy and terms
+
+`/privacy` and `/terms`, in `legal.py`. **Drafts — not reviewed by a lawyer.** They are written to
+be accurate about what this system does, which is the part an engineer can get right and a template
+cannot: the list of what the server holds *is* the schema, and there is a test asserting the policy
+still names what `store.py` actually stores.
+
+The product name in them comes from `branding.py`, so the pending rename is one edit rather than a
+search through prose.
 
 ## Not built yet
 

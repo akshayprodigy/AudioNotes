@@ -178,3 +178,28 @@ def apply_webhook(store: Store, raw: bytes, signature: str, event_id: str) -> tu
         )
     )
     return 200, "ok"
+
+
+def cancel_subscription(provider_id: str) -> tuple[bool, str | None]:
+    """
+    Cancel a subscription at Razorpay, immediately.
+
+    Used when an account is deleted. This is the step that must not be skipped: deleting our row
+    stops us knowing about a subscription, it does not stop Razorpay charging the card. Somebody
+    billed monthly for an account they deleted is the worst failure this system can produce, so
+    the caller refuses to delete when this returns False.
+
+    A subscription already cancelled or completed reports success — it is in the state we wanted,
+    and treating "already done" as a failure would strand the account forever.
+    """
+    rzp = _client()
+    if rzp is None:
+        return False, "Billing is not configured on this server."
+    try:
+        rzp.subscription.cancel(provider_id, {"cancel_at_cycle_end": 0})
+        return True, None
+    except Exception as e:  # noqa: BLE001 -- the SDK raises several unrelated types
+        message = str(e)
+        if any(word in message.lower() for word in ("cancelled", "completed", "not found")):
+            return True, None
+        return False, message or "Could not cancel the subscription"

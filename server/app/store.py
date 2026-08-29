@@ -366,6 +366,20 @@ class Store:
             )
             self._db.commit()
 
+    def delete_account(self, account_id: str) -> None:
+        """
+        Remove an account and everything hanging off it.
+
+        Subscriptions, devices and reset tokens all cascade from the foreign keys, which is why
+        `PRAGMA foreign_keys = ON` at connect time is load-bearing rather than tidy: without it
+        SQLite would leave the children behind and this would quietly become a partial delete.
+
+        There is nothing else to remove. No meeting, transcript or title was ever here.
+        """
+        with self._lock:
+            self._db.execute("DELETE FROM accounts WHERE id=?", (account_id,))
+            self._db.commit()
+
     # ---- password resets ----
 
     def create_password_reset(self, account_id: str, now: int | None = None) -> str:

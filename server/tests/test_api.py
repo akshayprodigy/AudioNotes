@@ -201,3 +201,32 @@ def test_there_is_no_generated_api_explorer_in_production(client):
     """Five endpoints documented in the README; an explorer is an invitation to poke at billing."""
     assert client.get("/docs").status_code == 404
     assert client.get("/openapi.json").status_code == 404
+
+
+# ---- legal ----
+
+@pytest.mark.parametrize("path", ["/privacy", "/terms"])
+def test_the_legal_pages_render(client, path):
+    r = client.get(path)
+    assert r.status_code == 200 and len(r.text) > 2000
+
+
+def test_the_privacy_policy_says_what_the_schema_actually_holds(client):
+    """If this list and store.py ever disagree, the policy is the thing that is wrong."""
+    text = client.get("/privacy").text
+    for promised in ("email address", "scrypt hash", "subscription status", "password reset"):
+        assert promised in text
+
+
+def test_the_privacy_policy_is_reachable_from_the_home_page(client):
+    """A policy nobody can find is one Play will not accept and nobody will read."""
+    assert '/privacy' in client.get("/").text
+
+
+def test_the_product_name_is_not_hardcoded_in_the_legal_pages(client, monkeypatch):
+    """The app is being renamed before launch; the documents must follow without an edit."""
+    from app import branding, legal
+    monkeypatch.setattr(branding, "PRODUCT_NAME", "Renamed")
+    monkeypatch.setattr(legal, "PRODUCT_NAME", "Renamed")
+    assert "Renamed" in legal._privacy()
+    assert "Renamed" in legal._terms()
