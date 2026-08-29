@@ -1,5 +1,6 @@
 package com.audionotes.billing
 
+import com.audionotes.BuildConfig
 import com.audionotes.data.AudioDb
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
@@ -60,13 +61,29 @@ class LicenceModule(private val ctx: ReactApplicationContext) :
 
   /** Take a freshly issued token — from sign-in, or from the periodic refresh. */
   @ReactMethod
-  fun store(token: String, promise: Promise) {
+  fun store(token: String, refreshKey: String?, promise: Promise) {
     try {
-      val e = LicenceStore.store(ctx, token)
+      val e = LicenceStore.store(ctx, token, refreshKey)
       promise.resolve(e.isPaid)
     } catch (e: Exception) {
       promise.reject("licence_store_failed", e)
     }
+  }
+
+  /** The device-scoped renewal credential, if this install has signed in. */
+  @ReactMethod
+  fun refreshKey(promise: Promise) {
+    try {
+      promise.resolve(LicenceStore.refreshKey(ctx))
+    } catch (e: Exception) {
+      promise.reject("licence_refresh_key_failed", e)
+    }
+  }
+
+  /** Where the licence server lives, so JS does not carry a second copy of the address. */
+  @ReactMethod
+  fun baseUrl(promise: Promise) {
+    promise.resolve(BuildConfig.LICENCE_BASE_URL)
   }
 
   /** Sign out, or drop a token the server has disowned. */

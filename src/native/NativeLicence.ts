@@ -25,7 +25,11 @@ export interface LicenceStatus {
 
 export interface Spec extends TurboModule {
   status(): Promise<LicenceStatus>;
-  store(token: string): Promise<boolean>;
+  /** `refreshKey` is null on a plain renewal, which must not clear the one already stored. */
+  store(token: string, refreshKey: string | null): Promise<boolean>;
+  refreshKey(): Promise<string | null>;
+  /** Empty when this build has no licence server, in which case sign-in is unavailable. */
+  baseUrl(): Promise<string>;
   clear(): Promise<void>;
   deviceId(): Promise<string>;
 }

@@ -68,6 +68,9 @@ const mockNativeModules = {
       lapsedCopy: 'Your subscription has ended.',
     })),
     store: jest.fn(async () => true),
+    refreshKey: jest.fn(async () => null),
+    // No server in tests, so sign-in is unavailable and refreshIfNeeded is a no-op.
+    baseUrl: jest.fn(async () => ''),
     clear: jest.fn(async () => {}),
     deviceId: jest.fn(async () => 'test-device'),
   },

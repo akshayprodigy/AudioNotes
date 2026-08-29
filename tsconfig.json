@@ -7,6 +7,12 @@
   "exclude": [
     "**/node_modules",
     "**/Pods",
-    "cpp/third_party"
+    "cpp/third_party",
+    "graphify-out",
+    "_to_delete",
+    // The licence server is a separate Node project with its own tsconfig and its own types
+    // (node, not react-native). Compiling it under the app's config reports errors that are not
+    // errors there.
+    "server"
   ]
 }

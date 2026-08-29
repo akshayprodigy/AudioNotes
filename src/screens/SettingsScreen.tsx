@@ -19,6 +19,8 @@ import Icon from '../components/Icon';
 import { confirmDestructive } from '../components/confirm';
 import { IconButton, Pop, ProgressBar, Raised, SectionRule, SoftButton, Switch, Txt } from '../components/ui';
 import Backup from '../native/NativeBackup';
+import Licence, { type LicenceStatus } from '../native/NativeLicence';
+import { signIn, signOut } from '../billing/subscription';
 import { radius, s, useTheme, type Colors } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
@@ -53,6 +55,62 @@ const NOTICES: { name: string; licence: string; by: string }[] = [
 
 export default function SettingsScreen({ navigation }: Props) {
   const { colors } = useTheme();
+  // Subscription. The app never advertises a price or links to a checkout — it signs in, and
+  // buying happens on the web. That separation is deliberate; see the licence server's README.
+  const [lic, setLic] = React.useState<LicenceStatus | null>(null);
+  const [licEmail, setLicEmail] = React.useState('');
+  const [licPass, setLicPass] = React.useState('');
+  const [licBusy, setLicBusy] = React.useState(false);
+  const [signedInAs, setSignedInAs] = React.useState<string | null>(null);
+  const [hasServer, setHasServer] = React.useState(false);
+
+  const refreshLicence = React.useCallback(async () => {
+    try {
+      const [status, base, key] = await Promise.all([
+        Licence.status(),
+        Licence.baseUrl(),
+        Licence.refreshKey(),
+      ]);
+      setLic(status);
+      setHasServer(Boolean(base));
+      // A stored refresh key is what "signed in" means here; the email is only remembered for
+      // the label, so an empty one still counts.
+      if (key) setSignedInAs(prev => prev ?? 'this device');
+    } catch {
+      // A licence that cannot be read is not worth interrupting Settings for.
+    }
+  }, []);
+
+  React.useEffect(() => {
+    refreshLicence();
+  }, [refreshLicence]);
+
+  const onSignIn = React.useCallback(async () => {
+    setLicBusy(true);
+    try {
+      const res = await signIn(licEmail, licPass);
+      setSignedInAs(res.email);
+      setLicPass('');
+      await refreshLicence();
+      if (!res.paid) {
+        Alert.alert(
+          'Signed in',
+          'This account does not have a subscription yet. Everything except the written summary keeps working.',
+        );
+      }
+    } catch (e: any) {
+      Alert.alert('Could not sign in', String(e?.message ?? e));
+    } finally {
+      setLicBusy(false);
+    }
+  }, [licEmail, licPass, refreshLicence]);
+
+  const onSignOut = React.useCallback(async () => {
+    await signOut();
+    setSignedInAs(null);
+    await refreshLicence();
+  }, [refreshLicence]);
+
   // Backup lives entirely in this screen: a passphrase the user types, and two calls.
   const [pass, setPass] = React.useState('');
   const [busy, setBusy] = React.useState<'export' | 'restore' | null>(null);
@@ -290,6 +348,65 @@ export default function SettingsScreen({ navigation }: Props) {
                 </Txt>
               </View>
               <Icon name="chevronRight" size={s(18)} color={colors.inkFaint} strokeWidth={2.4} />
+            </View>
+          </Raised>
+        </View>
+
+        <View style={st.ruleWrap}>
+          <SectionRule label="SUBSCRIPTION" />
+        </View>
+        <View style={st.list}>
+          <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={5}>
+            <View style={st.rowPad}>
+              <Txt variant="bodyStrong">
+                {lic?.paid ? 'Pro' : 'Free'}
+              </Txt>
+              <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
+                {lic?.paid
+                  ? 'The summary and the written minutes are on. Everything runs on this phone.'
+                  : 'Recording, transcripts and rule-based minutes are free forever. The written summary needs a subscription.'}
+              </Txt>
+
+              {!hasServer ? (
+                <Txt variant="chip" color={colors.inkFaint} style={st.tiny}>
+                  This build has no licence server configured.
+                </Txt>
+              ) : signedInAs ? (
+                <View style={st.backupRow}>
+                  <View style={st.flex}>
+                    <SoftButton icon="x" label="Sign out" onPress={onSignOut} />
+                  </View>
+                </View>
+              ) : (
+                <>
+                  <TextInput
+                    style={[st.pass, { borderColor: colors.line, color: colors.ink }]}
+                    value={licEmail}
+                    onChangeText={setLicEmail}
+                    placeholder="Email"
+                    placeholderTextColor={colors.inkFaint}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  <TextInput
+                    style={[st.pass, { borderColor: colors.line, color: colors.ink }]}
+                    value={licPass}
+                    onChangeText={setLicPass}
+                    placeholder="Password"
+                    placeholderTextColor={colors.inkFaint}
+                    secureTextEntry
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  <SoftButton
+                    icon="lock"
+                    label={licBusy ? 'Signing in…' : 'Sign in'}
+                    onPress={onSignIn}
+                    disabled={licBusy || !licEmail || !licPass}
+                  />
+                </>
+              )}
             </View>
           </Raised>
         </View>

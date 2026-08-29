@@ -104,8 +104,6 @@ phone, or retyped by someone who has long since forgotten it.
 ## Not built yet
 
 - Password reset.
-- Removing a device from the account page — the limit is enforced, but the escape hatch is not
-  built, so a user who replaces a phone three times is stuck. Do this before launch.
 - Gating the model download on entitlement, which is the real piracy barrier: the licence flag is
   a boolean someone can patch, whereas 1.1 GB of weights they have to source is not.
 - Email: nothing is sent, so signup has no confirmation and there is no way to reach a customer.

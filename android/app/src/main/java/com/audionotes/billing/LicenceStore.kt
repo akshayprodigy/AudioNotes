@@ -28,6 +28,7 @@ object LicenceStore {
   private const val KEY_TOKEN = "licence_token"
   private const val KEY_FLOOR = "licence_clock_floor"
   private const val KEY_DEVICE = "licence_device_id"
+  private const val KEY_REFRESH = "licence_refresh_key"
 
   /**
    * This device's identity, for binding a token to it.
@@ -81,15 +82,34 @@ object LicenceStore {
     }
   }
 
-  /** Store a freshly issued token. Returns what it entitles the holder to, for the caller to act on. */
-  fun store(ctx: Context, token: String): Licence.Entitlement {
-    AudioDb.get(ctx).putSetting(KEY_TOKEN, token)
+  /**
+   * Store a freshly issued token, and the device-scoped key that will renew it.
+   *
+   * The refresh key is kept so the account password never has to be. A renewal a fortnight from
+   * now should not need a password sitting on the phone, or retyped by someone who has long
+   * since forgotten it.
+   */
+  fun store(ctx: Context, token: String, refreshKey: String? = null): Licence.Entitlement {
+    val db = AudioDb.get(ctx)
+    db.putSetting(KEY_TOKEN, token)
+    if (!refreshKey.isNullOrBlank()) db.putSetting(KEY_REFRESH, refreshKey)
     return current(ctx)
   }
 
-  /** Forget the licence — signing out, or a token the server has told us is dead. */
+  fun refreshKey(ctx: Context): String? =
+    AudioDb.get(ctx).getSetting(KEY_REFRESH)?.takeIf { it.isNotBlank() }
+
+  /**
+   * Forget the licence — signing out, or a token the server has disowned.
+   *
+   * The device id is deliberately kept. It identifies this install to the account, and rotating
+   * it on every sign-out would burn through the device limit for anyone who signs out and back
+   * in, which is the ordinary way to fix a problem.
+   */
   fun clear(ctx: Context) {
-    AudioDb.get(ctx).putSetting(KEY_TOKEN, "")
+    val db = AudioDb.get(ctx)
+    db.putSetting(KEY_TOKEN, "")
+    db.putSetting(KEY_REFRESH, "")
   }
 
   /**

@@ -215,18 +215,57 @@ export function pages(app: Express, store: Store): void {
            <p class="muted">${devices.length} of ${DEVICE_LIMIT} in use.</p>
            ${
              devices.length
-               ? `<ul>${devices
+               ? devices
                    .map(
-                     d =>
-                       `<li>${esc(d.deviceId.slice(0, 8))}… — last seen ${new Date(
-                         d.lastSeen * 1000,
-                       ).toLocaleDateString('en-IN')}</li>`,
+                     d => `<form method="post" action="/devices/forget"
+                                 style="display:flex;gap:10px;align-items:center;margin:10px 0">
+                             <span class="muted" style="flex:1">${esc(d.deviceId.slice(0, 8))}… —
+                               last seen ${new Date(d.lastSeen * 1000).toLocaleDateString('en-IN')}</span>
+                             <input type="hidden" name="email" value="${esc(account.email)}">
+                             <input type="hidden" name="password" value="${esc(password)}">
+                             <input type="hidden" name="deviceId" value="${esc(d.deviceId)}">
+                             <button class="secondary" style="width:auto;margin:0;padding:8px 14px"
+                                     type="submit">Remove</button>
+                           </form>`,
                    )
-                   .join('')}</ul>`
+                   .join('')
                : '<p class="muted">No devices yet. Sign in from the app to add one.</p>'
            }
+           <p class="muted">Removing a device does not delete anything on it. Its meetings stay
+              where they are; it simply stops renewing this subscription.</p>
          </div>`,
       ),
+    );
+  });
+
+  /**
+   * Remove a device from an account.
+   *
+   * The limit is meaningless without this. A person who replaces a phone three times would
+   * otherwise be locked out of their own subscription with no way through but an email to
+   * support — which is a bad experience and, at any volume, a bad business.
+   *
+   * Re-authenticated rather than trusted from the form: this page carries no session, so the
+   * password comes back with the request. That is also why the button is a POST and not a link —
+   * a GET that deletes something will eventually be prefetched by a browser.
+   */
+  app.post('/devices/forget', (req, res) => {
+    const email = String(req.body?.email ?? '');
+    const password = String(req.body?.password ?? '');
+    const deviceId = String(req.body?.deviceId ?? '');
+    const account = store.authenticate(email, password);
+    if (!account) {
+      return res.status(401).type('html').send(
+        layout('Your account', `<h1>Sign in</h1>
+          <p class="err">Email or password is incorrect.</p><a href="/account">Try again</a>`),
+      );
+    }
+    store.forgetDevice(account.id, deviceId);
+    res.type('html').send(
+      layout('Device removed', `<h1>Device removed</h1>
+        <p class="ok">That device will stop renewing this subscription. Nothing on it was
+           deleted.</p>
+        <a href="/account"><button>Back to my account</button></a>`),
     );
   });
 

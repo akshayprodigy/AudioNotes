@@ -192,6 +192,11 @@ android {
         buildConfigField "String", "LICENCE_PUBLIC_KEY",
             "\"${project.findProperty('licencePublicKey') ?: ''}\""
 
+        // Where the licence server lives. Empty means sign-in is unavailable, which is the
+        // correct state for a build with no server behind it rather than a crash on a dead URL.
+        buildConfigField "String", "LICENCE_BASE_URL",
+            "\"${project.findProperty('licenceBaseUrl') ?: ''}\""
+
         externalNativeBuild {
             cmake {
                 cppFlags "-std=c++17"
