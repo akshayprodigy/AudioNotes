@@ -1,0 +1,1 @@
+"""AudioNotes licence server."""

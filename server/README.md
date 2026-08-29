@@ -1,51 +1,108 @@
 # Licence server
 
-Accounts, subscriptions and licence tokens for AudioNotes. Also the web pages where a
-subscription is actually bought.
+Accounts, subscriptions and licence tokens for AudioNotes. Also the web pages where a subscription
+is actually bought.
+
+Python, FastAPI, SQLite, one container behind Caddy.
 
 ## What it deliberately does not do
 
-It never receives a recording, a transcript, a title, or a count of anything a user made. The
-app's claim is that recordings never leave the phone, and the way to keep a claim like that true
-is to build a server with nowhere to put them. If a schema change here ever seems to need a
-column describing a user's content, something has gone wrong upstream of the schema.
+It never receives a recording, a transcript, a title, or a count of anything a user made. The app's
+claim is that recordings never leave the phone, and the way to keep a claim like that true is to
+build a server with nowhere to put them. If a schema change here ever seems to need a column
+describing a user's content, something has gone wrong upstream of the schema.
 
 It is also the only place a subscription is sold. The Android app never links here — that is what
-keeps the arrangement inside store policy — so these pages have to stand on their own for
-somebody arriving from an email or a bookmark.
+keeps the arrangement inside store policy — so these pages have to stand on their own for somebody
+arriving from an email or a bookmark.
 
 ## Why not Play Billing
 
 Play Billing only works for Play installs, and the app ships to other Android stores; a desktop
 build cannot use it at all. One entitlement service is simpler than one-and-a-half, each with its
-own refunds, dunning and reconciliation. The trade is that we own the subscription lifecycle,
-which is what the webhook is.
+own refunds, dunning and reconciliation. The trade is that we own the subscription lifecycle, which
+is what the webhook is.
 
-## Running it
+## Running it locally
 
 ```bash
-npm install
-npm run keygen        # once, ever — see below
-LICENCE_PRIVATE_KEY_PEM="$(cat key.pem)" npm run dev
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m app.keygen          # once, ever — see below
+LICENCE_PRIVATE_KEY_PEM="$(cat key.pem)" \
+  .venv/bin/python -m uvicorn app.main:create_app --factory --reload --port 8787
+.venv/bin/python -m pytest              # 87 tests
+```
+
+Or the real thing, exactly as it runs in production:
+
+```bash
+cp .env.example .env    # fill in LICENCE_PRIVATE_KEY_PEM
+docker compose up --build
 ```
 
 | Variable | Needed for | Notes |
 |---|---|---|
-| `LICENCE_PRIVATE_KEY_PEM` | everything | Refuses to start without it |
-| `DATABASE_PATH` | optional | Defaults to `licences.db` |
+| `LICENCE_PRIVATE_KEY_PEM` | everything | The server refuses to boot without it |
+| `AUDIONOTES_SITE_ADDRESS` | TLS | A hostname, and Caddy gets a certificate itself. `:80` for no domain yet |
+| `BIND_ADDRESS` | exposure | `127.0.0.1` (default) keeps it reachable only over SSH; `0.0.0.0` publishes it |
+| `DATABASE_PATH` | optional | `/data/licences.db` in the container |
 | `PORT` | optional | Defaults to 8787 |
-| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | buying | Subscribe returns 503 without them |
+| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | buying | Subscribe answers 503 without them |
 | `RAZORPAY_PLAN_ID` | buying | The monthly plan created in the Razorpay dashboard |
-| `RAZORPAY_WEBHOOK_SECRET` | renewals | Webhook returns 503 without it |
+| `RAZORPAY_WEBHOOK_SECRET` | renewals | The webhook answers 503 without it |
+
+Everything except the signing key is optional, and the server is useful without any of them: the
+free tier, sign-in and the web pages all work with billing unconfigured.
+
+## Deploying
+
+```bash
+AUDIONOTES_HOST=root@your.server ./deploy/deploy.sh
+```
+
+rsync, then `docker compose up -d --build`, then wait for health. It never transfers `.env` or a
+database, so secrets and accounts live on the server and survive every deploy.
+
+### First run on a new host
+
+```bash
+ssh root@your.server 'mkdir -p /opt/audionotes'
+scp .env.example root@your.server:/opt/audionotes/.env
+ssh root@your.server 'vi /opt/audionotes/.env'    # paste the signing key
+AUDIONOTES_HOST=root@your.server ./deploy/deploy.sh
+```
+
+### Going public
+
+`BIND_ADDRESS=127.0.0.1` until there is a hostname, because this server takes passwords and a
+certificate needs a name to be issued against. When DNS points at the host:
+
+```
+AUDIONOTES_SITE_ADDRESS=audionotes.example.com
+BIND_ADDRESS=0.0.0.0
+```
+
+then deploy again. Caddy obtains and renews the certificate on its own — no certbot, no cron.
+
+### Backups
+
+```bash
+AUDIONOTES_HOST=root@your.server ./deploy/backup.sh
+```
+
+Everything the server knows is one SQLite file, so this is the whole disaster plan. It uses
+sqlite3's `.backup` rather than `cp`, because copying a file mid-write with WAL on produces
+something that looks like a database and is not, and it refuses to keep a download that fails
+`integrity_check` — a truncated backup is worse than none, because it looks like one.
 
 ## The signing key
 
-`npm run keygen` prints a P-256 pair and writes neither half to disk. The private half signs every
-token and belongs only in the server's environment. The public half goes into
+`python -m app.keygen` prints a P-256 pair and writes neither half to disk. The private half signs
+every token and belongs only in the server's environment. The public half goes into
 `android/gradle.properties` as `licencePublicKey`.
 
-**Treat this key as permanent.** It is compiled into the app, so replacing it means every
-installed copy rejects every token until it updates.
+**Treat this key as permanent.** It is compiled into the app, so replacing it means every installed
+copy rejects every token until it updates.
 
 ## The token
 
@@ -57,10 +114,13 @@ payload: v=1;sub=<account>;plan=<plan>;iat=<unix s>;exp=<unix s>;dev=<device id>
 ```
 
 The other half lives in `android/.../billing/Licence.kt`. Neither side can change alone, and
-`LicenceContractTest.kt` pins a token produced by this server's own `/api/account/signin` against
-the verifier that ships — so a drift in signature encoding, field order or key format fails at
-build time rather than on a customer's phone. Regenerate the fixture with
-`scripts/contract-fixture.mjs`.
+`LicenceContractTest.kt` pins a token this server minted — over a real socket, through
+`/api/account/signin` — against the verifier that ships. So a drift in signature encoding, field
+order or key format fails at build time rather than on a customer's phone.
+
+That test is the only thing in the system that observes Python and Kotlin agreeing. Regenerate its
+fixture with `python scripts/contract_fixture.py`, and expect to re-run
+`./gradlew :app:testDebugUnitTest` when you do.
 
 ## Endpoints
 
@@ -73,7 +133,11 @@ build time rather than on a customer's phone. Regenerate the fixture with
 | `POST /api/billing/webhook` | Razorpay events. The **only** thing that marks a subscription paid |
 | `GET /healthz` | |
 
-Pages: `/` (what it is and what Pro adds), `/signup`, `/account`.
+Pages: `/` (what it is and what Pro adds), `/signup`, `/account`, and the `/subscribe` and
+`/devices/forget` actions they post to.
+
+There is no `/docs`: six endpoints are documented above, and a generated explorer is only an
+invitation to poke at the billing routes.
 
 ## Decisions worth not re-litigating
 
@@ -83,9 +147,9 @@ paying customer at once. It also means no call home on launch, which is what kee
 claim literally true.
 
 **A token never outlives the paid period plus three days.** The grace exists because card renewals
-fail for boring reasons — an expired card, a bank's fraud heuristic — and Razorpay retries over
-the following days. Cutting someone off at the exact second their period ends punishes them for
-their bank's behaviour, mid-meeting.
+fail for boring reasons — an expired card, a bank's fraud heuristic — and Razorpay retries over the
+following days. Cutting someone off at the exact second their period ends punishes them for their
+bank's behaviour, mid-meeting.
 
 **Only the webhook may mark a subscription paid.** Never a redirect back from checkout: a browser
 can be pointed anywhere by anyone.
@@ -101,9 +165,17 @@ reinstalling the app can never lock somebody out of their own subscription.
 scoped refresh key. A refresh two weeks later shouldn't need the account password sitting on the
 phone, or retyped by someone who has long since forgotten it.
 
+**The app is built by a factory, not a module-level `app`.** Loading the signing key inside
+`create_app` means a server with no key dies at boot with one clear message instead of starting
+happily and failing every request. Uvicorn is run with `--factory` for this reason.
+
+**One SQLite connection behind one lock.** Uvicorn runs the sync handlers on a thread pool. At a
+few requests a minute a global lock costs nothing and removes an entire class of interleaving bug;
+`Store` is the only module that touches SQL, so Postgres later is one file.
+
 ## Not built yet
 
-- Password reset.
-- Gating the model download on entitlement, which is the real piracy barrier: the licence flag is
-  a boolean someone can patch, whereas 1.1 GB of weights they have to source is not.
-- Email: nothing is sent, so signup has no confirmation and there is no way to reach a customer.
+- Password reset, and email of any kind: nothing is sent, so signup has no confirmation and there
+  is no way to reach a customer. Needs SMTP credentials.
+- Gating the model download on entitlement, which is the real piracy barrier: the licence flag is a
+  boolean someone can patch, whereas 1.1 GB of weights they have to source is not.

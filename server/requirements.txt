@@ -1,0 +1,7 @@
+# Pinned, because a licence server that silently changes its crypto or its HTTP framework on a
+# rebuild is a server that mints tokens the shipped app may no longer accept.
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+cryptography==50.0.1
+razorpay==2.0.1
+python-multipart==0.0.32

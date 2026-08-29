@@ -8,39 +8,43 @@ import org.junit.Test
  * The contract between the licence server and this app, pinned from both sides.
  *
  * The token below was not written by hand and was not minted by a helper. It came out of the
- * running server's POST /api/account/signin, for an account with a live subscription, and is
- * pasted here verbatim along with the public key that build was configured with. So this test
- * exercises the whole path a real device takes — HTTP endpoint, entitlement decision, signing key
- * from the environment, token format — against the verifier that actually ships.
+ * running licence server's POST /api/account/signin -- over a real socket, for an account with a
+ * live subscription -- and is pasted here verbatim along with the public key that server was
+ * configured with. So this test exercises the whole path a real device takes: HTTP endpoint,
+ * entitlement decision, signing key from the environment, token format, against the verifier that
+ * actually ships.
  *
- * LicenceTest cannot catch any of what this catches. It mints with Java and verifies with Java,
- * so it would keep passing while the server produced something subtly different:
+ * The server is Python. This is Kotlin. Nothing but this test observes that both agree.
  *
- *  - Signature encoding. Java's SHA256withECDSA is DER. Node emits DER for EC keys by default but
- *    can be told to emit IEEE-P1363, and the two are not interchangeable.
- *  - What is signed: the base64url payload TEXT, not the decoded bytes. Both sides must choose
- *    the same thing and neither can observe the other's choice.
- *  - Public key encoding — SubjectPublicKeyInfo DER, base64.
+ * LicenceTest cannot catch any of what this catches. It mints with Java and verifies with Java, so
+ * it would keep passing while the server produced something subtly different:
+ *
+ *  - Signature encoding. Java's SHA256withECDSA is DER. Python's `cryptography` emits DER for EC
+ *    keys, but IEEE-P1363 (raw r||s) is the same length and the same bytes-looking thing, and Java
+ *    rejects it.
+ *  - What is signed: the base64url payload TEXT, not the decoded bytes. Both sides must choose the
+ *    same thing and neither can observe the other's choice.
+ *  - Public key encoding -- SubjectPublicKeyInfo DER, base64.
  *  - Field order and separators in the payload.
  *
  * If the server's format drifts, this fails at build time rather than on a customer's phone the
- * morning after a deploy. Regenerate with server/scripts/contract-fixture.mjs.
+ * morning after a deploy. Regenerate with `python scripts/contract_fixture.py` in server/.
  */
 class LicenceContractTest {
 
   private val serverPublicKey =
-    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAElnQWMsn/5v4M2OTzfMuIbNr9lqvuoHYyAbEMtYaEmGToRkic90xS" +
-      "+oGxoymSNuBFAt3BzsGnSQAtTSV2G9HqvQ=="
+    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAExb0A0ht2J2l0Wv1J3PZlNN6Dis0echsxj14CeF/1erlvXV9ge3fCDxnP" +
+      "1V1Cmxn8+FqPvt5Q02WyQNyWMPrimg=="
 
   private val serverToken =
-    "dj0xO3N1Yj1hY2N0XzQ4YzI4ZGE3MGIwNTJmYjRkMjtwbGFuPXBybztpYXQ9MTc4Nzk4MzAyMDtleHA9MTc4OTE5" +
-      "MjYyMDtkZXY9cGhvbmUtYWJj.MEUCIHuWKEjO1uddsfKo4fR6XrA-" +
-      "pMNiWOlyE5gP73HFRynnAiEAxd2xpRFcaRkujbsWmusQmor3YPjxgnbQs7BevfQ7GBs"
+    "dj0xO3N1Yj1hY2N0XzVjODk5NzNmMzJiZjk2ODcyNDtwbGFuPXBybztpYXQ9MTc4Nzk4NjAwNTtleHA9MTc4OTE5NTYw" +
+      "NTtkZXY9ZGV2aWNlLWNvbnRyYWN0.MEUCIAlOSM4nrPdZrPvQEe6Wq9n8BlCqExtgM1dbEqC-LJXoAiEA60t4UTKz61v" +
+      "lQexzOEaKw5pMMBZYRgGmVAiAJStdhOk"
 
-  private val device = "phone-abc"
+  private val device = "device-contract"
 
-  /** Inside the token's window: issued 1787983020, expires 1789192620. */
-  private val duringWindow = 1787983080L
+  /** Inside the token's window: issued 1787986005, expires 1789195605. */
+  private val duringWindow = 1787986065L
 
   @Test
   fun `a token issued by the running licence server verifies here`() {
@@ -53,15 +57,15 @@ class LicenceContractTest {
   fun `the claims survive the crossing intact`() {
     val e = Licence.verify(serverToken, serverPublicKey, duringWindow, device)
     assertEquals("pro", e.plan)
-    assertEquals("acct_48c28da70b052fb4d2", e.account)
-    assertEquals(1789192620L, e.expiresAt)
+    assertEquals("acct_5c89973f32bf968724", e.account)
+    assertEquals(1789195605L, e.expiresAt)
   }
 
   @Test
   fun `the server's expiry is honoured on this side`() {
     assertEquals(
       Licence.State.EXPIRED,
-      Licence.verify(serverToken, serverPublicKey, 1789192621L, device).state,
+      Licence.verify(serverToken, serverPublicKey, 1789195606L, device).state,
     )
   }
 

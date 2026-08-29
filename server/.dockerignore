@@ -1,0 +1,16 @@
+.venv/
+node_modules/
+__pycache__/
+*.pyc
+tests/
+scripts/
+deploy/
+.env
+.env.*
+*.pem
+*.db
+*.db-wal
+*.db-shm
+licences.db*
+.pytest_cache/
+README.md

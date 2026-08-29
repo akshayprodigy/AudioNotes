@@ -1,0 +1,27 @@
+# TLS and the only thing exposed to the internet.
+#
+# AUDIONOTES_SITE_ADDRESS is either a hostname — in which case Caddy obtains and renews a
+# Let's Encrypt certificate on its own, with no cron job and no certbot — or `:80`, which serves
+# plain HTTP for a deployment that has no domain yet.
+#
+# There is no plain-HTTP fallback once a hostname is set: this server takes passwords.
+
+{$AUDIONOTES_SITE_ADDRESS} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	# Razorpay's webhook signature is over the raw body, so nothing may rewrite it on the way in.
+	reverse_proxy api:8787
+
+	log {
+		output stdout
+		format console
+	}
+}
