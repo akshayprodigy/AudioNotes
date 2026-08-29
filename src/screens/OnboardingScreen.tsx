@@ -78,12 +78,12 @@ export default function OnboardingScreen({ navigation }: Props) {
 
   useEffect(() => {
     Licence.status()
-      .then(st => {
-        setPaid(st.paid);
+      .then(entitlement => {
+        setPaid(entitlement.paid);
         // Defaulted on for a subscriber: a meeting app whose minutes read like a word count is
         // not the product, and this model is what turns a transcript into something anyone will
         // actually read. Off is one tap away.
-        setWantWriter(st.paid);
+        setWantWriter(entitlement.paid);
       })
       .catch(() => {});
     ModelManager.list()

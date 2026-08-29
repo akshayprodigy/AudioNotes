@@ -14,6 +14,7 @@ import SpeakersScreen from '../screens/SpeakersScreen';
 import SearchScreen from '../screens/SearchScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import ArchiveScreen from '../screens/ArchiveScreen';
+import NoticesScreen from '../screens/NoticesScreen';
 
 export type RootStackParamList = {
   Onboarding: undefined;
@@ -24,6 +25,7 @@ export type RootStackParamList = {
   Search: undefined;
   Settings: undefined;
   Archive: undefined;
+  Notices: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -126,6 +128,7 @@ export default function RootNavigator() {
           <Stack.Screen name="Search" component={SearchScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Archive" component={ArchiveScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Notices" component={NoticesScreen} options={{ headerShown: false }} />
         </Stack.Navigator>
       </NavigationContainer>
     </>

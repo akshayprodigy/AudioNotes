@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import ModelManager from '../native/NativeModelManager';
+import { NOTICES } from '../legal/notices';
 import { db } from '../db/queries';
 import { PipelineController } from '../pipeline/PipelineController';
 import Icon from '../components/Icon';
@@ -36,23 +37,6 @@ type Model = {
 };
 
 const mb = (bytes: number) => `${(bytes / 1e6).toFixed(0)} MB`;
-
-/**
- * Open-source notices.
- *
- * MIT and Apache-2.0 both require the notice to travel with the software; redistributing weights
- * inside an APK counts, and the sherpa-onnx conversions we fetch carry no licence metadata of
- * their own. This screen is where that obligation is actually discharged — not decoration.
- */
-const NOTICES: { name: string; licence: string; by: string }[] = [
-  { name: 'Silero VAD', licence: 'MIT', by: 'Silero Team' },
-  { name: 'Whisper (ggml)', licence: 'MIT', by: 'OpenAI / ggerganov' },
-  { name: 'pyannote segmentation 3.0', licence: 'MIT', by: 'Hervé Bredin' },
-  { name: '3D-Speaker CAM++', licence: 'Apache-2.0', by: 'Alibaba DAMO Academy' },
-  { name: 'Qwen2.5 Instruct', licence: 'Apache-2.0', by: 'Alibaba Cloud' },
-  { name: 'sherpa-onnx', licence: 'Apache-2.0', by: 'k2-fsa' },
-  { name: 'Nunito', licence: 'SIL OFL 1.1', by: 'Vernon Adams / Cyreal' },
-];
 
 export default function SettingsScreen({ navigation }: Props) {
   const { colors } = useTheme();
@@ -152,7 +136,6 @@ export default function SettingsScreen({ navigation }: Props) {
   const [models, setModels] = useState<Model[]>([]);
   const [progress, setProgress] = useState<Record<string, number>>({});
   const [keepAudio, setKeepAudio] = useState(false);
-  const [showNotices, setShowNotices] = useState(false);
   const [empties, setEmpties] = useState(0);
 
   const refresh = () => ModelManager.list().then(r => setModels(JSON.parse(r)));
@@ -534,36 +517,17 @@ export default function SettingsScreen({ navigation }: Props) {
             fill={colors.card}
             rad={radius.xl}
             depth={5}
-            onPress={() => setShowNotices(v => !v)}>
+            onPress={() => navigation.navigate('Notices')}>
             <View style={st.rowPad}>
               <View style={st.row}>
                 <View style={st.flex}>
                   <Txt variant="bodyStrong">Open-source notices</Txt>
                   <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
-                    The models and type this app is built on
+                    {NOTICES.length} components, and the licences they are given under
                   </Txt>
                 </View>
-                <Icon
-                  name={showNotices ? 'chevronUp' : 'chevronDown'}
-                  size={s(18)}
-                  color={colors.inkFaint}
-                  strokeWidth={2.4}
-                />
+                <Icon name="chevronRight" size={s(18)} color={colors.inkFaint} strokeWidth={2.4} />
               </View>
-              {showNotices ? (
-                <View style={st.notices}>
-                  {NOTICES.map(n => (
-                    // Stacked, not name-left/licence-right: side by side the longest pairs clip
-                    // mid-word, and the licence is the part that legally has to be readable.
-                    <View key={n.name} style={st.notice}>
-                      <Txt variant="chip">{n.name}</Txt>
-                      <Txt variant="chip" color={colors.inkFaint}>
-                        {n.by} · {n.licence}
-                      </Txt>
-                    </View>
-                  ))}
-                </View>
-              ) : null}
             </View>
           </Raised>
         </View>
@@ -609,7 +573,5 @@ function makeStyles(c: Colors) {
       borderRadius: radius.xl,
       padding: s(16),
     },
-    notices: { marginTop: s(14), gap: s(10) },
-    notice: { gap: 1 },
   });
 }
