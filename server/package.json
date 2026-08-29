@@ -1,0 +1,15 @@
+{
+  "name": "audionotes-licence-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Accounts, subscriptions and licence tokens for AudioNotes.",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "test": "node --test --import tsx dist-test/*.test.js || node --test --import tsx src/*.test.ts",
+    "keygen": "tsx src/keygen.ts"
+  },
+  "engines": { "node": ">=20" }
+}
