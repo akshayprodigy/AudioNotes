@@ -197,6 +197,12 @@ android {
         buildConfigField "String", "LICENCE_BASE_URL",
             "\"${project.findProperty('licenceBaseUrl') ?: ''}\""
 
+        // The Play Console subscription id. Must match the product created there exactly; a
+        // mismatch surfaces as "this item is not available" on the customer's phone, with nothing
+        // in the build to suggest why.
+        buildConfigField "String", "PLAY_SUBSCRIPTION_ID",
+            "\"${project.findProperty('playSubscriptionId') ?: 'verbale_pro_monthly'}\""
+
         externalNativeBuild {
             cmake {
                 cppFlags "-std=c++17"
@@ -325,6 +331,10 @@ dependencies {
     // TalkBack. Declared rather than relied on transitively, for the same reason as core above.
     implementation("androidx.customview:customview:1.1.0")
     implementation("com.microsoft.onnxruntime:onnxruntime-android:${project.ext.ortVersion}") // Silero VAD (MIT), prefab
+    // Google Play Billing. Pinned: Google retires Billing Library versions on a schedule and an
+    // app on a retired one stops being updatable on Play, so this is a version to review at each
+    // release rather than to float.
+    implementation("com.android.billingclient:billing-ktx:7.1.1")
     implementation("net.zetetic:sqlcipher-android:4.6.1")                  // encrypted storage
     implementation("androidx.sqlite:sqlite:2.4.0")
 

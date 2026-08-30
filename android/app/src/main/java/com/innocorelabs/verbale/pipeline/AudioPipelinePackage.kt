@@ -1,5 +1,6 @@
 package com.innocorelabs.verbale.pipeline
 
+import com.innocorelabs.verbale.billing.BillingModule
 import com.innocorelabs.verbale.billing.LicenceModule
 import com.innocorelabs.verbale.data.BackupModule
 import com.facebook.react.ReactPackage
@@ -21,6 +22,7 @@ class AudioPipelinePackage : ReactPackage {
       FileExportModule(ctx),
       PipModule(ctx),
       LicenceModule(ctx),
+      BillingModule(ctx),
       BackupModule(ctx),
     )
 

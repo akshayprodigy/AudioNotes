@@ -1,3 +1,4 @@
+import Billing from '../native/NativeBilling';
 import Licence, { type LicenceStatus } from '../native/NativeLicence';
 
 /**
@@ -107,4 +108,88 @@ export async function refreshIfNeeded(now = Date.now() / 1000): Promise<LicenceS
   } catch {
     return null;
   }
+}
+
+
+// --- Google Play Billing -----------------------------------------------------------------------
+//
+// The Play route to the same place. `Billing` obtains a purchase token; the server is the only
+// thing that can turn one into a licence, because a token is a claim and the signature on a licence
+// is a proof.
+
+export interface PlayResult {
+  /** False when the buyer backed out, or when payment is still authorising. Not an error. */
+  paid: boolean;
+  /** Set when the purchase succeeded but the server could not be told about it yet. */
+  pendingServer?: boolean;
+}
+
+/**
+ * Send a purchase token to the licence server and store whatever comes back.
+ *
+ * On failure it asks Play to acknowledge the purchase locally. That is a fallback, not the plan:
+ * the server acknowledges after recording entitlement, which is the ordering that cannot strand a
+ * payer. But if the server is unreachable and the app is never opened again, Google refunds an
+ * unacknowledged purchase after three days — and somebody who wanted the subscription loses it
+ * silently. Acknowledging here costs nothing and closes that hole.
+ */
+async function redeem(base: string, purchaseToken: string): Promise<PlayResult> {
+  const deviceId = await Licence.deviceId();
+  try {
+    const res = await post<{ token: string | null; refreshKey: string; plan: string }>(
+      base,
+      '/api/billing/play/link',
+      { purchaseToken, deviceId },
+    );
+    await Licence.store(res.token ?? '', res.refreshKey);
+    return { paid: Boolean(res.token) };
+  } catch (e) {
+    await Billing.acknowledgeLocally(purchaseToken).catch(() => false);
+    throw e;
+  }
+}
+
+/** Whether this install can buy through Play at all. False on a side-load or another store. */
+export async function playAvailable(): Promise<boolean> {
+  try {
+    return await Billing.available();
+  } catch {
+    return false;
+  }
+}
+
+export async function playPrice(): Promise<string | null> {
+  try {
+    return (await Billing.price())?.price ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Buy through Play, then exchange the purchase for a licence. */
+export async function buyWithPlay(): Promise<PlayResult> {
+  const base = await Licence.baseUrl();
+  if (!base) throw new Error('This build has no licence server configured.');
+
+  const purchaseToken = await Billing.purchase();
+  // Null covers two different things that need the same handling: the buyer changed their mind,
+  // and a payment method still authorising. Neither is a failure worth an error dialog.
+  if (!purchaseToken) return { paid: false };
+  return redeem(base, purchaseToken);
+}
+
+/**
+ * Pick up a subscription this Google account already owns.
+ *
+ * "Restore purchases", and also what makes a new phone or a reinstall work: Play remembers what was
+ * bought, and the server turns that back into a licence for this device. Safe to call on every
+ * launch — it is a no-op when nothing is owned.
+ */
+export async function restorePlayPurchase(): Promise<PlayResult> {
+  const base = await Licence.baseUrl();
+  if (!base) return { paid: false };
+
+  const purchaseToken = await Billing.restore().catch(() => null);
+  if (!purchaseToken) return { paid: false };
+  return redeem(base, purchaseToken);
 }

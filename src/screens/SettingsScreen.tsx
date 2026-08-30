@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Linking,
   NativeEventEmitter,
   NativeModules,
   Pressable,
@@ -18,10 +19,27 @@ import { db } from '../db/queries';
 import { PipelineController } from '../pipeline/PipelineController';
 import Icon from '../components/Icon';
 import { confirmDestructive } from '../components/confirm';
-import { IconButton, Pop, ProgressBar, Raised, SectionRule, SoftButton, Switch, Txt } from '../components/ui';
+import {
+  Button,
+  IconButton,
+  Pop,
+  ProgressBar,
+  Raised,
+  SectionRule,
+  SoftButton,
+  Switch,
+  Txt,
+} from '../components/ui';
 import Backup from '../native/NativeBackup';
 import Licence, { type LicenceStatus } from '../native/NativeLicence';
-import { signIn, signOut } from '../billing/subscription';
+import {
+  buyWithPlay,
+  playAvailable,
+  playPrice,
+  restorePlayPurchase,
+  signIn,
+  signOut,
+} from '../billing/subscription';
 import { radius, s, useTheme, type Colors } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
@@ -47,6 +65,16 @@ export default function SettingsScreen({ navigation }: Props) {
   const [licPass, setLicPass] = React.useState('');
   const [licBusy, setLicBusy] = React.useState(false);
   const [signedInAs, setSignedInAs] = React.useState<string | null>(null);
+
+  // Google Play Billing. `playCan` is false on a side-load or an install from another store, where
+  // Play Billing simply does not work — there the web account is the only route, which is also why
+  // the email sign-in never goes away entirely.
+  const [playCan, setPlayCan] = React.useState(false);
+  const [playCost, setPlayCost] = React.useState<string | null>(null);
+  const [playBusy, setPlayBusy] = React.useState(false);
+  // Secondary on purpose. Somebody on a Play install should be buying through Play; this is for
+  // the person who already subscribed on the web or, later, on a desktop.
+  const [showEmailSignIn, setShowEmailSignIn] = React.useState(false);
   const [hasServer, setHasServer] = React.useState(false);
 
   const refreshLicence = React.useCallback(async () => {
@@ -89,6 +117,66 @@ export default function SettingsScreen({ navigation }: Props) {
       setLicBusy(false);
     }
   }, [licEmail, licPass, refreshLicence]);
+
+  // What Play can do here, asked once. Both calls are cheap and both fail closed: a device with
+  // no Play Store answers false and the UI falls back to the web account.
+  React.useEffect(() => {
+    playAvailable().then(async can => {
+      setPlayCan(can);
+      if (can) setPlayCost(await playPrice());
+    });
+  }, []);
+
+  // Runs on open, and is what makes a reinstall or a new phone work: Play remembers the purchase,
+  // the server turns it back into a licence for this device. A no-op when nothing is owned.
+  React.useEffect(() => {
+    restorePlayPurchase()
+      .then(r => {
+        if (r.paid) refreshLicence();
+      })
+      .catch(() => {});
+  }, [refreshLicence]);
+
+  const onBuy = React.useCallback(async () => {
+    setPlayBusy(true);
+    try {
+      const result = await buyWithPlay();
+      if (result.paid) {
+        await refreshLicence();
+        Alert.alert('You are on Pro', 'The written summary and minutes are on. Enjoy.');
+      }
+      // Not paid means the buyer backed out, or a payment method still authorising. Neither
+      // deserves a dialog — the first is a decision, the second resolves itself.
+    } catch (e: any) {
+      Alert.alert('Could not complete the purchase', String(e?.message ?? e));
+    } finally {
+      setPlayBusy(false);
+    }
+  }, [refreshLicence]);
+
+  const onRestorePurchase = React.useCallback(async () => {
+    setPlayBusy(true);
+    try {
+      const result = await restorePlayPurchase();
+      await refreshLicence();
+      Alert.alert(
+        result.paid ? 'Subscription restored' : 'Nothing to restore',
+        result.paid
+          ? 'Pro is back on this device.'
+          : 'This Google account has no subscription to Verbale.',
+      );
+    } catch (e: any) {
+      Alert.alert('Could not restore', String(e?.message ?? e));
+    } finally {
+      setPlayBusy(false);
+    }
+  }, [refreshLicence]);
+
+  // Play's own subscription screen. Managing or cancelling an existing Play subscription is what
+  // this link is for; it is not a route to buy one, which is what store policy cares about.
+  const onManage = React.useCallback(() => {
+    Linking.openURL('https://play.google.com/store/account/subscriptions').catch(() => {});
+  }, []);
 
   const onSignOut = React.useCallback(async () => {
     await signOut();
@@ -231,6 +319,39 @@ export default function SettingsScreen({ navigation }: Props) {
     }
     refresh();
   };
+
+  // One form, two places: on a Play install it sits behind "I already have an account", and on a
+  // build Play Billing cannot serve it is the only way in.
+  const emailSignIn = (
+    <>
+                  <TextInput
+                    style={[st.pass, { borderColor: colors.line, color: colors.ink }]}
+                    value={licEmail}
+                    onChangeText={setLicEmail}
+                    placeholder="Email"
+                    placeholderTextColor={colors.inkFaint}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  <TextInput
+                    style={[st.pass, { borderColor: colors.line, color: colors.ink }]}
+                    value={licPass}
+                    onChangeText={setLicPass}
+                    placeholder="Password"
+                    placeholderTextColor={colors.inkFaint}
+                    secureTextEntry
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  <SoftButton
+                    icon="lock"
+                    label={licBusy ? 'Signing in…' : 'Sign in'}
+                    onPress={onSignIn}
+                    disabled={licBusy || !licEmail || !licPass}
+                  />
+    </>
+  );
 
   return (
     <View style={[st.root, { paddingTop: insets.top + s(8) }]}>
@@ -391,6 +512,63 @@ export default function SettingsScreen({ navigation }: Props) {
                 <Txt variant="chip" color={colors.inkFaint} style={st.tiny}>
                   This build has no licence server configured.
                 </Txt>
+              ) : lic?.paid ? (
+                <View style={st.backupRow}>
+                  <View style={st.flex}>
+                    {playCan ? (
+                      <SoftButton icon="settings" label="Manage subscription" onPress={onManage} />
+                    ) : null}
+                  </View>
+                  {signedInAs ? (
+                    <View style={st.flex}>
+                      <SoftButton icon="x" label="Sign out" onPress={onSignOut} />
+                    </View>
+                  ) : null}
+                </View>
+              ) : playCan ? (
+                <>
+                  <Button
+                    icon="check"
+                    label={
+                      playBusy
+                        ? 'One moment…'
+                        : playCost
+                          ? `Subscribe — ${playCost}`
+                          : 'Subscribe'
+                    }
+                    onPress={onBuy}
+                    disabled={playBusy}
+                    full
+                  />
+                  <View style={st.backupRow}>
+                    <View style={st.flex}>
+                      <SoftButton
+                        icon="download"
+                        label="Restore purchase"
+                        onPress={onRestorePurchase}
+                        disabled={playBusy}
+                      />
+                    </View>
+                  </View>
+                  {/* Secondary, and phrased as a statement of fact rather than an invitation.
+                      Honouring a subscription bought elsewhere is permitted; steering somebody
+                      there is not, so this says where an existing account can be used and offers
+                      no price, no link and no way to buy. */}
+                  {showEmailSignIn ? (
+                    <>
+                      <Txt variant="chip" color={colors.inkFaint} style={st.tiny}>
+                        For an account that already has a subscription.
+                      </Txt>
+                      {emailSignIn}
+                    </>
+                  ) : (
+                    <SoftButton
+                      icon="users"
+                      label="I already have an account"
+                      onPress={() => setShowEmailSignIn(true)}
+                    />
+                  )}
+                </>
               ) : signedInAs ? (
                 <View style={st.backupRow}>
                   <View style={st.flex}>
@@ -398,34 +576,7 @@ export default function SettingsScreen({ navigation }: Props) {
                   </View>
                 </View>
               ) : (
-                <>
-                  <TextInput
-                    style={[st.pass, { borderColor: colors.line, color: colors.ink }]}
-                    value={licEmail}
-                    onChangeText={setLicEmail}
-                    placeholder="Email"
-                    placeholderTextColor={colors.inkFaint}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                  <TextInput
-                    style={[st.pass, { borderColor: colors.line, color: colors.ink }]}
-                    value={licPass}
-                    onChangeText={setLicPass}
-                    placeholder="Password"
-                    placeholderTextColor={colors.inkFaint}
-                    secureTextEntry
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                  <SoftButton
-                    icon="lock"
-                    label={licBusy ? 'Signing in…' : 'Sign in'}
-                    onPress={onSignIn}
-                    disabled={licBusy || !licEmail || !licPass}
-                  />
-                </>
+                emailSignIn
               )}
             </View>
           </Raised>

@@ -20,6 +20,7 @@ network traffic. Ours is unusually easy: almost everything is "not collected", a
 | Email address | **Yes** | No | Account and subscription | Yes — the app works with no account |
 | User IDs | **Yes** | No | A random per-install identifier the app generates, to bind a licence to a device. Not the Android ID, not the advertising ID, not hardware-derived | Yes |
 | Purchase history | **Yes** | No | Whether the subscription is paid and until when | Yes |
+| In-app purchases | **Yes** | — | A monthly subscription through Google Play Billing | Yes |
 | Audio / voice recordings | **No** | No | Recorded and kept on the device; never transmitted | — |
 | Files and documents | **No** | No | The database and any backup file stay on the device | — |
 | Approximate/precise location | **No** | No | Never requested | — |
@@ -95,21 +96,45 @@ No `QUERY_ALL_PACKAGES`, no location, no contacts, no storage permissions.
 
 ## Payments and the subscription
 
-Sold on our own website, not through Play Billing.
+**Google Play Billing, for Play installs.** The app offers the subscription in-app through Play's
+own billing flow, at the price Play reports. This is the ordinary arrangement and needs no
+argument.
 
-Policy position: the app contains **no link, button or reference to the subscription being
-purchasable anywhere**, and no pricing. Sign-in accepts an account bought on the web; that is
-permitted. Where the paid tier is unavailable the app states the fact and sells nothing — the
-lapsed-subscription copy is server-supplied precisely so it can be adjusted without a release if
-policy moves (`LicenceModule.defaultLapsedCopy`).
+The web checkout still exists, but it serves other Android stores and the desktop builds Play
+Billing cannot serve at all. In the Play build it is not a purchase route: the sign-in behind
+*"I already have an account"* accepts a subscription bought elsewhere, which is permitted, and
+shows no price, no link and no way to buy one.
 
-Reason for not using Play Billing: the app ships to other Android stores and desktop builds are
-planned, neither of which Play Billing can serve, and running one entitlement system is simpler
-than one and a half.
+The only outbound link is to `play.google.com/store/account/subscriptions`, and only for somebody
+who already subscribed — managing an existing Play subscription, not acquiring one.
 
-**Worth a second opinion before filing.** This is the single riskiest item in the submission.
+**Data safety implication:** declare **"Yes"** for in-app purchases. The earlier draft of this
+document said "none", which was true of the Razorpay-only design and is now wrong.
 
----
+### Product to create in Play Console
+
+| | |
+|---|---|
+| Type | Subscription |
+| Product ID | `verbale_pro_monthly` — must match `playSubscriptionId` in gradle.properties exactly |
+| Billing period | Monthly |
+| Price | *(to decide)* |
+
+A mismatch between the two ids surfaces on the customer's phone as "this item is not available",
+with nothing in the build to suggest why — so `BillingModule` says exactly that in its error text.
+
+### How entitlement actually works
+
+Buying does not grant anything by itself. The purchase produces a token; the licence server asks
+Google whether that token is real and mints a signed licence if it is. The enforcement points
+(`Narrator.run`, `ModelManagerModule.download`) check a signature they cannot forge, so patching
+the app yields a token the server rejects.
+
+Purchases are acknowledged **server-side**, after entitlement is recorded. Google auto-refunds
+anything unacknowledged within three days; acknowledging in the app first and then failing to
+record would leave somebody paying for nothing with Google satisfied they had been served. The app
+acknowledges locally only when the server was unreachable, which closes the case of a purchase made
+on a bad connection by someone who never reopens the app.
 
 ## Listing copy
 
@@ -172,7 +197,7 @@ Keywords worth appearing naturally in the long description, since Play indexes i
 recorder, minutes of meeting, MOM, transcription, transcribe, speaker diarization, action items,
 offline, private, voice recorder, audio to text.
 
-**Category:** Productivity · **Content rating:** Everyone · **Ads:** none · **IAP:** none in-app
+**Category:** Productivity · **Content rating:** Everyone · **Ads:** none · **IAP:** one monthly subscription
 
 ---
 
@@ -215,4 +240,6 @@ off the phishing surface.
 - [ ] Feature graphic, 1024×500
 - [ ] Record the two foreground-service videos
 - [ ] Test on a low-RAM, non-Pixel device — the 1.5B model is the risk
-- [ ] Decide pricing and create the Razorpay plan
+- [ ] Decide pricing, create the `verbale_pro_monthly` subscription in Play Console
+- [ ] Google Cloud service account with the Android Publisher API, linked to Play Console (`PLAY_SERVICE_ACCOUNT_JSON`)
+- [ ] Razorpay plan — needed only for the web/desktop route, no longer blocking the Android launch
