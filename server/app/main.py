@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 
 from . import mailer
 from .branding import PRODUCT_NAME
-from .billing import apply_webhook, start_subscription
+from .billing import apply_webhook, link_play_purchase, refresh_play_subscription, start_subscription
 from .entitlement import issue
 from .licence import signing_key_from_env
 from .pages import register_pages
@@ -138,6 +138,11 @@ def create_app(
         if account_id is None:
             return _error(401, "Sign in again")
 
+        # A Play subscription is pulled, not pushed: there is no webhook telling us it lapsed, so
+        # this is where a cancellation or expiry gets noticed. It is a no-op for Razorpay accounts
+        # and silent on any Google failure — an outage there must not revoke a paying customer.
+        refresh_play_subscription(store, account_id)
+
         licence = issue(store, key, account_id, device_id)
         return {
             "token": licence.token if licence else None,
@@ -157,6 +162,47 @@ def create_app(
         if result.checkout_url is None:
             return _error(result.status, result.error or "Could not start the subscription")
         return {"subscriptionId": result.subscription_id, "checkoutUrl": result.checkout_url}
+
+    @app.post("/api/billing/play/link")
+    async def play_link(request: Request):
+        """
+        Exchange a Google Play purchase token for a licence.
+
+        The Play equivalent of signing in: it identifies the buyer, registers the device and hands
+        back the same token and refresh key the web path does. No email and no password, because
+        Google has already established who this is.
+
+        Safe to call repeatedly — on a reinstall, on a second device, after a plan change. Each
+        call re-verifies with Google and re-registers the device, so "restore purchases" is this
+        endpoint and nothing else.
+        """
+        body = await _json_body(request)
+        purchase_token, device_id = body.get("purchaseToken"), body.get("deviceId")
+        if not isinstance(purchase_token, str) or not purchase_token:
+            return _error(400, "purchaseToken is required")
+        if not isinstance(device_id, str) or not device_id:
+            return _error(400, "deviceId is required")
+
+        result = link_play_purchase(store, purchase_token)
+        if result.account_id is None:
+            return _error(result.status, result.error or "Could not verify that purchase")
+
+        if not store.touch_device(result.account_id, device_id):
+            return _error(
+                409,
+                f"This subscription is already on {DEVICE_LIMIT} devices. Remove one from your "
+                "account page to add this one.",
+            )
+        refresh_key = store.issue_refresh_key(result.account_id, device_id)
+        licence = issue(store, key, result.account_id, device_id)
+
+        return {
+            "accountId": result.account_id,
+            "refreshKey": refresh_key,
+            "token": licence.token if licence else None,
+            "plan": licence.plan if licence else "free",
+            "expiresAt": licence.expires_at if licence else 0,
+        }
 
     @app.post("/api/billing/webhook")
     async def webhook(request: Request):

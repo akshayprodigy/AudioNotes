@@ -16,12 +16,29 @@ It is also the only place a subscription is sold. The Android app never links he
 keeps the arrangement inside store policy — so these pages have to stand on their own for somebody
 arriving from an email or a bookmark.
 
-## Why not Play Billing
+## Two ways to pay, one entitlement
 
-Play Billing only works for Play installs, and the app ships to other Android stores; a desktop
-build cannot use it at all. One entitlement service is simpler than one-and-a-half, each with its
-own refunds, dunning and reconciliation. The trade is that we own the subscription lifecycle, which
-is what the webhook is.
+Play Billing for Play installs; Razorpay on the web for every other Android store and, later, for
+desktop. Both end in the same `subscriptions` row and the same licence token, because entitlement
+is one concept and keeping two of it is how somebody ends up paying twice or losing access on the
+wrong device.
+
+Play Billing alone would not do: it cannot serve other Android stores and a desktop build cannot
+use it at all. Razorpay alone is the arrangement Play is most likely to take exception to from a
+developer with no track record — the design is legitimate (the app shows no price and links to no
+checkout) but it rests on a reviewer's judgement, and the downside is the account rather than the
+commission.
+
+They differ in one structural way. Razorpay **pushes**: a signed webhook is the only thing that may
+mark a subscription paid. Play **pulls**: the purchase token is re-verified against Google on every
+licence refresh, which is what makes real-time notifications, a Pub/Sub topic and another service
+to keep alive unnecessary. The app refreshes about weekly and a token lasts a fortnight, so the
+worst case is a cancelled subscriber keeping Pro slightly longer — the right direction to err in.
+
+A Play purchase creates an account with **no email and no password**. Google has already
+established who the person is, and making them invent a password to receive what they just paid
+for is friction that buys nothing. They can add an email later to use the same subscription on a
+desktop.
 
 ## Running it locally
 
@@ -48,7 +65,8 @@ docker compose up --build
 | `PORT` | optional | Defaults to 8787 |
 | `SMTP_HOST` / `SMTP_FROM` (+ `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`) | password reset | Unconfigured, the mail is logged instead of sent |
 | `PUBLIC_BASE_URL` | emailed links | Without it, links are built from the request's Host header |
-| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | buying | Subscribe answers 503 without them |
+| `PLAY_SERVICE_ACCOUNT_JSON` / `PLAY_PACKAGE_NAME` | Play purchases | The link endpoint answers 503 without them |
+| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | buying on the web | Subscribe answers 503 without them |
 | `RAZORPAY_PLAN_ID` | buying | The monthly plan created in the Razorpay dashboard |
 | `RAZORPAY_WEBHOOK_SECRET` | renewals | The webhook answers 503 without it |
 
@@ -137,6 +155,7 @@ fixture with `python scripts/contract_fixture.py`, and expect to re-run
 | `POST /api/account/signup` | `{email, password}` |
 | `POST /api/account/signin` | `{email, password, deviceId}` → licence token + a device-scoped refresh key |
 | `POST /api/licence/refresh` | `{deviceId, refreshKey}` → a fresh token, no password |
+| `POST /api/billing/play/link` | `{purchaseToken, deviceId}` → licence token. Play's equivalent of signing in |
 | `POST /api/billing/subscribe` | Starts Razorpay checkout, returns the hosted URL |
 | `POST /api/billing/webhook` | Razorpay events. The **only** thing that marks a subscription paid |
 | `GET /healthz` | |
@@ -221,6 +240,19 @@ still names what `store.py` actually stores.
 
 The product name in them comes from `branding.py`, so the pending rename is one edit rather than a
 search through prose.
+
+## Schema changes
+
+`user_version` and `_migrate` in store.py. `CREATE TABLE IF NOT EXISTS` is **not** a migration: on
+a table that already exists with the wrong shape it silently does nothing, and the mismatch stays
+invisible until a query hits the missing column — in production, on the payment path.
+
+One trap worth knowing if you add one. `PRAGMA foreign_keys` is a no-op **inside a transaction**,
+and a migration that rebuilds a table has to turn foreign keys off to do it (with them on, `DROP
+TABLE accounts` fires ON DELETE CASCADE and takes every subscription and device with it). So the
+pragma is re-asserted in `Store.__init__` after the commit, which is the only place it takes
+effect. Getting this wrong leaves the connection with foreign keys off, and account deletion then
+orphans rows instead of cascading — silently. There is a test for it.
 
 ## Not built yet
 

@@ -54,12 +54,16 @@ class Account:
 class Subscription:
     account_id: str
     plan: str
-    #: Razorpay's subscription id, so a webhook can find the account it belongs to.
+    #: The provider's own id — Razorpay's subscription id, or Play's purchase token. It is how an
+    #: incoming webhook or a re-verification finds the account it belongs to.
     provider_id: str | None
     #: One of active | past_due | cancelled | none.
     status: str
     #: Seconds. The paid-through date; tokens are never minted beyond it.
     current_period_end: int
+    #: 'razorpay' or 'play'. Defaulted so every existing caller keeps working, but it decides how
+    #: the subscription is re-checked and how it is cancelled — the two are not interchangeable.
+    provider: str = "razorpay"
 
 
 @dataclass(frozen=True)
@@ -73,13 +77,22 @@ class Device:
 SCHEMA = [
     """CREATE TABLE IF NOT EXISTS accounts(
          id TEXT PRIMARY KEY,
-         email TEXT UNIQUE NOT NULL,
-         password_hash TEXT NOT NULL,
+         -- Both nullable, because a Play Billing purchase creates an account with neither. The
+         -- purchase token is that account's credential; Google already knows who the person is,
+         -- and making them invent a password to buy something they have just paid for is friction
+         -- for nothing. They can add an email later to use the subscription on a desktop.
+         -- SQLite lets a UNIQUE column hold many NULLs, which is exactly the behaviour wanted.
+         email TEXT UNIQUE,
+         password_hash TEXT,
          created_at INTEGER NOT NULL
        )""",
     """CREATE TABLE IF NOT EXISTS subscriptions(
          account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
          plan TEXT NOT NULL,
+         -- 'razorpay' or 'play'. Which one decides how the subscription is re-checked and how it
+         -- is cancelled, and the two are not interchangeable: cancelling a Play subscription
+         -- through Razorpay's API would silently do nothing.
+         provider TEXT NOT NULL DEFAULT 'razorpay',
          provider_id TEXT,
          status TEXT NOT NULL,
          current_period_end INTEGER NOT NULL
@@ -156,6 +169,59 @@ def verify_password(password: str, stored: str) -> bool:
     return hmac.compare_digest(derived, expected)
 
 
+#: Bumped whenever MIGRATIONS grows. Stored in SQLite's own `user_version`.
+SCHEMA_VERSION = 1
+
+
+def _migrate(db: sqlite3.Connection) -> None:
+    """
+    Bring an existing database up to SCHEMA_VERSION.
+
+    `CREATE TABLE IF NOT EXISTS` is not a migration: it silently does nothing to a table that
+    already exists with the wrong shape, so a deployed database would keep its old columns while
+    the code assumed new ones. That failure is invisible until a query hits the missing column, in
+    production, on the payment path.
+
+    Versions are tracked in SQLite's `user_version`, which costs no table and no query.
+    """
+    version = db.execute("PRAGMA user_version").fetchone()[0]
+    if version >= SCHEMA_VERSION:
+        return
+
+    if version < 1:
+        columns = {r[1] for r in db.execute("PRAGMA table_info(subscriptions)")}
+        if columns and "provider" not in columns:
+            db.execute(
+                "ALTER TABLE subscriptions ADD COLUMN provider TEXT NOT NULL DEFAULT 'razorpay'"
+            )
+
+        # Making a column nullable needs a table rebuild; SQLite has no ALTER COLUMN. Done inside
+        # the transaction below so a crash half way leaves the old table intact rather than a
+        # database with no accounts in it.
+        info = list(db.execute("PRAGMA table_info(accounts)"))
+        not_null = {r[1] for r in info if r[3]}
+        if info and ("email" in not_null or "password_hash" in not_null):
+            # Off for the rebuild. With foreign keys ON, `DROP TABLE accounts` performs an
+            # implicit DELETE FROM, which fires ON DELETE CASCADE and takes every subscription and
+            # device with it — a migration that silently deletes every paying customer.
+            db.execute("PRAGMA foreign_keys = OFF")
+            db.execute("""CREATE TABLE accounts_migrated(
+                            id TEXT PRIMARY KEY,
+                            email TEXT UNIQUE,
+                            password_hash TEXT,
+                            created_at INTEGER NOT NULL)""")
+            db.execute("INSERT INTO accounts_migrated(id,email,password_hash,created_at) "
+                       "SELECT id,email,password_hash,created_at FROM accounts")
+            db.execute("DROP TABLE accounts")
+            db.execute("ALTER TABLE accounts_migrated RENAME TO accounts")
+            # NOT turned back on here. `PRAGMA foreign_keys` is a no-op inside a transaction, and
+            # the INSERT above opened one — so the statement would be silently ignored and the
+            # connection would carry on with foreign keys off. Store.__init__ re-asserts it after
+            # the commit, which is the only place it can take effect.
+
+    db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+
 class Store:
     """
     One connection guarded by one lock.
@@ -173,10 +239,15 @@ class Store:
         self._db.row_factory = sqlite3.Row
         with self._lock:
             self._db.execute("PRAGMA journal_mode = WAL")
-            self._db.execute("PRAGMA foreign_keys = ON")
             for stmt in SCHEMA:
                 self._db.execute(stmt)
+            _migrate(self._db)
             self._db.commit()
+            # After the commit, and last. PRAGMA foreign_keys is ignored inside a transaction, and
+            # a migration that rebuilds a table has to turn it off to do so — so this is the only
+            # point at which enabling it reliably takes effect. Get it wrong and deleting an
+            # account orphans its subscription and devices instead of cascading, silently.
+            self._db.execute("PRAGMA foreign_keys = ON")
 
     def close(self) -> None:
         with self._lock:
@@ -184,17 +255,25 @@ class Store:
 
     # ---- accounts ----
 
-    def create_account(self, email: str, password: str) -> Account:
-        normalised = email.strip().lower()
+    def create_account(self, email: str | None = None, password: str | None = None) -> Account:
+        """
+        Create an account, with or without credentials.
+
+        Both are optional because a Play Billing purchase creates an account with neither: Google
+        has already established who the person is, and demanding they invent a password to receive
+        something they just paid for is friction that buys nothing. Such an account is reached by
+        its purchase token until the owner chooses to add an email.
+        """
+        normalised = email.strip().lower() if email else None
         account_id = f"acct_{secrets.token_hex(9)}"
         created_at = int(time.time())
         with self._lock:
             self._db.execute(
                 "INSERT INTO accounts(id,email,password_hash,created_at) VALUES(?,?,?,?)",
-                (account_id, normalised, hash_password(password), created_at),
+                (account_id, normalised, hash_password(password) if password else None, created_at),
             )
             self._db.commit()
-        return Account(id=account_id, email=normalised, created_at=created_at)
+        return Account(id=account_id, email=normalised or "", created_at=created_at)
 
     def authenticate(self, email: str, password: str) -> Account | None:
         """Null for both "no such account" and "wrong password" -- the caller must not tell them apart."""
@@ -204,6 +283,10 @@ class Store:
                 (email.strip().lower(),),
             ).fetchone()
         if row is None:
+            return None
+        # An account created by a Play purchase has no password. Passing None to verify_password
+        # would be a type error at best and, worse, an empty-string comparison that lets anybody in.
+        if not row["password_hash"]:
             return None
         if not verify_password(password, row["password_hash"]):
             return None
@@ -232,7 +315,7 @@ class Store:
     def subscription(self, account_id: str) -> Subscription:
         with self._lock:
             row = self._db.execute(
-                "SELECT account_id,plan,provider_id,status,current_period_end "
+                "SELECT account_id,plan,provider,provider_id,status,current_period_end "
                 "FROM subscriptions WHERE account_id=?",
                 (account_id,),
             ).fetchone()
@@ -247,6 +330,7 @@ class Store:
         return Subscription(
             account_id=row["account_id"],
             plan=row["plan"],
+            provider=row["provider"],
             provider_id=row["provider_id"],
             status=row["status"],
             current_period_end=row["current_period_end"],
@@ -255,16 +339,18 @@ class Store:
     def upsert_subscription(self, sub: Subscription) -> None:
         with self._lock:
             self._db.execute(
-                """INSERT INTO subscriptions(account_id,plan,provider_id,status,current_period_end)
-                   VALUES(?,?,?,?,?)
+                """INSERT INTO subscriptions(account_id,plan,provider,provider_id,status,current_period_end)
+                   VALUES(?,?,?,?,?,?)
                    ON CONFLICT(account_id) DO UPDATE SET
                      plan=excluded.plan,
+                     provider=excluded.provider,
                      provider_id=excluded.provider_id,
                      status=excluded.status,
                      current_period_end=excluded.current_period_end""",
                 (
                     sub.account_id,
                     sub.plan,
+                    sub.provider,
                     sub.provider_id,
                     sub.status,
                     sub.current_period_end,
@@ -272,10 +358,17 @@ class Store:
             )
             self._db.commit()
 
-    def account_by_provider_id(self, provider_id: str) -> str | None:
+    def account_by_provider_id(self, provider_id: str, provider: str = "razorpay") -> str | None:
+        """
+        The account a provider's subscription id belongs to.
+
+        Scoped by provider: the two id spaces are unrelated, and a Razorpay webhook must never be
+        able to address a Play subscription by guessing a string that happens to collide.
+        """
         with self._lock:
             row = self._db.execute(
-                "SELECT account_id FROM subscriptions WHERE provider_id=?", (provider_id,)
+                "SELECT account_id FROM subscriptions WHERE provider_id=? AND provider=?",
+                (provider_id, provider),
             ).fetchone()
         return row["account_id"] if row else None
 
