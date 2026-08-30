@@ -61,6 +61,21 @@ nginx -t
 systemctl reload nginx
 
 echo "==> verifying over TLS"
-curl -fsS --max-time 10 "https://$HOSTNAME_/healthz"
-echo
+# Retried, because a reload is not instantaneous: nginx lets the old workers finish their in-flight
+# requests before the new ones take over, so a check fired immediately after `systemctl reload` can
+# still be answered by the previous configuration. That reads as a certificate-name mismatch, which
+# looks alarming and is not — it happened on the first real run of this script. Ten seconds is far
+# longer than a reload takes.
+for attempt in $(seq 1 10); do
+  if curl -fsS --max-time 5 "https://$HOSTNAME_/healthz" >/dev/null 2>&1; then
+    curl -fsS --max-time 5 "https://$HOSTNAME_/healthz"; echo
+    break
+  fi
+  if [ "$attempt" = 10 ]; then
+    echo "!! $HOSTNAME_ did not answer over TLS after ten tries." >&2
+    curl -sS --max-time 5 "https://$HOSTNAME_/healthz" >&2 || true
+    exit 1
+  fi
+  sleep 1
+done
 echo "==> done: https://$HOSTNAME_"
