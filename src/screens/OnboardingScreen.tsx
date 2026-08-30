@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { NativeEventEmitter, NativeModules, StyleSheet, View } from 'react-native';
+import { NativeEventEmitter, NativeModules, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -210,12 +210,25 @@ export default function OnboardingScreen({ navigation }: Props) {
   }
 
   return (
-    <View style={[st.root, pad]}>
+    // A ScrollView, not a View. This screen is the tallest in the app and on a 6" phone its
+    // content is ~50dp taller than the viewport. In a plain View the only give was `list`'s
+    // `flex: 1` — which in React Native also means `flexShrink: 1` — so Yoga squeezed the page
+    // to fit by collapsing the hero title to zero height and pushing the third bullet out of
+    // the shrunken list box, where the footer's opaque card painted over it. Both were silent.
+    <ScrollView
+      style={st.root}
+      contentContainerStyle={[st.scrollBody, pad]}
+      showsVerticalScrollIndicator={false}>
       <View style={st.hero}>
         <Pop>
           <Mascot mood="idle" size={sv(132)} />
         </Pop>
-        <Pop index={1}>
+        {/* alignSelf: stretch, not the hero's default centring. Centred, this block shrinks to
+            fit and the subtitle gets measured at one width and laid out at a narrower one, so it
+            wrapped to two lines inside a box only one line tall — "note-taker" was clipped away
+            with no ellipsis to hint at it. Both lines are textAlign: 'center' already, so taking
+            the full column changes nothing visually. Same reason doneWrap stretches. */}
+        <Pop index={1} style={st.heroText}>
           <Txt variant="screenTitle" style={st.centerText}>
             Verbale
           </Txt>
@@ -293,7 +306,7 @@ export default function OnboardingScreen({ navigation }: Props) {
           <SoftButton label="Later, from Settings" onPress={finish} />
         </View>
       </Pop>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -304,7 +317,11 @@ function makeStyles(c: Colors) {
     center: { alignItems: 'center', justifyContent: 'center' },
     centerText: { textAlign: 'center' },
     hero: { alignItems: 'center', paddingTop: s(10), gap: s(6) },
-    list: { flex: 1, justifyContent: 'center', gap: s(12), marginTop: s(18) },
+    heroText: { alignSelf: 'stretch' },
+    scrollBody: { flexGrow: 1 },
+    // Grow to centre the bullets on a tall screen, but NEVER shrink: shrinking is what
+    // pushed a card under the footer. Past the viewport the ScrollView scrolls instead.
+    list: { flexGrow: 1, flexShrink: 0, justifyContent: 'center', gap: s(12), marginTop: s(18) },
     bullet: { flexDirection: 'row', alignItems: 'flex-start', gap: s(14), padding: s(16) },
     bulletIcon: {
       width: s(44),
