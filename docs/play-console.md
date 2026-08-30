@@ -208,9 +208,9 @@ off the phishing surface.
 
 ## Still to do before filing
 
-- [ ] Settle the name; run `scripts/rename-app.py`
 - [ ] Release keystore, and enrol in Play App Signing
-- [ ] Host the privacy policy at a public URL (`/privacy` is written and deployed; needs DNS)
+- [ ] Host the privacy policy at a public URL — written and deployed, needs only the DNS record
+- [ ] Record a meeting on a device: the JNI link and the RN component name are runtime-only contracts the rename touched
 - [ ] Screenshots: phone, 2–8, at least 1080px on the short side
 - [ ] Feature graphic, 1024×500
 - [ ] Record the two foreground-service videos

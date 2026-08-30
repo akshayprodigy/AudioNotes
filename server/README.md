@@ -224,5 +224,5 @@ search through prose.
 
 ## Not built yet
 
-- Gating the model download on entitlement, which is the real piracy barrier: the licence flag is a
-  boolean someone can patch, whereas 1.1 GB of weights they have to source is not.
+- Nothing blocking. The remaining work is configuration the server cannot supply itself: Razorpay
+  live keys, SMTP credentials, and the DNS record that lets it serve a hostname over TLS.
