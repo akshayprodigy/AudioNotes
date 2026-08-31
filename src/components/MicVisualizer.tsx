@@ -62,7 +62,7 @@ export default function MicVisualizer({ active, paused, onPress, size = 148 }: P
     return () => loop.stop();
   }, [active, paused, ring]);
 
-  const from = active ? colors.dangerLight : '#5A66DE';
+  const from = active ? colors.dangerLight : colors.primaryTop;
   const to = active ? colors.danger : colors.primary;
   const edge = active ? colors.dangerEdge : colors.primaryEdge;
   // The design draws a 52pt SVG on a 148pt button (0.351 of the diameter) whose rect occupies

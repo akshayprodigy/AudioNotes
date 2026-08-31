@@ -139,9 +139,13 @@ export default function PipRecorder() {
     return () => loop.stop();
   }, [active, ring]);
 
-  const from = active ? colors.dangerLight : colors.inkFaint;
-  const to = active ? colors.danger : colors.inkDim;
-  const edge = active ? colors.dangerEdge : '#7C84A6';
+  // Paused, the button drops to the dormant slate — the same three-part treatment the live coral
+  // gets, so the surface keeps its shape. Reading the two off `inkFaint`/`inkDim` was subtly wrong
+  // in dark: those two swap places between the palettes, which flipped the gradient upside down
+  // and lit the button from below while everything around it was lit from above.
+  const from = active ? colors.dangerLight : colors.dormantLight;
+  const to = active ? colors.danger : colors.dormant;
+  const edge = active ? colors.dangerEdge : colors.dormantEdge;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.canvas }]}>
