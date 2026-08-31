@@ -6,6 +6,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
   type StyleProp,
   type TextStyle,
@@ -21,7 +22,10 @@ import { motion, radius, s, text, useTheme, type Colors, type TypeKey } from '..
  *  - HARD OFFSET SHADOW. A raised surface sits on a solid, unblurred block of colour 4-10px below
  *    it. Implemented as a sibling View behind the surface rather than Android `elevation`, which
  *    renders as a soft grey blur, costs a composite layer, and cannot be tinted — the design's
- *    shadows are coloured (#E4E7F1 under white, #3A45B4 under indigo, #C6474A under coral).
+ *    shadows are coloured (`line` under a card, `primaryEdge` under indigo, `dangerEdge` under
+ *    coral). Which side of the surface that colour falls on is the theme's problem, not this
+ *    file's: in light every `*Edge` token is lighter than the page and in dark every one of them
+ *    is darker than its surface, so the same 6px offset reads as the same physical lip in both.
  *  - PRESS-TO-MEET-THE-SHADOW. Pressing translates the surface down by the shadow's depth and
  *    shrinks the shadow to match, so the control physically lands. That is the whole interaction
  *    feel of the reference.
@@ -124,7 +128,13 @@ export function Raised({
 }: {
   children: React.ReactNode;
   depth?: number;
-  edge: string;
+  /**
+   * The hard shadow's colour. Defaults to the theme's hairline, which is what a plain card wants;
+   * a coloured surface passes the matching `*Edge` token. Never a literal — the whole point of the
+   * token is that it falls on the correct side of the surface in both themes.
+   */
+  edge?: string;
+  /** Surface colour. Defaults to `card`. Ignored when `gradient` is given, which paints its own. */
   fill?: string;
   gradient?: { from: string; to: string; angle?: number };
   rad?: number;
@@ -143,6 +153,7 @@ export function Raised({
   grow?: boolean;
   pressable?: boolean;
 }) {
+  const { colors } = useTheme();
   const press = useRef(new Animated.Value(0)).current;
   const d = s(depth);
 
@@ -187,12 +198,12 @@ export function Raised({
                 ? [{ translateY: press.interpolate({ inputRange: [0, 1], outputRange: [0, travel] }) }]
                 : [],
             }}>
-            <View style={{ borderRadius: rad, backgroundColor: edge, paddingBottom: d }}>
+            <View style={{ borderRadius: rad, backgroundColor: edge ?? colors.line, paddingBottom: d }}>
               <View
                 style={[
                   {
                     borderRadius: rad,
-                    backgroundColor: gradient ? undefined : fill,
+                    backgroundColor: gradient ? undefined : fill ?? colors.card,
                     overflow: 'hidden',
                   },
                   style,
@@ -234,7 +245,7 @@ export function Button({
     <View style={[full && { alignSelf: 'stretch' }, { opacity: disabled ? 0.45 : 1 }, style]}>
       <Raised
         edge={colors.primaryEdge}
-        gradient={{ from: '#5A66DE', to: colors.primary }}
+        gradient={{ from: colors.primaryTop, to: colors.primary }}
         rad={radius.ctl}
         depth={6}
         onPress={disabled ? undefined : onPress}>
@@ -274,7 +285,7 @@ export function SoftButton({
         depth={4}
         onPress={disabled ? undefined : onPress}>
         <View style={stacked ? styles.softStacked : styles.softRow}>
-          {icon ? <Icon name={icon} size={s(19)} color={tone ?? colors.primary} /> : null}
+          {icon ? <Icon name={icon} size={s(19)} color={tone ?? colors.primaryDeep} /> : null}
           <Text style={text(stacked ? 'metaBlack' : 'label', colors.ink)}>{label}</Text>
         </View>
       </Raised>
@@ -297,7 +308,12 @@ export function IconButton({
     <View accessibilityRole="button" accessibilityLabel={label}>
       <Raised edge={colors.lineStrong} fill={colors.card} rad={radius.md} depth={3} onPress={onPress}>
         <View style={{ width: s(40), height: s(40), alignItems: 'center', justifyContent: 'center' }}>
-          <Icon name={icon} size={s(19)} color={icon === 'chevronLeft' ? colors.ink : colors.primary} strokeWidth={2.4} />
+          <Icon
+            name={icon}
+            size={s(19)}
+            color={icon === 'chevronLeft' ? colors.ink : colors.primaryDeep}
+            strokeWidth={2.4}
+          />
         </View>
       </Raised>
     </View>
@@ -352,7 +368,13 @@ export function Sheet({
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <Pressable style={styles.sheetBackdrop} onPress={onClose} accessibilityLabel="Dismiss">
-        <Animated.View style={{ flex: 1, backgroundColor: '#0B1030', opacity: rise.interpolate({ inputRange: [0, 1], outputRange: [0, 0.38] }) }} />
+        <Animated.View
+          style={{
+            flex: 1,
+            backgroundColor: colors.scrim,
+            opacity: rise.interpolate({ inputRange: [0, 1], outputRange: [0, 0.38] }),
+          }}
+        />
       </Pressable>
       <Animated.View
         style={[
@@ -369,7 +391,7 @@ export function Sheet({
           </Text>
         ) : null}
         {actions.map(a => {
-          const tint = a.destructive ? colors.danger : colors.primary;
+          const tint = a.destructive ? colors.danger : colors.primaryDeep;
           const soft = a.destructive ? colors.dangerSoft : colors.primarySoft;
           return (
             <Pressable
@@ -401,6 +423,120 @@ export function Sheet({
           <SoftButton label="Cancel" onPress={onClose} />
         </View>
       </Animated.View>
+    </Modal>
+  );
+}
+
+/**
+ * Ask for a line of text.
+ *
+ * Not `Alert.prompt`, which does not exist on Android — this app's only platform — and not a whole
+ * screen either: renaming a meeting is a one-field decision made in passing, and pushing a route
+ * for it loses the reader's place in what they were reading.
+ *
+ * `initial` is applied when the modal OPENS rather than held as a prop, so a rename that fails
+ * keeps what the user typed instead of snapping back to the stored title.
+ */
+export function TextPrompt({
+  visible,
+  title,
+  hint,
+  initial,
+  placeholder,
+  confirmLabel = 'Save',
+  multiline,
+  extraPlaceholder,
+  onCancel,
+  onSubmit,
+}: {
+  visible: boolean;
+  title: string;
+  hint?: string;
+  initial: string;
+  placeholder?: string;
+  confirmLabel?: string;
+  multiline?: boolean;
+  /**
+   * A second, optional line — the owner of an action item.
+   *
+   * One field rather than a form: an action nobody owns is the least useful kind, and a due date
+   * is a date picker's job, not a text box's.
+   */
+  extraPlaceholder?: string;
+  onCancel: () => void;
+  onSubmit: (value: string, extra: string) => void;
+}) {
+  const { colors } = useTheme();
+  const [value, setValue] = React.useState(initial);
+  const [extra, setExtra] = React.useState('');
+
+  useEffect(() => {
+    if (visible) {
+      setValue(initial);
+      setExtra('');
+    }
+  }, [visible, initial]);
+
+  const trimmed = value.trim();
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <Pressable style={styles.sheetBackdrop} onPress={onCancel} accessibilityLabel="Dismiss">
+        <View style={[styles.promptScrim, { backgroundColor: colors.scrim }]} />
+      </Pressable>
+      <View style={styles.promptWrap} pointerEvents="box-none">
+        <View style={[styles.promptCard, { backgroundColor: colors.card, borderColor: colors.line }]}>
+          <Text style={text('sectionTitle', colors.ink)}>{title}</Text>
+          {hint ? (
+            <Text style={[text('chipSoft', colors.inkSoft), styles.promptHint]}>{hint}</Text>
+          ) : null}
+          <TextInput
+            value={value}
+            onChangeText={setValue}
+            placeholder={placeholder}
+            placeholderTextColor={colors.inkFaint}
+            style={[
+              styles.promptInput,
+              multiline && styles.promptInputTall,
+              { borderColor: colors.line, color: colors.ink, backgroundColor: colors.cardAlt },
+            ]}
+            multiline={multiline}
+            autoFocus
+            selectTextOnFocus={!multiline}
+            returnKeyType={multiline ? 'default' : 'done'}
+            onSubmitEditing={() => {
+              if (!multiline && trimmed) onSubmit(trimmed, extra.trim());
+            }}
+          />
+          {extraPlaceholder ? (
+            <TextInput
+              value={extra}
+              onChangeText={setExtra}
+              placeholder={extraPlaceholder}
+              placeholderTextColor={colors.inkFaint}
+              style={[
+                styles.promptInput,
+                { borderColor: colors.line, color: colors.ink, backgroundColor: colors.cardAlt },
+              ]}
+              returnKeyType="done"
+            />
+          ) : null}
+          <View style={styles.promptRow}>
+            <View style={styles.flex}>
+              <SoftButton label="Cancel" onPress={onCancel} />
+            </View>
+            <View style={styles.flex}>
+              {/* Empty is not a rename, it is a deletion of the title — refused rather than
+                  quietly storing a blank the library would render as a nameless row. */}
+              <SoftButton
+                label={confirmLabel}
+                icon="check"
+                onPress={() => onSubmit(trimmed, extra.trim())}
+                disabled={!trimmed}
+              />
+            </View>
+          </View>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -556,7 +692,7 @@ export function SectionRule({ label, right }: { label: string; right?: React.Rea
   return (
     <View style={styles.ruleRow}>
       <Text style={text('overline', colors.inkFaint)}>{label}</Text>
-      <View style={[styles.rule, { backgroundColor: '#E7EAF3' }]} />
+      <View style={[styles.rule, { backgroundColor: colors.line }]} />
       {right}
     </View>
   );
@@ -603,7 +739,7 @@ export function Segmented({
             style={[st.seg, on && { backgroundColor: colors.card, borderColor: colors.line }]}>
             <Txt
               variant={on ? 'chip' : 'chipSoft'}
-              color={on ? colors.primary : colors.inkDim}
+              color={on ? colors.primaryDeep : colors.inkDim}
               numberOfLines={1}>
               {it.label}
             </Txt>
@@ -817,6 +953,19 @@ export function makeCommon(c: Colors) {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   sheetBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  promptScrim: { flex: 1, opacity: 0.38 },
+  promptWrap: { flex: 1, justifyContent: 'center', paddingHorizontal: s(24) },
+  promptCard: { borderRadius: radius.card24, borderWidth: 1, padding: s(20), gap: s(6) },
+  promptHint: { marginBottom: s(2) },
+  promptInput: {
+    borderWidth: 1,
+    borderRadius: s(12),
+    paddingHorizontal: s(12),
+    paddingVertical: s(10),
+    marginTop: s(8),
+  },
+  promptInputTall: { minHeight: s(110), textAlignVertical: 'top' },
+  promptRow: { flexDirection: 'row', gap: s(10), marginTop: s(14) },
   sheetCard: {
     position: 'absolute',
     left: 0,

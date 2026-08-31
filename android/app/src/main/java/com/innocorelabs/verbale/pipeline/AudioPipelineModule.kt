@@ -155,10 +155,17 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
     // Processing now runs in ProcessingService (a foreground service) so it survives the app being
     // backgrounded/killed. This returns immediately; JS learns of completion via the onStageComplete
     // event (emitted by ProcessingService through AudioPipelineBridge), or discovers it on the next
-    // pending-sweep if the app was killed. `options` currently only carries model=base (the sole
-    // installed ASR model); the service uses base.
+    // pending-sweep if the app was killed. `options` carries model=base (the sole installed ASR
+    // model, so the service uses base) and an optional `force`.
+    //
+    // `force` puts narration back on the plan for a meeting that already has prose — the Summary
+    // tab's "Write it again". The screen used to clear the existing rows first so ResumePlan would
+    // see work to do, which meant a rewrite that could not run (a lapsed subscription, a deleted
+    // model, an out-of-memory kill on a 3 GB phone) destroyed the summary it was replacing.
+    // Narrator's write is source-scoped and atomic, so nothing needs deleting up front.
+    val force = options.hasKey("force") && options.getBoolean("force")
     try {
-      ProcessingService.enqueue(ctx, meetingId)
+      ProcessingService.enqueue(ctx, meetingId, force)
       promise.resolve(null)
     } catch (e: Exception) {
       // Most likely ForegroundServiceStartNotAllowedException: enqueue() ran while the app was in the
@@ -268,6 +275,28 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
         promise.resolve(freed.toDouble())
       } catch (e: Exception) {
         promise.reject("discard_failed", e)
+      }
+    }.start()
+  }
+
+  /**
+   * Delete the audio of every meeting past the retention window, and report how many were swept.
+   *
+   * Off the JS thread: this stats and unlinks one file per expired meeting, and a library that has
+   * been away for a month can have a lot of them.
+   *
+   * The meeting currently being recorded is excluded by id rather than by status. Its file is open
+   * and still being written, its row already exists, and its created_at is already in the past —
+   * so under the "delete as soon as it is transcribed" setting a sweep would otherwise unlink the
+   * recording out from under RecordingService, mid-meeting.
+   */
+  @ReactMethod
+  fun sweepAudioRetention(promise: Promise) {
+    Thread {
+      try {
+        promise.resolve(AudioRetention.sweep(ctx, CaptureController.currentMeetingId).toDouble())
+      } catch (e: Throwable) {
+        promise.reject("sweep_failed", e)
       }
     }.start()
   }

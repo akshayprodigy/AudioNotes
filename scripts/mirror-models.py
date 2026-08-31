@@ -53,7 +53,27 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-CATALOG = ROOT / "android/app/src/main/java/com/audionotes/data/ModelCatalog.kt"
+
+
+def find_catalog() -> Path:
+    """
+    Locate ModelCatalog.kt by searching, not by a hardcoded package path.
+
+    It used to be hardcoded, and the rename to com.innocorelabs.verbale broke every command here
+    with a FileNotFoundError — silently, because nothing runs this on a schedule. `check` is
+    supposed to be what catches a moved upstream file before the store reviews do, and it had been
+    unable to run at all. Searching costs nothing and has no package name to go stale.
+    """
+    roots = [ROOT / "android/app/src/main/java", ROOT / "android/app/src/main/kotlin"]
+    found = sorted(f for r in roots if r.is_dir() for f in r.rglob("ModelCatalog.kt"))
+    if not found:
+        raise SystemExit(f"could not find ModelCatalog.kt under {roots[0]}")
+    if len(found) > 1:
+        raise SystemExit("found more than one ModelCatalog.kt:\n  " + "\n  ".join(map(str, found)))
+    return found[0]
+
+
+CATALOG = find_catalog()
 
 STRING = re.compile(r'"((?:[^"\\]|\\.)*)"')
 SIZE = re.compile(r"\b(\d[\d_]*)L\b")

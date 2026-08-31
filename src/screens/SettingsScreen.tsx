@@ -26,8 +26,8 @@ import {
   ProgressBar,
   Raised,
   SectionRule,
+  Segmented,
   SoftButton,
-  Switch,
   Txt,
 } from '../components/ui';
 import Backup from '../native/NativeBackup';
@@ -40,7 +40,14 @@ import {
   signIn,
   signOut,
 } from '../billing/subscription';
-import { radius, s, useTheme, type Colors } from '../theme';
+import {
+  TRIAL_DAYS,
+  TRIAL_SUMMARIES,
+  entitlement,
+  isProModel,
+  type Entitlement,
+} from '../billing/trial';
+import { radius, s, useTheme, type Colors, type ThemeMode } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 type Model = {
@@ -56,8 +63,66 @@ type Model = {
 
 const mb = (bytes: number) => `${(bytes / 1e6).toFixed(0)} MB`;
 
+/**
+ * How long a recording is kept after it has been transcribed.
+ *
+ * Written as `audioRetentionDays`, in days, with two sentinels: -1 keeps audio until the meeting
+ * is deleted, 0 deletes it the moment the transcript exists. Native sweeps against this value.
+ *
+ * Seven days is the new default and is a deliberate change from "delete immediately". Deleting at
+ * once is the strongest privacy answer, and it is also the one that quietly removes the ability to
+ * play a turn back and check what was actually said — which is the difference between notes you
+ * trust and notes you hope are right. A week is long enough to go back and verify the meeting you
+ * are still working from, and short enough that a phone does not fill up with something nobody
+ * will ever open again.
+ */
+const RETENTION_DEFAULT_DAYS = 7;
+
+const RETENTION_CHOICES: { days: number; label: string; detail: string }[] = [
+  {
+    days: 7,
+    label: 'Keep for 7 days',
+    detail: 'Long enough to play back and check anything from the meetings you are still working from.',
+  },
+  {
+    days: 30,
+    label: 'Keep for 30 days',
+    detail: 'A month of audio is around 3 GB if you record an hour a day. Worth it if you often go back.',
+  },
+  {
+    days: -1,
+    label: 'Keep until I delete it',
+    detail: 'Nothing is ever removed on its own. You are the one watching the storage.',
+  },
+  {
+    days: 0,
+    label: 'Delete as soon as it is transcribed',
+    detail: 'The strictest option, and the one that gives up playback: only the text survives.',
+  },
+];
+
+/**
+ * The language SPOKEN in the meeting, written as `asrLanguage`.
+ *
+ * This exists because auto-detect is genuinely wrong on the audio this app is built for. Whisper
+ * base, left to detect, transcribes Hindi/English code-switched speech into Arabic script — and
+ * pinned to English it invents fluent English that was never said. Neither failure is one a user
+ * can diagnose; both are ones they can fix in a tap if we let them.
+ */
+const LANGUAGE_CHOICES: { code: string; label: string }[] = [
+  { code: 'auto', label: 'Auto-detect' },
+  { code: 'en', label: 'English' },
+  { code: 'hi', label: 'Hindi' },
+];
+
+const THEME_CHOICES: { key: ThemeMode; label: string }[] = [
+  { key: 'light', label: 'Light' },
+  { key: 'dark', label: 'Dark' },
+  { key: 'system', label: 'System' },
+];
+
 export default function SettingsScreen({ navigation }: Props) {
-  const { colors } = useTheme();
+  const { colors, isDark, mode, setMode } = useTheme();
   // Subscription. The app never advertises a price or links to a checkout — it signs in, and
   // buying happens on the web. That separation is deliberate; see the licence server's README.
   const [lic, setLic] = React.useState<LicenceStatus | null>(null);
@@ -223,7 +288,10 @@ export default function SettingsScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const [models, setModels] = useState<Model[]>([]);
   const [progress, setProgress] = useState<Record<string, number>>({});
-  const [keepAudio, setKeepAudio] = useState(false);
+  // null until the stored value has been read. Rendering a picker with a guessed selection and
+  // then moving it under the user's finger a frame later is worse than rendering nothing.
+  const [retention, setRetention] = useState<number | null>(null);
+  const [language, setLanguage] = useState('auto');
   const [empties, setEmpties] = useState(0);
 
   const refresh = () => ModelManager.list().then(r => setModels(JSON.parse(r)));
@@ -234,9 +302,41 @@ export default function SettingsScreen({ navigation }: Props) {
       .catch(() => {});
   }, []);
 
+  /**
+   * Read the retention preference, migrating anyone who only ever set the old switch.
+   *
+   * `keepAudio` was a boolean: on meant keep forever, off (and unset) meant delete the moment the
+   * transcript existed. Someone who deliberately turned it on must not silently become a 7-day
+   * user, so their choice maps to "until I delete it" and only a phone that has never expressed
+   * an opinion gets the new default.
+   *
+   * The migration WRITES, rather than deriving on each render, because the native sweep reads the
+   * setting and not this screen. A default that lives only in the UI is a default the app does
+   * not actually have.
+   */
+  const readRetention = useCallback(async () => {
+    try {
+      const stored = await db.getSetting('audioRetentionDays');
+      const n = Number(stored);
+      if (stored !== null && Number.isFinite(n)) {
+        setRetention(Math.trunc(n));
+        return;
+      }
+      const legacy = await db.getSetting('keepAudio');
+      const derived = legacy === '1' ? -1 : legacy === '0' ? 0 : RETENTION_DEFAULT_DAYS;
+      setRetention(derived);
+      await db.setSetting('audioRetentionDays', String(derived));
+      if (legacy === null) await db.setSetting('keepAudio', derived === 0 ? '0' : '1');
+    } catch {
+      // A settings read that fails leaves the picker unrendered rather than showing a lie about
+      // what the app is doing with the audio.
+    }
+  }, []);
+
   useEffect(() => {
-    db.getSetting('keepAudio')
-      .then(v => setKeepAudio(v === '1'))
+    readRetention();
+    db.getSetting('asrLanguage')
+      .then(v => setLanguage(v ?? 'auto'))
       .catch(() => {});
     countEmpties();
     const offFocus = navigation.addListener('focus', () => {
@@ -245,7 +345,7 @@ export default function SettingsScreen({ navigation }: Props) {
     return () => {
       offFocus();
     };
-  }, [navigation, countEmpties]);
+  }, [navigation, countEmpties, readRetention]);
 
   /**
    * Bulk-delete the mis-taps. Sequential rather than Promise.all: each one cancels native work
@@ -280,10 +380,29 @@ export default function SettingsScreen({ navigation }: Props) {
     return () => sub.remove();
   }, []);
 
-  const onToggleKeepAudio = async () => {
-    const next = !keepAudio;
-    setKeepAudio(next);
-    await db.setSetting('keepAudio', next ? '1' : '0');
+  /**
+   * Both keys, always, and in that order.
+   *
+   * `audioRetentionDays` is the real setting. `keepAudio` is the one ProcessingEngine.applyRetention
+   * has read since before this picker existed, and there are installs out there whose only stored
+   * preference is that boolean — so it is kept in step rather than deleted: anything but "delete
+   * immediately" means the file survives transcription, and how long it then survives for is the
+   * sweep's business.
+   */
+  const chooseRetention = async (days: number) => {
+    setRetention(days);
+    try {
+      await db.setSetting('audioRetentionDays', String(days));
+      await db.setSetting('keepAudio', days === 0 ? '0' : '1');
+    } catch (e: any) {
+      Alert.alert('Could not save that', String(e?.message ?? e));
+      readRetention();
+    }
+  };
+
+  const chooseLanguage = async (code: string) => {
+    setLanguage(code);
+    await db.setSetting('asrLanguage', code).catch(() => {});
   };
 
   const onToggle = async (m: Model) => {
@@ -637,17 +756,48 @@ export default function SettingsScreen({ navigation }: Props) {
           <SectionRule label="PRIVACY" />
         </View>
         <View style={st.list}>
-          <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={5} onPress={onToggleKeepAudio}>
-            <View style={[st.rowPad, st.row]}>
-              <View style={st.flex}>
-                <Txt variant="bodyStrong">Keep audio after transcribing</Txt>
-                <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
-                  {keepAudio
-                    ? 'Recordings stay on the device (~115 MB/hour) so a meeting can be reprocessed.'
-                    : 'Recordings are deleted once transcribed. Transcript and minutes are kept, encrypted.'}
-                </Txt>
-              </View>
-              <Switch on={keepAudio} onToggle={onToggleKeepAudio} />
+          <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={5}>
+            <View style={st.rowPad}>
+              <Txt variant="bodyStrong">Keep the audio</Txt>
+              <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
+                Recordings are about 115 MB an hour. Keeping them is what lets you tap a line of
+                the transcript and hear what was actually said — the transcript and minutes are
+                kept either way, encrypted.
+              </Txt>
+              {/* Nothing is rendered until the stored value has been read: a picker that shows a
+                  guessed selection and then moves under the user's finger is worse than a pause. */}
+              {retention === null ? null : (
+                <View style={st.choices}>
+                  {RETENTION_CHOICES.map(c => {
+                    const on = c.days === retention;
+                    return (
+                      <Pressable
+                        key={c.days}
+                        onPress={() => chooseRetention(c.days)}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: on }}
+                        accessibilityLabel={c.label}
+                        style={[
+                          st.choice,
+                          { borderColor: on ? colors.primary : colors.line },
+                          on && { backgroundColor: colors.primarySoft },
+                        ]}>
+                        <View style={st.flex}>
+                          <Txt variant="chip" color={on ? colors.primaryDeep : colors.ink}>
+                            {c.label}
+                          </Txt>
+                          <Txt variant="chipSoft" color={colors.inkSoft} style={st.tiny}>
+                            {c.detail}
+                          </Txt>
+                        </View>
+                        {on ? (
+                          <Icon name="check" size={s(16)} color={colors.primaryDeep} strokeWidth={2.8} />
+                        ) : null}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
             </View>
           </Raised>
 
@@ -657,6 +807,61 @@ export default function SettingsScreen({ navigation }: Props) {
               Everything runs on this device. No third-party AI, no account, nothing uploaded.
             </Txt>
           </View>
+        </View>
+
+        <View style={st.ruleWrap}>
+          <SectionRule label="TRANSCRIPTION" />
+        </View>
+        <View style={st.list}>
+          <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={5}>
+            <View style={st.rowPad}>
+              <Txt variant="bodyStrong">Language spoken</Txt>
+              {/* Auto-detect is genuinely wrong on the audio this app is built for, and neither of
+                  its two failures is one a user can diagnose from the result — so the fix is put
+                  where they can reach it, and described by what they would SEE. */}
+              <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
+                Left to detect, the model decides again every 30 seconds — so one meeting can come
+                back in several languages, or in the wrong script entirely. If you know what was
+                spoken, say so here and reprocess.
+              </Txt>
+              <Segmented
+                style={st.segment}
+                items={LANGUAGE_CHOICES.map(l => ({ key: l.code, label: l.label }))}
+                value={language}
+                onChange={chooseLanguage}
+              />
+              <Txt variant="chipSoft" color={colors.inkSoft} style={st.tiny}>
+                Applies to the next meeting transcribed, and to anything you reprocess.
+              </Txt>
+            </View>
+          </Raised>
+        </View>
+
+        <View style={st.ruleWrap}>
+          <SectionRule label="APPEARANCE" />
+        </View>
+        <View style={st.list}>
+          <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={5}>
+            <View style={st.rowPad}>
+              <View style={st.row}>
+                <Icon
+                  name={isDark ? 'moon' : 'sun'}
+                  size={s(18)}
+                  color={colors.inkSoft}
+                  strokeWidth={2.4}
+                />
+                <Txt variant="bodyStrong" style={st.flex}>
+                  Theme
+                </Txt>
+              </View>
+              <Segmented
+                style={st.segment}
+                items={THEME_CHOICES.map(t => ({ key: t.key, label: t.label }))}
+                value={mode}
+                onChange={k => setMode(k as ThemeMode)}
+              />
+            </View>
+          </Raised>
         </View>
 
         <View style={st.ruleWrap}>
@@ -706,6 +911,17 @@ function makeStyles(c: Colors) {
     },
     backupRow: { flexDirection: 'row', gap: s(10), marginTop: s(12) },
     tiny: { marginTop: s(4) },
+    segment: { marginTop: s(12) },
+    choices: { marginTop: s(12), gap: s(8) },
+    choice: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: s(10),
+      borderWidth: 1,
+      borderRadius: radius.ctl,
+      paddingHorizontal: s(12),
+      paddingVertical: s(10),
+    },
     modelMeta: { flexDirection: 'row', alignItems: 'center', gap: s(8), marginTop: s(12) },
     tag: { paddingHorizontal: s(8), paddingVertical: s(4), borderRadius: radius.pill },
     pill: {

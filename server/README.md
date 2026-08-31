@@ -110,6 +110,53 @@ of several other projects, each a container on a localhost port. A second proxy 
 those ports would take all of them down. `nginx -t` in the setup script validates every site on
 the machine, not only this one, before anything is reloaded.
 
+### The model mirror
+
+This host also serves the ~1.4 GB of model weights the app downloads on first run, at
+`/models/v1/`. Fill it — **from the server**, which pulls the files from GitHub and Hugging Face
+itself rather than having 1.4 GB pushed up from a laptop:
+
+```bash
+VERBALE_HOST=root@69.62.82.85 ./deploy/mirror-models.sh
+./scripts/mirror-models.py verify --base https://verbale.innocorelabs.com   # from anywhere
+```
+
+Idempotent: a file already present with the right sha256 is skipped, so a re-run after a failure
+resumes rather than restarts.
+
+**Why here and not an object store.** The obvious answer is Cloudflare R2, whose egress is free,
+and it may still be the answer later — but this box is in Mumbai, which is where the users this
+app is built for actually are; it has 184 GB spare and had moved 3.5 GB in its first eighteen
+weeks; and a launch that depends on one fewer account and one fewer bill is worth something real.
+The bandwidth arithmetic is roughly 114 MB per install, plus 1.2 GB for each user who takes the
+writer model — about 230 GB per thousand installs at a 10% attach rate. Check the plan's monthly
+allowance against that before it matters, and if it ever does, `modelBaseUrl` is one gradle
+property and `mirror-models.py fetch` already lays the files out the way an object store wants.
+
+**Files live in `/srv/verbale-models`, not `/opt/verbale`.** `deploy.sh` rsyncs with `--delete`, so
+a mirror kept under the app directory would be erased by the next unrelated deploy — and first run
+would quietly fall back to upstream with nobody the wiser.
+
+**What the nginx block is doing.** Bandwidth is capped per connection and, separately, across the
+whole mirror, because the licence API shares this machine and a phone pulling 1.1 GB of weights
+must never be why someone else's sign-in times out. Exceeding the global cap returns 503, which is
+the *good* outcome: `ModelManagerModule.fetchTo` treats any non-2xx as "this source failed" and
+falls through to the upstream URL, so a saturated mirror degrades to a slower download instead of
+an error. That fallback is what makes it safe to set the cap low enough to actually protect the
+API. `gzip off` is load-bearing too — gzip silently disables byte-range replies, and the
+downloader resumes a broken 1.1 GB transfer with `Range: bytes=N-`.
+
+**It closes a real hole, not just a dependency.** `silero-vad` was fetched from a `raw/master`
+URL — a branch pointer. The day upstream committed a new model there, the sha256 check would fail
+and first run would break for *new installs only*, so nothing in crash reporting would fire and
+nobody already running the app would notice. It would surface as store reviews. Serving our own
+copy first means an upstream change can no longer break anyone. Run `./scripts/mirror-models.py
+check` occasionally anyway, to know when the catalog has drifted from upstream.
+
+It also means first run stops announcing itself to GitHub and Hugging Face. For an app whose whole
+promise is that nothing leaves your phone, having every install introduce itself to two third
+parties was a wart.
+
 ### Backups
 
 ```bash

@@ -1,12 +1,15 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, ScrollView, StyleSheet, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Easing, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useLibraryStore } from '../state/libraryStore';
+import type { MeetingSort } from '../db/queries';
+import { loadActions, tally } from './actionsData';
+import { useImport } from './useImport';
 import { PipelineController } from '../pipeline/PipelineController';
 import { db } from '../db/queries';
-import Icon from '../components/Icon';
+import Icon, { type IconName } from '../components/Icon';
 import Mascot from '../components/Mascot';
 import RecordingBar from '../components/RecordingBar';
 import { confirmDestructive, quoted } from '../components/confirm';
@@ -150,27 +153,100 @@ function FabRing() {
   );
 }
 
+const SORTS: { key: MeetingSort; label: string; hint: string }[] = [
+  { key: 'recent', label: 'Newest first', hint: 'The default, and what you want most days.' },
+  { key: 'oldest', label: 'Oldest first', hint: 'For working forwards through a backlog.' },
+  { key: 'longest', label: 'Longest first', hint: 'Real meetings float up; mis-taps sink.' },
+  { key: 'title', label: 'By name', hint: 'Once meetings have names you chose.' },
+];
+
+/** A filter pill. Small enough to live here rather than in the shared kit. */
+function Chip({
+  label,
+  on,
+  onPress,
+  colors,
+}: {
+  label: string;
+  on: boolean;
+  onPress: () => void;
+  colors: Colors;
+}) {
+  const st = useMemo(() => makeStyles(colors), [colors]);
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: on }}
+      accessibilityLabel={label}
+      style={[
+        st.chip,
+        {
+          borderColor: on ? colors.primary : colors.line,
+          backgroundColor: on ? colors.primarySoft : colors.card,
+        },
+      ]}>
+      <Txt variant="chipSm" color={on ? colors.primaryDeep : colors.inkDim}>
+        {label}
+      </Txt>
+    </Pressable>
+  );
+}
+
 export default function LibraryScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const st = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
-  const { meetings, refresh } = useLibraryStore();
+  const { meetings, refresh, sort, setSort, tag, tags, setTag } = useLibraryStore();
+  const [sorting, setSorting] = useState(false);
+  const backfillSearch = useLibraryStore(st2 => st2.backfillSearch);
   const [sheetFor, setSheetFor] = useState<Meeting | null>(null);
   const [archived, setArchived] = useState(0);
+  const [work, setWork] = useState({ total: 0, open: 0, meetings: 0 });
+
+  /**
+   * Importing lives here because the library is where the app comes back to.
+   *
+   * A share that arrives while the app is closed lands on whatever mounts first, and this screen
+   * is it — so the confirmation appears over the meeting list rather than over nothing. Opening
+   * the new meeting on completion is the same thing a finished recording does.
+   */
+  const importing = useImport(
+    useCallback(
+      (meetingId: string) => {
+        refresh();
+        navigation.navigate('Meeting', { meetingId });
+      },
+      [navigation, refresh],
+    ),
+  );
+
+  const countActions = useCallback(() => {
+    loadActions()
+      .then(rows => setWork(tally(rows)))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const onFocus = () => {
-      refresh();
+      // The search-index backfill rides on the refresh rather than on its own timer, because the
+      // count it compares against only means anything once the meetings have been loaded. It
+      // short-circuits to a single native call unless that count has actually moved, so putting
+      // it on every focus costs nothing and heals a restored backup on the very next one.
+      refresh().then(backfillSearch).catch(() => {});
       db.archivedCount().then(setArchived).catch(() => {});
+      countActions();
       PipelineController.processPending().then(refresh).catch(() => {});
     };
     onFocus();
     return navigation.addListener('focus', onFocus);
-  }, [navigation, refresh]);
+  }, [navigation, refresh, backfillSearch, countActions]);
 
   const reload = () => {
     refresh();
     db.archivedCount().then(setArchived).catch(() => {});
+    // Archiving or deleting a meeting takes its action items out of the worklist too.
+    countActions();
   };
 
   /**
@@ -285,7 +361,9 @@ export default function LibraryScreen({ navigation }: Props) {
       h = (h * 1103515245 + 12345) >>> 0;
       return 0.3 + ((h >>> 16) % 71) / 100; // 0.30 - 1.00
     });
-    const shades = ['#DDE1F5', '#C7CDF0', colors.primary, '#8E97E4'];
+    // Four steps of the primary ramp rather than four literals: the bars have to sit on the card
+    // in both themes, and a hardcoded pale indigo on a #171A24 card is a white smear.
+    const shades = [colors.primarySoft2, colors.primarySoftEdge, colors.primary, colors.primaryLight];
     return (
       <View style={st.wave}>
         {bars.map((v, i) => (
@@ -436,6 +514,20 @@ export default function LibraryScreen({ navigation }: Props) {
           { paddingTop: insets.top + s(6), paddingBottom: insets.bottom + s(120) },
           meetings.length === 0 && st.emptyFlex,
         ]}>
+        {/* Decoding an hour of audio is not instant, and an import that looks like nothing is
+            happening gets tapped again. Shown as a strip rather than a modal so the library stays
+            usable — the meeting appears in the list when it lands. */}
+        {importing.busy ? (
+          <View style={st.importing}>
+            <Icon name="download" size={s(16)} color={colors.primaryDeep} strokeWidth={2.6} />
+            <Txt variant="chip" color={colors.primaryDeep} style={st.flex}>
+              {importing.progress === null
+                ? 'Reading the recording…'
+                : `Reading the recording… ${Math.round(importing.progress * 100)}%`}
+            </Txt>
+          </View>
+        ) : null}
+
         <View style={st.header}>
           <View style={st.flex}>
             <Txt variant="screenTitle">Meetings</Txt>
@@ -446,10 +538,45 @@ export default function LibraryScreen({ navigation }: Props) {
             </Txt>
           </View>
           <View style={st.headBtns}>
+            {/* Sits with search and settings rather than beside the record button: importing is
+                something you do occasionally and deliberately, and putting it next to Record
+                would put a second call to action against the one this screen is built around. */}
+            <IconButton
+              icon={importing.busy ? 'clock' : 'download'}
+              label="Import a recording"
+              onPress={importing.busy ? () => {} : importing.pick}
+            />
             <IconButton icon="search" label="Search meetings" onPress={() => navigation.navigate('Search')} />
             <IconButton icon="sliders" label="Settings" onPress={() => navigation.navigate('Settings')} />
           </View>
         </View>
+
+        {/* Only once there is something to sort or filter. On a library of three meetings this
+            row is furniture in front of the content. */}
+        {meetings.length + (tag ? 1 : 0) > 4 || tags.length > 0 ? (
+          <View style={st.filterRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={st.chips}>
+              <Chip label="All" on={tag === null} onPress={() => setTag(null)} colors={colors} />
+              {tags.map(t => (
+                <Chip
+                  key={t.name}
+                  label={`${t.name} · ${t.n}`}
+                  on={tag === t.name}
+                  onPress={() => setTag(tag === t.name ? null : t.name)}
+                  colors={colors}
+                />
+              ))}
+            </ScrollView>
+            <IconButton
+              icon="filter"
+              label={`Sort: ${SORTS.find(x => x.key === sort)?.label ?? 'Newest'}`}
+              onPress={() => setSorting(true)}
+            />
+          </View>
+        ) : null}
 
         {streak >= 2 ? (
           <Pop style={st.streakWrap}>
@@ -540,6 +667,18 @@ export default function LibraryScreen({ navigation }: Props) {
       </ScrollView>
 
       <Sheet
+        visible={sorting}
+        title="Sort meetings"
+        actions={SORTS.map(o => ({
+          icon: (o.key === sort ? 'check' : 'list') as IconName,
+          label: o.label,
+          hint: o.hint,
+          onPress: () => setSort(o.key),
+        }))}
+        onClose={() => setSorting(false)}
+      />
+
+      <Sheet
         visible={sheetFor !== null}
         title={sheetFor?.title || 'Meeting'}
         actions={sheetFor ? sheetActions(sheetFor) : []}
@@ -563,7 +702,7 @@ export default function LibraryScreen({ navigation }: Props) {
           <FabRing />
           <Raised
             edge={colors.primaryEdge}
-            gradient={{ from: '#5A66DE', to: colors.primary }}
+            gradient={{ from: colors.primaryLight, to: colors.primary }}
             rad={radius.pill}
             depth={6}
             onPress={() => navigation.navigate('Record')}>
@@ -585,6 +724,32 @@ function makeStyles(c: Colors) {
     root: { flex: 1, backgroundColor: c.canvas },
     flex: { flex: 1 },
     emptyFlex: { flexGrow: 1, justifyContent: 'center' },
+    filterRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: s(8),
+      paddingLeft: s(20),
+      paddingRight: s(12),
+      marginBottom: s(12),
+    },
+    chips: { gap: s(8), paddingRight: s(8), alignItems: 'center' },
+    chip: {
+      paddingHorizontal: s(12),
+      paddingVertical: s(7),
+      borderRadius: radius.pill,
+      borderWidth: 1,
+    },
+    importing: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: s(10),
+      marginHorizontal: s(20),
+      marginBottom: s(10),
+      paddingHorizontal: s(14),
+      paddingVertical: s(10),
+      borderRadius: radius.ctl,
+      backgroundColor: c.primarySoft,
+    },
     header: {
       flexDirection: 'row',
       alignItems: 'flex-start',

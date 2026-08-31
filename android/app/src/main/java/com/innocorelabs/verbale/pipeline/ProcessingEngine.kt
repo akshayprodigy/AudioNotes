@@ -20,6 +20,8 @@ class ProcessingEngine(
   private val meetingId: String,
   private val model: String,
   private val listener: Listener,
+  /** Re-run narration even though prose already exists — the Summary tab's "Write it again". */
+  private val forceNarrate: Boolean = false,
 ) {
   interface Listener {
     fun onStage(stage: String, done: Int, total: Int)
@@ -59,7 +61,7 @@ class ProcessingEngine(
       if (audioGone) Log.i(TAG, "audio gone for $meetingId — transcript-only re-run")
 
       val state = db.pipelineState(meetingId)
-      val remaining = ResumePlan.remaining(state)
+      val remaining = ResumePlan.remaining(state, forceNarrate)
       // Rows-only isn't enough: if the native minutes stage previously threw (e.g. replaceMinutes)
       // the outer catch sets status='error' while every stage's rows are already present, and a
       // rows-only check would report "done" here without ever re-running the minutes stage —
@@ -107,10 +109,18 @@ class ProcessingEngine(
           val starts = LongArray(n) { spans[it * 2] }
           val ends = LongArray(n) { spans[it * 2 + 1] }
           val t0 = System.currentTimeMillis()
+
+          // The language SPOKEN in the meeting, from Settings, resolved HERE rather than at
+          // capture. Every entry point then behaves the same — a recording started from the app,
+          // the Quick Settings tile or the PiP window all reach this one line — and, more to the
+          // point, somebody whose meeting came back in the wrong script can pin the language and
+          // reprocess, which would be impossible if the choice were frozen when they hit record.
+          val language = db.getSetting("asrLanguage")?.takeIf { it.isNotBlank() } ?: "auto"
           val json = NativeBridge.nativeTranscribe(
-            audioPath, asrFile.absolutePath, RecordingService.SAMPLE_RATE, starts, ends, 0,
+            audioPath, asrFile.absolutePath, RecordingService.SAMPLE_RATE, starts, ends, 0, language,
           )
           stageDone("asr", t0)
+          db.setLanguage(meetingId, language)
           val count = db.replaceUtterancesJson(meetingId, json)
           db.setStatus(meetingId, "asr")
           listener.onStage("asr", 1, 1)
@@ -271,11 +281,12 @@ class ProcessingEngine(
       //     const sentenceEnd = title.search(/[.!?]/);
       //     if (sentenceEnd > 15) title = title.slice(0, sentenceEnd);
       //     else if (opening.length > 60) title = title.replace(/\s+\S*$/, '') + '…';
-      var title = opening.take(60)
+      val trimmed = stripOpeningFiller(opening)
+      var title = trimmed.take(60)
       val sentenceEnd = title.indexOfFirst { it == '.' || it == '!' || it == '?' }
       if (sentenceEnd > 15) {
         title = title.substring(0, sentenceEnd)
-      } else if (opening.length > 60) {
+      } else if (trimmed.length > 60) {
         title = title.replace(TRAILING_PARTIAL_WORD, "") + "…"
       }
 
@@ -297,8 +308,16 @@ class ProcessingEngine(
   private fun applyRetention(meetingId: String, utteranceCount: Int) {
     try {
       val db = AudioDb.get(ctx)
-      if (db.getSetting("keepAudio") == "1") return // user opted to keep audio
       if (utteranceCount == 0) return // no transcript — the audio is all we have, keep it
+
+      // Only the "delete as soon as it is transcribed" setting deletes HERE. Every other window
+      // is the sweep's business (AudioRetention.sweep), which runs against created_at.
+      //
+      // This used to be `keepAudio != "1"`, which deleted the recording on a fresh install: the
+      // boolean is only written once the user opens Settings, so a phone that had never expressed
+      // an opinion took the strictest branch. That made the 7-day default a lie for exactly the
+      // people it was introduced for, and playback impossible on every meeting they had recorded.
+      if (AudioRetention.daysFor(db) != 0) return
 
       // Delete pattern reused from AudioPipelineModule.discardAudio.
       val path = db.getAudioPath(meetingId)
@@ -340,5 +359,33 @@ class ProcessingEngine(
     private val RETITLE_PLACEHOLDER = Regex(""" meeting · """)
     private val WHITESPACE_RUN = Regex("""\s+""")
     private val TRAILING_PARTIAL_WORD = Regex("""\s+\S*$""")
+
+    /**
+     * Leading filler, dropped from an auto-title.
+     *
+     * MIRRORS stripOpeningFiller in src/pipeline/PipelineController.ts, and the list must stay
+     * identical: Android titles headlessly through this path while the JS path titles the same
+     * recording when the app drives it, so a word removed on one side only means the same meeting
+     * gets two different names depending on who processed it.
+     *
+     * Meetings open with throat-clearing. "So there are three different stages to the design" is a
+     * real auto-title off a real recording, and the first word is the only one a reader skips.
+     */
+    private val OPENING_FILLER = Regex(
+      "^(so|okay|ok|um|uh|erm|ah|oh|right|yeah|yep|yes|well|alright|anyway|now|and|but|like" +
+        "|basically|actually)\\b,?\\s+",
+      RegexOption.IGNORE_CASE,
+    )
+
+    fun stripOpeningFiller(opening: String): String {
+      var out = opening
+      // A floor, not a nicety: without it "So, right" strips to "" and the meeting loses its name.
+      while (out.length > 15) {
+        val next = OPENING_FILLER.replaceFirst(out, "")
+        if (next == out || next.length < 15) break
+        out = next
+      }
+      return out
+    }
   }
 }

@@ -34,6 +34,7 @@ type Essential = {
   kind: string;
   required: boolean;
   needsSubscription: boolean;
+  installed: boolean;
 };
 
 const BULLETS: { icon: IconName; title: string; body: string; tone: 'primary' | 'success' | 'warning' }[] = [
@@ -45,8 +46,13 @@ const BULLETS: { icon: IconName; title: string; body: string; tone: 'primary' | 
   },
   {
     icon: 'mic',
+    // Describes the Picture-in-Picture window that shipped, not the floating overlay bubble it
+    // replaced. The bubble needed the "draw over other apps" permission and is gone; PiP is a
+    // system window the recorder puts itself into, with its own stop and pause controls, and it
+    // needs no special permission at all. Copy that still promised a bubble was describing an
+    // app the user does not have.
     title: 'Record any meeting',
-    body: 'Keeps listening with the screen off or while you use other apps.',
+    body: 'Keeps recording with the screen off, or in a small window over whatever app you open.',
     tone: 'success',
   },
   {
@@ -66,6 +72,16 @@ export default function OnboardingScreen({ navigation }: Props) {
   const [step, setStep] = useState(0);
   const [current, setCurrent] = useState('');
   const [essentials, setEssentials] = useState<Essential[]>([]);
+  /**
+   * What this run is actually downloading, frozen at the moment the button was pressed.
+   *
+   * The progress line used to read "6 of 5": it counted `essentials` while the loop walked
+   * `chosen`, which is `essentials` PLUS the writer model when a subscriber leaves that switch
+   * on. Two lists describing one download will always drift, so there is now one — the loop and
+   * the counter read the same array, and it cannot change underneath them if the licence check
+   * or the catalog resolves late.
+   */
+  const [plan, setPlan] = useState<Essential[]>([]);
   const [writer, setWriter] = useState<Essential[]>([]);
   // Whether the writer model may be fetched at all. ModelManager.download refuses it without a
   // subscription — that refusal is the enforcement — so offering the switch to someone who has
@@ -105,8 +121,15 @@ export default function OnboardingScreen({ navigation }: Props) {
 
   // What the button will actually cost, including the writer when it is switched on. Saying
   // "112 MB" and then downloading 1.2 GB is the kind of surprise that gets an app uninstalled.
+  //
+  // Anything already on disk costs nothing, and must not be counted. Coming back to this screen
+  // with every model present offered "Download the AI (114 MB)" — a number that was wrong in the
+  // direction that makes the app look worse, and which used to be true because download() really
+  // did fetch them all again. That is fixed natively; this is the half the user reads.
   const chosen = paid && wantWriter ? [...essentials, ...writer] : essentials;
-  const totalMb = Math.round(chosen.reduce((a, m) => a + m.sizeBytes, 0) / 1e6);
+  const totalMb = Math.round(
+    chosen.filter(m => !m.installed).reduce((a, m) => a + m.sizeBytes, 0) / 1e6,
+  );
   const writerMb = Math.round(writer.reduce((a, m) => a + m.sizeBytes, 0) / 1e6);
 
   const finish = async () => {
@@ -120,25 +143,34 @@ export default function OnboardingScreen({ navigation }: Props) {
    * that could record but never transcribe, and nothing anywhere saying why.
    */
   const downloadAll = async () => {
+    // Captured into a local as well as into state: the loop must not read a render-time value
+    // that a re-render could change under it, and setPlan's result is not visible in this pass.
+    const queue = chosen;
+    setPlan(queue);
     setStatus('downloading');
     AudioPipeline.requestBatteryExemption().catch(() => {});
-    for (let i = 0; i < chosen.length; i++) {
+    for (let i = 0; i < queue.length; i++) {
       setStep(i);
-      setCurrent(chosen[i].purpose);
+      setCurrent(queue[i].purpose);
       setPct(0);
       try {
-        await ModelManager.download(chosen[i].id);
+        await ModelManager.download(queue[i].id);
       } catch {
         // Only a REQUIRED model can fail the setup. Losing the writer means minutes pulled out by
         // rule instead of written as prose — a smaller app, not a broken one — and it can be
         // fetched later from Settings. Failing the whole first run over it would be a lie about
         // how badly things went.
-        if (chosen[i].required) {
+        if (queue[i].required) {
           setStatus('failed');
           return;
         }
       }
     }
+    // Mark setup finished HERE, not only in finish(). The flag used to be written solely when the
+    // user tapped "Start recording" on the last screen, so anyone who got their models and then
+    // backgrounded the app came back to onboarding — offering to download what they already had.
+    // Reaching this line is what "onboarded" means; the last screen is a greeting, not a step.
+    await db.setSetting('onboarded', '1').catch(() => {});
     setStatus('done');
   };
 
@@ -158,7 +190,7 @@ export default function OnboardingScreen({ navigation }: Props) {
           <View style={st.progressHead}>
             <Txt variant="bodyStrong">{current}</Txt>
             <Txt variant="chip" color={colors.inkFaint}>
-              {step + 1} of {essentials.length}
+              {step + 1} of {plan.length}
             </Txt>
           </View>
           <ProgressBar pct={pct} color={colors.primary} track={colors.cardAlt} />

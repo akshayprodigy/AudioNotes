@@ -68,4 +68,26 @@ std::string sanitizeUtf8(const std::string& s, std::size_t* dropped) {
   return out;
 }
 
+std::string stripDialogueDash(const std::string& s) {
+  std::size_t n = 0;
+  if (!s.empty() && s[0] == '-') {
+    n = 1;
+  } else if (s.size() >= 3 && static_cast<unsigned char>(s[0]) == 0xE2 &&
+             static_cast<unsigned char>(s[1]) == 0x80 &&
+             (static_cast<unsigned char>(s[2]) == 0x93 ||   // U+2013 en dash
+              static_cast<unsigned char>(s[2]) == 0x94)) {  // U+2014 em dash
+    n = 3;
+  }
+  if (n == 0) return s;
+
+  // The space is required, not incidental: without it "-5" and "-ish" would be mangled too.
+  std::size_t j = n;
+  while (j < s.size() && (s[j] == ' ' || s[j] == '\t')) ++j;
+  if (j == n) return s;
+
+  // A dash whose only content is more dashes is punctuation someone dictated, not a speaker mark.
+  if (j >= s.size() || s[j] == '-') return s;
+  return s.substr(j);
+}
+
 }  // namespace audionotes

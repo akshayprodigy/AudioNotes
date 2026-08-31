@@ -3,29 +3,32 @@ import { LayoutAnimation, Pressable, ScrollView, StyleSheet, View } from 'react-
 import Icon from '../../components/Icon';
 import { Raised, Txt } from '../../components/ui';
 import { radius, s, useTheme, type Colors } from '../../theme';
-import type { Minute } from '../../pipeline/types';
+import type { Minute, MinuteKind } from '../../pipeline/types';
 import { db } from '../../db/queries';
-import { Empty, SectionHead, sentenceCase, splitAction } from './shared';
+import {
+  Empty,
+  EditedTag,
+  MineTag,
+  SectionHead,
+  ToolButton,
+  editedText,
+  isEdited,
+  itemKey,
+  minuteText,
+  sentenceCase,
+  splitAction,
+  type EditMap,
+} from './shared';
 
 /**
- * A stable key for one action item.
+ * Re-exported, not reimplemented.
  *
- * NOT the minutes row id: those are deleted and re-inserted every time a meeting is reprocessed or
- * its speakers are merged, so keying on them would silently uncheck everything the user had worked
- * through. Normalised text survives all of that, and changes only when the wording does — which is
- * the case where an unticked box is the right answer anyway.
- *
- * Hashes the STORED content, owner suffix and all, so it must keep seeing what the database holds
- * rather than what splitAction shows the reader. Exported for the test that pins the normalisation.
+ * This used to be a second copy of the hash, which — with the Kotlin mirror in ItemKey.kt — made
+ * three. Every copy is a chance for a tick to silently detach from the item it belongs to, and
+ * `edits` now hangs off the same key, so a drift would lose a person's correction as well as
+ * their tick. The test imports it from here because that is where it first lived.
  */
-export function itemKey(content: string): string {
-  const norm = content.trim().toLowerCase().replace(/\s+/g, ' ');
-  let h = 0;
-  for (let i = 0; i < norm.length; i++) {
-    h = (h * 31 + norm.charCodeAt(i)) | 0;
-  }
-  return `${norm.length}:${h}`;
-}
+export { itemKey } from './shared';
 
 /** One row of the worklist. */
 function Item({
@@ -33,19 +36,38 @@ function Item({
   on,
   onToggle,
   colors,
+  content,
+  edited,
+  mine,
+  onEdit,
+  onRevert,
+  onRemove,
 }: {
   m: Minute;
   on: boolean;
   onToggle: () => void;
   colors: Colors;
+  /** What to show — the user's correction where there is one. Never what the tick is keyed on. */
+  content?: string;
+  edited?: boolean;
+  mine?: boolean;
+  onEdit?: () => void;
+  onRevert?: () => void;
+  onRemove?: () => void;
 }) {
   const st = React.useMemo(() => makeStyles(colors), [colors]);
-  const { text, owner, due } = splitAction(m.content);
+  const { text, owner, due } = splitAction(content ?? minuteText(m));
   return (
     <Pressable
       accessibilityRole="checkbox"
       accessibilityState={{ checked: on }}
       accessibilityLabel={text}
+      accessibilityHint={onEdit ? 'Long press to correct this item' : undefined}
+      accessibilityActions={onEdit ? [{ name: 'longpress', label: 'Correct this item' }] : undefined}
+      onAccessibilityAction={e => {
+        if (e.nativeEvent.actionName === 'longpress') onEdit?.();
+      }}
+      onLongPress={onEdit}
       onPress={onToggle}>
       <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={on ? 2 : 4}>
         <View style={st.check}>
@@ -87,6 +109,13 @@ function Item({
                 ) : null}
               </View>
             ) : null}
+            {/* Not shown on a ticked row: a finished item is proof of work, and the marks belong
+                to working on it. */}
+            {!on && mine ? (
+              <MineTag colors={colors} onRemove={onRemove} />
+            ) : !on && edited ? (
+              <EditedTag colors={colors} onRevert={onRevert} />
+            ) : null}
           </View>
         </View>
       </Raised>
@@ -105,14 +134,60 @@ function Item({
 export default function ActionsTab({
   meetingId,
   minutes,
+  edits,
+  onEditItem,
+  onRevertItem,
+  onRemoveItem,
+  onAdd,
 }: {
   meetingId: string;
   minutes: Minute[];
+  edits?: EditMap;
+  onEditItem?: (m: Minute) => void;
+  onRevertItem?: (key: string) => void;
+  onRemoveItem?: (id: string) => void;
+  onAdd?: (kind: MinuteKind) => void;
 }) {
   const { colors } = useTheme();
   const st = React.useMemo(() => makeStyles(colors), [colors]);
   const [done, setDone] = React.useState<Set<string>>(new Set());
   const [showDone, setShowDone] = React.useState(false);
+  const ed: EditMap = edits ?? new Map();
+
+  /**
+   * One row, wired for correction.
+   *
+   * The tick key comes from the STORED text and never from the correction. That is the whole
+   * reason edits live in a side table: rewriting a minute in place would change its hash and
+   * silently untick it, so fixing a typo in an item you had already done would undo it.
+   */
+  const row = React.useCallback(
+    (m: Minute, on: boolean, fallbackKey: string) => {
+      // itemKey(m.content), not itemKey(displayed): the tick above and the export renderer in
+      // Kotlin both hash the stored column, and three keys for one item is how a correction goes
+      // missing from the document somebody sends out.
+      const key = itemKey(m.content);
+      return (
+        <Item
+          key={m.id ?? fallbackKey}
+          m={m}
+          on={on}
+          onToggle={() => toggle(m.content)}
+          colors={colors}
+          content={editedText(ed, 'minute', key, minuteText(m))}
+          edited={isEdited(ed, 'minute', key)}
+          mine={m.source === 'user'}
+          onEdit={onEditItem ? () => onEditItem(m) : undefined}
+          onRevert={onRevertItem ? () => onRevertItem(key) : undefined}
+          onRemove={
+            onRemoveItem && m.source === 'user' && m.id ? () => onRemoveItem(m.id) : undefined
+          }
+        />
+      );
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ed, colors, onEditItem, onRevertItem, onRemoveItem],
+  );
 
   React.useEffect(() => {
     let alive = true;
@@ -149,6 +224,10 @@ export default function ActionsTab({
     [meetingId],
   );
 
+  /** The text to display for a read-only row: the correction where there is one. */
+  const shown = (m: Minute) =>
+    editedText(ed, 'minute', itemKey(m.content), minuteText(m)) ?? minuteText(m);
+
   const nothing = actions.length === 0 && decisions.length === 0 && questions.length === 0;
   const todo = actions.filter(m => !done.has(itemKey(m.content)));
   const finished = actions.filter(m => done.has(itemKey(m.content)));
@@ -157,6 +236,21 @@ export default function ActionsTab({
   return (
     <ScrollView contentContainerStyle={st.pad} showsVerticalScrollIndicator={false}>
       {nothing ? <Empty text="Nothing to act on came out of this meeting." colors={colors} /> : null}
+
+      {/* Above the list, not below it: the model missing an action is exactly the case where the
+          list is short or empty, and a control at the foot of an empty list is a control nobody
+          finds. */}
+      {onAdd ? (
+        <View style={st.addRow}>
+          <ToolButton
+            icon="plus"
+            label="Add an action"
+            hint="Add something somebody owes that the app did not pick up"
+            colors={colors}
+            onPress={() => onAdd('action')}
+          />
+        </View>
+      ) : null}
 
       {actions.length > 0 ? (
         <>
@@ -174,17 +268,7 @@ export default function ActionsTab({
           </View>
 
           {todo.length > 0 ? (
-            <View style={st.list}>
-              {todo.map((m, i) => (
-                <Item
-                  key={m.id ?? `t${i}`}
-                  m={m}
-                  on={false}
-                  onToggle={() => toggle(m.content)}
-                  colors={colors}
-                />
-              ))}
-            </View>
+            <View style={st.list}>{todo.map((m, i) => row(m, false, `t${i}`))}</View>
           ) : (
             <Empty text="Everything here is done." colors={colors} />
           )}
@@ -212,17 +296,7 @@ export default function ActionsTab({
                 </View>
               </Pressable>
               {showDone ? (
-                <View style={st.list}>
-                  {finished.map((m, i) => (
-                    <Item
-                      key={m.id ?? `d${i}`}
-                      m={m}
-                      on
-                      onToggle={() => toggle(m.content)}
-                      colors={colors}
-                    />
-                  ))}
-                </View>
+                <View style={st.list}>{finished.map((m, i) => row(m, true, `d${i}`))}</View>
               ) : null}
             </>
           ) : null}
@@ -238,7 +312,7 @@ export default function ActionsTab({
                 <View style={st.plain}>
                   <View style={[st.rule, { backgroundColor: colors.primary }]} />
                   <Txt variant="prose" style={st.flex}>
-                    {sentenceCase(splitAction(m.content).text)}
+                    {sentenceCase(splitAction(shown(m)).text)}
                   </Txt>
                 </View>
               </Raised>
@@ -261,7 +335,7 @@ export default function ActionsTab({
                 <View style={st.plain}>
                   <View style={[st.rule, { backgroundColor: colors.success }]} />
                   <Txt variant="prose" style={st.flex}>
-                    {sentenceCase(splitAction(m.content).text)}
+                    {sentenceCase(splitAction(shown(m)).text)}
                   </Txt>
                 </View>
               </Raised>
@@ -278,6 +352,7 @@ function makeStyles(c: Colors) {
     pad: { paddingHorizontal: s(16), paddingBottom: s(30), gap: s(12) },
     list: { gap: s(10) },
     heading: { marginTop: s(10) },
+    addRow: { flexDirection: 'row', paddingHorizontal: s(2), paddingTop: s(2) },
     flex: { flex: 1 },
     progressRow: { gap: s(8), paddingHorizontal: s(2) },
     track: { height: s(6), borderRadius: s(3), backgroundColor: c.cardAlt, overflow: 'hidden' },

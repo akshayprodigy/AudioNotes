@@ -66,11 +66,40 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
     }
     // Checked here rather than in JS, for the same reason Narrator.run checks there: a gate in
     // the bundle is a gate anyone can edit. This is the one that has to hold.
-    if (ModelCatalog.needsSubscription(spec) && !LicenceStore.current(ctx).isPaid) {
+    // entitled(), not isPaid: an entitlement to run a model the phone is not allowed to download
+    // is a trial of nothing.
+    if (ModelCatalog.needsSubscription(spec) && !LicenceStore.entitled(ctx)) {
       promise.reject(
         "subscription_required",
         "${spec.name} is part of the subscription.",
       )
+      return
+    }
+    // Already on disk? Then this is a no-op, and must not touch the network.
+    //
+    // Nothing upstream checked. Onboarding, Settings and the paywall all call download() for every
+    // model they want, so re-entering onboarding re-fetched the whole 114 MB — over the user's
+    // mobile data, under a screen that says "Downloading once", and now off our own mirror's
+    // egress. Observed on a device: libonnxruntime.so and silero_vad.onnx were both served again
+    // in full, byte for byte, having never left the phone.
+    //
+    // Guarded here rather than in each caller because this is the one path all three share, which
+    // is the same reason the subscription check above lives here.
+    //
+    // "Installed" means exactly what list() means by it: present AND the catalog's size. An
+    // interrupted download lives in a .part file and never has this name; a swapped model changes
+    // the size. Re-hashing 1.1 GB on every call to catch what download() already verified once
+    // would cost more than the case is worth.
+    val present = File(ModelCatalog.modelsDir(ctx), spec.filename)
+    if (present.exists() && present.length() == spec.sizeBytes) {
+      // A leftover .part is garbage once the real file is complete, and returning early is what
+      // makes it permanent: nothing else ever looks at these. Before this early return, a later
+      // download resumed into the .part and eventually renamed it away, so the leak had no way to
+      // last. Interrupt the 1.1 GB writer model and get it another way and that is a gigabyte kept
+      // for nothing, on a phone, forever.
+      File(present.parentFile, spec.filename + ".part").delete()
+      emitProgress(id, present.length(), present.length())
+      promise.resolve(present.absolutePath)
       return
     }
     Thread {

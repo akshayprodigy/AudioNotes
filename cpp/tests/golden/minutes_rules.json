@@ -32,7 +32,7 @@
  "output": [
   {
    "kind": "summary",
-   "content": "2 action items, 1 decision, 1 open question.",
+   "content": "Decided: The decision is final: we ship on Monday. Next: Priya should send the report by next week. — Priya (due next week); This will need to be fixed by Friday. — Unassigned (due by Friday). 2 action items, 1 decision, 1 open question.",
    "source": "rule"
   },
   {

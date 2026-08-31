@@ -81,9 +81,12 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeVad(
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeTranscribe(
     JNIEnv* env, jobject /*thiz*/, jstring jPcmPath, jstring jModelPath, jint sampleRate,
-    jlongArray jStarts, jlongArray jEnds, jint threads) {
+    jlongArray jStarts, jlongArray jEnds, jint threads, jstring jLanguage) {
   const std::string pcm = jstr(env, jPcmPath);
   const std::string model = jstr(env, jModelPath);
+  // Empty means the caller has no opinion, which is what WhisperAsr spells "auto".
+  std::string language = jstr(env, jLanguage);
+  if (language.empty()) language = "auto";
 
   std::vector<audionotes::Segment> segs;
   const jsize n = env->GetArrayLength(jStarts);
@@ -100,7 +103,7 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeTranscribe(
 
   std::string json = "[";
   try {
-    audionotes::WhisperAsr asr(model);
+    audionotes::WhisperAsr asr(model, language);
     auto utts = asr.transcribe(pcm, segs, static_cast<int>(sampleRate), static_cast<int>(threads));
     for (size_t i = 0; i < utts.size(); ++i) {
       if (i) json += ",";

@@ -1,5 +1,5 @@
 import { parseProse, sentenceCase, splitAction } from '../src/screens/meeting/shared';
-import { toTurns } from '../src/screens/meeting/TranscriptTab';
+import { activeTurn, toTurns } from '../src/screens/meeting/TranscriptTab';
 import type { Utterance } from '../src/pipeline/types';
 
 /**
@@ -131,9 +131,14 @@ describe('toTurns', () => {
       idx,
     );
     expect(turns).toHaveLength(2);
-    expect(turns[0].lines).toEqual(['One.', 'Two.']);
-    expect(turns[1].lines).toEqual(['Three.']);
+    expect(turns[0].parts.map(p => p.text)).toEqual(['One.', 'Two.']);
+    expect(turns[1].parts.map(p => p.text)).toEqual(['Three.']);
     expect(turns[1].who).toBe('Speaker 2');
+
+    // Each part keeps its own utterance id and start, which is what a tap-to-play and a
+    // correction are keyed on. Folding them into one string lost both.
+    expect(turns[0].parts.map(p => p.id)).toEqual(['a', 'a2']);
+    expect(turns[0].parts.map(p => p.startMs)).toEqual([0, 1500]);
   });
 
   // A turn is the unit FlatList virtualises. Left unbounded, an eighteen-minute monologue becomes
@@ -142,7 +147,7 @@ describe('toTurns', () => {
     const many = Array.from({ length: 20 }, (_, i) => u(`u${i}`, 's1', i * 1000, `Line ${i}.`));
     const turns = toTurns(many, names, idx);
     expect(turns.length).toBeGreaterThan(1);
-    for (const t of turns) expect(t.lines.length).toBeLessThanOrEqual(8);
+    for (const t of turns) expect(t.parts.length).toBeLessThanOrEqual(8);
   });
 
   it('starts a new turn after a long pause by the same speaker', () => {
@@ -154,6 +159,59 @@ describe('toTurns', () => {
   it('drops utterances with no words rather than showing an empty bubble', () => {
     const turns = toTurns([u('a', 's1', 0, '   '), u('b', 's1', 1000, 'Real.')], names, idx);
     expect(turns).toHaveLength(1);
-    expect(turns[0].lines).toEqual(['Real.']);
+    expect(turns[0].parts.map(p => p.text)).toEqual(['Real.']);
+  });
+});
+
+/**
+ * Which transcript turn is lit while the recording plays.
+ *
+ * The highlight is the whole point of playback here: it is what lets somebody read a line and
+ * hear the same line, which is how you check a transcript you do not fully trust.
+ */
+describe('activeTurn', () => {
+  const nameById = new Map<string, string>();
+  const indexById = new Map<string, number>();
+  const utt = (id: string, startMs: number, endMs: number, text: string): Utterance => ({
+    id,
+    meetingId: 'm1',
+    startMs,
+    endMs,
+    speakerId: id,
+    text,
+  });
+  // Distinct speaker ids so each utterance becomes its own turn, one part each.
+  const turns = toTurns(
+    [
+      utt('a', 0, 4_000, 'First thing.'),
+      utt('b', 10_000, 14_000, 'Second thing.'),
+      utt('c', 30_000, 34_000, 'Third thing.'),
+    ],
+    nameById,
+    indexById,
+  );
+
+  it('lights nothing before playback has started', () => {
+    expect(activeTurn(turns, 0)).toBe(-1);
+  });
+
+  it('lights the turn being spoken', () => {
+    expect(activeTurn(turns, 2_000)).toBe(0);
+    expect(activeTurn(turns, 12_000)).toBe(1);
+    expect(activeTurn(turns, 33_000)).toBe(2);
+  });
+
+  /**
+   * VAD trims silence, so the playhead spends a good part of any meeting between two segments. A
+   * highlight that blinked off in every pause would flicker its way down the screen.
+   */
+  it('holds the last turn through the silence after it', () => {
+    expect(activeTurn(turns, 7_000)).toBe(0);
+    expect(activeTurn(turns, 25_000)).toBe(1);
+    expect(activeTurn(turns, 999_000)).toBe(2);
+  });
+
+  it('has no opinion about an empty transcript', () => {
+    expect(activeTurn([], 5_000)).toBe(-1);
   });
 });

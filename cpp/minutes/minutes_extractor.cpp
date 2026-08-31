@@ -159,6 +159,150 @@ bool isQuestion(const std::string& sentence) {
   return std::regex_search(t, QUESTION_WORDS) && t.size() < 160;
 }
 
+// ---- The free-tier summary ------------------------------------------------------------------
+//
+// Parity port of composeSummary() in src/pipeline/minutes.ts. These rows are what the device
+// actually writes, so this — not the JS — is the paragraph a free user exports and forwards.
+
+// How many items the overview quotes before it stops being an overview.
+constexpr size_t LEAD_DECISIONS = 2;
+constexpr size_t LEAD_ACTIONS = 3;
+// Rule items are whole sentences lifted from the transcript, and people speak in long ones.
+constexpr size_t LEAD_ITEM_CHARS = 160;
+
+// detectOwner writes this exact word when it cannot find a name, so the check is a substring.
+const char* const UNASSIGNED = " \xE2\x80\x94 Unassigned";  // " — Unassigned"
+
+/**
+ * The length JavaScript would report: UTF-16 code units, not bytes and not codepoints.
+ *
+ * `leadItem` clips at 160 *characters*, and the strings being clipped are full of em dashes and
+ * curly quotes — three bytes each, one unit each. Counting bytes would clip a different sentence
+ * here than in JS and the golden fixtures would only agree on pure ASCII.
+ */
+size_t utf16Length(const std::string& s) {
+  size_t n = 0;
+  for (size_t i = 0; i < s.size();) {
+    const unsigned char c = static_cast<unsigned char>(s[i]);
+    size_t adv = 1;
+    if (c >= 0xF0) adv = 4;
+    else if (c >= 0xE0) adv = 3;
+    else if (c >= 0xC0) adv = 2;
+    n += (adv == 4) ? 2 : 1;  // astral codepoints are a surrogate PAIR in UTF-16
+    i += adv;
+  }
+  return n;
+}
+
+/**
+ * The byte prefix holding the first [units] UTF-16 code units.
+ *
+ * One deliberate departure from JS: `slice` can cut a surrogate pair in half, leaving a lone
+ * surrogate. UTF-8 cannot represent that, so an astral character straddling the boundary is
+ * dropped whole. It is a 160th-character emoji; the alternative is invalid output.
+ */
+std::string clipUtf16(const std::string& s, size_t units) {
+  size_t n = 0;
+  for (size_t i = 0; i < s.size();) {
+    const unsigned char c = static_cast<unsigned char>(s[i]);
+    size_t adv = 1;
+    if (c >= 0xF0) adv = 4;
+    else if (c >= 0xE0) adv = 3;
+    else if (c >= 0xC0) adv = 2;
+    const size_t next = n + ((adv == 4) ? 2 : 1);
+    if (next > units) return s.substr(0, i);
+    n = next;
+    i += adv;
+  }
+  return s;
+}
+
+/** JS: t.replace(/\s+/g,' ').trim(), clip on a word boundary, then strip trailing [.;,]+ */
+std::string leadItem(const std::string& text) {
+  std::string t = collapseWhitespace(text);  // == replace(/\s+/g,' ').trim() for ASCII whitespace
+  if (utf16Length(t) > LEAD_ITEM_CHARS) {
+    t = clipUtf16(t, LEAD_ITEM_CHARS);
+    // JS: replace(/\s+\S*$/, '') — drop the trailing partial word AND the space run before it.
+    // The regex needs at least one space, so a 160-character run with none in it is left alone.
+    size_t end = t.size();
+    while (end > 0 && !std::isspace(static_cast<unsigned char>(t[end - 1]))) --end;
+    if (end > 0) {
+      while (end > 0 && std::isspace(static_cast<unsigned char>(t[end - 1]))) --end;
+      t.resize(end);
+    }
+    t += "\xE2\x80\xA6";  // …
+  }
+  size_t b = t.size();
+  while (b > 0 && (t[b - 1] == '.' || t[b - 1] == ';' || t[b - 1] == ',')) --b;
+  t.resize(b);
+  return t;
+}
+
+std::string joinLead(const std::vector<std::string>& items) {
+  std::string out;
+  for (size_t i = 0; i < items.size(); ++i) {
+    if (i) out += "; ";
+    out += leadItem(items[i]);
+  }
+  return out;
+}
+
+}  // namespace
+
+/**
+ * The overview line at the top of the rule-based minutes.
+ *
+ * It used to be the tally alone — "12 action items, 3 decisions, 5 open questions." Every word of
+ * that is true and none of it says what the meeting was, which made an exported document read
+ * like a receipt for work the app had done rather than a record of what was agreed. So it now
+ * leads with what was decided and who owes what, and keeps the tally as the closing sentence so
+ * nothing that used to be there is lost. Actions with a named owner are quoted ahead of unowned
+ * ones because "Priya will send the report by Friday" is worth more to a reader than an
+ * obligation nobody has taken.
+ *
+ * A meeting with neither decisions nor actions composes to exactly the old tally sentence, which
+ * is the honest thing to say about it.
+ *
+ * Word-for-word identical to composeSummary() in src/pipeline/minutes.ts, and held there by the
+ * shared fixtures in cpp/tests/golden.
+ */
+std::string composeSummary(const std::vector<std::string>& decisions,
+                           const std::vector<std::string>& actions,
+                           const std::vector<std::string>& questions) {
+  const std::string tally =
+      std::to_string(actions.size()) + " action item" + (actions.size() == 1 ? "" : "s") + ", " +
+      std::to_string(decisions.size()) + " decision" + (decisions.size() == 1 ? "" : "s") + ", " +
+      std::to_string(questions.size()) + " open question" + (questions.size() == 1 ? "" : "s") +
+      ".";
+
+  std::vector<std::string> sentences;
+  if (!decisions.empty()) {
+    std::vector<std::string> lead(decisions.begin(),
+                                  decisions.begin() + std::min(LEAD_DECISIONS, decisions.size()));
+    sentences.push_back("Decided: " + joinLead(lead) + ".");
+  }
+  if (!actions.empty()) {
+    std::vector<std::string> ordered;
+    ordered.reserve(actions.size());
+    for (const auto& a : actions)
+      if (a.find(UNASSIGNED) == std::string::npos) ordered.push_back(a);
+    for (const auto& a : actions)
+      if (a.find(UNASSIGNED) != std::string::npos) ordered.push_back(a);
+    ordered.resize(std::min(LEAD_ACTIONS, ordered.size()));
+    sentences.push_back("Next: " + joinLead(ordered) + ".");
+  }
+  sentences.push_back(tally);
+
+  std::string out;
+  for (size_t i = 0; i < sentences.size(); ++i) {
+    if (i) out += " ";
+    out += sentences[i];
+  }
+  return out;
+}
+
+namespace {
+
 }  // namespace
 
 std::vector<DraftMinute> extractMinutes(const std::vector<MinuteUtt>& utterances,
@@ -209,12 +353,15 @@ std::vector<DraftMinute> extractMinutes(const std::vector<MinuteUtt>& utterances
   if (decisions.size() > 20) decisions.resize(20);
   if (questions.size() > 20) questions.resize(20);
 
+  auto contents = [](const std::vector<DraftMinute>& v) {
+    std::vector<std::string> out;
+    out.reserve(v.size());
+    for (const auto& d : v) out.push_back(d.content);
+    return out;
+  };
   DraftMinute summary{
       "summary",
-      std::to_string(actions.size()) + " action item" + (actions.size() == 1 ? "" : "s") + ", " +
-          std::to_string(decisions.size()) + " decision" + (decisions.size() == 1 ? "" : "s") +
-          ", " + std::to_string(questions.size()) + " open question" +
-          (questions.size() == 1 ? "" : "s") + ".",
+      composeSummary(contents(decisions), contents(actions), contents(questions)),
       "rule"};
 
   std::vector<DraftMinute> out;

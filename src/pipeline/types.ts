@@ -62,12 +62,61 @@ export type MinuteKind =
   | 'action'
   | 'question';
 
+/**
+ * Where a minute came from.
+ *
+ * `user` rows are items a person typed themselves — a decision the model missed, an action nobody
+ * said out loud. They are stored in the same table on purpose: every kind-based filter picks them
+ * up with no extra code, they export and back up for free, and `replaceMinutes` is scoped by
+ * source so reprocessing can never delete them.
+ */
+export type MinuteSource = 'rule' | 'llm' | 'user';
+
 export interface Minute {
   id: string;
   meetingId: string;
   kind: MinuteKind;
   content: string;
-  source: 'rule' | 'llm';
+  source: MinuteSource;
+}
+
+/** What a person edited by hand, keyed to the original text the pipeline wrote. */
+export type EditTarget = 'utterance' | 'minute' | 'summary' | 'narrative';
+
+export interface Edit {
+  meetingId: string;
+  targetKind: EditTarget;
+  targetKey: string;
+  content: string;
+  editedAt: number;
+}
+
+/**
+ * One full-text hit.
+ *
+ * `kind` says what was matched so the result can be labelled, and `startMs` carries the moment a
+ * transcript hit was spoken so tapping it can open the meeting at that point. The snippet arrives
+ * with matched terms wrapped in U+0002/U+0003 — control characters chosen because no transcript
+ * will ever contain them, so splitting on them cannot corrupt real text.
+ */
+export interface SearchHit {
+  meetingId: string;
+  kind: 'utterance' | 'title' | 'minute' | 'summary';
+  refId: string | null;
+  startMs: number;
+  snippet: string;
+  score: number;
+}
+
+/** An action item lifted out of its meeting, for the cross-meeting worklist. */
+export interface ActionRow {
+  meetingId: string;
+  meetingTitle: string;
+  createdAt: number;
+  content: string;
+  source: MinuteSource;
+  itemKey: string;
+  done: boolean;
 }
 
 export interface StageProgress {

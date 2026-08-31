@@ -1,5 +1,6 @@
 import React from 'react';
 import Svg, { Path, Circle, Line, Polyline, Rect } from 'react-native-svg';
+import { useTheme } from '../theme';
 
 // Curated stroke-icon set (Feather-style, MIT-derived geometry). Themeable via `color`.
 export type IconName =
@@ -36,7 +37,13 @@ export type IconName =
   | 'more'
   | 'sliders'
   | 'help'
-  | 'x';
+  | 'x'
+  | 'play'
+  | 'copy'
+  | 'filter'
+  | 'inbox'
+  | 'undo'
+  | 'volume';
 
 interface Props {
   name: IconName;
@@ -45,9 +52,16 @@ interface Props {
   strokeWidth?: number;
 }
 
-export default function Icon({ name, size = 24, color = '#000', strokeWidth = 2 }: Props) {
+export default function Icon({ name, size = 24, color, strokeWidth = 2 }: Props) {
+  const { colors } = useTheme();
+  // An icon with nothing said about it is a secondary glyph — a chevron, an affordance beside a
+  // label — so it takes the muted ink rather than the full-strength one. It has to come from the
+  // theme even though every call site in the app passes a colour today: a fixed grey is the kind
+  // of default that survives a dozen new call sites and then shows up as the one washed-out glyph
+  // on a dark screen.
+  const tint = color ?? colors.inkDim;
   const common = {
-    stroke: color,
+    stroke: tint,
     strokeWidth,
     strokeLinecap: 'round' as const,
     strokeLinejoin: 'round' as const,
@@ -55,7 +69,7 @@ export default function Icon({ name, size = 24, color = '#000', strokeWidth = 2 
   };
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
-      {render(name, common, color)}
+      {render(name, common, tint)}
     </Svg>
   );
 }
@@ -278,6 +292,40 @@ function render(name: IconName, c: object, color: string) {
         <>
           <Line x1="18" y1="6" x2="6" y2="18" {...c} />
           <Line x1="6" y1="6" x2="18" y2="18" {...c} />
+        </>
+      );
+    // Filled, unlike the rest of the set: a transport control reads as a solid target, and a
+    // hollow triangle beside the solid pause bars looks like a different control entirely.
+    case 'play':
+      return <Path d="M7 4.5 19.5 12 7 19.5Z" {...c} fill={color} />;
+    case 'copy':
+      return (
+        <>
+          <Rect x="9" y="9" width="12" height="12" rx="2.5" {...c} />
+          <Path d="M6 15H4.5A1.5 1.5 0 0 1 3 13.5V4.5A1.5 1.5 0 0 1 4.5 3h9A1.5 1.5 0 0 1 15 4.5V6" {...c} />
+        </>
+      );
+    case 'filter':
+      return <Path d="M3 5h18l-7 8v6l-4 2v-8Z" {...c} />;
+    case 'inbox':
+      return (
+        <>
+          <Path d="M3 13h5l1.5 3h5L16 13h5" {...c} />
+          <Path d="M5.5 5h13l2.5 8v4.5A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5V13Z" {...c} />
+        </>
+      );
+    case 'undo':
+      return (
+        <>
+          <Polyline points="4 8 4 14 10 14" {...c} />
+          <Path d="M4.5 14a8 8 0 1 1 2 5" {...c} />
+        </>
+      );
+    case 'volume':
+      return (
+        <>
+          <Path d="M4 9.5h3.5L12 5.5v13L7.5 14.5H4Z" {...c} />
+          <Path d="M16 9a4.5 4.5 0 0 1 0 6" {...c} />
         </>
       );
     default:

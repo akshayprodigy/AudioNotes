@@ -39,8 +39,11 @@ function fmt(ms: number): string {
   return `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`;
 }
 
-const PROMISES: { icon: IconName; label: string; tone: 'primary' | 'success' | 'warning' }[] = [
-  { icon: 'shield', label: 'No upload', tone: 'primary' },
+// `primaryDeep` rather than `primary`, and the two are the same value in light. These three run at
+// 11pt on a tinted tile, which is the size at which the brand indigo stops being readable on a dark
+// card — the deep variants exist for exactly this, foreground rather than fill.
+const PROMISES: { icon: IconName; label: string; tone: 'primaryDeep' | 'success' | 'warning' }[] = [
+  { icon: 'shield', label: 'No upload', tone: 'primaryDeep' },
   { icon: 'lock', label: 'Encrypted', tone: 'success' },
   { icon: 'list', label: 'You delete', tone: 'warning' },
 ];
@@ -148,7 +151,7 @@ export default function RecordScreen({ navigation }: Props) {
           <View style={st.consentHero}>
             <Mascot mood="happy" size={sv(150)} />
             <View style={st.onDevice}>
-              <Txt variant="metaBlack" color={colors.primary}>
+              <Txt variant="metaBlack" color={colors.primaryDeep}>
                 100% on this device
               </Txt>
             </View>
@@ -214,7 +217,7 @@ export default function RecordScreen({ navigation }: Props) {
         <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
           <Defs>
             <RadialGradient id="warm" cx="50%" cy="62%" rx="112%" ry="39%">
-              <Stop offset="0" stopColor="#FFF0F0" />
+              <Stop offset="0" stopColor={colors.warmWash} />
               <Stop offset="1" stopColor={colors.canvas} />
             </RadialGradient>
           </Defs>

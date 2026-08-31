@@ -14,6 +14,8 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.innocorelabs.verbale.R
 import com.innocorelabs.verbale.data.AudioDb
+import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 
 /**
@@ -24,6 +26,16 @@ import java.util.concurrent.ConcurrentLinkedQueue
  */
 class ProcessingService : Service() {
   private val queue = ConcurrentLinkedQueue<String>()
+
+  /**
+   * Ids whose next run must narrate again even though prose already exists.
+   *
+   * A set beside the queue rather than a field on a job object, so `queue.contains(id)` — the
+   * dedupe that stops a double-tap running a meeting twice — keeps working unchanged. It also
+   * gives the right answer for a force landing on an id that is ALREADY queued: the pending run is
+   * upgraded to a forced one rather than being dropped as a duplicate and silently doing nothing.
+   */
+  private val forced: MutableSet<String> = Collections.newSetFromMap(ConcurrentHashMap())
 
   // Guards `running` and `currentId` together so an id enqueued while the worker is in its
   // finally-block teardown (wake-lock release -> stopForeground -> stopSelf, several IPCs) is never
@@ -48,6 +60,7 @@ class ProcessingService : Service() {
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     val id = intent?.getStringExtra(EXTRA_MEETING_ID)
+    if (id != null && intent.getBooleanExtra(EXTRA_FORCE, false)) forced.add(id)
     val shouldStart = synchronized(lock) {
       lastStartId = startId
       if (id != null && id != currentId && !queue.contains(id)) queue.add(id)
@@ -78,6 +91,9 @@ class ProcessingService : Service() {
           val id = queue.poll()
           if (id == null) { running = false; return@synchronized null } // exit decided under the same lock as enqueue
           currentId = id
+          // Removed as it is consumed: a forced run happens once. Leaving the flag set would make
+          // every later sweep of this meeting rewrite the summary it just wrote.
+          val force = forced.remove(id)
           ProcessingEngine(this, id, "base", object : ProcessingEngine.Listener {
             override fun onStage(stage: String, done: Int, total: Int) {
               try { updateNotification(stageLabel(stage)) } catch (_: Exception) {}
@@ -94,7 +110,7 @@ class ProcessingService : Service() {
                 postNotesReady(id)
               }
             }
-          }).also { current = it }
+          }, force).also { current = it }
         } ?: break
         try { updateNotification(LABEL_TRANSCRIBING) } catch (_: Exception) {
           // POST_NOTIFICATIONS denied or similar. Processing is unaffected; only the control
@@ -223,6 +239,7 @@ class ProcessingService : Service() {
 
   companion object {
     private const val EXTRA_MEETING_ID = "meetingId"
+    private const val EXTRA_FORCE = "force"
     private const val NOTIF_ID = 43
     private const val CHANNEL_ID = "audionotes.processing"
     private const val LABEL_TRANSCRIBING = "Transcribing meeting…"
@@ -233,8 +250,10 @@ class ProcessingService : Service() {
     @Volatile private var instance: ProcessingService? = null
     /** Start/queue processing for a meeting. MUST be called while the app is in the foreground
      *  (Android forbids starting a background FGS) — callers do so right after Stop / on app open. */
-    fun enqueue(ctx: Context, meetingId: String) {
-      val i = Intent(ctx, ProcessingService::class.java).putExtra(EXTRA_MEETING_ID, meetingId)
+    fun enqueue(ctx: Context, meetingId: String, force: Boolean = false) {
+      val i = Intent(ctx, ProcessingService::class.java)
+        .putExtra(EXTRA_MEETING_ID, meetingId)
+        .putExtra(EXTRA_FORCE, force)
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ctx.startForegroundService(i) else ctx.startService(i)
     }
     /** Cancel a queued or running meeting inside the service, if it's alive. `ctx` is unused today

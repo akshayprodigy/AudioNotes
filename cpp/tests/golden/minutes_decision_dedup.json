@@ -24,7 +24,7 @@
  "output": [
   {
    "kind": "summary",
-   "content": "0 action items, 1 decision, 0 open questions.",
+   "content": "Decided: We decided to go with Plan A. 0 action items, 1 decision, 0 open questions.",
    "source": "rule"
   },
   {

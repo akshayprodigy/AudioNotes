@@ -25,6 +25,15 @@ export interface Colors {
 
   primary: string;
   primaryLight: string; // gradient end
+  // The lighter TOP of a primary gradient fill — the CTA button and the record button both run
+  // this into `primary`. It is a shade of its own in the design, not `primaryLight`, which is the
+  // end of the 135deg card gradients.
+  primaryTop: string;
+  // Primary used as FOREGROUND — a label or glyph sitting on a card or a tinted fill, the same
+  // role `successDeep` and `warningDeep` play for their hues. In light it is `primary` exactly,
+  // because #4A56D2 already reads on a pale ground; in dark it has to LIFT, since the brand indigo
+  // at #5F6BE0 only clears 3.6:1 on a near-black card and small type disappears into it.
+  primaryDeep: string;
   primaryEdge: string; // hard shadow under primary surfaces
   primarySoft: string;
   primarySoft2: string; // gradient end for tinted fills
@@ -55,6 +64,25 @@ export interface Colors {
   blush: string;
   handle: string;
 
+  // Asleep / not-running. The mascot's body when it is dozing and the PiP mic button when capture
+  // is paused are the same idea — present, obviously inert — and they need the same three-part
+  // treatment every live surface gets: a lighter gradient top, a fill, and a hard shadow under it.
+  dormantLight: string;
+  dormant: string;
+  dormantEdge: string;
+
+  // Pip's face plate and the features drawn on it. These do NOT follow the page: the face stays a
+  // light disc in both themes (that is the character), so its eyes and mouth must stay dark in
+  // both. Reaching for `card`/`ink` here would give the dark theme a white-on-white face.
+  mascotFace: string;
+  mascotEye: string;
+  mascotBlush: string;
+
+  /** Full-bleed dim behind a modal sheet, drawn at low opacity over whatever is beneath. */
+  scrim: string;
+  /** The warm radial wash behind the live recorder, fading out into `canvas`. */
+  warmWash: string;
+
   speakers: readonly string[];
   speakersSoft: readonly string[];
 
@@ -84,6 +112,8 @@ export const lightColors: Colors = {
 
   primary: '#4A56D2',
   primaryLight: '#6C74E8',
+  primaryTop: '#5A66DE',
+  primaryDeep: '#4A56D2',
   primaryEdge: '#3A45B4',
   primarySoft: '#EEF0FF',
   primarySoft2: '#DFE3FF',
@@ -114,6 +144,17 @@ export const lightColors: Colors = {
   blush: '#FFC9CE',
   handle: '#C9CEDD',
 
+  dormantLight: '#A2A8BC',
+  dormant: '#8A90A6',
+  dormantEdge: '#7C84A6',
+
+  mascotFace: '#FFFFFF',
+  mascotEye: '#16192C',
+  mascotBlush: '#FFC9CE',
+
+  scrim: '#0B1030',
+  warmWash: '#FFF0F0',
+
   speakers: ['#4A56D2', '#12A870', '#C77700', '#8B5CF6', '#0EA5C4', '#E4576B'],
   speakersSoft: ['#EEF0FF', '#E9FBF1', '#FFF3DF', '#F3EDFE', '#E3F6FA', '#FDECEF'],
 
@@ -128,8 +169,110 @@ export const lightColors: Colors = {
   ok: '#12A870',
 };
 
-// Light-only. Alias kept so any straggling import compiles rather than crashing on undefined.
-export const darkColors: Colors = lightColors;
+/**
+ * The dark palette, designed AGAINST the light one rather than derived from it.
+ *
+ * Dark mode was removed once before because an inverted light theme looked wrong beside it. Three
+ * things are what make an inversion fail, and each is handled here deliberately:
+ *
+ *  1. THE HARD SHADOW HAS TO INVERT ITS LOGIC, NOT ITS VALUE. In the light theme every raised
+ *     surface sits on a solid offset shadow LIGHTER than the page (#E4E7F1 on #F5F7FA). Lightening
+ *     a dark ground the same way makes cards glow at the bottom edge. Here every `*Edge` token is
+ *     DARKER than the surface it sits under, so the same 6px offset still reads as a physical
+ *     lip — the effect the design is built on survives.
+ *  2. SATURATED BRAND COLOUR MUST LIFT. #4A56D2 on a near-black canvas is a hole, not an accent:
+ *     it loses against the surrounding text. Primary lifts to #5F6BE0 (white on it still clears
+ *     4.5:1) and its light/edge pair move with it.
+ *  3. TINTED FILLS INVERT, THEY DO NOT DIM. The light theme's pale wash fills (#EEF0FF) become
+ *     dark tints of the same hue (#1C2039), and the "deep" tokens — large numerals set ON those
+ *     fills — flip from darker-than-the-hue to BRIGHTER, because they are now on a dark ground.
+ *  4. A HUE USED AS INK IS NOT THE SAME VALUE AS THE HUE USED AS PAINT. `primary` has to stay dark
+ *     enough that white sits on it, which leaves it at 3.6:1 against a near-black card — fine for
+ *     a 2.4pt icon stroke, unreadable for a 12pt tab label. `primaryDeep` is the ink version, and
+ *     in LIGHT it is `primary` unchanged, so reaching for it never alters the light theme.
+ *
+ * Every token is a real chosen value. Nothing here is a programmatic inversion of the line above.
+ */
+export const darkColors: Colors = {
+  canvas: '#0E1017',
+  card: '#171A24',
+  cardAlt: '#1E222E',
+  line: '#262B39',
+  lineStrong: '#2F3546',
+
+  ink: '#F2F4FA',
+  inkSoft: '#A8AFC4',
+  inkDim: '#878EA4',
+  inkFaint: '#666D82',
+
+  primary: '#5F6BE0',
+  primaryLight: '#7C86F0',
+  primaryTop: '#6E79EA',
+  primaryDeep: '#98A2F5',
+  primaryEdge: '#38409C',
+  primarySoft: '#1C2039',
+  primarySoft2: '#232848',
+  primarySoftEdge: '#141731',
+  onPrimary: '#FFFFFF',
+
+  success: '#2FBF85',
+  successDeep: '#6FE3B4',
+  successSoft: '#10241C',
+  successSoft2: '#152F24',
+  successEdge: '#0A1913',
+
+  warning: '#E2A038',
+  warningDeep: '#FFCB6B',
+  warningSoft: '#2A2113',
+  warningSoft2: '#342818',
+  warningEdge: '#1D160C',
+  gold: '#FFD166',
+
+  danger: '#F0696C',
+  dangerLight: '#F58A8C',
+  dangerEdge: '#A63A3D',
+  dangerSoft: '#2C1618',
+  // The darkest of the three meter shades had to come up: at #8E4C4E it sat at 2.7:1 against the
+  // warm wash the recorder draws behind it, so a third of the bars all but vanished at rest.
+  wave1: '#9E5457',
+  wave2: '#C25D60',
+  wave3: '#F0696C',
+
+  blush: '#7A4147',
+  handle: '#3A4053',
+
+  dormantLight: '#5C6479',
+  dormant: '#4A5165',
+  dormantEdge: '#343A4A',
+
+  // The face keeps its light disc, pulled off pure white so it does not glare out of a black
+  // screen, and the features stay dark BECAUSE the ground under them is still light.
+  mascotFace: '#E8EBF5',
+  mascotEye: '#191D2E',
+  // Not `blush`: the cheeks are painted on that light face, so they need the light theme's soft
+  // pink, only a shade deeper to hold against #E8EBF5. `blush` itself stays a dark-ground value.
+  mascotBlush: '#F0A9B0',
+
+  // Near-black rather than the light theme's indigo-black: a scrim over a dark page has almost no
+  // room to darken, so it has to spend all of it on neutral depth.
+  scrim: '#04060C',
+  // Ember rather than pink. The light theme's #FFF0F0 is a blush over white; on #0E1017 the same
+  // idea is a warm coal that the canvas fades out of.
+  warmWash: '#2A1519',
+
+  speakers: ['#7C86F0', '#2FBF85', '#E2A038', '#A78BFA', '#38BDF8', '#F4778C'],
+  speakersSoft: ['#1C2039', '#10241C', '#2A2113', '#231B3A', '#0F2733', '#2E171E'],
+
+  bg: '#0E1017',
+  surface: '#171A24',
+  surfaceAlt: '#1E222E',
+  border: '#262B39',
+  text: '#F2F4FA',
+  textDim: '#A8AFC4',
+  textFaint: '#666D82',
+  accent: '#5F6BE0',
+  ok: '#2FBF85',
+};
 
 // ---------------------------------------------------------------------------------------------
 // Responsive scale

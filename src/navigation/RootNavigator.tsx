@@ -15,18 +15,29 @@ import SearchScreen from '../screens/SearchScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import ArchiveScreen from '../screens/ArchiveScreen';
 import NoticesScreen from '../screens/NoticesScreen';
+import ActionsScreen from '../screens/ActionsScreen';
+import PaywallScreen from '../screens/PaywallScreen';
 
 export type RootStackParamList = {
   Onboarding: undefined;
   Library: undefined;
   Record: undefined;
-  Meeting: { meetingId: string };
+  /**
+   * `tab` and `atMs` let something outside the screen say where to land: a search hit opens the
+   * transcript at the moment the phrase was said, a "Notes ready" tap opens the summary.
+   */
+  Meeting: { meetingId: string; tab?: MeetingTab; atMs?: number };
   Speakers: { meetingId: string };
   Search: undefined;
   Settings: undefined;
   Archive: undefined;
   Notices: undefined;
+  Actions: undefined;
+  /** `meetingId` is the meeting that prompted the sell, so the screen can name it. */
+  Paywall: { meetingId?: string } | undefined;
 };
+
+export type MeetingTab = 'summary' | 'mom' | 'transcript' | 'actions';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -34,7 +45,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 export default function RootNavigator() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const [initial, setInitial] = useState<keyof RootStackParamList | null>(null);
 
   useEffect(() => {
@@ -101,7 +112,10 @@ export default function RootNavigator() {
   // normal full-screen app; nothing PiP-specific lives on the JS side.
   return (
     <>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.canvas} />
+      <StatusBar
+        barStyle={isDark ? 'light-content' : 'dark-content'}
+        backgroundColor={colors.canvas}
+      />
       <NavigationContainer
         ref={navigationRef}
         theme={navTheme}
@@ -129,6 +143,12 @@ export default function RootNavigator() {
           <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Archive" component={ArchiveScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Notices" component={NoticesScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Actions" component={ActionsScreen} options={{ headerShown: false }} />
+          <Stack.Screen
+            name="Paywall"
+            component={PaywallScreen}
+            options={{ headerShown: false, presentation: 'modal' }}
+          />
         </Stack.Navigator>
       </NavigationContainer>
     </>

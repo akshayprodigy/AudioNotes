@@ -44,11 +44,25 @@ object BackupManager {
    * mid-narration checkpoints that are meaningless once the run they belong to is over.
    */
   private val TABLES = listOf(
-    "meetings", "segments", "utterances", "speakers", "minutes", "action_done", "settings",
+    // "meetings" must stay FIRST. Import is INSERT OR REPLACE, which deletes a conflicting
+    // meetings row before inserting the new one — cascading that meeting's children away. Any
+    // child table listed before it would be imported and then immediately destroyed.
+    "meetings", "segments", "utterances", "speakers", "minutes", "action_done", "edits", "tags",
+    "settings",
   )
 
-  /** Settings that describe this install rather than this user, and must not travel. */
-  private const val LOCAL_SETTINGS = "'licence_token','licence_device_id','licence_clock_floor'"
+  /**
+   * Settings that describe this install rather than this user, and must not travel.
+   *
+   * `licence_refresh_key` belongs here as much as the token does, and its absence was a licence
+   * transfer channel: a restored backup handed the second device a live refresh key, which
+   * subscription.refreshIfNeeded would exchange for a token bound to THAT device's id. The trial
+   * keys are here for the mirror-image reason — the whole `settings` table is exported, so a
+   * backup taken before a trial and restored after it would reset the trial indefinitely.
+   */
+  private const val LOCAL_SETTINGS =
+    "'licence_token','licence_device_id','licence_clock_floor','licence_refresh_key'," +
+      "'trial_started_at','trial_summaries_used','trial_ended_at'"
 
   class BackupError(message: String) : Exception(message)
 
@@ -126,7 +140,22 @@ object BackupManager {
 
       for (table in TABLES) {
         val moved = runCatching {
-          db.exec("INSERT OR REPLACE INTO main.$table SELECT * FROM bak.$table")
+          // Columns are named explicitly, intersected between the backup and this device.
+          //
+          // This used to be `SELECT *`, which is POSITIONAL: the moment the two schemas differed
+          // by a single column SQLite refused the statement outright ("table main.meetings has N
+          // columns but M values were supplied"). Since a backup taken before `archived_at` or
+          // `summary_line` existed is exactly the backup a person restores onto a new phone, the
+          // common case failed — silently, because the per-table catch below logged it and the
+          // count reported to the user was read from the BACKUP rather than from what landed.
+          // Restoring "42 meetings" onto an empty library was a routine outcome.
+          //
+          // Naming the shared columns makes an older backup restore correctly and a newer one
+          // (from a build with columns this device lacks) drop only what it cannot represent.
+          val cols = db.columnsOf("bak", table).intersect(db.columnsOf("main", table).toSet())
+          if (cols.isEmpty()) throw BackupError("no shared columns for $table")
+          val list = cols.joinToString(",")
+          db.exec("INSERT OR REPLACE INTO main.$table($list) SELECT $list FROM bak.$table")
         }
         if (moved.isFailure) {
           // One table failing — a backup written before a column existed — should not throw away
@@ -134,7 +163,18 @@ object BackupManager {
           Log.w(TAG, "could not restore $table", moved.exceptionOrNull())
         }
       }
-      restored = ok
+
+      // The full-text index is not a table that can be copied — it is rebuilt from what landed.
+      runCatching { db.reindexImported("bak") }
+        .onFailure { Log.w(TAG, "could not rebuild the search index after restore", it) }
+
+      // Count what is actually HERE now, not what the backup claimed to hold. The old count came
+      // from bak.meetings, so a restore that moved nothing still reported every meeting in the
+      // file as recovered.
+      restored = runCatching { db.countPresent("bak") }.getOrDefault(0)
+      if (restored == 0 && ok > 0) {
+        throw BackupError("That backup could not be read into this version of the app")
+      }
     } finally {
       runCatching { db.detach("bak") }
     }

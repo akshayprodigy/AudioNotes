@@ -119,6 +119,24 @@ object LicenceStore {
    * back. Winding the phone back therefore buys nothing; winding it forward is honoured at once
    * and simply moves the floor with it — a user correcting a genuinely wrong clock loses nothing.
    */
+  /**
+   * Now, in unix seconds, on a clock that only moves forward.
+   *
+   * Public because the trial needs the same clock the licence uses — a window enforced against a
+   * clock the user can wind back is not a window. Note this works even in a build with no licence
+   * key, where [current] short-circuits before the floor is ever advanced.
+   */
+  fun now(ctx: Context): Long = advanceClock(AudioDb.get(ctx))
+
+  /**
+   * May the paid features run at all — bought or borrowed?
+   *
+   * The one question the pipeline asks. Keeping the trial inside this call rather than at each
+   * caller is what stops a new paid feature shipping with a gate that has never heard of the
+   * trial, which is exactly how the trial came to grant nothing at all.
+   */
+  fun entitled(ctx: Context): Boolean = current(ctx).isPaid || Trial.isActive(ctx)
+
   private fun advanceClock(db: AudioDb): Long {
     val floor = db.getSetting(KEY_FLOOR)?.toLongOrNull() ?: 0L
     val now = Licence.monotonicNow(System.currentTimeMillis() / 1000L, floor)

@@ -85,6 +85,18 @@ test('write golden files for the C++ parity tests', () => {
   const meeting = extractMinutes(MEETING as any, SPEAKERS as any);
   write('minutes_meeting', { input: { utterances: MEETING, speakers: SPEAKERS }, output: meeting });
   expect(meeting.length).toBeGreaterThan(3);
+  // The summary row is the free tier's overview and the top of every export, so the goldens pin
+  // its composition too: what was decided, then who owes what, and only then the tally. A port
+  // that still emits the bare count row fails here rather than shipping a different document to
+  // the people whose minutes native writes.
+  expect(meeting[0].kind).toBe('summary');
+  expect(meeting[0].content).toBe(
+    'Decided: We decided to go with the phased rollout. ' +
+      "Next: Alright team, let's kick off the design review. — Speaker 1; " +
+      "Sure, I'll update the roadmap by Thursday. — Speaker 2 (due by Thursday); " +
+      'Maya will send the summary to everyone tomorrow. — Maya (due tomorrow). ' +
+      '4 action items, 1 decision, 3 open questions.',
+  );
 
   const dedup = extractMinutes(DEDUP as any, SPEAKERS as any);
   write('minutes_dedup', { input: { utterances: DEDUP, speakers: SPEAKERS }, output: dedup });
@@ -122,6 +134,9 @@ test('write golden files for the C++ parity tests', () => {
   write('minutes_empty', { input: { utterances: [], speakers: [] }, output: empty });
   expect(empty.length).toBe(1);
   expect(empty[0].kind).toBe('summary');
+  // Nothing to lead with, so the overview is exactly the tally sentence it always was — the one
+  // case where the composed summary and the old count row are byte-identical.
+  expect(empty[0].content).toBe('0 action items, 0 decisions, 0 open questions.');
 
   for (const [name, raw] of Object.entries(PARSE_CASES)) {
     write(name, { input: raw, output: parseMinutesJson(raw) });

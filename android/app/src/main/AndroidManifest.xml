@@ -36,6 +36,30 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
+
+        <!-- Audio shared from another app: a WhatsApp voice note, a recording made elsewhere.
+             The pipeline needs only that it becomes 16 kHz mono PCM on disk, which AudioImport
+             does, so a shared file becomes an ordinary meeting with an ordinary transcript.
+
+             application/octet-stream is listed on purpose. Providers routinely hand over a voice
+             note under it, and being absent from the share sheet for the single most common way
+             people receive audio would defeat the point. The decoder decides what is really
+             audio; this only decides what we are offered. -->
+        <intent-filter>
+            <action android:name="android.intent.action.SEND" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:mimeType="audio/*" />
+            <data android:mimeType="application/ogg" />
+            <data android:mimeType="application/octet-stream" />
+        </intent-filter>
+
+        <!-- A file manager opening a recording with us. -->
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:mimeType="audio/*" />
+        </intent-filter>
       </activity>
 
       <!-- Invisible, finishes immediately. Its only job is to make the app briefly foreground so

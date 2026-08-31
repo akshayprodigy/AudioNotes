@@ -189,3 +189,25 @@ describe('PipelineController regenerateMinutes() — rule rebuild after a speake
     expect(mockLlm.available).not.toHaveBeenCalled();
   });
 });
+
+describe('PipelineController process() — the force flag', () => {
+  // "Write it again" used to delete the existing prose so the resume plan would find work to do.
+  // A rewrite that then could not run — entitlement lapsed, model uninstalled, the process killed
+  // for memory — destroyed the summary it was meant to replace. `force` marks narration
+  // outstanding without deleting anything, so the old prose stands until new prose overwrites it.
+  it('passes force straight through to native', async () => {
+    mockProcess.mockRejectedValueOnce(new Error('boom'));
+
+    await PipelineController.process('m8', { model: 'small', force: true });
+
+    expect(mockProcess).toHaveBeenCalledWith('m8', { model: 'small', force: true });
+  });
+
+  it('leaves the flag off when nobody asked for a rewrite', async () => {
+    mockProcess.mockRejectedValueOnce(new Error('boom'));
+
+    await PipelineController.process('m9', { model: 'base' });
+
+    expect(mockProcess).toHaveBeenCalledWith('m9', { model: 'base' });
+  });
+});

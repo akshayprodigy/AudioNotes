@@ -45,7 +45,15 @@ object NativeBridge {
    * segStarts/segEnds are parallel arrays (ms). Returns a JSON array string of
    * {start_ms, end_ms, text} utterances with timestamps re-anchored to the meeting timeline.
    */
-  /** @param threads 0 = automatic (big.LITTLE-aware default); >0 pins the count, for benchmarks. */
+  /**
+   * @param threads 0 = automatic (big.LITTLE-aware default); >0 pins the count, for benchmarks.
+   * @param language a whisper language code ("en", "hi", ...), or "auto"/"" to detect.
+   *
+   * Detection is per 30-second chunk, not per meeting, because whisper runs with no_context set.
+   * On Hindi/English code-switched speech — the audio this product is actually for — that returns
+   * one meeting in several languages and several SCRIPTS: a measured 39% of utterances came back
+   * in Urdu script. Pinning is the only fix available short of a better model.
+   */
   external fun nativeTranscribe(
     pcmPath: String,
     modelPath: String,
@@ -53,6 +61,7 @@ object NativeBridge {
     segStarts: LongArray,
     segEnds: LongArray,
     threads: Int = 0,
+    language: String = "auto",
   ): String
 
   /**
