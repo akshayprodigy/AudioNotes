@@ -34,6 +34,7 @@ type Essential = {
   kind: string;
   required: boolean;
   needsSubscription: boolean;
+  installed: boolean;
 };
 
 const BULLETS: { icon: IconName; title: string; body: string; tone: 'primary' | 'success' | 'warning' }[] = [
@@ -120,8 +121,15 @@ export default function OnboardingScreen({ navigation }: Props) {
 
   // What the button will actually cost, including the writer when it is switched on. Saying
   // "112 MB" and then downloading 1.2 GB is the kind of surprise that gets an app uninstalled.
+  //
+  // Anything already on disk costs nothing, and must not be counted. Coming back to this screen
+  // with every model present offered "Download the AI (114 MB)" — a number that was wrong in the
+  // direction that makes the app look worse, and which used to be true because download() really
+  // did fetch them all again. That is fixed natively; this is the half the user reads.
   const chosen = paid && wantWriter ? [...essentials, ...writer] : essentials;
-  const totalMb = Math.round(chosen.reduce((a, m) => a + m.sizeBytes, 0) / 1e6);
+  const totalMb = Math.round(
+    chosen.filter(m => !m.installed).reduce((a, m) => a + m.sizeBytes, 0) / 1e6,
+  );
   const writerMb = Math.round(writer.reduce((a, m) => a + m.sizeBytes, 0) / 1e6);
 
   const finish = async () => {

@@ -49,6 +49,7 @@ echo "==> installing (-r keeps app data, and with it the downloaded models)"
 "$ADB" install -r "$TEST_APK" > /dev/null
 
 FAILED=0
+: > /tmp/instr.skips
 for CLASS in "${CLASSES[@]}"; do
   if [ -n "$FILTER" ] && [[ "$CLASS" != *"$FILTER"* ]]; then continue; fi
   echo
@@ -66,6 +67,24 @@ for CLASS in "${CLASSES[@]}"; do
     echo "  no tests matched $CLASS — is the class name still right?"
     FAILED=1
   fi
+
+  # ...and neither is a run that matched every test and then skipped them all. The tests
+  # assumeTrue() their way out when the models are absent, so a freshly wiped device reports
+  # "OK (7 tests)" having verified precisely nothing — which is the same lie as "OK (0 tests)"
+  # wearing a bigger number. This is not hypothetical: it is what this script printed, epilogue
+  # and all, on the first run after the models were wiped.
+  TOTAL=$(grep -o 'INSTRUMENTATION_STATUS: test=.*' /tmp/instr.out | sort -u | wc -l | tr -d ' ')
+  SKIPPED=$(grep -c 'AssumptionViolatedException' /tmp/instr.out || true)
+  if [ "$SKIPPED" -gt 0 ]; then
+    echo "  $SKIPPED of $TOTAL skipped — the assumption they guard was not met:"
+    grep -o 'AssumptionViolatedException: .*' /tmp/instr.out | sort -u | sed 's/^/    /'
+    grep -o 'AssumptionViolatedException: .*' /tmp/instr.out | sort -u >> /tmp/instr.skips
+    if [ "$SKIPPED" -ge "$TOTAL" ]; then
+      echo "  every test skipped, so this class verified NOTHING."
+      echo "  Download the models first (open the app and finish onboarding), then re-run."
+      FAILED=1
+    fi
+  fi
 done
 
 echo
@@ -78,3 +97,14 @@ echo "  * diarization does not fragment one speaker into a crowd (the 1.0 merge 
 echo "  * VAD + sherpa share one ONNX Runtime without crashing"
 echo "  * minutes match the TypeScript goldens byte-for-byte"
 echo "  * whisper and the LLM load and produce output on ARM"
+
+# ...minus whatever skipped. That list above is a fixed claim, and printing it whole after a run
+# where the Qwen tests all skipped said "the LLM loads and produces output on ARM" on the strength
+# of having never loaded it. A summary that overstates its own coverage is the thing this script
+# keeps getting wrong, so the shortfall is printed with the claim rather than left to be inferred.
+if [ -s /tmp/instr.skips ]; then
+  echo
+  echo "NOT exercised by this run — tests skipped themselves because:"
+  sort -u /tmp/instr.skips | sed 's/AssumptionViolatedException: /  * /'
+  echo "  Anything above that depends on these was NOT checked."
+fi
