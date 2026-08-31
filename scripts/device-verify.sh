@@ -24,9 +24,12 @@ if [ -z "$ADB" ]; then
   exit 1
 fi
 
+# Package-qualified, and the package is the one the sources actually declare. These went stale at
+# the rename: the classes moved to com.innocorelabs.verbale and this list did not, so every run
+# reported "OK (0 tests)" — a pass, for having run nothing.
 CLASSES=(
-  com.audionotes.NativePipelineTest
-  com.audionotes.MinutesParityTest
+  com.innocorelabs.verbale.NativePipelineTest
+  com.innocorelabs.verbale.MinutesParityTest
 )
 
 if ! "$ADB" devices | grep -qE "device$"; then
@@ -54,9 +57,15 @@ for CLASS in "${CLASSES[@]}"; do
   # rather than a misleading failure. "OK (N tests)" with everything skipped is NOT a pass —
   # check the counts.
   "$ADB" shell am instrument -w -r -e class "$CLASS" \
-    com.audionotes.test/androidx.test.runner.AndroidJUnitRunner 2>&1 \
+    com.innocorelabs.verbale.test/androidx.test.runner.AndroidJUnitRunner 2>&1 \
     | tee /tmp/instr.out | grep -E "^INSTRUMENTATION_STATUS: (test|class|stack)=|OK \(|FAILURES|Tests run" || true
   grep -q "FAILURES\|Process crashed" /tmp/instr.out && FAILED=1 || true
+  # A run that matched no class reports "OK (0 tests)" and exits clean, which is how a stale
+  # class name went unnoticed. Nothing here is allowed to pass by not running.
+  if grep -q "OK (0 tests)" /tmp/instr.out; then
+    echo "  no tests matched $CLASS — is the class name still right?"
+    FAILED=1
+  fi
 done
 
 echo
