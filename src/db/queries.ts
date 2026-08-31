@@ -1,6 +1,16 @@
 // Typed query layer over the Storage TurboModule. Screens/state call these, never raw SQL.
 import Storage from '../native/NativeStorage';
-import type { Meeting, Utterance, Minute, Speaker } from '../pipeline/types';
+import type {
+  ActionRow,
+  Edit,
+  EditTarget,
+  Meeting,
+  Minute,
+  MinuteKind,
+  SearchHit,
+  Speaker,
+  Utterance,
+} from '../pipeline/types';
 
 async function run<T>(sql: string, params: unknown[] = []): Promise<T[]> {
   const raw = await Storage.query(sql, JSON.stringify(params));
@@ -47,7 +57,7 @@ export const db = {
   /**
    * Remove a meeting and everything derived from it.
    *
-   * utterances/speakers/minutes/segments are ON DELETE CASCADE, but `meetings_fts` is an FTS5
+   * utterances/speakers/minutes/segments are ON DELETE CASCADE, but `search_fts` is an FTS5
    * virtual table with no foreign key, so its rows survive the cascade — leaving deleted meetings
    * findable in search, linking to a meeting that no longer opens. It is deleted explicitly, and
    * first, so a failure part-way through cannot strand the index against a missing meeting.
@@ -56,7 +66,7 @@ export const db = {
    * on the filesystem, not in the database, and only native can unlink it.
    */
   deleteMeeting: async (id: string) => {
-    await run('DELETE FROM meetings_fts WHERE meeting_id = ?', [id]);
+    await run('DELETE FROM search_fts WHERE meeting_id = ?', [id]);
     await run('DELETE FROM meetings WHERE id = ?', [id]);
   },
 
@@ -68,8 +78,26 @@ export const db = {
       [id],
     ).then(r => r[0]),
 
-  setTitle: (id: string, title: string) =>
-    run('UPDATE meetings SET title = ? WHERE id = ?', [title, id]),
+  /**
+   * Rename a meeting.
+   *
+   * Stamps `title_edited_at`, which is the only thing standing between a user's title and the
+   * pipeline's auto-retitle. That retitle guards itself with a string sniff — "Meeting", or a
+   * ` meeting · ` placeholder — so a real title matching the pattern used to be silently
+   * overwritten, and not only on an explicit reprocess: the retitle sits outside the resume plan
+   * and re-runs on every pass over a meeting that is not yet 'done'.
+   *
+   * Reindexed explicitly because the FTS table lives on the native side and nothing else here
+   * can write it.
+   */
+  setTitle: async (id: string, title: string) => {
+    await run('UPDATE meetings SET title = ?, title_edited_at = ? WHERE id = ?', [
+      title,
+      Date.now(),
+      id,
+    ]);
+    await Storage.reindex(id);
+  },
 
   utterances: (meetingId: string) =>
     run<Utterance>(
@@ -204,5 +232,109 @@ export const db = {
     await run('DELETE FROM speakers WHERE id = ?', [dropId]);
   },
 
-  search: (term: string) => Storage.search(term).then(r => JSON.parse(r)),
+  /**
+   * Ranked full-text search across transcripts, minutes, titles and summaries.
+   *
+   * Typed deliberately. This used to return `any`, with the screen asserting a local shape over
+   * it, so changing the projection produced no compile error anywhere — the results just rendered
+   * as `undefined`. The tsc gate now covers the one query it could not see.
+   */
+  search: (term: string): Promise<SearchHit[]> =>
+    Storage.search(term).then(r => JSON.parse(r) as SearchHit[]),
+
+  /** Index meetings recorded before the index covered more than the transcript. Returns the backlog. */
+  backfillSearch: (limit = 25) => Storage.backfillSearch(limit),
+
+  // ---- User edits of pipeline-written text ------------------------------------------------
+
+  edits: (meetingId: string) =>
+    run<Edit>(
+      'SELECT meeting_id AS meetingId, target_kind AS targetKind, target_key AS targetKey, ' +
+        'content, edited_at AS editedAt FROM edits WHERE meeting_id = ?',
+      [meetingId],
+    ),
+
+  /**
+   * Save an edit as a SIDE row rather than an update of the text being edited.
+   *
+   * Ticked actions are keyed on a hash of the stored minute text, so rewriting that text in place
+   * would untick every item the user had worked through — the one promise the worklist makes.
+   * Leaving the original untouched keeps the tick key stable, lets reprocessing overwrite what it
+   * owns, and makes "revert" a single delete.
+   */
+  putEdit: async (meetingId: string, targetKind: EditTarget, targetKey: string, content: string) => {
+    await run(
+      'INSERT OR REPLACE INTO edits(meeting_id, target_kind, target_key, content, edited_at) ' +
+        'VALUES(?,?,?,?,?)',
+      [meetingId, targetKind, targetKey, content, Date.now()],
+    );
+    await Storage.reindex(meetingId);
+  },
+
+  clearEdit: async (meetingId: string, targetKind: EditTarget, targetKey: string) => {
+    await run('DELETE FROM edits WHERE meeting_id = ? AND target_kind = ? AND target_key = ?', [
+      meetingId,
+      targetKind,
+      targetKey,
+    ]);
+    await Storage.reindex(meetingId);
+  },
+
+  // ---- Hand-written minutes ---------------------------------------------------------------
+
+  /**
+   * Add an item the meeting never produced — the action the model missed.
+   *
+   * Written into `minutes` with source='user'. Every filter in the app selects on `kind`, so the
+   * row simply appears alongside the extracted ones; and `replaceMinutes` deletes only
+   * source='rule', so reprocessing cannot take it away.
+   */
+  addUserMinute: async (meetingId: string, kind: MinuteKind, content: string) => {
+    const id = `${meetingId}:user:${Date.now()}:${Math.floor(Math.random() * 1e6)}`;
+    await run('INSERT INTO minutes(id, meeting_id, kind, content_json, source) VALUES(?,?,?,?,?)', [
+      id,
+      meetingId,
+      kind,
+      // Plain text, NOT JSON.stringify. Despite the column name, `content_json` holds a bare
+      // string everywhere else — the native minutes writer, replaceMinutes and the export
+      // renderer all read it that way — so encoding here put literal quotation marks around
+      // every hand-written item, in the app and in the exported document.
+      content,
+      'user',
+    ]);
+    await Storage.reindex(meetingId);
+    return id;
+  },
+
+  deleteUserMinute: async (meetingId: string, id: string) => {
+    await run("DELETE FROM minutes WHERE id = ? AND source = 'user'", [id]);
+    await Storage.reindex(meetingId);
+  },
+
+  // ---- Cross-meeting worklist --------------------------------------------------------------
+
+  /**
+   * Every action item across every live meeting, newest meeting first, with its tick state.
+   *
+   * The join is on `action_done`, whose key is a hash of the item text computed in JS
+   * (ActionsTab.itemKey) — SQL cannot reproduce that hash, so `done` is resolved by the caller
+   * from `doneKeys` below rather than here. Archived meetings are excluded: they are hidden from
+   * the library and their actions should not resurface in a worklist.
+   */
+  allActions: () =>
+    run<Omit<ActionRow, 'itemKey' | 'done'>>(
+      'SELECT m.meeting_id AS meetingId, mt.title AS meetingTitle, mt.created_at AS createdAt, ' +
+        'm.content_json AS content, m.source AS source ' +
+        'FROM minutes m JOIN meetings mt ON mt.id = m.meeting_id ' +
+        "WHERE m.kind = 'action' AND mt.archived_at IS NULL " +
+        'ORDER BY mt.created_at DESC, m.rowid',
+    ),
+
+  /** Every ticked action key in the library, as `meetingId\u0000itemKey`. */
+  doneKeys: async (): Promise<Set<string>> => {
+    const rows = await run<{ meetingId: string; itemKey: string }>(
+      'SELECT meeting_id AS meetingId, item_key AS itemKey FROM action_done',
+    );
+    return new Set(rows.map(r => `${r.meetingId}\u0000${r.itemKey}`));
+  },
 };

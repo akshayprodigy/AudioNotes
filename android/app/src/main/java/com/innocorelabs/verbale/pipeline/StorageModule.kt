@@ -36,6 +36,35 @@ class StorageModule(private val ctx: ReactApplicationContext) :
   }
 
   @ReactMethod
+  fun reindex(meetingId: String, promise: Promise) {
+    try {
+      AudioDb.get(ctx).reindexMeeting(meetingId)
+      promise.resolve(null)
+    } catch (e: Throwable) {
+      promise.reject("db_reindex", e)
+    }
+  }
+
+  /**
+   * Index meetings recorded before the search index covered anything but the transcript.
+   *
+   * Chunked, and driven from JS rather than run inside AudioDb.open(): there is one process-wide
+   * connection shared with the recording and processing services, and open() is reached on the
+   * MAIN thread when a cold start comes from the Quick Settings tile — a full-library index build
+   * there would ANR the activity that has to survive long enough to start the recording.
+   */
+  @ReactMethod
+  fun backfillSearch(limit: Double, promise: Promise) {
+    try {
+      val db = AudioDb.get(ctx)
+      for (id in db.unindexedMeetings(limit.toInt())) db.reindexMeeting(id)
+      promise.resolve(db.unindexedMeetings(1).size.toDouble())
+    } catch (e: Throwable) {
+      promise.reject("db_backfill", e)
+    }
+  }
+
+  @ReactMethod
   fun search(term: String, promise: Promise) {
     try {
       promise.resolve(AudioDb.get(ctx).searchJson(term))
