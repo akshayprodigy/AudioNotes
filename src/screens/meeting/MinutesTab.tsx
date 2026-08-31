@@ -2,8 +2,20 @@ import React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Raised, SoftButton, Txt } from '../../components/ui';
 import { radius, s, useTheme, type Colors } from '../../theme';
-import type { Minute } from '../../pipeline/types';
-import { DocItem, Prose, SectionHead } from './shared';
+import type { Minute, MinuteKind } from '../../pipeline/types';
+import {
+  DOC_KEY,
+  DocItem,
+  EditedTag,
+  Prose,
+  SectionHead,
+  ToolButton,
+  editedText,
+  isEdited,
+  itemKey,
+  minuteText,
+  type EditMap,
+} from './shared';
 
 /**
  * MOM — the document you would send someone.
@@ -18,26 +30,98 @@ import { DocItem, Prose, SectionHead } from './shared';
 export default function MinutesTab({
   minutes,
   onExport,
+  onCopy,
+  edits,
+  onEditItem,
+  onRevertItem,
+  onRemoveItem,
+  onAdd,
+  onEditNarrative,
+  onRevertNarrative,
 }: {
   minutes: Minute[];
   onExport: () => void;
+  /** The whole write-up on the clipboard — the same document Export would have shared. */
+  onCopy?: () => void;
+  edits?: EditMap;
+  onEditItem?: (m: Minute) => void;
+  onRevertItem?: (key: string) => void;
+  onRemoveItem?: (id: string) => void;
+  onAdd?: (kind: MinuteKind) => void;
+  onEditNarrative?: (initial: string) => void;
+  onRevertNarrative?: () => void;
 }) {
   const { colors } = useTheme();
   const st = React.useMemo(() => makeStyles(colors), [colors]);
+  const ed: EditMap = edits ?? new Map();
 
-  const narrative = minutes.find(m => m.kind === 'narrative' && m.source === 'llm')?.content;
+  const written = minutes.find(m => m.kind === 'narrative' && m.source === 'llm')?.content;
+  // A hand-written write-up counts even where the model produced none: somebody on a phone that
+  // cannot run the model still has minutes, and withholding them because no model wrote them
+  // would be absurd.
+  const narrative = editedText(ed, 'narrative', DOC_KEY, written);
+  const narrativeEdited = isEdited(ed, 'narrative', DOC_KEY);
   const decisions = minutes.filter(m => m.kind === 'decision');
   const actions = minutes.filter(m => m.kind === 'action');
+
+  /** One item, with the user's correction over it and their own rows marked as theirs. */
+  const item = (m: Minute, i: number) => {
+    // The key is the stored column, the text is what reads well — see onEditMinute.
+    const key = itemKey(m.content);
+    return (
+      <DocItem
+        key={m.id ?? i}
+        m={m}
+        colors={colors}
+        content={editedText(ed, 'minute', key, minuteText(m))}
+        edited={isEdited(ed, 'minute', key)}
+        mine={m.source === 'user'}
+        onEdit={onEditItem ? () => onEditItem(m) : undefined}
+        onRevert={onRevertItem ? () => onRevertItem(key) : undefined}
+        onRemove={onRemoveItem && m.source === 'user' && m.id ? () => onRemoveItem(m.id) : undefined}
+      />
+    );
+  };
 
   return (
     <ScrollView contentContainerStyle={st.pad} showsVerticalScrollIndicator={false}>
       <Raised edge={colors.line} fill={colors.card} rad={radius.card24} depth={5}>
         <View style={st.doc}>
-          <SectionHead label="MINUTES" colors={colors} />
+          <SectionHead
+            label="MINUTES"
+            colors={colors}
+            right={
+              <View style={st.tools}>
+                {onEditNarrative ? (
+                  <ToolButton
+                    icon="edit"
+                    label="Edit"
+                    hint="Correct the written minutes"
+                    colors={colors}
+                    onPress={() => onEditNarrative(narrative ?? '')}
+                  />
+                ) : null}
+                {onCopy ? (
+                  <ToolButton
+                    icon="copy"
+                    label="Copy"
+                    hint="Copies the whole write-up, ready to paste"
+                    colors={colors}
+                    onPress={onCopy}
+                  />
+                ) : null}
+              </View>
+            }
+          />
           {narrative ? (
-            // Parsed into paragraphs and list items. Set as one block, the model's "- " lines
-            // rendered as stray dashes running into the words after them.
-            <Prose text={narrative} colors={colors} />
+            <>
+              {/* Parsed into paragraphs and list items. Set as one block, the model's "- " lines
+                  rendered as stray dashes running into the words after them. */}
+              <Prose text={narrative} colors={colors} />
+              {narrativeEdited ? (
+                <EditedTag colors={colors} onRevert={onRevertNarrative} />
+              ) : null}
+            </>
           ) : (
             <>
               <Txt variant="bodyStrong" color={colors.inkDim}>
@@ -52,15 +136,36 @@ export default function MinutesTab({
         </View>
       </Raised>
 
+      {decisions.length === 0 && onAdd ? (
+        <ToolButton
+          icon="plus"
+          label="Add a decision"
+          hint="Add a decision the app did not pick up"
+          colors={colors}
+          onPress={() => onAdd('decision')}
+        />
+      ) : null}
+
       {decisions.length > 0 ? (
         <Raised edge={colors.line} fill={colors.card} rad={radius.card24} depth={5}>
           <View style={st.doc}>
-            <SectionHead label="DECISIONS" count={decisions.length} colors={colors} />
-            <View style={st.list}>
-              {decisions.map((m, i) => (
-                <DocItem key={m.id ?? i} m={m} colors={colors} />
-              ))}
-            </View>
+            <SectionHead
+              label="DECISIONS"
+              count={decisions.length}
+              colors={colors}
+              right={
+                onAdd ? (
+                  <ToolButton
+                    icon="plus"
+                    label="Add"
+                    hint="Add a decision the app did not pick up"
+                    colors={colors}
+                    onPress={() => onAdd('decision')}
+                  />
+                ) : undefined
+              }
+            />
+            <View style={st.list}>{decisions.map(item)}</View>
           </View>
         </Raised>
       ) : null}
@@ -69,11 +174,7 @@ export default function MinutesTab({
         <Raised edge={colors.line} fill={colors.card} rad={radius.card24} depth={5}>
           <View style={st.doc}>
             <SectionHead label="ACTION ITEMS" count={actions.length} colors={colors} />
-            <View style={st.list}>
-              {actions.map((m, i) => (
-                <DocItem key={m.id ?? i} m={m} colors={colors} />
-              ))}
-            </View>
+            <View style={st.list}>{actions.map(item)}</View>
           </View>
         </Raised>
       ) : null}
@@ -90,5 +191,6 @@ function makeStyles(_c: Colors) {
     // twenty-nine separately raised, separately tilted cards read as a pile.
     doc: { padding: s(18), gap: s(14) },
     list: { gap: s(14) },
+    tools: { flexDirection: 'row', gap: s(14) },
   });
 }

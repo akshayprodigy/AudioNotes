@@ -1,10 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Easing, StyleSheet, View } from 'react-native';
+import {
+  Alert,
+  Animated,
+  Easing,
+  Platform,
+  Pressable,
+  StyleSheet,
+  ToastAndroid,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../navigation/RootNavigator';
+import type { MeetingTab, RootStackParamList } from '../navigation/RootNavigator';
 import { db } from '../db/queries';
 import { PipelineController } from '../pipeline/PipelineController';
+import { shouldOfferPaywall } from '../billing/trial';
 import FileExport from '../native/NativeFileExport';
 import Icon from '../components/Icon';
 import Mascot from '../components/Mascot';
@@ -18,6 +28,7 @@ import {
   Segmented,
   Sheet,
   SoftButton,
+  TextPrompt,
   Txt,
   type SheetAction,
 } from '../components/ui';
@@ -25,7 +36,17 @@ import SummaryTab from './meeting/SummaryTab';
 import MinutesTab from './meeting/MinutesTab';
 import ActionsTab from './meeting/ActionsTab';
 import TranscriptTab from './meeting/TranscriptTab';
-import type { Meeting, Minute, Speaker, Utterance } from '../pipeline/types';
+import PlayerBar from './meeting/PlayerBar';
+import { usePlayer } from './meeting/usePlayer';
+import type { EditTarget, Meeting, Minute, MinuteKind, Speaker, Utterance } from '../pipeline/types';
+import {
+  DOC_KEY,
+  composeAction,
+  itemKey,
+  minuteText,
+  toEditMap,
+  type EditMap,
+} from './meeting/shared';
 import { radius, s, sv, useTheme, type Colors } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Meeting'>;
@@ -67,7 +88,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
   const st = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
-  const { meetingId } = route.params;
+  const { meetingId, tab: initialTab, atMs } = route.params;
 
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [minutes, setMinutes] = useState<Minute[]>([]);
@@ -79,22 +100,91 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const [failure, setFailure] = useState<string | null>(null);
   const [settled, setSettled] = useState(false);
   const [sheet, setSheet] = useState(false);
-  // Always lands on Summary. A remembered tab means tapping two meetings in a row opens them on
-  // different screens, which reads as a bug rather than a convenience.
-  const [tab, setTab] = useState('summary');
+  // Summary unless the caller asked for somewhere specific. Nothing is REMEMBERED between visits:
+  // tapping two meetings in a row and landing on different screens reads as a bug rather than a
+  // convenience. A search hit is different — it knows where it is sending you, and why.
+  const [tab, setTab] = useState<string>(initialTab ?? 'summary');
+  const [renaming, setRenaming] = useState(false);
+  const [edits, setEdits] = useState<EditMap>(new Map());
+
+  /**
+   * What the edit prompt is currently pointed at, or null.
+   *
+   * One prompt for the whole screen rather than one per tab: an editable line is an editable line
+   * whether it is a transcript turn, a decision or the summary, and four copies of the same modal
+   * is four places for the save path to diverge.
+   *
+   * `add` carries the kind for a brand-new item, which is the one case with no target to key on
+   * until after it has been written.
+   */
+  const [editing, setEditing] = useState<{
+    title: string;
+    hint?: string;
+    initial: string;
+    multiline?: boolean;
+    confirmLabel?: string;
+    target?: { kind: EditTarget; key: string };
+    add?: MinuteKind;
+    extraPlaceholder?: string;
+  } | null>(null);
+
+  const player = usePlayer(meetingId);
+
+  const openPaywall = useCallback(
+    () => navigation.navigate('Paywall', { meetingId }),
+    [navigation, meetingId],
+  );
+
+  /**
+   * Offer Pro once, on the first meeting that finishes.
+   *
+   * This is the only moment in the app where the paid half can be explained honestly: the user has
+   * just watched it do its work, on their own meeting, and can see the shape of what is missing.
+   * Before that it is a feature list; after it, on the fifth meeting, it is a nag.
+   *
+   * `shouldOfferPaywall` is what keeps it to once EVER — never to a subscriber, never to somebody
+   * who already decided by starting the trial, and never twice, because the second showing is not
+   * persuasion and this app's whole pitch is that it does not behave like that. The delay lets the
+   * meeting render first, so the sheet arrives over the notes rather than instead of them.
+   */
+  useEffect(() => {
+    if (meeting?.status !== 'done') return;
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    shouldOfferPaywall()
+      .then(offer => {
+        if (!alive || !offer) return;
+        timer = setTimeout(() => {
+          if (alive) openPaywall();
+        }, 900);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [meeting?.status, openPaywall]);
+
+  // `atMs` — the moment a search hit matched — only scrolls the transcript to that line; it does
+  // NOT move the playhead. Seeking would mean opening the audio device merely to look at a search
+  // result: it takes audio focus, and it fails outright while a recording is running, so opening
+  // a hit mid-meeting would raise an error about playback nobody had asked for. The line is on
+  // screen and one tap plays it, which is the whole of what the hit promised.
 
   const refresh = useCallback(async () => {
-    const [mtg, mins, utts, segs, spk] = await Promise.all([
+    const [mtg, mins, utts, segs, spk, eds] = await Promise.all([
       db.getMeeting(meetingId),
       db.minutes(meetingId),
       db.utterances(meetingId),
       db.segments(meetingId),
       db.speakers(meetingId),
+      db.edits(meetingId).catch(() => []),
     ]);
     setMeeting(mtg ?? null);
     setMinutes(mins);
     setUtterances(utts);
     setSpeakers(spk);
+    setEdits(toEditMap(eds));
     setSpeechMs(segs.reduce((a, x) => a + (x.end_ms - x.start_ms), 0));
     return mins.length;
   }, [meetingId]);
@@ -163,6 +253,175 @@ export default function MeetingScreen({ route, navigation }: Props) {
     [meetingId, refresh, reprocessing],
   );
 
+  /**
+   * Rename the meeting.
+   *
+   * Auto-titles are the first ~60 characters of the transcript, so a good half of them open with
+   * "Okay so um yeah let's start" — which is the first thing anybody sees in the library, and the
+   * first thing they see in an exported document. db.setTitle stamps `title_edited_at`, which is
+   * what stops the pipeline's auto-retitle overwriting this on the next pass, and reindexes so the
+   * new name is searchable straight away.
+   */
+  const onRename = useCallback(
+    async (title: string) => {
+      setRenaming(false);
+      // Optimistic: the row is already on screen and re-reading it costs a frame of the old name.
+      setMeeting(m => (m ? { ...m, title } : m));
+      try {
+        await db.setTitle(meetingId, title);
+      } catch (e: any) {
+        Alert.alert('Could not rename', String(e?.message ?? e));
+        refresh();
+      }
+    },
+    [meetingId, refresh],
+  );
+
+  /**
+   * Save a correction, or a newly typed item.
+   *
+   * Corrections go into the `edits` side table rather than over the text they correct. Ticked
+   * actions are keyed on a hash of the STORED minute text, so rewriting it in place would untick
+   * every item the user had worked through — and reprocessing would overwrite their words anyway,
+   * since it owns the `rule` rows. A side row survives both and makes revert a single delete.
+   */
+  const onSaveEdit = useCallback(
+    async (value: string, extra: string) => {
+      const spec = editing;
+      setEditing(null);
+      if (!spec) return;
+      try {
+        if (spec.add) {
+          // Actions are stored in the extractor's own `<sentence> — <owner>` shape so a typed one
+          // and an extracted one are the same kind of row everywhere downstream — splitAction
+          // renders both, the export writes both, and the tick key hashes both the same way.
+          const content =
+            spec.add === 'action' ? composeAction(value, extra || 'Unassigned') : value;
+          await db.addUserMinute(meetingId, spec.add, content);
+          await refresh();
+          return;
+        }
+        if (!spec.target) return;
+        const { kind, key } = spec.target;
+        // Optimistic, and cheap to be: the row is on screen and the map is the only thing the
+        // render reads. A failed write is put right by the refresh in the catch.
+        setEdits(prev => new Map(prev).set(`${kind}/${key}`, value));
+        await db.putEdit(meetingId, kind, key, value);
+      } catch (e: any) {
+        Alert.alert('Could not save that', String(e?.message ?? e));
+        refresh();
+      }
+    },
+    [editing, meetingId, refresh],
+  );
+
+  /** Drop a correction, restoring whatever the pipeline wrote. */
+  const onRevertEdit = useCallback(
+    async (kind: EditTarget, key: string) => {
+      setEdits(prev => {
+        const next = new Map(prev);
+        next.delete(`${kind}/${key}`);
+        return next;
+      });
+      try {
+        await db.clearEdit(meetingId, kind, key);
+      } catch {
+        refresh();
+      }
+    },
+    [meetingId, refresh],
+  );
+
+  /** Remove an item the user added. Only ever reachable on a source='user' row. */
+  const onRemoveMinute = useCallback(
+    async (id: string) => {
+      try {
+        await db.deleteUserMinute(meetingId, id);
+        await refresh();
+      } catch (e: any) {
+        Alert.alert('Could not remove that', String(e?.message ?? e));
+      }
+    },
+    [meetingId, refresh],
+  );
+
+  /** Open the prompt on a minute — the correction path shared by the MOM and Actions tabs. */
+  const onEditMinute = useCallback(
+    (m: Minute) => {
+      // Keyed on the STORED content, never on what is displayed. The export renderer computes
+      // the same key in Kotlin (ItemKey.of) straight from the database column, so a key derived
+      // from the display text would write an edit the exported document could never find.
+      const key = itemKey(m.content);
+      setEditing({
+        title: 'Correct this line',
+        hint: 'Your wording replaces what the app wrote. The original is kept, and you can put it back.',
+        initial: edits.get(`minute/${key}`) ?? minuteText(m),
+        multiline: true,
+        target: { kind: 'minute', key },
+      });
+    },
+    [edits],
+  );
+
+  const onAddMinute = useCallback((kind: MinuteKind) => {
+    setEditing({
+      title: kind === 'decision' ? 'Add a decision' : 'Add an action',
+      hint:
+        kind === 'decision'
+          ? 'Something that was agreed but the app did not pick up.'
+          : 'Something somebody owes. Reprocessing this meeting will not remove it.',
+      initial: '',
+      multiline: true,
+      confirmLabel: 'Add',
+      add: kind,
+      extraPlaceholder: kind === 'action' ? 'Who owes it (optional)' : undefined,
+    });
+  }, []);
+
+  /**
+   * Say it worked, without saying it twice.
+   *
+   * Android 13 shows its own clipboard confirmation for every copy, so anything we add on top of
+   * that is a second popup for one action. Below 33 there is no system feedback at all and a copy
+   * that says nothing is indistinguishable from a copy that failed.
+   */
+  const copied = useCallback((what: string) => {
+    if (Number(Platform.Version) >= 33) return;
+    ToastAndroid.show(`${what} copied`, ToastAndroid.SHORT);
+  }, []);
+
+  const copyText = useCallback(
+    async (value: string, what: string) => {
+      try {
+        await FileExport.copy(value);
+        copied(what);
+      } catch (e: any) {
+        Alert.alert('Could not copy', String(e?.message ?? e));
+      }
+    },
+    [copied],
+  );
+
+  /**
+   * Copy part of the meeting as a document.
+   *
+   * Rendered by the SAME native renderer as the export, so what lands on the clipboard is what the
+   * share sheet would have produced — corrections included. A second, JS-side description of the
+   * format would drift, and the one people notice drifting is the one they paste to a client.
+   */
+  const copyDoc = useCallback(
+    async (format: 'md' | 'transcript', what: string) => {
+      try {
+        await copyText(await FileExport.render(meetingId, format), what);
+      } catch (e: any) {
+        Alert.alert('Could not copy', String(e?.message ?? e));
+      }
+    },
+    [meetingId, copyText],
+  );
+
+  const onCopy = useCallback(() => copyDoc('md', 'Minutes'), [copyDoc]);
+
   const onExport = () =>
     Alert.alert('Export minutes', 'Choose a format', [
       { text: 'Markdown', onPress: () => FileExport.share(meetingId, 'md') },
@@ -194,10 +453,22 @@ export default function MeetingScreen({ route, navigation }: Props) {
       onPress: () => navigation.navigate('Speakers', { meetingId }),
     },
     {
+      icon: 'edit',
+      label: 'Rename',
+      hint: 'Auto-titles are the first words of the transcript. Give it the name you would look for.',
+      onPress: () => setRenaming(true),
+    },
+    {
       icon: 'share',
       label: 'Export',
       hint: 'Share the minutes as Markdown, plain text or subtitles.',
       onPress: onExport,
+    },
+    {
+      icon: 'copy',
+      label: 'Copy',
+      hint: 'Puts the whole write-up on the clipboard, ready to paste.',
+      onPress: onCopy,
     },
     {
       icon: 'refresh',
@@ -372,7 +643,13 @@ export default function MeetingScreen({ route, navigation }: Props) {
     <View style={[st.root, { paddingTop: insets.top + s(6) }]}>
       <View style={st.navRowDetail}>
         <IconButton icon="chevronLeft" label="Back" onPress={() => navigation.goBack()} />
-        <View style={st.flex}>
+        {/* Tapping the title renames it. The overflow sheet carries the same action with a label
+            on it, because a bare tappable heading is discoverable only by accident. */}
+        <Pressable
+          style={st.flex}
+          onPress={() => setRenaming(true)}
+          accessibilityRole="button"
+          accessibilityLabel={`Rename ${meeting?.title || 'this meeting'}`}>
           <Txt variant="sectionTitle" numberOfLines={1}>
             {meeting?.title || 'Meeting'}
           </Txt>
@@ -386,7 +663,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 })
               : ''}
           </Txt>
-        </View>
+        </Pressable>
         {meeting?.status === 'done' ? (
           <Badge label="READY" color={colors.success} soft={colors.successSoft} small />
         ) : null}
@@ -426,16 +703,98 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 speechMs={speechMs}
                 onWrite={() => onReprocess(true)}
                 onOpenTab={setTab}
+                onCopy={text => copyText(text, 'Summary')}
+                edits={edits}
+                onEdit={(initial, kind) =>
+                  setEditing({
+                    title: kind === 'summary' ? 'Correct the summary' : 'Correct the minutes',
+                    hint: 'Your wording replaces what the model wrote. The original is kept, and you can put it back.',
+                    initial,
+                    multiline: true,
+                    target: { kind, key: DOC_KEY },
+                  })
+                }
+                onRevert={kind => onRevertEdit(kind, DOC_KEY)}
+                onUpgrade={openPaywall}
                 writing={reprocessing}
               />
             ) : tab === 'mom' ? (
-              <MinutesTab minutes={minutes} onExport={onExport} />
+              <MinutesTab
+                minutes={minutes}
+                onExport={onExport}
+                onCopy={onCopy}
+                edits={edits}
+                onEditItem={onEditMinute}
+                onRevertItem={key => onRevertEdit('minute', key)}
+                onRemoveItem={onRemoveMinute}
+                onAdd={onAddMinute}
+                onEditNarrative={initial =>
+                  setEditing({
+                    title: 'Correct the minutes',
+                    hint: 'Your wording replaces what the model wrote. The original is kept, and you can put it back.',
+                    initial,
+                    multiline: true,
+                    target: { kind: 'narrative', key: DOC_KEY },
+                  })
+                }
+                onRevertNarrative={() => onRevertEdit('narrative', DOC_KEY)}
+              />
             ) : tab === 'transcript' ? (
-              <TranscriptTab utterances={utterances} speakers={speakers} />
+              <TranscriptTab
+                utterances={utterances}
+                speakers={speakers}
+                positionMs={player.positionMs}
+                onPlayTurn={player.available ? player.playFrom : undefined}
+                scrollToMs={atMs}
+                onCopy={() => copyDoc('transcript', 'Transcript')}
+                edits={edits}
+                onEditLine={(id, initial) =>
+                  setEditing({
+                    title: 'Correct this line',
+                    hint: 'Fixes a mis-heard word. The recording is untouched, and you can put the original back.',
+                    initial,
+                    multiline: true,
+                    target: { kind: 'utterance', key: id },
+                  })
+                }
+                onRevertLine={id => onRevertEdit('utterance', id)}
+              />
             ) : (
-              <ActionsTab meetingId={meetingId} minutes={minutes} />
+              <ActionsTab
+                meetingId={meetingId}
+                minutes={minutes}
+                edits={edits}
+                onEditItem={onEditMinute}
+                onRevertItem={key => onRevertEdit('minute', key)}
+                onRemoveItem={onRemoveMinute}
+                onAdd={onAddMinute}
+              />
             )}
           </View>
+
+          {/* Docked below the tabs rather than floating over them: it belongs to the meeting, not
+              to whichever tab you happen to be on, and a floating bar covers the last line of the
+              transcript — which is the line you are most often trying to read. Hidden outright
+              when the audio has been swept, because a disabled play button just invites tapping. */}
+          {player.available ? (
+            <View style={{ paddingBottom: insets.bottom }}>
+              {player.error ? (
+                <Pressable onPress={player.dismissError} style={st.playerNote}>
+                  <Icon name="alert" size={s(14)} color={colors.warning} strokeWidth={2.4} />
+                  <Txt variant="chipSoft" color={colors.inkSoft} style={st.flex}>
+                    {player.error}
+                  </Txt>
+                </Pressable>
+              ) : null}
+              <PlayerBar
+                playing={player.playing}
+                positionMs={player.positionMs}
+                durationMs={player.durationMs || meeting?.durationMs || 0}
+                onToggle={player.toggle}
+                onSeek={player.seek}
+              />
+            </View>
+          ) : null}
         </>
       )}
 
@@ -444,6 +803,29 @@ export default function MeetingScreen({ route, navigation }: Props) {
         title={meeting?.title || 'Meeting'}
         actions={sheetActions}
         onClose={() => setSheet(false)}
+      />
+
+      <TextPrompt
+        visible={editing !== null}
+        title={editing?.title ?? ''}
+        hint={editing?.hint}
+        initial={editing?.initial ?? ''}
+        multiline={editing?.multiline}
+        confirmLabel={editing?.confirmLabel}
+        extraPlaceholder={editing?.extraPlaceholder}
+        placeholder="Type here"
+        onCancel={() => setEditing(null)}
+        onSubmit={onSaveEdit}
+      />
+
+      <TextPrompt
+        visible={renaming}
+        title="Rename this meeting"
+        hint="This is what you will see in the library, in search, and at the top of anything you export."
+        initial={meeting?.title ?? ''}
+        placeholder="Meeting name"
+        onCancel={() => setRenaming(false)}
+        onSubmit={onRename}
       />
     </View>
   );
@@ -484,6 +866,17 @@ function makeStyles(c: Colors) {
     navRow: { flexDirection: 'row', alignItems: 'center', gap: s(12) },
     footer: { flexDirection: 'row', gap: s(10) },
 
+    playerNote: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: s(8),
+      marginHorizontal: s(16),
+      marginBottom: s(6),
+      paddingHorizontal: s(12),
+      paddingVertical: s(8),
+      borderRadius: radius.ctl,
+      backgroundColor: c.warningSoft,
+    },
     failCard: {
       flexDirection: 'row',
       alignItems: 'center',

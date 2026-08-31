@@ -3,10 +3,19 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Icon, { type IconName } from '../../components/Icon';
 import { Raised, Slide, SoftButton, Txt } from '../../components/ui';
 import { radius, s, useTheme, type Colors } from '../../theme';
-import type { Minute, Speaker } from '../../pipeline/types';
+import type { EditTarget, Minute, Speaker } from '../../pipeline/types';
 import Llm from '../../native/NativeLlm';
 import Licence from '../../native/NativeLicence';
-import { Prose } from './shared';
+import { TRIAL_DAYS, entitlement } from '../../billing/trial';
+import {
+  DOC_KEY,
+  EditedTag,
+  Prose,
+  ToolButton,
+  editedText,
+  isEdited,
+  type EditMap,
+} from './shared';
 
 /**
  * The landing tab: what the conversation was about, in prose.
@@ -25,6 +34,11 @@ export default function SummaryTab({
   speechMs,
   onWrite,
   onOpenTab,
+  onCopy,
+  edits,
+  onEdit,
+  onRevert,
+  onUpgrade,
   writing,
 }: {
   minutes: Minute[];
@@ -32,12 +46,24 @@ export default function SummaryTab({
   speechMs: number;
   onWrite: () => void;
   onOpenTab: (tab: string) => void;
+  /** Copy the prose itself — not the whole document, which is what the MOM tab offers. */
+  onCopy?: (text: string) => void;
+  edits?: EditMap;
+  onEdit?: (initial: string, kind: EditTarget) => void;
+  onRevert?: (kind: EditTarget) => void;
+  /** Open the paywall. Only ever reached from the locked card, which is the moment it means something. */
+  onUpgrade?: () => void;
   writing: boolean;
 }) {
   const { colors } = useTheme();
   const st = React.useMemo(() => makeStyles(colors), [colors]);
+  const ed: EditMap = edits ?? new Map();
 
-  const prose = minutes.find(m => m.kind === 'summary' && m.source === 'llm')?.content;
+  const written = minutes.find(m => m.kind === 'summary' && m.source === 'llm')?.content;
+  // An edit wins even where there is no original: a summary somebody typed on a phone that cannot
+  // run the model is still the summary of that meeting.
+  const prose = editedText(ed, 'summary', DOC_KEY, written);
+  const proseEdited = isEdited(ed, 'summary', DOC_KEY);
   const mins = Math.max(1, Math.round(speechMs / 60000));
   const actions = minutes.filter(m => m.kind === 'action').length;
   const decisions = minutes.filter(m => m.kind === 'decision').length;
@@ -51,7 +77,7 @@ export default function SummaryTab({
   // Checked even when prose EXISTS, because a lapsed subscriber keeps every summary already
   // written and must not be offered a "Write it again" that would silently do nothing.
   const [reason, setReason] = React.useState<
-    'checking' | 'expired' | 'no-model' | 'weak-device' | 'not-run'
+    'checking' | 'expired' | 'locked' | 'no-model' | 'weak-device' | 'not-run'
   >('checking');
   const [lapsedCopy, setLapsedCopy] = React.useState('');
   React.useEffect(() => {
@@ -65,7 +91,21 @@ export default function SummaryTab({
           setReason('expired');
           return;
         }
+        // Checked BEFORE the prose short-circuit, for the same reason the lapsed check is:
+        // somebody whose trial has run out keeps every summary already written, and must not be
+        // offered a "Write it again" that would silently do nothing. `expired` above only catches
+        // a lapsed SUBSCRIPTION; this catches a spent trial and never having had either.
+        //
+        // For a user with no prose it is also the honest answer to "why is there no summary" —
+        // not "download something in Settings", because that download is gated too.
+        const ent = await entitlement();
+        if (!alive) return;
+        if (!ent.paid) {
+          setReason('locked');
+          return;
+        }
         if (prose) return;
+
         const [available, capable] = await Promise.all([Llm.available(), Llm.capable()]);
         if (!alive) return;
         setReason(!available ? 'no-model' : !capable ? 'weak-device' : 'not-run');
@@ -98,24 +138,73 @@ export default function SummaryTab({
                 {mins} min · {speakers.length || '—'}{' '}
                 {speakers.length === 1 ? 'speaker' : 'speakers'}
               </Txt>
+              {/* Only where there is prose. Offering Copy over one of the four "why there is no
+                  summary" messages would put an explanation on somebody's clipboard, and offering
+                  Edit would invite them to correct a sentence about a missing model. */}
+              {prose ? (
+                <View style={st.tools}>
+                  {onEdit ? (
+                    <ToolButton
+                      icon="edit"
+                      label="Edit"
+                      hint="Correct the summary"
+                      colors={colors}
+                      tone={colors.onPrimary}
+                      onPress={() => onEdit(prose, 'summary')}
+                    />
+                  ) : null}
+                  {onCopy ? (
+                    <ToolButton
+                      icon="copy"
+                      label="Copy"
+                      hint="Copies the summary text"
+                      colors={colors}
+                      tone={colors.onPrimary}
+                      onPress={() => onCopy(prose)}
+                    />
+                  ) : null}
+                </View>
+              ) : null}
             </View>
             {prose ? (
-              <Prose text={prose} colors={colors} color={colors.onPrimary} />
+              <>
+                <Prose text={prose} colors={colors} color={colors.onPrimary} />
+                {proseEdited ? (
+                  <EditedTag
+                    colors={colors}
+                    tone={colors.onPrimary}
+                    onRevert={onRevert ? () => onRevert('summary') : undefined}
+                  />
+                ) : null}
+              </>
             ) : (
               <Txt variant="prose" color={colors.onPrimary}>
                 {reason === 'expired'
                   ? lapsedCopy
-                  : reason === 'no-model'
-                    ? 'The summary is written on your phone by a language model that has not been downloaded yet.'
-                    : reason === 'weak-device'
-                      ? 'This phone does not have enough memory to write the summary on-device.'
-                      : 'This meeting was processed before summaries were written. Run it again and one will be.'}
+                  : reason === 'locked'
+                    ? // Describes what they would GET, on the meeting in front of them, rather
+                      // than what they lack. The decisions and actions below are already theirs.
+                      'The minutes below were pulled out of what was said. Pro writes the meeting up in plain English on this phone — who said what, what was settled, what is still open.'
+                    : reason === 'no-model'
+                      ? 'The summary is written on your phone by a language model that has not been downloaded yet.'
+                      : reason === 'weak-device'
+                        ? 'This phone does not have enough memory to write the summary on-device.'
+                        : 'This meeting was processed before summaries were written. Run it again and one will be.'}
               </Txt>
             )}
             {!prose && reason === 'no-model' ? (
               <Txt variant="chipSoft" color={colors.onPrimary} style={st.note}>
                 Settings → Models
               </Txt>
+            ) : null}
+            {!prose && reason === 'locked' && onUpgrade ? (
+              <View style={st.cta}>
+                <SoftButton
+                  icon="ai"
+                  label={`Try it free for ${TRIAL_DAYS} days`}
+                  onPress={onUpgrade}
+                />
+              </View>
             ) : null}
           </View>
         </Raised>
@@ -159,7 +248,7 @@ export default function SummaryTab({
           only recourse when the model has written a poor one is to ask it again — there is
           nothing else on the screen that can change the answer. Withheld when the model is
           missing or the phone cannot run it, where the button would be an empty promise. */}
-      {(prose || reason === 'not-run') && reason !== 'expired' ? (
+      {(prose || reason === 'not-run') && reason !== 'expired' && reason !== 'locked' ? (
         <SoftButton
           icon="refresh"
           label={writing ? 'Working…' : prose ? 'Write it again' : 'Write the summary'}
@@ -175,6 +264,17 @@ export default function SummaryTab({
         <Txt variant="chipSoft" color={colors.inkDim} style={st.lapsed}>
           {lapsedCopy}
         </Txt>
+      ) : null}
+
+      {/* Same rule for a spent trial: what was written stays written. Said here rather than left
+          to a "Write it again" button that would do nothing. */}
+      {reason === 'locked' && prose ? (
+        <>
+          <Txt variant="chipSoft" color={colors.inkDim} style={st.lapsed}>
+            Summaries already written are yours to keep. Writing new ones needs Pro.
+          </Txt>
+          {onUpgrade ? <SoftButton icon="ai" label="See Pro" onPress={onUpgrade} /> : null}
+        </>
       ) : null}
     </ScrollView>
   );
@@ -227,6 +327,8 @@ function makeStyles(_c: Colors) {
     gist: { padding: s(18), gap: s(12) },
     headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     dim: { opacity: 0.8 },
+    tools: { flexDirection: 'row', gap: s(14) },
+    cta: { marginTop: s(4) },
     note: { opacity: 0.85 },
     lapsed: { textAlign: 'center', paddingHorizontal: s(12) },
     glance: { flexDirection: 'row', gap: s(10) },
