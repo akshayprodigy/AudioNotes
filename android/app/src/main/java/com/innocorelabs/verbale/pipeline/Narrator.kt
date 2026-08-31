@@ -4,6 +4,7 @@ import android.app.ActivityManager
 import android.content.Context
 import android.util.Log
 import com.innocorelabs.verbale.billing.LicenceStore
+import com.innocorelabs.verbale.billing.Trial
 import com.innocorelabs.verbale.data.AudioDb
 import com.innocorelabs.verbale.data.ModelCatalog
 
@@ -106,8 +107,8 @@ object Narrator {
     // Failing here is not an error and not a dead end. The meeting still gets its transcript, its
     // speakers and its rule-based minutes — the free floor is a whole product, not a teaser — so
     // the only thing withheld is the prose. Nothing the user already has is ever taken away.
-    if (!LicenceStore.current(ctx).isPaid) {
-      Log.i(TAG, "skipped for $meetingId (no active subscription)")
+    if (!LicenceStore.entitled(ctx)) {
+      Log.i(TAG, "skipped for $meetingId (no active subscription or trial)")
       return false
     }
 
@@ -269,6 +270,14 @@ object Narrator {
       // The checkpoint has served its purpose; leaving it would make a later re-narration resume
       // from stale digests of a transcript that may since have been re-diarized.
       db.clearNotes(meetingId)
+
+      // Counted HERE, after the rows are committed, and nowhere else. Every path into narration
+      // comes through run() — the processing service, the headless stop-from-notification, the
+      // Summary tab's "Write it again" — so this is the one place a trial summary can be counted
+      // exactly once. Counting at the gate instead would charge a person for a model that then
+      // ran out of memory, and counting in the caller would miss the headless path entirely.
+      // It no-ops for a subscriber and for anyone not on a trial.
+      Trial.noteSummary(ctx)
 
       progress.onStage("narrate", total, total)
       Log.i(TAG, "narrated $meetingId in ${System.currentTimeMillis() - startedAt}ms " +

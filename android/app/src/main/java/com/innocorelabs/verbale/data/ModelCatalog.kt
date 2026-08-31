@@ -200,7 +200,21 @@ object ModelCatalog {
    * Deliberately keyed on `kind`, not on an id: a second LLM added to the catalog is behind the
    * subscription by default, which is the safe direction for this to be wrong in.
    */
-  fun needsSubscription(spec: ModelSpec): Boolean = spec.kind == "llm"
+  /**
+   * Which models are part of Pro.
+   *
+   * `kind == "llm"` was the whole rule when the writer model was the only paid thing here.
+   * whisper-small is the other one: a straight accuracy upgrade — better with accents, crosstalk
+   * and a bad room — and the PRD always had it on the paid side.
+   *
+   * Keyed by id rather than by kind, because the free tier's floor is whisper-base and that floor
+   * is a promise. Gating `kind == "asr"` would take the guaranteed path away with it.
+   *
+   * Mirrored by PRO_MODEL_IDS in src/billing/trial.ts, which decides what the UI SAYS. This is the
+   * refusal that matters — it is what a patched JS bundle cannot reach.
+   */
+  fun needsSubscription(spec: ModelSpec): Boolean =
+    spec.kind == "llm" || spec.id == "whisper-small"
 
   fun byId(id: String): ModelSpec? = ALL.firstOrNull { it.id == id }
 

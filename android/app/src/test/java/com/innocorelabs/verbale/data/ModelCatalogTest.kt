@@ -8,16 +8,28 @@ import org.junit.Test
 /**
  * The catalog, and in particular which entries sit behind the subscription.
  *
- * Worth pinning because the answer is derived from `kind` rather than listed by id: that is the
- * safe direction for it to be wrong in — a new LLM is gated by default — but it also means adding
- * a model can change the answer without anyone editing the line that decides it.
+ * Worth pinning because the answer is mostly derived from `kind` rather than listed by id: that is
+ * the safe direction for it to be wrong in — a new LLM is gated by default — but it also means
+ * adding a model can change the answer without anyone editing the line that decides it.
  */
 class ModelCatalogTest {
 
   @Test
-  fun `only the writer model is behind the subscription`() {
+  fun `the writer model and the better ASR are behind the subscription`() {
     val gated = ModelCatalog.ALL.filter { ModelCatalog.needsSubscription(it) }.map { it.id }
-    assertEquals(listOf("llm-qwen"), gated)
+    // In catalog order, which is the order they are offered during onboarding.
+    assertEquals(listOf("whisper-small", "llm-qwen"), gated)
+  }
+
+  /**
+   * whisper-base is the free tier's floor and that floor is a promise, so the ASR gate is by id
+   * and not by kind. Gating `kind == "asr"` would take the guaranteed path away with it.
+   */
+  @Test
+  fun `the baseline ASR model is never gated`() {
+    val base = ModelCatalog.byId("whisper-base")
+    assertTrue("whisper-base is missing from the catalog", base != null)
+    assertFalse(ModelCatalog.needsSubscription(base!!))
   }
 
   @Test

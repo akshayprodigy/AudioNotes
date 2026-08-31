@@ -66,7 +66,9 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
     }
     // Checked here rather than in JS, for the same reason Narrator.run checks there: a gate in
     // the bundle is a gate anyone can edit. This is the one that has to hold.
-    if (ModelCatalog.needsSubscription(spec) && !LicenceStore.current(ctx).isPaid) {
+    // entitled(), not isPaid: an entitlement to run a model the phone is not allowed to download
+    // is a trial of nothing.
+    if (ModelCatalog.needsSubscription(spec) && !LicenceStore.entitled(ctx)) {
       promise.reject(
         "subscription_required",
         "${spec.name} is part of the subscription.",
