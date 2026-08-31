@@ -29,7 +29,11 @@ jest.mock('../src/db/queries', () => ({
 }));
 
 // Imported after the mock so the controller closes over the mocked db.
-import { PipelineController, shouldAutoRetitle } from '../src/pipeline/PipelineController';
+import {
+  PipelineController,
+  shouldAutoRetitle,
+  stripOpeningFiller,
+} from '../src/pipeline/PipelineController';
 
 const mockDb = db as unknown as Record<string, jest.Mock>;
 const mockQuery = Storage.query as unknown as jest.Mock;
@@ -84,14 +88,17 @@ describe('shouldAutoRetitle', () => {
 });
 
 describe('PipelineController.buildMinutes — retitling', () => {
-  it('writes a title over the placeholder', async () => {
+  it('writes a title over the placeholder, without the opening filler', async () => {
     meetingRow('Meeting', null);
 
     await PipelineController.buildMinutes('m1');
 
+    // The transcript opens "Okay so the rollout plan is what we need to settle". Both leading
+    // words are dropped and the result recapitalised — this expectation used to include them,
+    // and updating it is the point of the change rather than a casualty of it.
     expect(mockDb.setTitle).toHaveBeenCalledWith(
       'm1',
-      'Okay so the rollout plan is what we need to settle',
+      'The rollout plan is what we need to settle',
     );
   });
 
@@ -124,5 +131,41 @@ describe('PipelineController.buildMinutes — retitling', () => {
     await PipelineController.buildMinutes('m1');
 
     expect(mockDb.setTitle).not.toHaveBeenCalled();
+  });
+});
+
+describe('stripOpeningFiller', () => {
+  // The exact title this produced off a real recording, where the leading "So" was the only word
+  // a reader had to skip. Mirrored by ProcessingEngine.stripOpeningFiller for the headless path.
+  it('drops the throat-clearing a meeting opens with', () => {
+    expect(stripOpeningFiller('So there are three different stages to the design')).toBe(
+      'there are three different stages to the design',
+    );
+    expect(stripOpeningFiller('Okay so um yeah let us start with the budget review')).toBe(
+      'let us start with the budget review',
+    );
+    expect(stripOpeningFiller('Right, so the pricing question from last week')).toBe(
+      'the pricing question from last week',
+    );
+  });
+
+  it('leaves a title that opens with something meaningful alone', () => {
+    const real = 'Pricing for the enterprise tier needs a decision today';
+    expect(stripOpeningFiller(real)).toBe(real);
+  });
+
+  it('never strips a meeting down to nothing', () => {
+    // The floor. Without it these lose their name entirely, which is worse than a filler word.
+    expect(stripOpeningFiller('So, right')).toBe('So, right');
+    expect(stripOpeningFiller('Okay then')).toBe('Okay then');
+    expect(stripOpeningFiller('')).toBe('');
+  });
+
+  it('only strips whole words', () => {
+    // "Nowhere" and "Sofa" begin with filler spellings and are not filler.
+    const a = 'Nowhere in the contract does it say that';
+    const b = 'Sofa delivery is blocked on the warehouse';
+    expect(stripOpeningFiller(a)).toBe(a);
+    expect(stripOpeningFiller(b)).toBe(b);
   });
 });

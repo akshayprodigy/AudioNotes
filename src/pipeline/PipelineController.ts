@@ -67,6 +67,37 @@ export function shouldAutoRetitle(
   return current === 'Meeting' || / meeting · /.test(current);
 }
 
+/**
+ * The words a meeting actually opens with, minus the ones that carry no information.
+ *
+ * Auto-titles are the transcript's opening, and meetings open with throat-clearing: "So there are
+ * three different stages to the design" — a real title off a real recording, where the first word
+ * is the only one a reader has to skip. The review named this ("Okay so um yeah let's start…") and
+ * it is the first thing anybody sees in the library.
+ *
+ * Only leading filler goes, one word at a time, and only while a substantial title survives —
+ * gutting a short opening to three words would be a worse row than the one it replaces. This is
+ * cosmetic by design: the real fix for a bad title is the Rename item in the meeting menu, and
+ * the point here is that the default should not need it as often.
+ *
+ * MIRRORED in ProcessingEngine.kt (stripOpeningFiller). Android titles headlessly through the
+ * native path, so a change here that is not made there means the same recording gets a different
+ * name depending on which one processed it.
+ */
+const OPENING_FILLER =
+  /^(so|okay|ok|um|uh|erm|ah|oh|right|yeah|yep|yes|well|alright|anyway|now|and|but|like|basically|actually)\b[,]?\s+/i;
+
+export function stripOpeningFiller(opening: string): string {
+  let out = opening;
+  // A floor, not a nicety: without it "So, right" becomes "" and the meeting loses its name.
+  while (out.length > 15) {
+    const next = out.replace(OPENING_FILLER, '');
+    if (next === out || next.length < 15) break;
+    out = next;
+  }
+  return out;
+}
+
 class PipelineControllerImpl {
   private emitter = new NativeEventEmitter(NativeModules.AudioPipeline);
   private subs: { remove(): void }[] = [];
@@ -342,10 +373,10 @@ class PipelineControllerImpl {
       if (opening.length < 8) return;
 
       // Cut at a sentence end when there is one close by, otherwise on a word boundary.
-      let title = opening.slice(0, 60);
+      let title = stripOpeningFiller(opening).slice(0, 60);
       const sentenceEnd = title.search(/[.!?]/);
       if (sentenceEnd > 15) title = title.slice(0, sentenceEnd);
-      else if (opening.length > 60) title = title.replace(/\s+\S*$/, '') + '…';
+      else if (stripOpeningFiller(opening).length > 60) title = title.replace(/\s+\S*$/, '') + '…';
 
       title = title.charAt(0).toUpperCase() + title.slice(1);
       await db.setTitle(meetingId, title);

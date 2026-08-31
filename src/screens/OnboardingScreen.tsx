@@ -166,6 +166,11 @@ export default function OnboardingScreen({ navigation }: Props) {
         }
       }
     }
+    // Mark setup finished HERE, not only in finish(). The flag used to be written solely when the
+    // user tapped "Start recording" on the last screen, so anyone who got their models and then
+    // backgrounded the app came back to onboarding — offering to download what they already had.
+    // Reaching this line is what "onboarded" means; the last screen is a greeting, not a step.
+    await db.setSetting('onboarded', '1').catch(() => {});
     setStatus('done');
   };
 

@@ -281,11 +281,12 @@ class ProcessingEngine(
       //     const sentenceEnd = title.search(/[.!?]/);
       //     if (sentenceEnd > 15) title = title.slice(0, sentenceEnd);
       //     else if (opening.length > 60) title = title.replace(/\s+\S*$/, '') + '…';
-      var title = opening.take(60)
+      val trimmed = stripOpeningFiller(opening)
+      var title = trimmed.take(60)
       val sentenceEnd = title.indexOfFirst { it == '.' || it == '!' || it == '?' }
       if (sentenceEnd > 15) {
         title = title.substring(0, sentenceEnd)
-      } else if (opening.length > 60) {
+      } else if (trimmed.length > 60) {
         title = title.replace(TRAILING_PARTIAL_WORD, "") + "…"
       }
 
@@ -358,5 +359,33 @@ class ProcessingEngine(
     private val RETITLE_PLACEHOLDER = Regex(""" meeting · """)
     private val WHITESPACE_RUN = Regex("""\s+""")
     private val TRAILING_PARTIAL_WORD = Regex("""\s+\S*$""")
+
+    /**
+     * Leading filler, dropped from an auto-title.
+     *
+     * MIRRORS stripOpeningFiller in src/pipeline/PipelineController.ts, and the list must stay
+     * identical: Android titles headlessly through this path while the JS path titles the same
+     * recording when the app drives it, so a word removed on one side only means the same meeting
+     * gets two different names depending on who processed it.
+     *
+     * Meetings open with throat-clearing. "So there are three different stages to the design" is a
+     * real auto-title off a real recording, and the first word is the only one a reader skips.
+     */
+    private val OPENING_FILLER = Regex(
+      "^(so|okay|ok|um|uh|erm|ah|oh|right|yeah|yep|yes|well|alright|anyway|now|and|but|like" +
+        "|basically|actually)\\b,?\\s+",
+      RegexOption.IGNORE_CASE,
+    )
+
+    fun stripOpeningFiller(opening: String): String {
+      var out = opening
+      // A floor, not a nicety: without it "So, right" strips to "" and the meeting loses its name.
+      while (out.length > 15) {
+        val next = OPENING_FILLER.replaceFirst(out, "")
+        if (next == out || next.length < 15) break
+        out = next
+      }
+      return out
+    }
   }
 }

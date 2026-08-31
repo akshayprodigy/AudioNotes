@@ -145,6 +145,11 @@ std::vector<Utterance> WhisperAsr::transcribe(
       std::string s = sanitizeUtf8(text ? text : "");
       // trim leading space whisper tends to add
       if (!s.empty() && s.front() == ' ') s.erase(0, 1);
+      // ...and the dialogue dash it adds in front of a turn when it hears two people. Stripped
+      // here with the rest of the scrubbing, because the minutes are extracted from this text and
+      // the item hash carrying an action's tick is computed over it: cleaning it downstream would
+      // leave two different strings both claiming to be the same utterance.
+      s = stripDialogueDash(s);
       if (!s.empty()) utts.push_back(Utterance{ch.first + t0, ch.first + t1, s});
     }
     if (progress) progress(ci + 1, total);

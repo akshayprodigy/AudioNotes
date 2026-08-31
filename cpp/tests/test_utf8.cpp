@@ -70,6 +70,31 @@ int main() {
   CHECK(!validUtf8("\xB8"), "validUtf8 accepted a lone continuation byte");
   CHECK(validUtf8("hello \xE2\x80\x94 world"), "validUtf8 rejected good text");
 
+  // The dialogue dash whisper puts in front of a turn. These exact strings came off a real
+  // export, where every other transcript line began with a stray hyphen.
+  {
+    using audionotes::stripDialogueDash;
+    auto dash = [](const std::string& in, const std::string& want, const char* what) {
+      const std::string got = stripDialogueDash(in);
+      CHECK(got == want, "%s: got \"%s\", want \"%s\"", what, got.c_str(), want.c_str());
+    };
+    dash("- Okay.", "Okay.", "ascii dash");
+    dash("- Design and what control?", "Design and what control?", "dash before a question");
+    dash("-  I just got it.", "I just got it.", "two spaces");
+    dash("\xE2\x80\x93 Okay.", "Okay.", "en dash");
+    dash("\xE2\x80\x94 Okay.", "Okay.", "em dash");
+
+    // Left alone: the space is what distinguishes a speaker mark from arithmetic, a hyphenated
+    // fragment, or dictated punctuation.
+    dash("-5 degrees below", "-5 degrees below", "no space, so not a speaker mark");
+    dash("-ish, I would say", "-ish, I would say", "hyphenated fragment");
+    dash("-- and then", "-- and then", "a run of dashes is not a speaker mark");
+    dash("- ", "- ", "nothing follows the dash");
+    dash("", "", "empty");
+    dash("Okay.", "Okay.", "untouched when there is no dash");
+    dash("well - not really", "well - not really", "a dash mid-sentence stays");
+  }
+
   if (failures == 0) std::printf("test_utf8 OK\n");
   return failures == 0 ? 0 : 1;
 }
