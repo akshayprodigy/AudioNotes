@@ -105,6 +105,8 @@ export default function MeetingScreen({ route, navigation }: Props) {
   // convenience. A search hit is different — it knows where it is sending you, and why.
   const [tab, setTab] = useState<string>(initialTab ?? 'summary');
   const [renaming, setRenaming] = useState(false);
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagging, setTagging] = useState(false);
   const [edits, setEdits] = useState<EditMap>(new Map());
 
   /**
@@ -172,19 +174,21 @@ export default function MeetingScreen({ route, navigation }: Props) {
   // screen and one tap plays it, which is the whole of what the hit promised.
 
   const refresh = useCallback(async () => {
-    const [mtg, mins, utts, segs, spk, eds] = await Promise.all([
+    const [mtg, mins, utts, segs, spk, eds, tgs] = await Promise.all([
       db.getMeeting(meetingId),
       db.minutes(meetingId),
       db.utterances(meetingId),
       db.segments(meetingId),
       db.speakers(meetingId),
       db.edits(meetingId).catch(() => []),
+      db.tagsFor(meetingId).catch(() => []),
     ]);
     setMeeting(mtg ?? null);
     setMinutes(mins);
     setUtterances(utts);
     setSpeakers(spk);
     setEdits(toEditMap(eds));
+    setTags(tgs);
     setSpeechMs(segs.reduce((a, x) => a + (x.end_ms - x.start_ms), 0));
     return mins.length;
   }, [meetingId]);
@@ -378,6 +382,34 @@ export default function MeetingScreen({ route, navigation }: Props) {
     });
   }, []);
 
+  const onAddTag = useCallback(
+    async (name: string) => {
+      setTagging(false);
+      try {
+        await db.addTag(meetingId, name);
+        setTags(await db.tagsFor(meetingId));
+      } catch (e: any) {
+        Alert.alert('Could not add that tag', String(e?.message ?? e));
+      }
+    },
+    [meetingId],
+  );
+
+  /**
+   * Remove a tag on a single tap, with no confirmation.
+   *
+   * Deliberately not a destructive-confirm: a tag holds no content, putting it back is one tap,
+   * and a dialog in front of something that cheap is the kind of friction that stops people
+   * using tags at all.
+   */
+  const onRemoveTag = useCallback(
+    async (name: string) => {
+      setTags(prev => prev.filter(t => t !== name));
+      await db.removeTag(meetingId, name).catch(() => refresh());
+    },
+    [meetingId, refresh],
+  );
+
   /**
    * Say it worked, without saying it twice.
    *
@@ -460,6 +492,12 @@ export default function MeetingScreen({ route, navigation }: Props) {
       label: 'Rename',
       hint: 'Auto-titles are the first words of the transcript. Give it the name you would look for.',
       onPress: () => setRenaming(true),
+    },
+    {
+      icon: 'plus',
+      label: 'Add a tag',
+      hint: 'Group this with meetings like it — a client, a project, a weekly.',
+      onPress: () => setTagging(true),
     },
     {
       icon: 'share',
@@ -673,6 +711,24 @@ export default function MeetingScreen({ route, navigation }: Props) {
         <IconButton icon="more" label="More actions" onPress={() => setSheet(true)} />
       </View>
 
+      {tags.length > 0 ? (
+        <View style={st.tagRow}>
+          {tags.map(t => (
+            <Pressable
+              key={t}
+              onPress={() => onRemoveTag(t)}
+              accessibilityRole="button"
+              accessibilityLabel={`Remove the tag ${t}`}
+              style={[st.tag, { borderColor: colors.line, backgroundColor: colors.primarySoft }]}>
+              <Txt variant="chipSm" color={colors.primaryDeep}>
+                {t}
+              </Txt>
+              <Icon name="x" size={s(11)} color={colors.primaryDeep} strokeWidth={2.8} />
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
       {failure ? (
         <View style={st.failCard}>
           <Icon name="alert" size={s(18)} color={colors.danger} strokeWidth={2.4} />
@@ -822,6 +878,17 @@ export default function MeetingScreen({ route, navigation }: Props) {
       />
 
       <TextPrompt
+        visible={tagging}
+        title="Add a tag"
+        hint="Tags are shared across meetings, so use the same word each time — “client”, “1:1”, “standup”."
+        initial=""
+        placeholder="Tag"
+        confirmLabel="Add"
+        onCancel={() => setTagging(false)}
+        onSubmit={onAddTag}
+      />
+
+      <TextPrompt
         visible={renaming}
         title="Rename this meeting"
         hint="This is what you will see in the library, in search, and at the top of anything you export."
@@ -869,6 +936,22 @@ function makeStyles(c: Colors) {
     navRow: { flexDirection: 'row', alignItems: 'center', gap: s(12) },
     footer: { flexDirection: 'row', gap: s(10) },
 
+    tagRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: s(6),
+      paddingHorizontal: s(16),
+      paddingBottom: s(8),
+    },
+    tag: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: s(6),
+      paddingHorizontal: s(10),
+      paddingVertical: s(5),
+      borderRadius: radius.pill,
+      borderWidth: 1,
+    },
     playerNote: {
       flexDirection: 'row',
       alignItems: 'center',

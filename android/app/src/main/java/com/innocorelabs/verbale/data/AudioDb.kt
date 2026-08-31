@@ -850,6 +850,17 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
            item_key TEXT NOT NULL, done_at INTEGER NOT NULL,
            PRIMARY KEY (meeting_id, item_key));""",
       "CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT);",
+      // Labels a person puts on a meeting: "client", "1:1", "standup".
+      //
+      // Tags rather than folders, and many-to-many rather than one parent. A meeting is routinely
+      // both a client call and a Tuesday standup, and a hierarchy forces a choice between them —
+      // then forces every later meeting into a filing decision made once, badly. Nothing here has
+      // to be created before it is used: writing a tag IS creating it, and the last meeting to
+      // drop a name is what removes it.
+      """CREATE TABLE IF NOT EXISTS tags(
+           meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+           name TEXT NOT NULL,
+           PRIMARY KEY (meeting_id, name));""",
       // User-authored replacements for pipeline-written text.
       //
       // Deliberately a SIDE table rather than an UPDATE of the row being edited. Ticked actions

@@ -47,7 +47,8 @@ object BackupManager {
     // "meetings" must stay FIRST. Import is INSERT OR REPLACE, which deletes a conflicting
     // meetings row before inserting the new one — cascading that meeting's children away. Any
     // child table listed before it would be imported and then immediately destroyed.
-    "meetings", "segments", "utterances", "speakers", "minutes", "action_done", "edits", "settings",
+    "meetings", "segments", "utterances", "speakers", "minutes", "action_done", "edits", "tags",
+    "settings",
   )
 
   /**

@@ -17,16 +17,59 @@ async function run<T>(sql: string, params: unknown[] = []): Promise<T[]> {
   return JSON.parse(raw) as T[];
 }
 
+export type MeetingSort = 'recent' | 'oldest' | 'longest' | 'title';
+
+/**
+ * The only orderings the library can ask for, spelled out.
+ *
+ * A map rather than a string the caller passes through: `sort` comes from a saved setting, which
+ * is a row in a database on a phone its owner controls, so it is untrusted input by the time it
+ * reaches here.
+ *
+ * `title` collates case-insensitively because "acme sync" filed away from "Acme sync" is not a
+ * sort, it is two lists.
+ */
+const MEETING_ORDER: Record<MeetingSort, string> = {
+  recent: 'created_at DESC',
+  oldest: 'created_at ASC',
+  longest: 'duration_ms DESC',
+  title: 'title COLLATE NOCASE ASC',
+};
+
+/**
+ * One spelling per tag.
+ *
+ * Tags are typed, not chosen from a list, so "Client", "client " and "client" would otherwise be
+ * three separate filters that each hold part of the answer. Folded to lower case and collapsed,
+ * which is the same normalisation the item key uses and for the same reason.
+ */
+export function normaliseTag(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 32);
+}
+
 export const db = {
   init: () => Storage.open(),
 
   // Columns are aliased to the camelCase the TS types declare. `SELECT *` returned raw snake_case,
   // so meeting.createdAt / .durationMs / .tierUsed were silently undefined everywhere.
-  listMeetings: () =>
+  /**
+   * The library, ordered and optionally narrowed to one tag.
+   *
+   * The ORDER BY is built from a closed set rather than interpolated from the caller's string —
+   * this is the one query whose shape the UI gets to choose, and a sort key that reached SQL
+   * unchecked would be an injection point in a database holding the user's meetings.
+   *
+   * Filtering by tag is an EXISTS rather than a join so a meeting carrying three tags still
+   * appears once; a join would return it three times and the list would show duplicates.
+   */
+  listMeetings: (sort: MeetingSort = 'recent', tag?: string | null) =>
     run<Meeting>(
       'SELECT id, title, created_at AS createdAt, duration_ms AS durationMs, language, ' +
         'status, tier_used AS tierUsed, audio_retained AS audioRetained, summary_line AS summaryLine ' +
-        'FROM meetings WHERE archived_at IS NULL ORDER BY created_at DESC',
+        'FROM meetings WHERE archived_at IS NULL' +
+        (tag ? ' AND EXISTS(SELECT 1 FROM tags t WHERE t.meeting_id = meetings.id AND t.name = ?)' : '') +
+        ` ORDER BY ${MEETING_ORDER[sort] ?? MEETING_ORDER.recent}`,
+      tag ? [tag] : [],
     ),
 
   listArchived: () =>
@@ -244,6 +287,28 @@ export const db = {
 
   /** Index meetings recorded before the index covered more than the transcript. Returns the backlog. */
   backfillSearch: (limit = 25) => Storage.backfillSearch(limit),
+
+  // ---- Tags -------------------------------------------------------------------------------
+
+  tagsFor: (meetingId: string) =>
+    run<{ name: string }>('SELECT name FROM tags WHERE meeting_id = ? ORDER BY name', [
+      meetingId,
+    ]).then(rows => rows.map(r => r.name)),
+
+  /** Every tag in use, most-used first, so the library's filter row leads with the useful ones. */
+  allTags: () =>
+    run<{ name: string; n: number }>(
+      'SELECT name, COUNT(*) AS n FROM tags GROUP BY name ORDER BY n DESC, name ASC',
+    ),
+
+  addTag: async (meetingId: string, name: string) => {
+    const clean = normaliseTag(name);
+    if (!clean) return;
+    await run('INSERT OR IGNORE INTO tags(meeting_id, name) VALUES(?,?)', [meetingId, clean]);
+  },
+
+  removeTag: (meetingId: string, name: string) =>
+    run('DELETE FROM tags WHERE meeting_id = ? AND name = ?', [meetingId, name]),
 
   // ---- User edits of pipeline-written text ------------------------------------------------
 

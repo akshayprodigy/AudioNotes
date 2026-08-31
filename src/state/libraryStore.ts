@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { db } from '../db/queries';
+import { db, type MeetingSort } from '../db/queries';
 import type { Meeting } from '../pipeline/types';
 
 /**
@@ -36,6 +36,17 @@ let running = false;
 interface LibraryState {
   meetings: Meeting[];
   loading: boolean;
+  /** Persisted: how somebody likes their library is a preference, not a per-visit decision. */
+  sort: MeetingSort;
+  /**
+   * NOT persisted. A tag filter is a question being asked right now — "what did I agree with this
+   * client" — and coming back tomorrow to a library that silently hides most of it, because of a
+   * filter set once last week, reads as lost data.
+   */
+  tag: string | null;
+  tags: { name: string; n: number }[];
+  setSort: (sort: MeetingSort) => Promise<void>;
+  setTag: (tag: string | null) => Promise<void>;
   /** Meetings still without search-index rows, as of the last pass. Surfaced by SearchScreen. */
   unindexed: number;
   /** True while the backfill loop is running, so search can say why it may be missing things. */
@@ -47,14 +58,37 @@ interface LibraryState {
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   meetings: [],
   loading: false,
+  sort: 'recent',
+  tag: null,
+  tags: [],
   unindexed: 0,
   indexing: false,
+
+  setSort: async (sort: MeetingSort) => {
+    set({ sort });
+    await db.setSetting('librarySort', sort).catch(() => {});
+    await get().refresh();
+  },
+
+  setTag: async (tag: string | null) => {
+    set({ tag });
+    await get().refresh();
+  },
 
   refresh: async () => {
     set({ loading: true });
     try {
-      const meetings = await db.listMeetings();
-      set({ meetings, loading: false });
+      // The stored preference is read on every refresh rather than once at startup, so a sort
+      // chosen on one screen is in force on the next without anything having to broadcast it.
+      const stored = (await db.getSetting('librarySort').catch(() => null)) as MeetingSort | null;
+      const sort = stored ?? get().sort;
+      let tag = get().tag;
+      const tags = await db.allTags().catch(() => []);
+      // A tag whose last meeting was just deleted stops existing. Dropping the filter is the only
+      // way back: the list would otherwise be empty with no way to see it was being filtered.
+      if (tag && !tags.some(t => t.name === tag)) tag = null;
+      const meetings = await db.listMeetings(sort, tag);
+      set({ meetings, tags, tag, sort, loading: false });
     } catch {
       set({ loading: false });
     }

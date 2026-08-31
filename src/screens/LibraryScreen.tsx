@@ -1,14 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, ScrollView, StyleSheet, View } from 'react-native';
+import { Animated, Easing, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useLibraryStore } from '../state/libraryStore';
+import type { MeetingSort } from '../db/queries';
 import { loadActions, tally } from './actionsData';
 import { useImport } from './useImport';
 import { PipelineController } from '../pipeline/PipelineController';
 import { db } from '../db/queries';
-import Icon from '../components/Icon';
+import Icon, { type IconName } from '../components/Icon';
 import Mascot from '../components/Mascot';
 import RecordingBar from '../components/RecordingBar';
 import { confirmDestructive, quoted } from '../components/confirm';
@@ -152,11 +153,52 @@ function FabRing() {
   );
 }
 
+const SORTS: { key: MeetingSort; label: string; hint: string }[] = [
+  { key: 'recent', label: 'Newest first', hint: 'The default, and what you want most days.' },
+  { key: 'oldest', label: 'Oldest first', hint: 'For working forwards through a backlog.' },
+  { key: 'longest', label: 'Longest first', hint: 'Real meetings float up; mis-taps sink.' },
+  { key: 'title', label: 'By name', hint: 'Once meetings have names you chose.' },
+];
+
+/** A filter pill. Small enough to live here rather than in the shared kit. */
+function Chip({
+  label,
+  on,
+  onPress,
+  colors,
+}: {
+  label: string;
+  on: boolean;
+  onPress: () => void;
+  colors: Colors;
+}) {
+  const st = useMemo(() => makeStyles(colors), [colors]);
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: on }}
+      accessibilityLabel={label}
+      style={[
+        st.chip,
+        {
+          borderColor: on ? colors.primary : colors.line,
+          backgroundColor: on ? colors.primarySoft : colors.card,
+        },
+      ]}>
+      <Txt variant="chipSm" color={on ? colors.primaryDeep : colors.inkDim}>
+        {label}
+      </Txt>
+    </Pressable>
+  );
+}
+
 export default function LibraryScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const st = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
-  const { meetings, refresh } = useLibraryStore();
+  const { meetings, refresh, sort, setSort, tag, tags, setTag } = useLibraryStore();
+  const [sorting, setSorting] = useState(false);
   const backfillSearch = useLibraryStore(st2 => st2.backfillSearch);
   const [sheetFor, setSheetFor] = useState<Meeting | null>(null);
   const [archived, setArchived] = useState(0);
@@ -509,6 +551,33 @@ export default function LibraryScreen({ navigation }: Props) {
           </View>
         </View>
 
+        {/* Only once there is something to sort or filter. On a library of three meetings this
+            row is furniture in front of the content. */}
+        {meetings.length + (tag ? 1 : 0) > 4 || tags.length > 0 ? (
+          <View style={st.filterRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={st.chips}>
+              <Chip label="All" on={tag === null} onPress={() => setTag(null)} colors={colors} />
+              {tags.map(t => (
+                <Chip
+                  key={t.name}
+                  label={`${t.name} · ${t.n}`}
+                  on={tag === t.name}
+                  onPress={() => setTag(tag === t.name ? null : t.name)}
+                  colors={colors}
+                />
+              ))}
+            </ScrollView>
+            <IconButton
+              icon="filter"
+              label={`Sort: ${SORTS.find(x => x.key === sort)?.label ?? 'Newest'}`}
+              onPress={() => setSorting(true)}
+            />
+          </View>
+        ) : null}
+
         {streak >= 2 ? (
           <Pop style={st.streakWrap}>
             <Raised
@@ -598,6 +667,18 @@ export default function LibraryScreen({ navigation }: Props) {
       </ScrollView>
 
       <Sheet
+        visible={sorting}
+        title="Sort meetings"
+        actions={SORTS.map(o => ({
+          icon: (o.key === sort ? 'check' : 'list') as IconName,
+          label: o.label,
+          hint: o.hint,
+          onPress: () => setSort(o.key),
+        }))}
+        onClose={() => setSorting(false)}
+      />
+
+      <Sheet
         visible={sheetFor !== null}
         title={sheetFor?.title || 'Meeting'}
         actions={sheetFor ? sheetActions(sheetFor) : []}
@@ -643,6 +724,21 @@ function makeStyles(c: Colors) {
     root: { flex: 1, backgroundColor: c.canvas },
     flex: { flex: 1 },
     emptyFlex: { flexGrow: 1, justifyContent: 'center' },
+    filterRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: s(8),
+      paddingLeft: s(20),
+      paddingRight: s(12),
+      marginBottom: s(12),
+    },
+    chips: { gap: s(8), paddingRight: s(8), alignItems: 'center' },
+    chip: {
+      paddingHorizontal: s(12),
+      paddingVertical: s(7),
+      borderRadius: radius.pill,
+      borderWidth: 1,
+    },
     importing: {
       flexDirection: 'row',
       alignItems: 'center',
