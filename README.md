@@ -4,7 +4,8 @@ On-device meeting note-taker. Records in-person meetings and produces structured
 minutes **entirely on the device** — no audio or text leaves the phone, no account,
 works fully offline (airplane mode). The one hard promise: **no third-party AI**.
 
-Built by InnoCore Labs. See `BUILD_PLAN.md` for the full engineering plan and
+Built by InnoCore Labs. See `BUILD_PLAN.md` for the full engineering plan,
+`docs/RELEASE_2026-08.md` for what shipped most recently, and
 `InnoCore_MeetingNoteTaker_PRD_v3.docx` for the product requirements.
 
 ## Stack
@@ -19,29 +20,35 @@ Built by InnoCore Labs. See `BUILD_PLAN.md` for the full engineering plan and
 ## Pipeline
 
 ```
-capture → VAD → ASR → diarization → alignment → structuring → encrypted store
+capture → VAD → ASR → diarization → alignment → structuring → narration → encrypted store
 ```
+
+Every stage runs in a foreground service and is **resumable by stage**, so a process kill
+mid-meeting costs one stage rather than the meeting. A recording stopped from the PiP window
+or the notification — with no app in the foreground and no JS context alive — is processed to
+finished minutes by native alone, and says so with a "Notes ready" notification.
 
 ## Layout
 
 ```
 src/            TypeScript app layer (portable across Android + iOS)
-  screens/      Record, Library, Meeting, Speakers, Search, Settings
+  screens/      Record, Library, Meeting, Speakers, Search, Actions, Settings, Paywall
   navigation/   React Navigation stack
   state/        Zustand stores
-  pipeline/     PipelineController + types (JS-side orchestrator)
+  pipeline/     PipelineController + the rule-based minutes (JS side of the shared core)
   native/       TurboModule specs (codegen source of truth)
   db/           typed query layer + SQLCipher schema
-android/        Android host; native modules + foreground RecordingService (Kotlin)
+android/        Android host: Kotlin TurboModules, the recording/processing foreground
+                services, the PiP recorder window and the Quick Settings tile
 cpp/            shared C++ inference core (libaudionotes) — see cpp/README.md
 ios/            iOS host (fleshed out at build milestone 7)
 ```
 
-## Getting started
+> **Native artefact names keep the old project name on purpose.** `libaudionotes.so`,
+> the `an_process` CLI, `audionotes.db` and the `.anbak` backup extension are contracts
+> with binaries and files already on people's phones. The app is Verbale; its `.so` is not.
 
-> The native modules and C++ core are **stubs** right now — the app boots and the UI
-> navigates, but recording/transcription are wired to no-op natives until the C++
-> engines are vendored in (see `cpp/README.md`) and the module bodies implemented.
+## Getting started
 
 ```bash
 npm install
@@ -53,15 +60,22 @@ npm start
 
 New Architecture is on by default (`newArchEnabled=true`, Hermes on).
 
+The Android modules and the C++ core are **implemented, not stubs** — capture, VAD, whisper.cpp
+ASR, sherpa-onnx diarization, alignment, rule-based minutes, llama.cpp narration, SQLCipher
+storage, FTS5 search, export, playback and backup all run on device. What a fresh clone still
+needs is the three engine submodules under `cpp/third_party/` and the models, which download on
+first run rather than shipping in the APK. `docs/ANDROID_TESTING.md` brings the stages up one at
+a time; `cpp/README.md` covers the submodules.
+
 ## Build order
 
 See `BUILD_PLAN.md` §9. Short version:
-1. Capture + VAD + encrypted storage
-2. whisper.cpp → internal alpha (dogfood)
-3. Rule-based minutes
-4. Diarization + manual labelling/merge UI
-5. On-device LLM summarization (Qwen3 via llama.cpp)
-6. Search + export → Free + Pro launch
+1. Capture + VAD + encrypted storage ✅
+2. whisper.cpp → internal alpha (dogfood) ✅
+3. Rule-based minutes ✅
+4. Diarization + manual labelling/merge UI ✅
+5. On-device LLM summarization (Qwen2.5 1.5B via llama.cpp) ✅
+6. Search + export → Free + Pro launch ✅ *(shipping checklist in `docs/play-console.md`)*
 7. iOS port
 8. Deep tier (server) infrastructure
 
