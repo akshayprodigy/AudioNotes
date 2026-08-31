@@ -20,6 +20,7 @@ class AudioPipelinePackage : ReactPackage {
       ModelManagerModule(ctx),
       LlmModule(ctx),
       FileExportModule(ctx),
+      PlayerModule(ctx),
       PipModule(ctx),
       LicenceModule(ctx),
       BillingModule(ctx),
