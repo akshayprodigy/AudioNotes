@@ -68,6 +68,45 @@ class ModelCatalogTest {
     assertEquals(ModelCatalog.ALL.size, ModelCatalog.ALL.map { it.filename }.toSet().size)
   }
 
+  /**
+   * The mirror URL shape, which is a contract with the nginx `location /models/v1/` block in
+   * server/deploy/nginx/verbale.conf and cannot be verified from either side alone.
+   *
+   * Getting it wrong fails silently and in the expensive direction: a mirror path the server does
+   * not serve 404s, `fetchTo` treats that as "source failed", and every install quietly falls back
+   * to GitHub and Hugging Face. Nothing errors, nothing is logged where anyone looks, and the
+   * mirror simply never gets used — which is indistinguishable from it working, right up until
+   * upstream moves a file.
+   *
+   * Written against BuildConfig rather than a hardcoded host so it holds whatever gradle.properties
+   * says, including empty.
+   */
+  @Test
+  fun `the mirror is tried first, at the path the server actually serves`() {
+    val base = com.innocorelabs.verbale.BuildConfig.MODEL_BASE_URL.trim().trimEnd('/')
+    val spec = ModelCatalog.byId("whisper-base")!!
+    val sources = ModelCatalog.sourcesFor(spec)
+    if (base.isEmpty()) {
+      assertEquals(listOf(spec.upstream), sources)
+    } else {
+      assertEquals(listOf("$base/models/v1/${spec.filename}", spec.upstream), sources)
+    }
+  }
+
+  @Test
+  fun `upstream is always the last resort, for every model`() {
+    // The fallback is what makes the mirror safe to rate-limit and safe to take down: a 503 from
+    // it degrades to a slower download rather than a failed first run. A model that lost its
+    // upstream entry would turn every mirror hiccup into a broken install.
+    for (spec in ModelCatalog.ALL) {
+      assertEquals(
+        "${spec.id} does not fall back to upstream",
+        spec.upstream,
+        ModelCatalog.sourcesFor(spec).last(),
+      )
+    }
+  }
+
   @Test
   fun `every upstream is https`() {
     // These are weights that get loaded and executed. Plain http would let anyone on the path
