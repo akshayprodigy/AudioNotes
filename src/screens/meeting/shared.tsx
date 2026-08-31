@@ -1,9 +1,9 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import Icon, { type IconName } from '../../components/Icon';
 import { Raised, Txt } from '../../components/ui';
 import { radius, s, type Colors } from '../../theme';
-import type { Minute } from '../../pipeline/types';
+import type { Edit, EditTarget, Minute } from '../../pipeline/types';
 
 /**
  * Pieces shared by more than one meeting tab. Moved out of MeetingScreen when it split —
@@ -47,6 +47,184 @@ export const stamp = (ms: number) => {
 };
 
 /**
+ * A stable key for one extracted item.
+ *
+ * NOT the minutes row id: those are deleted and re-inserted every time a meeting is reprocessed or
+ * its speakers are merged, so keying on them would silently uncheck everything the user had worked
+ * through. Normalised text survives all of that, and changes only when the wording does — which is
+ * the case where an unticked box is the right answer anyway.
+ *
+ * It lives here rather than in ActionsTab now that a second feature depends on it: a hand-written
+ * correction of a minute is stored against this same key, so an edit and the tick it belongs to
+ * are anchored to exactly the same thing and survive a reprocess together. ActionsTab re-exports
+ * it under the name the existing test imports.
+ */
+export function itemKey(content: string): string {
+  const norm = content.trim().toLowerCase().replace(/\s+/g, ' ');
+  let h = 0;
+  for (let i = 0; i < norm.length; i++) {
+    h = (h * 31 + norm.charCodeAt(i)) | 0;
+  }
+  return `${norm.length}:${h}`;
+}
+
+/**
+ * The text a minute row actually holds.
+ *
+ * `minutes.content_json` stores a plain string — the native writer, the export renderer and
+ * `db.replaceMinutes` all treat it that way — and `db.addUserMinute` now does too. This unwrap
+ * stays for the rows written while it did not: a hand-written item added on a build between the
+ * two came back wrapped in its own quotation marks, and there is no migration worth writing for
+ * it. It cannot damage anything else — text that was never encoded, and an encoded value that
+ * does not decode to a string, both fall straight through.
+ */
+export function minuteText(m: Minute): string {
+  const raw = m.content ?? '';
+  if (raw.length > 1 && raw.startsWith('"') && raw.endsWith('"')) {
+    try {
+      const decoded: unknown = JSON.parse(raw);
+      if (typeof decoded === 'string') return decoded;
+    } catch {
+      // Not JSON after all, and a quoted sentence is perfectly ordinary text.
+    }
+  }
+  return raw;
+}
+
+// ---------------------------------------------------------------------------------------------
+// User edits, overlaid at render
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Hand corrections, ready to look up.
+ *
+ * Edits are a SIDE table on purpose (see db.putEdit): the pipeline's own text is never rewritten,
+ * because action ticks are hashed on it and a rewrite would untick everything the user had worked
+ * through. The consequence for the screen is that every place which shows pipeline text has to ask
+ * for the edit first — this map is that question, made cheap enough to ask once per row.
+ */
+export type EditMap = Map<string, string>;
+
+export const editKey = (kind: EditTarget, key: string) => `${kind}/${key}`;
+
+/**
+ * The target key for whole-document edits.
+ *
+ * `summary` and `narrative` have exactly one instance per meeting, so the kind already identifies
+ * the thing and the key has nothing left to say. Named rather than written inline because the
+ * export renderer mirrors it in Kotlin — the document a person sends to a client must carry their
+ * corrections, and that only works if both sides agree on the key.
+ */
+export const DOC_KEY = 'doc';
+
+export function toEditMap(edits: Edit[]): EditMap {
+  return new Map(edits.map(e => [editKey(e.targetKind, e.targetKey), e.content]));
+}
+
+/**
+ * The edit if there is one, the original otherwise.
+ *
+ * An edit wins even where there is no original at all: a summary someone typed by hand on a phone
+ * that cannot run the model is still the summary of that meeting, and withholding it because no
+ * model wrote one would be absurd.
+ */
+export function editedText(
+  edits: EditMap,
+  kind: EditTarget,
+  key: string,
+  original?: string,
+): string | undefined {
+  return edits.get(editKey(kind, key)) ?? original;
+}
+
+export function isEdited(edits: EditMap, kind: EditTarget, key: string): boolean {
+  return edits.has(editKey(kind, key));
+}
+
+/**
+ * The mark on anything a person has changed by hand, with the way back.
+ *
+ * Shown rather than left implicit because the reader has to be able to tell the meeting's own
+ * record from their own corrections — that distinction is the whole reason edits are stored
+ * separately — and because an edit with no visible way to undo it is a trap: the original text is
+ * still there in the database, and one tap should be enough to see it again.
+ */
+export function EditedTag({
+  colors,
+  onRevert,
+  tone,
+}: {
+  colors: Colors;
+  onRevert?: () => void;
+  /** Set on tinted cards, where the theme's faint ink disappears into the fill. */
+  tone?: string;
+}) {
+  const st = React.useMemo(() => makeStyles(colors), [colors]);
+  const ink = tone ?? colors.inkFaint;
+  return (
+    <View style={st.editedRow}>
+      <Txt variant="overlineSm" color={ink}>
+        EDITED BY YOU
+      </Txt>
+      {onRevert ? (
+        <Pressable
+          onPress={onRevert}
+          accessibilityRole="button"
+          accessibilityLabel="Undo this edit and show the original text"
+          hitSlop={s(10)}
+          style={st.revert}>
+          <Icon name="undo" size={s(13)} color={ink} strokeWidth={2.6} />
+          <Txt variant="overlineSm" color={ink}>
+            REVERT
+          </Txt>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * The mark on an item a person added themselves, with the way to remove it.
+ *
+ * The counterpart to [EditedTag], and shown for the same reason: the reader has to be able to tell
+ * the meeting's own record from what they added to it. Removal lives here rather than behind a
+ * long-press because these rows have no original to fall back to — deleting one is the only way
+ * out, so it cannot be hidden.
+ */
+export function MineTag({
+  colors,
+  onRemove,
+  tone,
+}: {
+  colors: Colors;
+  onRemove?: () => void;
+  tone?: string;
+}) {
+  const st = React.useMemo(() => makeStyles(colors), [colors]);
+  const ink = tone ?? colors.inkFaint;
+  return (
+    <View style={st.editedRow}>
+      <Txt variant="overlineSm" color={ink}>
+        ADDED BY YOU
+      </Txt>
+      {onRemove ? (
+        <Pressable
+          onPress={onRemove}
+          accessibilityRole="button"
+          accessibilityLabel="Remove this item"
+          hitSlop={s(10)}
+          style={st.revert}>
+          <Icon name="trash" size={s(13)} color={ink} strokeWidth={2.6} />
+          <Txt variant="overlineSm" color={ink}>
+            REMOVE
+          </Txt>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+/**
  * Pull the owner and due date back out of an action's stored text.
  *
  * `minutes.ts` builds the row as `<sentence> — <owner>` plus an optional `(due …)`, so the string
@@ -56,7 +234,8 @@ export const stamp = (ms: number) => {
  *
  * Parsed here rather than fixed at the source on purpose: `itemKey` hashes the stored content to
  * decide which boxes are ticked, so changing the stored format would silently untick every item
- * the user had worked through. The data stays; only the presentation changes.
+ * the user had worked through. The data stays; only the presentation changes. Items a person types
+ * themselves are composed back into this same format (see composeAction) for exactly that reason.
  */
 export function splitAction(content: string): {
   text: string;
@@ -80,6 +259,26 @@ export function splitAction(content: string): {
   // information without the noise.
   const owner = tail && !/^unassigned$/i.test(tail) ? tail : null;
   return { text, owner, due };
+}
+
+/**
+ * Build the stored form of an action out of the three things a person typed.
+ *
+ * The inverse of splitAction, and it exists so a hand-written item is stored in the SAME shape the
+ * extractor writes. One format in the table means one parser at render, one export renderer and
+ * one tick key — an item you typed behaves exactly like an item the meeting produced. "Unassigned"
+ * is written out when there is a due date but no owner, because the date is parsed off the end of
+ * that suffix and without it there is nothing to parse.
+ */
+export function composeAction(text: string, owner?: string, due?: string): string {
+  const body = text.trim();
+  const who = (owner ?? '').trim();
+  // The extractor's dates always read "due …", and splitAction only recognises them that way, so a
+  // bare "Friday" is given the word rather than being silently dropped at the next render.
+  const when = (due ?? '').trim().replace(/^due\b\s*/i, '');
+  if (!who && !when) return body;
+  const suffix = who || 'Unassigned';
+  return when ? `${body} — ${suffix} (due ${when})` : `${body} — ${suffix}`;
 }
 
 /**
@@ -177,12 +376,37 @@ export function Prose({
  * badge and its own tilted raised card — fine for the three items the design was drawn against,
  * and card soup at the twenty-nine this meeting produces. A coloured rule carries the same kind
  * information in a fraction of the ink, and the eye can run down the column.
+ *
+ * Correcting a line is a long-press rather than a pencil per row for the same reason: at
+ * twenty-nine items a column of pencils IS the card soup, in a smaller size. The tab says the
+ * gesture exists in a line above the list, and the accessibility action offers the same thing to
+ * anyone who cannot make a long-press.
  */
-export function DocItem({ m, colors }: { m: Minute; colors: Colors }) {
+export function DocItem({
+  m,
+  colors,
+  content,
+  edited,
+  mine,
+  onEdit,
+  onRevert,
+  onRemove,
+}: {
+  m: Minute;
+  colors: Colors;
+  /** The text to show — the user's correction where there is one. Defaults to what is stored. */
+  content?: string;
+  edited?: boolean;
+  /** This row was typed by the user rather than pulled out of the transcript. */
+  mine?: boolean;
+  onEdit?: () => void;
+  onRevert?: () => void;
+  onRemove?: () => void;
+}) {
   const st = React.useMemo(() => makeStyles(colors), [colors]);
   const meta = kindMeta(m.kind, colors);
-  const { text, owner, due } = splitAction(m.content);
-  return (
+  const { text, owner, due } = splitAction(content ?? minuteText(m));
+  const body = (
     <View style={st.docRow}>
       <View style={[st.rule, { backgroundColor: meta.color }]} />
       <View style={st.flex}>
@@ -192,8 +416,29 @@ export function DocItem({ m, colors }: { m: Minute; colors: Colors }) {
             {[owner, due].filter(Boolean).join(' · ')}
           </Txt>
         ) : null}
+        {/* At most one of the two: a hand-written row has no original to revert TO, so the mark
+            it carries is "you added this", with removal rather than revert behind it. */}
+        {mine ? (
+          <MineTag colors={colors} onRemove={onRemove} />
+        ) : edited ? (
+          <EditedTag colors={colors} onRevert={onRevert} />
+        ) : null}
       </View>
     </View>
+  );
+  if (!onEdit) return body;
+  return (
+    <Pressable
+      onLongPress={onEdit}
+      accessibilityRole="button"
+      accessibilityLabel={text}
+      accessibilityHint="Long press to correct this line"
+      accessibilityActions={[{ name: 'longpress', label: 'Correct this line' }]}
+      onAccessibilityAction={e => {
+        if (e.nativeEvent.actionName === 'longpress') onEdit();
+      }}>
+      {body}
+    </Pressable>
   );
 }
 
@@ -203,11 +448,14 @@ export function SectionHead({
   count,
   colors,
   style,
+  right,
 }: {
   label: string;
   count?: number;
   colors: Colors;
   style?: object;
+  /** A control belonging to this section — the Edit affordance on the written minutes, say. */
+  right?: React.ReactNode;
 }) {
   const st = React.useMemo(() => makeStyles(colors), [colors]);
   return (
@@ -215,12 +463,53 @@ export function SectionHead({
       <Txt variant="overlineSm" color={colors.inkFaint}>
         {label}
       </Txt>
+      {right ?? null}
       {count !== undefined ? (
         <Txt variant="overlineSm" color={colors.inkFaint}>
           {count}
         </Txt>
       ) : null}
     </View>
+  );
+}
+
+/**
+ * A small icon-and-label control for the tab furniture — copy, edit, add.
+ *
+ * Quieter than SoftButton, which is a full-width pill and would dominate a card header. These sit
+ * in a row at the head or foot of a section and are meant to be found when looked for rather than
+ * to compete with the meeting's own words.
+ */
+export function ToolButton({
+  icon,
+  label,
+  onPress,
+  colors,
+  tone,
+  hint,
+}: {
+  icon: IconName;
+  label: string;
+  onPress: () => void;
+  colors: Colors;
+  tone?: string;
+  hint?: string;
+}) {
+  const st = React.useMemo(() => makeStyles(colors), [colors]);
+  const ink = tone ?? colors.primary;
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={hint}
+      hitSlop={s(8)}
+      style={({ pressed }) => [st.tool, { opacity: pressed ? 0.55 : 1 }]}>
+      <Icon name={icon} size={s(15)} color={ink} strokeWidth={2.6} />
+      <Txt variant="chip" color={ink}>
+        {label}
+      </Txt>
+    </Pressable>
   );
 }
 
@@ -252,5 +541,8 @@ function makeStyles(_c: Colors) {
     head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     empty: { padding: s(22), alignItems: 'center', gap: s(8) },
     emptyText: { textAlign: 'center' },
+    editedRow: { flexDirection: 'row', alignItems: 'center', gap: s(12), marginTop: s(6) },
+    revert: { flexDirection: 'row', alignItems: 'center', gap: s(4) },
+    tool: { flexDirection: 'row', alignItems: 'center', gap: s(6), paddingVertical: s(4) },
   });
 }
