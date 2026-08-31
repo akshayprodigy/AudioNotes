@@ -5,6 +5,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useLibraryStore } from '../state/libraryStore';
 import { loadActions, tally } from './actionsData';
+import { useImport } from './useImport';
 import { PipelineController } from '../pipeline/PipelineController';
 import { db } from '../db/queries';
 import Icon from '../components/Icon';
@@ -160,6 +161,23 @@ export default function LibraryScreen({ navigation }: Props) {
   const [sheetFor, setSheetFor] = useState<Meeting | null>(null);
   const [archived, setArchived] = useState(0);
   const [work, setWork] = useState({ total: 0, open: 0, meetings: 0 });
+
+  /**
+   * Importing lives here because the library is where the app comes back to.
+   *
+   * A share that arrives while the app is closed lands on whatever mounts first, and this screen
+   * is it — so the confirmation appears over the meeting list rather than over nothing. Opening
+   * the new meeting on completion is the same thing a finished recording does.
+   */
+  const importing = useImport(
+    useCallback(
+      (meetingId: string) => {
+        refresh();
+        navigation.navigate('Meeting', { meetingId });
+      },
+      [navigation, refresh],
+    ),
+  );
 
   const countActions = useCallback(() => {
     loadActions()
@@ -454,6 +472,20 @@ export default function LibraryScreen({ navigation }: Props) {
           { paddingTop: insets.top + s(6), paddingBottom: insets.bottom + s(120) },
           meetings.length === 0 && st.emptyFlex,
         ]}>
+        {/* Decoding an hour of audio is not instant, and an import that looks like nothing is
+            happening gets tapped again. Shown as a strip rather than a modal so the library stays
+            usable — the meeting appears in the list when it lands. */}
+        {importing.busy ? (
+          <View style={st.importing}>
+            <Icon name="download" size={s(16)} color={colors.primaryDeep} strokeWidth={2.6} />
+            <Txt variant="chip" color={colors.primaryDeep} style={st.flex}>
+              {importing.progress === null
+                ? 'Reading the recording…'
+                : `Reading the recording… ${Math.round(importing.progress * 100)}%`}
+            </Txt>
+          </View>
+        ) : null}
+
         <View style={st.header}>
           <View style={st.flex}>
             <Txt variant="screenTitle">Meetings</Txt>
@@ -464,6 +496,14 @@ export default function LibraryScreen({ navigation }: Props) {
             </Txt>
           </View>
           <View style={st.headBtns}>
+            {/* Sits with search and settings rather than beside the record button: importing is
+                something you do occasionally and deliberately, and putting it next to Record
+                would put a second call to action against the one this screen is built around. */}
+            <IconButton
+              icon={importing.busy ? 'clock' : 'download'}
+              label="Import a recording"
+              onPress={importing.busy ? () => {} : importing.pick}
+            />
             <IconButton icon="search" label="Search meetings" onPress={() => navigation.navigate('Search')} />
             <IconButton icon="sliders" label="Settings" onPress={() => navigation.navigate('Settings')} />
           </View>
@@ -603,6 +643,17 @@ function makeStyles(c: Colors) {
     root: { flex: 1, backgroundColor: c.canvas },
     flex: { flex: 1 },
     emptyFlex: { flexGrow: 1, justifyContent: 'center' },
+    importing: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: s(10),
+      marginHorizontal: s(20),
+      marginBottom: s(10),
+      paddingHorizontal: s(14),
+      paddingVertical: s(10),
+      borderRadius: radius.ctl,
+      backgroundColor: c.primarySoft,
+    },
     header: {
       flexDirection: 'row',
       alignItems: 'flex-start',

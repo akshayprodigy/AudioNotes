@@ -50,6 +50,13 @@ const mockNativeModules = {
     render: jest.fn(async () => '# Test meeting\n'),
     copy: jest.fn(async () => {}),
   },
+  Import: {
+    pick: jest.fn(async () => null),
+    importUri: jest.fn(async () => 'imported-meeting'),
+    consumePendingImport: jest.fn(async () => null),
+    addListener: jest.fn(),
+    removeListeners: jest.fn(),
+  },
   Player: {
     hasAudio: jest.fn(async () => false),
     open: jest.fn(async () => ({ durationMs: 0 })),
