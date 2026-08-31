@@ -71,6 +71,73 @@ function isQuestion(sentence: string): boolean {
   return t.endsWith('?') || (QUESTION_WORDS.test(t) && t.length < 160);
 }
 
+
+// ---- The free-tier summary ----------------------------------------------------------------
+//
+// How many items the overview quotes before it stops being an overview. Two decisions and three
+// actions fit in a paragraph somebody reads; past that the tally sentence carries the rest.
+const LEAD_DECISIONS = 2;
+const LEAD_ACTIONS = 3;
+// Rule items are whole sentences lifted from the transcript, and people speak in long ones.
+const LEAD_ITEM_CHARS = 160;
+
+// An action with nobody's name on it. detectOwner writes this exact word when it cannot find one,
+// so the check is a substring rather than anything cleverer.
+const UNASSIGNED = ' — Unassigned';
+
+/** One quoted item, tidied for use inside a sentence: collapsed, clipped on a word boundary, and
+ *  stripped of the trailing punctuation that would collide with the "; " it is joined with. */
+function leadItem(text: string): string {
+  let t = text.replace(/\s+/g, ' ').trim();
+  if (t.length > LEAD_ITEM_CHARS) t = t.slice(0, LEAD_ITEM_CHARS).replace(/\s+\S*$/, '') + '…';
+  return t.replace(/[.;,]+$/, '');
+}
+
+/**
+ * The overview line at the top of the rule-based minutes.
+ *
+ * This is the free tier's summary — the first thing in an exported Markdown file, and therefore
+ * the document a free user forwards to a colleague. It used to be the tally alone: "12 action
+ * items, 3 decisions, 5 open questions." Every word of that is true and none of it says what the
+ * meeting was, which made the export read like a receipt for work the app had done rather than a
+ * record of what was agreed.
+ *
+ * So it leads with what was decided and who owes what, and keeps the tally as the closing sentence
+ * so nothing that used to be there is lost. Actions with a named owner are quoted ahead of
+ * unowned ones because "Priya will send the report by Friday" is worth more to the reader than
+ * an obligation nobody has taken. A meeting with neither decisions nor actions composes to
+ * exactly the old tally sentence, which is the honest thing to say about it.
+ *
+ * Deliberately a port of FileExportModule.kt's fallback composition (Kotlin) and of
+ * cpp/minutes/minutes_extractor.cpp (the shared core that actually writes these rows on device).
+ * The three must stay word-for-word identical: a free user who exports a meeting from the app and
+ * one whose minutes were written by the native pipeline must get the same paragraph, and the
+ * golden fixtures in cpp/tests/golden are what holds them together.
+ */
+export function composeSummary(
+  decisions: string[],
+  actions: string[],
+  questions: string[],
+): string {
+  const tally =
+    `${actions.length} action item${actions.length === 1 ? '' : 's'}, ` +
+    `${decisions.length} decision${decisions.length === 1 ? '' : 's'}, ` +
+    `${questions.length} open question${questions.length === 1 ? '' : 's'}.`;
+
+  const sentences: string[] = [];
+  if (decisions.length > 0) {
+    sentences.push('Decided: ' + decisions.slice(0, LEAD_DECISIONS).map(leadItem).join('; ') + '.');
+  }
+  if (actions.length > 0) {
+    const owned = actions.filter(a => !a.includes(UNASSIGNED));
+    const unowned = actions.filter(a => a.includes(UNASSIGNED));
+    const lead = [...owned, ...unowned].slice(0, LEAD_ACTIONS);
+    sentences.push('Next: ' + lead.map(leadItem).join('; ') + '.');
+  }
+  sentences.push(tally);
+  return sentences.join(' ');
+}
+
 export function extractMinutes(
   utterances: Utterance[],
   speakers: Speaker[] = [],
@@ -122,10 +189,11 @@ export function extractMinutes(
 
   const summary: DraftMinute = {
     kind: 'summary',
-    content:
-      `${trimmed.actions.length} action item${trimmed.actions.length === 1 ? '' : 's'}, ` +
-      `${trimmed.decisions.length} decision${trimmed.decisions.length === 1 ? '' : 's'}, ` +
-      `${trimmed.questions.length} open question${trimmed.questions.length === 1 ? '' : 's'}.`,
+    content: composeSummary(
+      trimmed.decisions.map(m => m.content),
+      trimmed.actions.map(m => m.content),
+      trimmed.questions.map(m => m.content),
+    ),
     source: 'rule',
   };
 

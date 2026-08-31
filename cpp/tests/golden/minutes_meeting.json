@@ -36,7 +36,7 @@
  "output": [
   {
    "kind": "summary",
-   "content": "4 action items, 1 decision, 3 open questions.",
+   "content": "Decided: We decided to go with the phased rollout. Next: Alright team, let's kick off the design review. — Speaker 1; Sure, I'll update the roadmap by Thursday. — Speaker 2 (due by Thursday); Maya will send the summary to everyone tomorrow. — Maya (due tomorrow). 4 action items, 1 decision, 3 open questions.",
    "source": "rule"
   },
   {

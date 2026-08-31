@@ -72,8 +72,11 @@ int main(int argc, char** argv) {
     int actions = 0;
     for (const auto& d : m) if (d.kind == "action") ++actions;
     CHECK(actions == 30, "caps: got %d actions, want 30", actions);
+    // The tally is the CLOSING sentence now, not the whole summary (see composeSummary): the
+    // overview leads with what was decided and who owes what. What this pins is that the count
+    // reflects the TRIMMED list — 30, not the 35 sentences that went in.
     CHECK(!m.empty() && m[0].kind == "summary" &&
-          m[0].content.rfind("30 action items", 0) == 0,
+          m[0].content.find("30 action items, 0 decisions, 0 open questions.") != std::string::npos,
           "caps summary: '%s'", m.empty() ? "(empty)" : m[0].content.c_str());
   }
 
