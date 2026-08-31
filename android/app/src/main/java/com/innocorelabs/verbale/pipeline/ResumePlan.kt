@@ -30,7 +30,13 @@ object ResumePlan {
     val hasNarrative: Boolean,
   )
 
-  fun remaining(s: State): List<Stage> {
+  /**
+   * [forceNarrate] re-plans narration for a meeting that already has prose — the Summary tab's
+   * "Write it again". It only ever ADDS the stage; it cannot resurrect a meeting with no
+   * transcript, because the no-speech branch below returns before it is consulted and a stage that
+   * could never complete would leave the meeting being swept forever.
+   */
+  fun remaining(s: State, forceNarrate: Boolean = false): List<Stage> {
     // Terminal no-speech: VAD already ran (status past 'captured') and committed zero segments.
     // NARRATE is deliberately NOT appended on this path. There is no transcript to narrate, so the
     // stage could never complete, and handing the caller a stage it cannot finish would leave the
@@ -41,7 +47,7 @@ object ResumePlan {
     if (!s.hasSegments) stages += Stage.VAD
     if (!s.hasUtterances) stages += Stage.ASR
     if (!s.hasSpeakers) stages += Stage.DIARIZE
-    if (!s.hasNarrative) stages += Stage.NARRATE
+    if (!s.hasNarrative || forceNarrate) stages += Stage.NARRATE
     return stages
   }
 }

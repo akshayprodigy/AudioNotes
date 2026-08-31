@@ -10,6 +10,7 @@ class ResumePlanTest {
     utt: Boolean,
     spk: Boolean,
     narr: Boolean = false,
+    force: Boolean = false,
   ) =
     ResumePlan.remaining(
       ResumePlan.State(
@@ -19,7 +20,41 @@ class ResumePlanTest {
         hasSpeakers = spk,
         hasNarrative = narr,
       ),
+      force,
     )
+
+  /**
+   * "Write it again" on a meeting that already has prose.
+   *
+   * The screen used to clear the existing rows so this planner would find work to do, which meant
+   * a rewrite that could not run — a lapsed subscription, a deleted model, an out-of-memory kill —
+   * destroyed the summary it was replacing.
+   */
+  @Test fun forceReNarratesAMeetingThatIsAlreadyDone() {
+    assertEquals(
+      listOf(Stage.NARRATE),
+      plan("done", seg = true, utt = true, spk = true, narr = true, force = true),
+    )
+  }
+
+  @Test fun forceAddsNothingElseToThePlan() {
+    assertEquals(
+      listOf(Stage.NARRATE),
+      plan("done", seg = true, utt = true, spk = true, narr = false, force = true),
+    )
+  }
+
+  /**
+   * A forced narration cannot resurrect a meeting with no speech in it: there is no transcript to
+   * narrate, so the stage could never complete and the meeting would be swept forever instead of
+   * being marked terminal.
+   */
+  @Test fun forceCannotResurrectANoSpeechRecording() {
+    assertEquals(
+      emptyList<Stage>(),
+      plan("error", seg = false, utt = false, spk = false, narr = false, force = true),
+    )
+  }
 
   @Test fun freshCapture_runsAllStages() {
     assertEquals(

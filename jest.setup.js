@@ -20,8 +20,11 @@ const mockNativeModules = {
     requestBatteryExemption: jest.fn(async () => true),
     recoverOrphans: jest.fn(async () => 0),
     consumePendingMeetingId: jest.fn(async () => null),
+    discardAudio: jest.fn(async () => {}),
+    setPaused: jest.fn(async () => {}),
+    sweepAudioRetention: jest.fn(async () => 0),
     currentSession: jest.fn(async () => ({
-      isRecording: false, meetingId: null, elapsedMs: 0, silenced: false,
+      isRecording: false, meetingId: null, elapsedMs: 0, silenced: false, paused: false,
     })),
     addListener: jest.fn(),
     removeListeners: jest.fn(),
@@ -31,6 +34,8 @@ const mockNativeModules = {
     // The typed db layer in src/db parses this, so return a valid empty result set.
     query: jest.fn(async () => '[]'),
     search: jest.fn(async () => '[]'),
+    reindex: jest.fn(async () => {}),
+    backfillSearch: jest.fn(async () => 0),
   },
   ModelManager: {
     list: jest.fn(async () => '[]'),
@@ -42,6 +47,18 @@ const mockNativeModules = {
   },
   FileExport: {
     share: jest.fn(async () => {}),
+    render: jest.fn(async () => '# Test meeting\n'),
+    copy: jest.fn(async () => {}),
+  },
+  Player: {
+    hasAudio: jest.fn(async () => false),
+    open: jest.fn(async () => ({ durationMs: 0 })),
+    play: jest.fn(async () => {}),
+    pause: jest.fn(async () => {}),
+    seek: jest.fn(async () => {}),
+    stop: jest.fn(async () => {}),
+    addListener: jest.fn(),
+    removeListeners: jest.fn(),
   },
   Llm: {
     // Default to "no LLM" so tests exercise the rule-based floor, which is the

@@ -3,11 +3,69 @@
 // into app state. All ASR/diarization/LLM work happens off-thread in native/C++.
 import { NativeEventEmitter, NativeModules } from 'react-native';
 import AudioPipeline from '../native/NativeAudioPipeline';
+import Storage from '../native/NativeStorage';
 import { db } from '../db/queries';
 import { extractMinutes } from './minutes';
 import type { PipelineOutcome, StageProgress, Utterance } from './types';
 
 type ProgressCb = (p: StageProgress) => void;
+
+/** Default window when nothing has been chosen: a week, long enough to check a transcript against
+ *  what was actually said, short enough that a phone does not quietly fill up with raw meetings. */
+export const DEFAULT_RETENTION_DAYS = 7;
+
+/**
+ * How long a meeting's raw PCM is kept, in days. -1 means "until I delete the meeting".
+ *
+ * Two settings feed this because the app shipped with the other one first. `keepAudio` was a
+ * boolean — on meant forever, off meant delete the moment a transcript existed — and deleting
+ * immediately is what made playback impossible for every meeting anyone had recorded. The
+ * replacement is a window in days, so `audioRetentionDays` wins wherever it has been written and
+ * `keepAudio` only decides the default for an install that predates it. An old install that had
+ * explicitly asked to keep audio still keeps it; everyone else moves from "gone instantly" to a
+ * week, which is the promise the Settings copy now makes.
+ *
+ * Kept deliberately identical to the Kotlin resolution in ProcessingEngine/AudioDb — native does
+ * the deleting, and a window that disagreed with the one the app displays would delete audio the
+ * user had been told was still there.
+ */
+export function resolveRetentionDays(
+  audioRetentionDays: string | null | undefined,
+  keepAudio: string | null | undefined,
+): number {
+  const raw = (audioRetentionDays ?? '').trim();
+  if (raw !== '') {
+    const n = Number(raw);
+    // Number('') is 0 and Number('7 days') is NaN, so both are screened out before this point:
+    // a malformed setting must fall through to the legacy default rather than silently mean
+    // "delete everything now".
+    if (Number.isInteger(n)) return n < 0 ? -1 : n;
+  }
+  return keepAudio === '1' ? -1 : DEFAULT_RETENTION_DAYS;
+}
+
+/**
+ * Whether the pipeline may replace this meeting's title with one written from the transcript.
+ *
+ * `titleEditedAt` is stamped by db.setTitle whenever a PERSON renames a meeting, and it is the
+ * only reliable half of this guard. The string sniff below cannot tell the app's own placeholder
+ * from a real title that happens to look like one — "Tuesday standup meeting · notes" is a
+ * perfectly ordinary thing to type, and the retitle runs on EVERY pass over a meeting that is not
+ * yet 'done', not only on an explicit reprocess, so a title like that was overwritten silently and
+ * repeatedly. The sniff stays as the secondary check because meetings titled before the column
+ * existed have no stamp at all, and their placeholders should still be improved.
+ *
+ * Mirrored exactly by ProcessingEngine.retitleFromTranscript in Kotlin — native finishes meetings
+ * that JS never sees (stopped from the PiP window or the notification), so a guard that existed on
+ * only one side would protect a renamed meeting only when the app happened to be open.
+ */
+export function shouldAutoRetitle(
+  current: string,
+  titleEditedAt: number | null | undefined,
+): boolean {
+  if (titleEditedAt != null && titleEditedAt > 0) return false;
+  return current === 'Meeting' || / meeting · /.test(current);
+}
 
 class PipelineControllerImpl {
   private emitter = new NativeEventEmitter(NativeModules.AudioPipeline);
@@ -39,7 +97,16 @@ class PipelineControllerImpl {
   // the LLM pass on top here, which meant a meeting stopped from the PiP window or the
   // notification — with no app in the foreground and no JS alive — never got one. It also meant
   // two code paths wrote the same rows.
-  async process(meetingId: string, opts: { model: 'base' | 'small' }): Promise<void> {
+  //
+  // `force` is passed straight through to native. It marks narration outstanding again WITHOUT
+  // deleting the prose that is already there — "Write it again" used to clear the summary first so
+  // the resume plan would find work to do, which meant a rewrite that could not run (entitlement
+  // lapsed, model uninstalled, the process killed for memory) destroyed the summary it was meant
+  // to replace and left the meeting with nothing.
+  async process(
+    meetingId: string,
+    opts: { model: 'base' | 'small'; force?: boolean },
+  ): Promise<void> {
     await this.awaitNativeComplete(meetingId, () => AudioPipeline.process(meetingId, opts));
   }
 
@@ -90,8 +157,9 @@ class PipelineControllerImpl {
   }
 
   /**
-   * Process any meeting that still owes work — captured via the floating bubble, or abandoned
-   * part-way by a process kill. Called on app open and on Library focus.
+   * Process any meeting that still owes work — recorded from the PiP window or the Quick Settings
+   * tile with the app never opened, or abandoned part-way by a process kill. Called on app open
+   * and on Library focus.
    *
    * Re-entrancy is the thing to be careful about here. LibraryScreen runs this on mount AND on
    * every focus, and a single pass can take tens of minutes, so without a guard two passes
@@ -122,6 +190,8 @@ class PipelineControllerImpl {
     } catch {
       // recovery is best-effort; never block normal processing on it
     }
+    await this.sweepRetention();
+    await this.backfillSearch();
     const pending = await db.pendingMeetings();
     for (const m of pending) {
       if (this.inFlight.has(m.id)) continue;
@@ -137,6 +207,52 @@ class PipelineControllerImpl {
       } finally {
         this.inFlight.delete(m.id);
       }
+    }
+  }
+
+  /**
+   * Delete audio that is past its retention window.
+   *
+   * Deletion itself is deliberately NOT done here. A JS-only sweep would make the "kept for 7
+   * days" promise false for exactly the people it matters most to: recording from the Quick
+   * Settings tile or the PiP window never starts the JS context, so someone who records for weeks
+   * without opening the app would accumulate every minute of unencrypted PCM on disk. Native
+   * sweeps on its own schedule too (ProcessingEngine.applyRetention after each transcript), and
+   * this call is the app-open catch-up for meetings that were already finished when the window
+   * closed on them.
+   *
+   * The window is resolved here only to skip the JNI hop when the user keeps audio forever;
+   * native re-resolves it identically (see resolveRetentionDays) and is the authority.
+   */
+  private async sweepRetention(): Promise<void> {
+    try {
+      const days = resolveRetentionDays(
+        await db.getSetting('audioRetentionDays'),
+        await db.getSetting('keepAudio'),
+      );
+      if (days < 0) return; // "keep until I delete it" — nothing is ever past its window
+      const n = await AudioPipeline.sweepAudioRetention();
+      if (n > 0) console.warn(`[pipeline] retention swept audio for ${n} meeting(s)`);
+    } catch {
+      // Retention is best-effort cleanup. It must never stop a pending meeting being transcribed.
+    }
+  }
+
+  /**
+   * Index meetings recorded before the search index covered titles, minutes and summaries.
+   *
+   * A batch per sweep rather than a migration at open(): the index is rebuilt row by row from
+   * content that already exists, and open() runs on the main thread on a Quick Settings cold
+   * start, where a full-library backfill would be a visible freeze before the tile even records.
+   * The backlog therefore drains across app opens, oldest first, and search is progressively more
+   * complete rather than blocked on being perfect.
+   */
+  private async backfillSearch(): Promise<void> {
+    try {
+      const remaining = await db.backfillSearch(25);
+      if (remaining > 0) console.warn(`[pipeline] search backfill: ${remaining} meeting(s) to go`);
+    } catch {
+      // An unindexed meeting is missing from search results, not broken. Never fail a sweep on it.
     }
   }
 
@@ -194,14 +310,28 @@ class PipelineControllerImpl {
    *
    * A Library of rows all reading "Meeting" (or all reading the same date format) is unusable —
    * what people actually remember is how a meeting started. Only overwrites a title the app
-   * generated itself, so a rename by the user is never clobbered.
+   * generated itself: see shouldAutoRetitle, where the meeting's title_edited_at stamp decides,
+   * so a rename by the user is never clobbered even when the name they chose reads like a
+   * placeholder.
    */
   private async retitleFromTranscript(meetingId: string, utterances: Utterance[]): Promise<void> {
     try {
-      const meeting = await db.getMeeting(meetingId);
-      const current = meeting?.title ?? '';
-      const isGenerated = current === 'Meeting' || / meeting · /.test(current);
-      if (!isGenerated) return;
+      // Read straight from the table rather than through db.getMeeting, whose projection does not
+      // carry title_edited_at. Losing the guard would be worse than the small ugliness of one raw
+      // SELECT here: without the stamp this code cannot tell a rename from a placeholder. (If
+      // getMeeting ever selects the column, swap this back — see the handoff note.)
+      const rows = JSON.parse(
+        await Storage.query(
+          'SELECT title, title_edited_at AS titleEditedAt FROM meetings WHERE id = ?',
+          JSON.stringify([meetingId]),
+        ),
+      ) as { title?: string; titleEditedAt?: number | string | null }[];
+      const row = rows[0];
+      // No row means the meeting was deleted under us, or the read failed. Either way, refusing to
+      // write a title is the harmless outcome and overwriting one blindly is not.
+      if (!row) return;
+      const stamp = Number(row.titleEditedAt ?? 0); // arrives as a JSON number or a string
+      if (!shouldAutoRetitle(row.title ?? '', Number.isFinite(stamp) ? stamp : Date.now())) return;
 
       const opening = utterances
         .map(u => u.text.trim())

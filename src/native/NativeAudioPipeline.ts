@@ -14,7 +14,13 @@ export interface Spec extends TurboModule {
   // Narration is a native pipeline stage now, so there is no flag for it here: it runs whenever
   // the model is installed, the device is capable, and the transcript is long enough to summarise
   // without inventing (see Narrator).
-  process(meetingId: string, options: { model: 'base' | 'small' }): Promise<void>;
+  //
+  // `force` makes narration outstanding again WITHOUT deleting what is already written. The
+  // screen used to clear the prose first so the resume plan would see work to do — which meant a
+  // rewrite that could not run (no entitlement, no model, an out-of-memory kill) destroyed the
+  // summary it was supposed to replace. Narrator's own write is source-scoped and overwrites
+  // atomically, so nothing needs deleting up front.
+  process(meetingId: string, options: { model: 'base' | 'small'; force?: boolean }): Promise<void>;
   cancel(meetingId: string): void;
 
   // Promote meetings stranded in 'recording' (process killed mid-capture) to 'captured'.
@@ -44,6 +50,11 @@ export interface Spec extends TurboModule {
   // JS context — a JS-held pause would silently resume on reload and record what the user thought
   // was private. `elapsedMs` excludes paused time so the timer matches the audio on disk.
   setPaused(paused: boolean): Promise<boolean>;
+
+  // Delete audio for meetings past the retention window (Settings > Keep the audio). Returns how
+  // many were swept. Never touches a meeting without a transcript — the audio is the only copy of
+  // a meeting that failed to transcribe — nor the one being recorded right now.
+  sweepAudioRetention(): Promise<number>;
 
   // Ask the OS to exempt the app from battery optimization (keeps long background recordings alive).
   requestBatteryExemption(): Promise<boolean>;

@@ -20,6 +20,8 @@ class ProcessingEngine(
   private val meetingId: String,
   private val model: String,
   private val listener: Listener,
+  /** Re-run narration even though prose already exists — the Summary tab's "Write it again". */
+  private val forceNarrate: Boolean = false,
 ) {
   interface Listener {
     fun onStage(stage: String, done: Int, total: Int)
@@ -59,7 +61,7 @@ class ProcessingEngine(
       if (audioGone) Log.i(TAG, "audio gone for $meetingId — transcript-only re-run")
 
       val state = db.pipelineState(meetingId)
-      val remaining = ResumePlan.remaining(state)
+      val remaining = ResumePlan.remaining(state, forceNarrate)
       // Rows-only isn't enough: if the native minutes stage previously threw (e.g. replaceMinutes)
       // the outer catch sets status='error' while every stage's rows are already present, and a
       // rows-only check would report "done" here without ever re-running the minutes stage —
@@ -107,10 +109,18 @@ class ProcessingEngine(
           val starts = LongArray(n) { spans[it * 2] }
           val ends = LongArray(n) { spans[it * 2 + 1] }
           val t0 = System.currentTimeMillis()
+
+          // The language SPOKEN in the meeting, from Settings, resolved HERE rather than at
+          // capture. Every entry point then behaves the same — a recording started from the app,
+          // the Quick Settings tile or the PiP window all reach this one line — and, more to the
+          // point, somebody whose meeting came back in the wrong script can pin the language and
+          // reprocess, which would be impossible if the choice were frozen when they hit record.
+          val language = db.getSetting("asrLanguage")?.takeIf { it.isNotBlank() } ?: "auto"
           val json = NativeBridge.nativeTranscribe(
-            audioPath, asrFile.absolutePath, RecordingService.SAMPLE_RATE, starts, ends, 0,
+            audioPath, asrFile.absolutePath, RecordingService.SAMPLE_RATE, starts, ends, 0, language,
           )
           stageDone("asr", t0)
+          db.setLanguage(meetingId, language)
           val count = db.replaceUtterancesJson(meetingId, json)
           db.setStatus(meetingId, "asr")
           listener.onStage("asr", 1, 1)
@@ -297,8 +307,16 @@ class ProcessingEngine(
   private fun applyRetention(meetingId: String, utteranceCount: Int) {
     try {
       val db = AudioDb.get(ctx)
-      if (db.getSetting("keepAudio") == "1") return // user opted to keep audio
       if (utteranceCount == 0) return // no transcript — the audio is all we have, keep it
+
+      // Only the "delete as soon as it is transcribed" setting deletes HERE. Every other window
+      // is the sweep's business (AudioRetention.sweep), which runs against created_at.
+      //
+      // This used to be `keepAudio != "1"`, which deleted the recording on a fresh install: the
+      // boolean is only written once the user opens Settings, so a phone that had never expressed
+      // an opinion took the strictest branch. That made the 7-day default a lie for exactly the
+      // people it was introduced for, and playback impossible on every meeting they had recorded.
+      if (AudioRetention.daysFor(db) != 0) return
 
       // Delete pattern reused from AudioPipelineModule.discardAudio.
       val path = db.getAudioPath(meetingId)
