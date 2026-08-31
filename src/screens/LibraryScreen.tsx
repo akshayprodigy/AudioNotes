@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useLibraryStore } from '../state/libraryStore';
+import { loadActions, tally } from './actionsData';
 import { PipelineController } from '../pipeline/PipelineController';
 import { db } from '../db/queries';
 import Icon from '../components/Icon';
@@ -155,22 +156,37 @@ export default function LibraryScreen({ navigation }: Props) {
   const st = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { meetings, refresh } = useLibraryStore();
+  const backfillSearch = useLibraryStore(st2 => st2.backfillSearch);
   const [sheetFor, setSheetFor] = useState<Meeting | null>(null);
   const [archived, setArchived] = useState(0);
+  const [work, setWork] = useState({ total: 0, open: 0, meetings: 0 });
+
+  const countActions = useCallback(() => {
+    loadActions()
+      .then(rows => setWork(tally(rows)))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const onFocus = () => {
-      refresh();
+      // The search-index backfill rides on the refresh rather than on its own timer, because the
+      // count it compares against only means anything once the meetings have been loaded. It
+      // short-circuits to a single native call unless that count has actually moved, so putting
+      // it on every focus costs nothing and heals a restored backup on the very next one.
+      refresh().then(backfillSearch).catch(() => {});
       db.archivedCount().then(setArchived).catch(() => {});
+      countActions();
       PipelineController.processPending().then(refresh).catch(() => {});
     };
     onFocus();
     return navigation.addListener('focus', onFocus);
-  }, [navigation, refresh]);
+  }, [navigation, refresh, backfillSearch, countActions]);
 
   const reload = () => {
     refresh();
     db.archivedCount().then(setArchived).catch(() => {});
+    // Archiving or deleting a meeting takes its action items out of the worklist too.
+    countActions();
   };
 
   /**
@@ -285,7 +301,9 @@ export default function LibraryScreen({ navigation }: Props) {
       h = (h * 1103515245 + 12345) >>> 0;
       return 0.3 + ((h >>> 16) % 71) / 100; // 0.30 - 1.00
     });
-    const shades = ['#DDE1F5', '#C7CDF0', colors.primary, '#8E97E4'];
+    // Four steps of the primary ramp rather than four literals: the bars have to sit on the card
+    // in both themes, and a hardcoded pale indigo on a #171A24 card is a white smear.
+    const shades = [colors.primarySoft2, colors.primarySoftEdge, colors.primary, colors.primaryLight];
     return (
       <View style={st.wave}>
         {bars.map((v, i) => (
@@ -563,7 +581,7 @@ export default function LibraryScreen({ navigation }: Props) {
           <FabRing />
           <Raised
             edge={colors.primaryEdge}
-            gradient={{ from: '#5A66DE', to: colors.primary }}
+            gradient={{ from: colors.primaryLight, to: colors.primary }}
             rad={radius.pill}
             depth={6}
             onPress={() => navigation.navigate('Record')}>
