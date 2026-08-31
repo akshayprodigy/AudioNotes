@@ -4,7 +4,10 @@ import { TurboModuleRegistry } from 'react-native';
 
 export interface Spec extends TurboModule {
   // Render a meeting and hand it to the OS share sheet.
-  share(meetingId: string, format: 'md' | 'txt' | 'srt'): Promise<void>;
+  //
+  // 'pdf' is the one people attach to an email: it is the only format that looks the same
+  // everywhere, where a .md file arrives as raw asterisks in most mail clients.
+  share(meetingId: string, format: 'md' | 'txt' | 'srt' | 'pdf'): Promise<void>;
 
   // The same document, returned instead of shared — so copy-to-clipboard reuses the ONE renderer
   // rather than growing a second, drifting description of the export format in JS.

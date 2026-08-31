@@ -29,7 +29,13 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
   override fun getName() = "FileExport"
 
   /** One meeting, rendered. `ext` drives both the filename and the share intent's MIME type. */
-  private class Document(val title: String, val ext: String, val body: String)
+  private class Document(
+    val title: String,
+    val ext: String,
+    val body: String,
+    /** Set only for "pdf", where the document is drawn rather than written as text. */
+    val blocks: List<PdfExport.Block>? = null,
+  )
 
   /**
    * Render a meeting to a document, with the user's own corrections in it.
@@ -87,6 +93,12 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
     val title = meeting?.optString("title", "Meeting") ?: "Meeting"
     val createdAt = meeting?.optLong("created_at", 0L) ?: 0L
 
+    if (format == "pdf") {
+      // Blocks, not a string: a PDF is laid out rather than concatenated. The content still comes
+      // from the same accessors as every other format, so a correction reaches it for free.
+      return Document(title, "pdf", "", pdfBlocks(title, createdAt, minutes, utterances, nameById, edits))
+    }
+
     val ext = when (format) { "srt" -> "srt"; "txt", "transcript" -> "txt"; else -> "md" }
     val body = when (format) {
       "srt" -> renderSrt(utterances, nameById, edits)
@@ -106,11 +118,15 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
         val dir = File(ctx.cacheDir, "exports").apply { mkdirs() }
         val safe = doc.title.replace(Regex("[^A-Za-z0-9-_ ]"), "").trim().ifEmpty { "meeting" }
         val out = File(dir, "$safe.${doc.ext}")
-        out.writeText(doc.body)
+        if (doc.blocks != null) PdfExport.write(doc.blocks, out) else out.writeText(doc.body)
 
         val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".fileprovider", out)
         val send = Intent(Intent.ACTION_SEND).apply {
-          type = if (doc.ext == "srt") "application/x-subrip" else "text/plain"
+          type = when (doc.ext) {
+            "srt" -> "application/x-subrip"
+            "pdf" -> "application/pdf"
+            else -> "text/plain"
+          }
           putExtra(Intent.EXTRA_STREAM, uri)
           putExtra(Intent.EXTRA_SUBJECT, doc.title)
           addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -135,6 +151,11 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
   fun render(meetingId: String, format: String, promise: Promise) {
     Thread {
       try {
+        if (format == "pdf") {
+          // A PDF is bytes, not text. Nothing can paste one, so the clipboard has no use for it.
+          promise.reject("not_text", "A PDF can be shared but not copied")
+          return@Thread
+        }
         promise.resolve(document(meetingId, format).body)
       } catch (e: Exception) {
         promise.reject("export_failed", e)
@@ -163,6 +184,54 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
         promise.reject("copy_failed", e)
       }
     }
+  }
+
+  /**
+   * The same document as the Markdown, described as blocks for the page.
+   *
+   * Deliberately the same order and the same sections: somebody who has been mailing the Markdown
+   * and switches to PDF should get the document they already know, not a redesign of it.
+   */
+  private fun pdfBlocks(
+    title: String, createdAt: Long, minutes: JSONArray, utterances: JSONArray,
+    nameById: Map<String, String>, edits: Map<String, String>,
+  ): List<PdfExport.Block> {
+    val grey = android.graphics.Color.rgb(0x6B, 0x70, 0x80)
+    val blocks = ArrayList<PdfExport.Block>()
+    blocks.add(PdfExport.Block(title, 22f, bold = true))
+    blocks.add(PdfExport.Block(dateStr(createdAt), 10f, color = grey, spaceBefore = 2f))
+
+    summaryOf(minutes, edits)?.let {
+      blocks.add(PdfExport.Block(it, 11f, spaceBefore = 18f))
+    }
+    narrativeOf(minutes, edits)?.let {
+      blocks.add(PdfExport.Block("Minutes", 14f, bold = true, spaceBefore = 22f))
+      blocks.add(PdfExport.Block(it, 11f, spaceBefore = 8f))
+    }
+
+    for ((kind, heading) in listOf(
+      "decision" to "Decisions", "action" to "Action items", "question" to "Open questions",
+    )) {
+      val items = byKind(minutes, kind, edits)
+      if (items.isEmpty()) continue
+      blocks.add(PdfExport.Block(heading, 14f, bold = true, spaceBefore = 22f))
+      for (item in items) {
+        // The bullet is part of the string rather than drawn separately, so a wrapped item
+        // indents under its own text instead of under the bullet.
+        blocks.add(PdfExport.Block("•  $item", 11f, spaceBefore = 6f, indent = 8f))
+      }
+    }
+
+    if (utterances.length() > 0) {
+      blocks.add(PdfExport.Block("Transcript", 14f, bold = true, spaceBefore = 24f))
+      for (i in 0 until utterances.length()) {
+        val u = utterances.getJSONObject(i)
+        val who = nameById[u.optString("speaker_id")] ?: "Speaker"
+        blocks.add(PdfExport.Block(who, 9f, bold = true, color = grey, spaceBefore = 10f))
+        blocks.add(PdfExport.Block(said(u, edits), 11f, spaceBefore = 2f))
+      }
+    }
+    return blocks
   }
 
   private fun dateStr(ms: Long): String =

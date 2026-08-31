@@ -422,8 +422,11 @@ export default function MeetingScreen({ route, navigation }: Props) {
 
   const onCopy = useCallback(() => copyDoc('md', 'Minutes'), [copyDoc]);
 
+  // PDF first: it is what gets attached to an email and read by the person who was not in the
+  // meeting, and the only format that looks the same wherever it lands.
   const onExport = () =>
     Alert.alert('Export minutes', 'Choose a format', [
+      { text: 'PDF', onPress: () => FileExport.share(meetingId, 'pdf') },
       { text: 'Markdown', onPress: () => FileExport.share(meetingId, 'md') },
       { text: 'Plain text', onPress: () => FileExport.share(meetingId, 'txt') },
       { text: 'Subtitles (.srt)', onPress: () => FileExport.share(meetingId, 'srt') },
@@ -461,7 +464,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
     {
       icon: 'share',
       label: 'Export',
-      hint: 'Share the minutes as Markdown, plain text or subtitles.',
+      hint: 'Share the minutes as a PDF, Markdown, plain text or subtitles.',
       onPress: onExport,
     },
     {
