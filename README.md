@@ -12,7 +12,7 @@ Built by InnoCore Labs. See `BUILD_PLAN.md` for the full engineering plan,
 
 - **React Native (New Architecture — TurboModules + JSI, Hermes)** for the UI and
   pipeline orchestration — one codebase for Android now and iOS later.
-- A shared **C++ core** (`cpp/`) wrapping whisper.cpp, llama.cpp, sherpa-onnx and
+- A shared **C++ core** (`cpp/`) wrapping whisper.cpp, Qwen3-ASR, llama.cpp, sherpa-onnx and
   Silero VAD, exposed through thin native modules (Kotlin/JNI on Android).
 - **Audio and inference never cross the JS bridge** — native captures PCM to disk
   and runs all models; only small results/events return to JS.
@@ -60,9 +60,16 @@ npm start
 
 New Architecture is on by default (`newArchEnabled=true`, Hermes on).
 
-The Android modules and the C++ core are **implemented, not stubs** — capture, VAD, whisper.cpp
-ASR, sherpa-onnx diarization, alignment, rule-based minutes, llama.cpp narration, SQLCipher
-storage, FTS5 search, export, playback and backup all run on device. What a fresh clone still
+The Android modules and the C++ core are **implemented, not stubs** — capture, VAD, ASR,
+sherpa-onnx diarization, alignment, rule-based minutes, llama.cpp narration, SQLCipher storage,
+FTS5 search, export, playback and backup all run on device.
+
+ASR is a **layer, not one engine**: `cpp/asr/` holds an `AsrEngine` interface with whisper.cpp and
+Qwen3-ASR behind it, and `makeAsrEngine` picks between them from a language policy table — whisper
+for English and the ~99 other languages it covers, Qwen3-ASR for Hindi, where whisper reaches 4.1%
+Devanagari against Qwen's 69.8% on a real code-switched meeting. Recognition is always faithful to
+what was spoken; the language the *minutes* are written in is chosen separately, at narration.
+Qwen's weights are not yet in `ModelCatalog`, so it runs only where they are side-loaded. What a fresh clone still
 needs is the three engine submodules under `cpp/third_party/` and the models, which download on
 first run rather than shipping in the APK. `docs/ANDROID_TESTING.md` brings the stages up one at
 a time; `cpp/README.md` covers the submodules.
@@ -71,7 +78,7 @@ a time; `cpp/README.md` covers the submodules.
 
 See `BUILD_PLAN.md` §9. Short version:
 1. Capture + VAD + encrypted storage ✅
-2. whisper.cpp → internal alpha (dogfood) ✅
+2. whisper.cpp → internal alpha (dogfood) ✅ *(now a two-engine ASR layer — see above)*
 3. Rule-based minutes ✅
 4. Diarization + manual labelling/merge UI ✅
 5. On-device LLM summarization (Qwen2.5 1.5B via llama.cpp) ✅

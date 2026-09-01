@@ -18,19 +18,56 @@ everything else is secondary to it.
 
 ---
 
-## Do this today
+## Start here tomorrow
 
-- [x] **Back up the release signing key** — *done today*
-      Saved to Google Drive. Two things still worth confirming: that the four values from
-      `~/.gradle/gradle.properties` went WITH it (the keystore alone is a locked box), and that the
-      uploaded copy still reads sha256 `59d23acb…5cc62`. A backup nobody has restored is a hope.
+Do these four in order. The first two take a morning between them and unblock most of the rest.
 
-  `/Users/akshayghosh/keys/verbale-upload.keystore` — 4,346 bytes.
+**1. Plug in the phone and tell me to smoke-test — *you 1 min, me 20 min***
 
-  It exists in exactly one place on earth. Not in git, not backed up. If this Mac dies you can
-  never update the app on Play; every user would have to uninstall and reinstall from a new
-  listing. Copy it to a password manager or an encrypted drive, **together with the two passwords
-  in `~/.gradle/gradle.properties`** — the key is useless without them.
+The top technical risk. The native build has changed **three times** since it last ran on
+hardware: the Sentry Gradle plugin, `nativeTranscribe` moving onto the engine factory, and the
+Qwen3-ASR engine. Ten native tests and 155 JS tests pass and `assembleDebug` is green — but
+compiling is not running, and the JNI is the fragile part and is exactly what changed.
+
+**2. Spend the hour on the transcript — *you, 1 hr***
+
+`eval/fixtures/real-neosym-2026-08-19/truth.draft.txt`, still the machine's own output with
+instructions at the top. This is now the **single highest-value task in this document**. Every
+other piece of the Hindi work is built, running and measured; this is the one input nobody else
+can supply. Without it I can tell you what script Qwen answered in but not whether it is right.
+
+When it lands, the whole comparison is one command:
+
+```bash
+python3 -m eval.run --cli cpp/cli/build/audionotes_cli --models eval/models \
+  --only real-neosym-2026-08-19 --asr-engine qwen3 --qwen3-model eval/models/qwen3-asr --language hi
+```
+
+**3. Say yes to the deploy — *me, 15 min***
+
+Fifteen minutes, and it is what finally makes the new landing page live. You have never seen the
+redesign on a real URL. Outward-facing, so it waits for your word.
+
+**4. Answer the four numbers — *you***
+
+Each one has finished work queued behind it, and none of them need a computer:
+
+| Decision | What it releases |
+|---|---|
+| Final prices, and two tiers or three | The plans screen and per-plan model access — ~2 days, built the moment this is settled |
+| Where the 972 MB Qwen model lives | Making it downloadable — it runs today only if side-loaded |
+| Sentry DSN (free account, 15 min) | Crash reporting is built and ships OFF. Without it you launch blind |
+| Hostinger bandwidth limit | The last number needed to say where the server breaks |
+
+---
+
+## Done — do not redo these
+
+- [x] **Release signing key backed up** — saved to Google Drive.
+      Still worth confirming once: that the four values from `~/.gradle/gradle.properties` went
+      **with** it — the keystore alone is a locked box — and that the copy still reads sha256
+      `59d23acb94237a92bf99815ea0e271e196aab5843536875d79f5b96d8255cc62`. A backup nobody has
+      restored is a hope, not a backup.
 
 ---
 
@@ -258,13 +295,21 @@ running, and neither is evidence that it works.*
 
 ---
 
-## The short version
+## Where this actually stands
 
-1. Back up the key today. Still the only genuinely irreversible risk on this page.
-2. Let me smoke-test on the phone and deploy the site, so you are looking at the real thing.
-   The native build has changed twice since it last ran on hardware.
-3. Get the Qwen weights, then spend an hour on the transcript. Those two together are the whole
-   Hindi answer: one makes the better engine runnable, the other makes any accuracy claim about
-   it measurable. Everything else on this page is secondary to that pair.
+The engineering on the thing that decides whether this product works is **done and measured**.
+Verbale transcribes Hindi at 69.8% Devanagari where it managed 4.1% this morning, and the
+unreadable Urdu-script junk is down from 18% to 6.6% — on your own recording, not a proxy corpus.
 
-*Also published as a page: https://claude.ai/code/artifact/bac44e86-4904-4b77-8682-3065ee7f728c*
+What is left is mostly **decisions and paperwork**, plus one hour of your time.
+
+Two cautions worth carrying into tomorrow:
+
+- **Those are script counts, not accuracy.** More words could in principle mean more invention.
+  The ground truth is what turns "the scripts look right" into "we know it is right", and it is
+  the reason item 2 above outranks everything else here.
+- **Nothing has run on a phone since the rewrite.** Every number in this document comes from a
+  Mac. That is item 1, and it is why it is item 1.
+
+*Also published as a page: https://claude.ai/code/artifact/bac44e86-4904-4b77-8682-3065ee7f728c
+(that page predates today's work and is now out of date — this file is the source of truth).*
