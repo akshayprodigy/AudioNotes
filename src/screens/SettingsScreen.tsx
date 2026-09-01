@@ -15,6 +15,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import ModelManager from '../native/NativeModelManager';
 import { NOTICES } from '../legal/notices';
+import SignInForm from '../billing/SignInForm';
 import { db } from '../db/queries';
 import { PipelineController } from '../pipeline/PipelineController';
 import Icon from '../components/Icon';
@@ -37,7 +38,6 @@ import {
   playAvailable,
   playPrice,
   restorePlayPurchase,
-  signIn,
   signOut,
 } from '../billing/subscription';
 import {
@@ -126,9 +126,6 @@ export default function SettingsScreen({ navigation }: Props) {
   // Subscription. The app never advertises a price or links to a checkout — it signs in, and
   // buying happens on the web. That separation is deliberate; see the licence server's README.
   const [lic, setLic] = React.useState<LicenceStatus | null>(null);
-  const [licEmail, setLicEmail] = React.useState('');
-  const [licPass, setLicPass] = React.useState('');
-  const [licBusy, setLicBusy] = React.useState(false);
   const [signedInAs, setSignedInAs] = React.useState<string | null>(null);
 
   // Google Play Billing. `playCan` is false on a side-load or an install from another store, where
@@ -162,26 +159,6 @@ export default function SettingsScreen({ navigation }: Props) {
   React.useEffect(() => {
     refreshLicence();
   }, [refreshLicence]);
-
-  const onSignIn = React.useCallback(async () => {
-    setLicBusy(true);
-    try {
-      const res = await signIn(licEmail, licPass);
-      setSignedInAs(res.email);
-      setLicPass('');
-      await refreshLicence();
-      if (!res.paid) {
-        Alert.alert(
-          'Signed in',
-          'This account does not have a subscription yet. Everything except the written summary keeps working.',
-        );
-      }
-    } catch (e: any) {
-      Alert.alert('Could not sign in', String(e?.message ?? e));
-    } finally {
-      setLicBusy(false);
-    }
-  }, [licEmail, licPass, refreshLicence]);
 
   // What Play can do here, asked once. Both calls are cheap and both fail closed: a device with
   // no Play Store answers false and the UI falls back to the web account.
@@ -439,37 +416,16 @@ export default function SettingsScreen({ navigation }: Props) {
     refresh();
   };
 
-  // One form, two places: on a Play install it sits behind "I already have an account", and on a
-  // build Play Billing cannot serve it is the only way in.
+  // One form, three places now: here, behind "I already have an account" on a Play install, and
+  // on the paywall — which is the screen that explains Pro and, until recently, offered an
+  // existing subscriber no way to say they already had it.
   const emailSignIn = (
-    <>
-                  <TextInput
-                    style={[st.pass, { borderColor: colors.line, color: colors.ink }]}
-                    value={licEmail}
-                    onChangeText={setLicEmail}
-                    placeholder="Email"
-                    placeholderTextColor={colors.inkFaint}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                  <TextInput
-                    style={[st.pass, { borderColor: colors.line, color: colors.ink }]}
-                    value={licPass}
-                    onChangeText={setLicPass}
-                    placeholder="Password"
-                    placeholderTextColor={colors.inkFaint}
-                    secureTextEntry
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                  <SoftButton
-                    icon="lock"
-                    label={licBusy ? 'Signing in…' : 'Sign in'}
-                    onPress={onSignIn}
-                    disabled={licBusy || !licEmail || !licPass}
-                  />
-    </>
+    <SignInForm
+      onSignedIn={async res => {
+        setSignedInAs(res.email);
+        await refreshLicence();
+      }}
+    />
   );
 
   return (
