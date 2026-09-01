@@ -12,7 +12,7 @@ everything else is secondary to it.
 | Branch | `main`, and only `main` — nine branches merged and deleted |
 | Commits | 27 ahead of `origin/main` |
 | Tests | 9/9 native, 155/155 JS, `assembleDebug` green |
-| Transcription | English is now the default; a second engine exists but has no weights yet |
+| Transcription | English default; Qwen3-ASR running and measured — 69.8% Devanagari against whisper's 4.1% |
 | Website | **not deployed** (live site is still the old page) |
 | App | not on Play |
 
@@ -20,7 +20,10 @@ everything else is secondary to it.
 
 ## Do this today
 
-- [ ] **Back up the release signing key** — *you, 10 min*
+- [x] **Back up the release signing key** — *done today*
+      Saved to Google Drive. Two things still worth confirming: that the four values from
+      `~/.gradle/gradle.properties` went WITH it (the keystore alone is a locked box), and that the
+      uploaded copy still reads sha256 `59d23acb…5cc62`. A backup nobody has restored is a hope.
 
   `/Users/akshayghosh/keys/verbale-upload.keystore` — 4,346 bytes.
 
@@ -113,7 +116,7 @@ running, and neither is evidence that it works.*
       just the desktop. Whisper's transcripts are byte-identical across the whole rewrite and
       still score WER 0.2978 against the recorded 29.7% baseline.
       **It cannot be downloaded yet** — see the two items below.
-- [ ] Score every model against the corrected truth — *me, 2 hrs* — **blocked by: the transcript AND the weights**
+- [ ] Score every model against the corrected truth — *me, 2 hrs* — **blocked by: the transcript ONLY**
       Now a one-flag operation: `--asr-engine qwen3 --qwen3-model <dir>`.
       whisper base and small, Qwen3-ASR, and the Srota Hinglish fine-tune (Apache 2.0, claims
       −8.88 pp WER, but its authors admit train/test speaker overlap).
@@ -123,18 +126,29 @@ running, and neither is evidence that it works.*
       silently delete real speech. Instead the eval harness now reports a per-fixture script
       histogram, so the leak is a number rather than something noticed by reading.
 
-- [ ] **Get the Qwen3-ASR weights** — *you or me, 1 hr* — **this is the last thing between us and
-      a measured Hindi fix**
-      Roughly 1 GB: `conv_frontend.onnx`, `encoder.onnx`, `decoder.onnx`, `tokenizer/`. Put them in
-      `eval/models/qwen3-asr/` to score it, and in the phone's `filesDir/models/qwen3-asr/` to run
-      it on a real meeting. Both paths already work; nothing else needs changing.
+- [x] **Get the Qwen3-ASR weights and run them** — *done today*
+      972 MB int8 export from the sherpa-onnx release page. First run on the 2026-08-19 recording,
+      against whisper-base on the same audio:
+
+      | | words | Devanagari | CJK | Urdu-script junk |
+      |---|---:|---:|---:|---:|
+      | whisper-base | 976 | 4.1% | 0.3% | 18.0% |
+      | **Qwen3-ASR** | **1,205** | **69.8%** | 0.8% | **6.6%** |
+
+      It also overturned both of my chunking constants. 25 s windows truncated against
+      `max_new_tokens=128` and lost half the transcript; one-window-per-VAD-span starved the
+      decoder on sub-second backchannel and it answered in Mandarin — 33 of 34 CJK utterances were
+      under two seconds. 10 s packed windows fixed both. **Context, not the language hint, is what
+      holds the decoder in the right language.**
+
+      These are script counts and word counts, NOT accuracy. WER on Hindi is still unmeasurable.
 
 - [ ] Make it downloadable — *me, 1 day* — **blocked by: the weights, and where they live**
       `ModelSpec` is one file with one sha256 and Qwen is four artifacts. The catalogue entry was
       deliberately NOT faked: a blank hash turns a verified download into an unverified one, and
       those hashes are the only thing standing between a hijacked mirror and code executing on a
       user's phone.
-- [ ] Decide where the 955 MB model lives — *you*
+- [ ] Decide where the **972 MB** model lives — *you* — measured, not estimated
       Too big for the 114 MB free tier. Most likely an optional "Hindi and English" download, which
       finally makes Pro worth ₹1,799/year to an Indian user in a way prose summaries alone did not.
 
@@ -183,7 +197,9 @@ running, and neither is evidence that it works.*
 - [ ] Play listing assets — *you, half day*
       Screenshots, feature graphic, short + full description, content rating questionnaire, data
       safety form, support email. Privacy and terms pages already exist — one blocker already clear.
-- [ ] Version numbering policy — *me, 15 min*
+- [x] Version numbering policy — *done today*
+      `versionCode` is derived from `versionName` (1.0.0 → 10000) so a release cannot bump one and
+      forget the other, and the build refuses a minor or patch above 99. Both guards verified.
       Still `versionCode 1`. Play rejects duplicates, so settle it before the second upload.
 - [ ] **Send me the Hostinger bandwidth limit** — *you, 5 min*
       Every free install costs 114 MB whether they pay or not. At 100,000 installs that is 11.4 TB.
