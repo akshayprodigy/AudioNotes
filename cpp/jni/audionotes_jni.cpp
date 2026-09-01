@@ -8,6 +8,11 @@
 #include <vector>
 
 #include "asr/whisper_asr.h"
+#include "util/utf8.h"
+
+#ifdef HAVE_WHISPER
+#include "whisper.h"
+#endif
 #include "diar/diarizer.h"
 #include "llm/llama_engine.h"
 #include "minutes/llm_minutes.h"
@@ -130,6 +135,31 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeTranscribe(
 }
 
 // ---- LLM (llama.cpp) — handle-based so the model loads once and is reused across generate() ----
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeSupportedLanguages(
+    JNIEnv* env, jobject /*thiz*/) {
+  // Asked of the ENGINE rather than written down, because a hand-maintained shortlist drifts from
+  // what the model can actually do — and the failure that causes is a user unable to select the
+  // language they are about to speak. Verbale ships in India, the US and Europe.
+  std::string json = "[";
+#ifdef HAVE_WHISPER
+  for (int id = 0; id <= whisper_lang_max_id(); ++id) {
+    const char* code = whisper_lang_str(id);
+    const char* label = whisper_lang_str_full(id);
+    if (!code || !label) continue;
+    // These strings come from a third-party table and cross into NewStringUTF, which aborts the
+    // ART VM on a malformed byte. Scrub them like any other foreign text.
+    std::string esc_code, esc_label;
+    jsonEscape(audionotes::sanitizeUtf8(code), esc_code);
+    jsonEscape(audionotes::sanitizeUtf8(label), esc_label);
+    if (json.size() > 1) json += ",";
+    json += "{\"code\":\"" + esc_code + "\",\"label\":\"" + esc_label + "\"}";
+  }
+#endif
+  json += "]";
+  return env->NewStringUTF(json.c_str());
+}
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmLoad(
@@ -339,6 +369,14 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmChunks(
 namespace {
 
 // Every prompt builder has the same shape: one jstring in, one jstring out.
+// The prose builders take a language with a default, but a DEFAULT ARGUMENT DOES NOT CHANGE A
+// FUNCTION'S TYPE — &narrativePrompt is a two-argument pointer and will not bind here. Each call
+// site below therefore wraps it in a captureless lambda, which does convert. Do not "simplify"
+// them back to &fn; it will not compile, and only the Android build compiles this file, so the
+// desktop test suite will not tell you.
+//
+// The "en" they pin is today's behaviour made explicit. When ProcessingEngine passes the
+// meeting's language down, it replaces that literal and these become one-line pass-throughs.
 jstring promptCall(JNIEnv* env, jstring jIn, std::string (*fn)(const std::string&)) {
   try {
     return env->NewStringUTF(fn(jstr(env, jIn)).c_str());
@@ -365,13 +403,15 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmFoldPrompt(
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmDigestPrompt(
     JNIEnv* env, jobject /*thiz*/, jstring jChunk) {
-  return promptCall(env, jChunk, &audionotes::digestPrompt);
+  return promptCall(env, jChunk,
+                    [](const std::string& s) { return audionotes::digestPrompt(s, "en"); });
 }
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmCondensePrompt(
     JNIEnv* env, jobject /*thiz*/, jstring jProse) {
-  return promptCall(env, jProse, &audionotes::condensePrompt);
+  return promptCall(env, jProse,
+                    [](const std::string& s) { return audionotes::condensePrompt(s, "en"); });
 }
 
 // Not a prompt: post-processing. Exposed rather than reimplemented in Kotlin so there is one
@@ -403,19 +443,22 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeDropAbsenceTail(
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmNarrativePrompt(
     JNIEnv* env, jobject /*thiz*/, jstring jNotes) {
-  return promptCall(env, jNotes, &audionotes::narrativePrompt);
+  return promptCall(env, jNotes,
+                    [](const std::string& s) { return audionotes::narrativePrompt(s, "en"); });
 }
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmSummaryPrompt(
     JNIEnv* env, jobject /*thiz*/, jstring jNarrative) {
-  return promptCall(env, jNarrative, &audionotes::summaryPrompt);
+  return promptCall(env, jNarrative,
+                    [](const std::string& s) { return audionotes::summaryPrompt(s, "en"); });
 }
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmHeadlinePrompt(
     JNIEnv* env, jobject /*thiz*/, jstring jSummary) {
-  return promptCall(env, jSummary, &audionotes::headlinePrompt);
+  return promptCall(env, jSummary,
+                    [](const std::string& s) { return audionotes::headlinePrompt(s, "en"); });
 }
 
 // Flat [groupIndex, noteIndex, ...] pairs — the same flat-array convention as nativeDiarize, so no
