@@ -22,11 +22,16 @@ from eval import report
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def run_cli(cli, models, fixture_dir, out_json, llm_model=None):
+def run_cli(cli, models, fixture_dir, out_json, llm_model=None, asr="ggml-base-q5_1.bin",
+            asr_engine=None, qwen3_model=None, language=None):
     """Invoke the shared core. Returns (document, peak_rss_bytes).
 
     Diarization models are passed when present, so DER is scored whenever the models exist and the
     run degrades to transcript-only when they do not, rather than failing.
+
+    `asr` names the whisper weights inside `models`. It is a parameter and not a constant because
+    whisper-small is what the Pro tier claims to add, and a claim nobody has measured is not a
+    feature — it is a promise. Defaults to base, which is what the free tier ships.
 
     `llm_model` turns on narration, which is the configuration that ships. Without it the harness
     scores rule-based minutes only — which was silently the case until 2026-08-26, so the numbers
@@ -36,9 +41,17 @@ def run_cli(cli, models, fixture_dir, out_json, llm_model=None):
     prose lands in the result document where a future prose metric can reach it.
     """
     cmd = [cli,
-           os.path.join(models, "ggml-base-q5_1.bin"),
+           os.path.join(models, asr),
            os.path.join(fixture_dir, "audio.wav"),
            "--vad", os.path.join(models, "silero_vad.onnx")]
+    # Engine selection is EXPLICIT here rather than left to the language policy: a benchmark that
+    # quietly measured a different engine than the one named would be worse than a failed run.
+    if asr_engine:
+        cmd += ["--asr-engine", asr_engine]
+    if qwen3_model:
+        cmd += ["--qwen3-model", qwen3_model]
+    if language:
+        cmd += ["--language", language]
     seg = os.path.join(models, "diar_segmentation.onnx")
     emb = os.path.join(models, "diar_embedding.onnx")
     if os.path.exists(seg) and os.path.exists(emb):
@@ -59,6 +72,36 @@ def run_cli(cli, models, fixture_dir, out_json, llm_model=None):
             break
     with open(out_json) as f:
         return json.load(f), peak_rss
+
+
+def script_histogram(text):
+    """Which writing systems a transcript actually came back in.
+
+    The 2026-08-19 recording returned FIVE scripts including Korean and Chinese, and nobody knew
+    until they read it. A per-fixture percentage turns that into a number a run can be judged on:
+    a Hindi meeting that is 8% CJK is a failure however good its WER looks.
+
+    This is also how the Qwen language hint gets judged rather than assumed. No CJK output filter
+    ships, deliberately — a threshold guessed before the evidence exists can silently delete real
+    speech. This is the evidence.
+    """
+    counts = {"latin": 0, "devanagari": 0, "arabic": 0, "cjk": 0, "other": 0}
+    for ch in text:
+        if not ch.isalpha():
+            continue
+        cp = ord(ch)
+        if cp < 0x0250:
+            counts["latin"] += 1
+        elif 0x0900 <= cp <= 0x097F:
+            counts["devanagari"] += 1
+        elif 0x0600 <= cp <= 0x06FF:
+            counts["arabic"] += 1
+        elif (0x4E00 <= cp <= 0x9FFF or 0x3040 <= cp <= 0x30FF or 0xAC00 <= cp <= 0xD7AF):
+            counts["cjk"] += 1
+        else:
+            counts["other"] += 1
+    total = sum(counts.values()) or 1
+    return {k: round(100.0 * v / total, 1) for k, v in counts.items()}
 
 
 def _within(segments, lo, hi):
@@ -123,6 +166,9 @@ def score(fixture_dir, doc, peak_rss=0, judge=None):
         "wer": wer_tokens(ref_tokens, hyp_tokens).as_dict(),
         "der": d.as_dict(),
         "attribution": attribution,
+        # What script the model actually answered in, alongside how accurate it was. A transcript
+        # can score well on WER and still be unreadable to its owner.
+        "scripts": script_histogram(" ".join(u.get("text", "") for u in hyp_utterances)),
         "timings": timings,
         "realtime": realtime,
         "peak_rss_mb": round(peak_rss / 1048576, 1) if peak_rss else None,
@@ -176,6 +222,15 @@ def main():
     ap.add_argument("--models", required=True)
     ap.add_argument("--fixtures", default=os.path.join(ROOT, "eval", "fixtures"))
     ap.add_argument("--only", help="run a single fixture id")
+    ap.add_argument("--asr", default="ggml-base-q5_1.bin", metavar="FILE",
+                    help="whisper weights inside --models (e.g. ggml-small-q5_1.bin)")
+    ap.add_argument("--asr-engine", metavar="NAME", choices=["whisper", "qwen3"],
+                    help="force an engine instead of letting the language policy choose")
+    ap.add_argument("--qwen3-model", metavar="DIR",
+                    help="directory holding conv_frontend.onnx, encoder.onnx, decoder.onnx, "
+                         "tokenizer/ (e.g. eval/models/qwen3-asr)")
+    ap.add_argument("--language", metavar="CODE",
+                    help="language to pin the transcriber to (default: the core's own, 'en')")
     ap.add_argument("--llm", metavar="GGUF",
                     help="the SHIPPED model (eval/models/qwen-instruct-q4_k_m.gguf) — turns on "
                          "narration so the run matches what the phone does")
@@ -208,7 +263,10 @@ def main():
     if not ids:
         raise SystemExit("no fixtures found — run: python3 -m eval.corpus.build_fixture ES2002a")
 
-    results = {"run_id": run_id, "cli": args.cli, "judge": results_judge, "fixtures": []}
+    results = {"run_id": run_id, "cli": args.cli, "asr": args.asr,
+               "asr_engine": args.asr_engine, "qwen3_model": args.qwen3_model,
+               "language": args.language,
+               "judge": results_judge, "fixtures": []}
     for fid in ids:
         fixture_dir = os.path.join(args.fixtures, fid)
         if not os.path.exists(os.path.join(fixture_dir, "audio.wav")):
@@ -217,7 +275,9 @@ def main():
         print(f"running {fid} …")
         doc, peak_rss = run_cli(args.cli, args.models, fixture_dir,
                                 os.path.join(out_dir, f"{fid}.cli.json"),
-                                llm_model=args.llm)
+                                llm_model=args.llm, asr=args.asr,
+                                asr_engine=args.asr_engine, qwen3_model=args.qwen3_model,
+                                language=args.language)
         r = score(fixture_dir, doc, peak_rss, judge=judge)
         results["fixtures"].append(r)
         acc = r["attribution"]["accuracy"]

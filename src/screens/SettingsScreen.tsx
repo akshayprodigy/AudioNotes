@@ -17,6 +17,9 @@ import ModelManager from '../native/NativeModelManager';
 import { NOTICES } from '../legal/notices';
 import { db } from '../db/queries';
 import { PipelineController } from '../pipeline/PipelineController';
+import AudioPipeline from '../native/NativeAudioPipeline';
+import { FALLBACK_LANGUAGES, orderLanguages } from './languages';
+import type { LanguageChoice } from './languages';
 import Icon from '../components/Icon';
 import { confirmDestructive } from '../components/confirm';
 import {
@@ -109,12 +112,6 @@ const RETENTION_CHOICES: { days: number; label: string; detail: string }[] = [
  * pinned to English it invents fluent English that was never said. Neither failure is one a user
  * can diagnose; both are ones they can fix in a tap if we let them.
  */
-const LANGUAGE_CHOICES: { code: string; label: string }[] = [
-  { code: 'auto', label: 'Auto-detect' },
-  { code: 'en', label: 'English' },
-  { code: 'hi', label: 'Hindi' },
-];
-
 const THEME_CHOICES: { key: ThemeMode; label: string }[] = [
   { key: 'light', label: 'Light' },
   { key: 'dark', label: 'Dark' },
@@ -291,7 +288,11 @@ export default function SettingsScreen({ navigation }: Props) {
   // null until the stored value has been read. Rendering a picker with a guessed selection and
   // then moving it under the user's finger a frame later is worse than rendering nothing.
   const [retention, setRetention] = useState<number | null>(null);
-  const [language, setLanguage] = useState('auto');
+  // 'en' and not 'auto', matching the native default. The read below can fail and is
+  // swallowed, so this value is what the user would be shown — and a picker saying
+  // Auto-detect while the transcriber is pinned to English is the screen lying.
+  const [language, setLanguage] = useState('en');
+  const [languages, setLanguages] = useState<LanguageChoice[]>(FALLBACK_LANGUAGES);
   const [empties, setEmpties] = useState(0);
 
   const refresh = () => ModelManager.list().then(r => setModels(JSON.parse(r)));
@@ -336,7 +337,15 @@ export default function SettingsScreen({ navigation }: Props) {
   useEffect(() => {
     readRetention();
     db.getSetting('asrLanguage')
-      .then(v => setLanguage(v ?? 'auto'))
+      .then(v => setLanguage(v ?? 'en'))
+      .catch(() => {});
+    // The engine's own list. On failure the three-item fallback stays, which is worse than the
+    // real list but still a working picker.
+    AudioPipeline.supportedLanguages()
+      .then((json: string) => {
+        const parsed = JSON.parse(json) as LanguageChoice[];
+        if (Array.isArray(parsed) && parsed.length > 0) setLanguages(orderLanguages(parsed));
+      })
       .catch(() => {});
     countEmpties();
     const offFocus = navigation.addListener('focus', () => {
@@ -826,7 +835,7 @@ export default function SettingsScreen({ navigation }: Props) {
               </Txt>
               <Segmented
                 style={st.segment}
-                items={LANGUAGE_CHOICES.map(l => ({ key: l.code, label: l.label }))}
+                items={languages.map(l => ({ key: l.code, label: l.label }))}
                 value={language}
                 onChange={chooseLanguage}
               />

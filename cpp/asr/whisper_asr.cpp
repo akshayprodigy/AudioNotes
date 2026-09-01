@@ -1,7 +1,7 @@
 #include "asr/whisper_asr.h"
 
-#include "util/utf8.h"
-
+#include "asr/asr_chunker.h"
+#include "asr/asr_postprocess.h"
 #include "util/cpu_topology.h"
 
 #include <algorithm>
@@ -43,19 +43,6 @@ std::vector<float> readWindow(const std::string& pcm_path, int sr, int64_t start
   for (size_t i = 0; i < got; ++i) out[i] = static_cast<float>(raw[i]) / 32768.0f;
   return out;
 }
-
-// Combine VAD spans into chunks no longer than ~kChunkMs (measured from chunk start).
-std::vector<std::pair<int64_t, int64_t>> makeChunks(const std::vector<Segment>& segs) {
-  std::vector<std::pair<int64_t, int64_t>> chunks;
-  for (const auto& s : segs) {
-    if (chunks.empty() || s.end_ms - chunks.back().first > kChunkMs) {
-      chunks.emplace_back(s.start_ms, s.end_ms);
-    } else {
-      chunks.back().second = s.end_ms;
-    }
-  }
-  return chunks;
-}
 }  // namespace
 
 struct WhisperAsr::Impl {
@@ -64,8 +51,9 @@ struct WhisperAsr::Impl {
 #endif
   bool ok = false;
   std::string language;
+  std::string model_path;
 
-  Impl(const std::string& model_path, const std::string& lang) : language(lang) {
+  Impl(const std::string& path, const std::string& lang) : language(lang), model_path(path) {
 #ifdef HAVE_WHISPER
     whisper_context_params cparams = whisper_context_default_params();
     ctx = whisper_init_from_file_with_params(model_path.c_str(), cparams);
@@ -88,19 +76,34 @@ WhisperAsr::WhisperAsr(const std::string& model_path, const std::string& languag
 WhisperAsr::~WhisperAsr() { delete impl_; }
 bool WhisperAsr::ok() const { return impl_->ok; }
 
-std::vector<Utterance> WhisperAsr::transcribe(
+bool WhisperAsr::supports(const std::string& language) const {
+#ifdef HAVE_WHISPER
+  // "auto" is not a language, it is the absence of a choice — still accepted, still not default.
+  if (language == "auto") return true;
+  return whisper_lang_id(language.c_str()) >= 0;
+#else
+  (void)language;
+  return false;
+#endif
+}
+
+AsrRun WhisperAsr::transcribe(
     const std::string& pcm_path,
     const std::vector<Segment>& segments,
     int sample_rate,
     int threads_override,
     const AsrProgressFn& progress,
     const AsrCancelFn& cancel) {
-  std::vector<Utterance> utts;
+  AsrRun run;
+  run.engine = name();
+  run.model_path = impl_->model_path;
+  run.language = impl_->language;
 #ifdef HAVE_WHISPER
   if (!impl_->ok) throw std::runtime_error("whisper model not loaded");
 
-  const auto chunks = makeChunks(segments);
+  const auto chunks = makeChunks(segments, kChunkMs);
   const int total = static_cast<int>(chunks.size());
+  run.chunks_total = total;
   const int threads = threads_override > 0 ? threads_override : inferenceThreadCount();
   ASRLOGI("transcribing %d chunk(s) with %d threads", total, threads);
 
@@ -109,10 +112,11 @@ std::vector<Utterance> WhisperAsr::transcribe(
     // abort callback; utterances decoded so far are kept and returned.
     if (cancel && cancel()) {
       ASRLOGI("cancelled after %d/%d chunk(s)", ci, total);
+      run.cancelled = true;
       break;
     }
     const auto& ch = chunks[ci];
-    std::vector<float> samples = readWindow(pcm_path, sample_rate, ch.first, ch.second);
+    std::vector<float> samples = readWindow(pcm_path, sample_rate, ch.start_ms, ch.end_ms);
     if (samples.empty()) {
       if (progress) progress(ci + 1, total);
       continue;
@@ -128,6 +132,9 @@ std::vector<Utterance> WhisperAsr::transcribe(
     wparams.no_context = true;
 
     if (whisper_full(impl_->ctx, wparams, samples.data(), static_cast<int>(samples.size())) != 0) {
+      // Counted, not swallowed. A run where every chunk lands here used to be indistinguishable
+      // from a silent room, and the pipeline called both "no speech detected".
+      ++run.chunks_failed;
       if (progress) progress(ci + 1, total);
       continue;
     }
@@ -142,15 +149,12 @@ std::vector<Utterance> WhisperAsr::transcribe(
       // arrives as a fragment, and that fragment terminates every consumer downstream (JSON
       // dump throws, JNI NewStringUTF aborts the VM) — found on a Hindi/English meeting, after
       // the whole recording had already been processed. Scrub once, here at the source.
-      std::string s = sanitizeUtf8(text ? text : "");
-      // trim leading space whisper tends to add
-      if (!s.empty() && s.front() == ' ') s.erase(0, 1);
-      // ...and the dialogue dash it adds in front of a turn when it hears two people. Stripped
-      // here with the rest of the scrubbing, because the minutes are extracted from this text and
-      // the item hash carrying an action's tick is computed over it: cleaning it downstream would
-      // leave two different strings both claiming to be the same utterance.
-      s = stripDialogueDash(s);
-      if (!s.empty()) utts.push_back(Utterance{ch.first + t0, ch.first + t1, s});
+      // Every engine's output goes through the same door — see asr_postprocess.h for the two
+      // crashes that door exists to stop, and why an engine must not do this itself. The minutes
+      // are extracted from this text and an action's item hash is computed over it, so cleaning
+      // it downstream would leave two strings both claiming to be the same utterance.
+      const std::string s = normalizeSegmentText(text ? text : "");
+      if (!s.empty()) run.utterances.push_back(Utterance{ch.start_ms + t0, ch.start_ms + t1, s});
     }
     if (progress) progress(ci + 1, total);
   }
@@ -161,7 +165,7 @@ std::vector<Utterance> WhisperAsr::transcribe(
   (void)progress;
   throw std::runtime_error("whisper.cpp not compiled in (vendor cpp/third_party/whisper.cpp)");
 #endif
-  return utts;
+  return run;
 }
 
 }  // namespace audionotes

@@ -97,6 +97,23 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
     levelTimer = null
   }
 
+  /**
+   * The languages the transcriber supports, as JSON [{code,label}].
+   *
+   * Read from the engine so the picker cannot drift from what the model can do. Rejecting rather
+   * than returning a short fallback list is deliberate: the JS side already has three choices
+   * hard-coded as its own fallback, and a silent short list is exactly the failure this replaces.
+   */
+  @ReactMethod
+  fun supportedLanguages(promise: Promise) {
+    try {
+      NativeBridge.ensureLoaded(ctx)
+      promise.resolve(NativeBridge.nativeSupportedLanguages())
+    } catch (e: Throwable) {
+      promise.reject("languages_failed", e)
+    }
+  }
+
   @ReactMethod
   fun start(config: ReadableMap, promise: Promise) {
     if (!CaptureController.hasMicPermission(ctx)) {

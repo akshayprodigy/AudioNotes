@@ -15,6 +15,27 @@
 
 namespace audionotes {
 
+namespace {
+
+// EMPTY for English, and that is the important part. These prompts are model-tuned artifacts —
+// the file header says to change them only against a measurement — and English is the one
+// configuration that has actually been measured. Adding "Write in English." to it would perturb
+// the tuned path for every existing user in exchange for nothing, since an English transcript
+// already produces English prose. Non-English is where the output language is currently
+// undefined, so that is where an instruction is pure gain.
+//
+// Naming the language beats echoing a code: a model handed "Write in zz." either invents a
+// language or leaks the code into its answer. Unknown codes therefore fall back to English.
+std::string languageDirective(const std::string& code) {
+  if (code == "hi") return "- Write in Hindi.\n";
+  if (code == "es") return "- Write in Spanish.\n";
+  if (code == "fr") return "- Write in French.\n";
+  if (code == "de") return "- Write in German.\n";
+  return std::string();
+}
+
+}  // namespace
+
 std::vector<std::string> transcriptLines(const std::vector<MinuteUtt>& utterances,
                                          const std::vector<MinuteSpk>& speakers) {
   std::unordered_map<std::string, std::string> name_by_id;
@@ -73,7 +94,8 @@ std::string reducePrompt(const std::string& notes) {
          "\"questions\":[\"<a question left unanswered>\"]}";
 }
 
-std::string narrativePrompt(const std::string& notes) {
+std::string narrativePrompt(const std::string& notes, const std::string& language) {
+  const std::string lang = languageDirective(language);
   // "Write the minutes" is itself the trigger: asked for minutes, the model reaches for the
   // MINUTES FORM it has seen thousands of times and fills it in — "Meeting Minutes", a Date &
   // Time line, an Attendees list, a numbered Agenda. On the IPD meeting it shipped the literal
@@ -102,10 +124,12 @@ std::string narrativePrompt(const std::string& notes) {
          "- Never say that something was not stated, not specified, not mentioned, not decided or "
          "not clarified. If a detail is missing, leave it out silently.\n"
          "- Do not mention how long the meeting was or when it started or ended.\n"
+         + lang +
          "Start writing now:";
 }
 
-std::string summaryPrompt(const std::string& narrative) {
+std::string summaryPrompt(const std::string& narrative, const std::string& language) {
+  const std::string lang = languageDirective(language);
   return "Below is an account of a meeting.\n\n"
          "ACCOUNT:\n" + narrative + "\n\n"
          "In about 70 words, say what the meeting was about and where it ended up.\n"
@@ -121,12 +145,15 @@ std::string summaryPrompt(const std::string& narrative) {
          "- Never say that something was not stated, not specified, not mentioned, not decided or "
          "not clarified. If a detail is missing, leave it out silently.\n"
          "- Do not mention how long the meeting was or when it started or ended.\n"
+         + lang +
          "Start writing the summary now:";
 }
 
-std::string headlinePrompt(const std::string& summary) {
+std::string headlinePrompt(const std::string& summary, const std::string& language) {
+  const std::string lang = languageDirective(language);
   return "Below is a summary of a meeting.\n\n"
          "SUMMARY:\n" + summary + "\n\n"
+         + lang +
          "In ONE sentence of at most 15 words, say what this meeting was about. Write only that "
          "sentence, with no label, no quotation marks and no trailing notes:";
 }
@@ -140,7 +167,8 @@ std::string foldPrompt(const std::string& notes) {
          "QUESTIONS:\n- ...";
 }
 
-std::string digestPrompt(const std::string& chunk) {
+std::string digestPrompt(const std::string& chunk, const std::string& language) {
+  const std::string lang = languageDirective(language);
   return "Below is part of a meeting transcript.\n\n"
          "TRANSCRIPT:\n" + chunk + "\n\n"
          "In three or four sentences of plain prose, say what this part of the meeting was about "
@@ -149,10 +177,12 @@ std::string digestPrompt(const std::string& chunk) {
          "- Plain prose only. No heading, no bullet points, no numbered list, no markdown.\n"
          "- Never say that something was not stated, not specified or not decided. If a detail is "
          "missing, leave it out silently.\n"
+         + lang +
          "Start writing now:";
 }
 
-std::string condensePrompt(const std::string& prose) {
+std::string condensePrompt(const std::string& prose, const std::string& language) {
+  const std::string lang = languageDirective(language);
   return "Below are accounts of consecutive parts of ONE meeting.\n\n"
          "ACCOUNT:\n" + prose + "\n\n"
          "Rewrite them as one shorter continuous account, in plain prose, keeping every distinct "
@@ -160,6 +190,7 @@ std::string condensePrompt(const std::string& prose) {
          "Rules:\n"
          "- Plain prose only. No heading, no bullet points, no numbered list, no markdown.\n"
          "- Never say that something was not stated, not specified or not decided.\n"
+         + lang +
          "Start writing now:";
 }
 

@@ -19,6 +19,15 @@ std::vector<std::string> transcriptLines(const std::vector<MinuteUtt>& utterance
                                          const std::vector<MinuteSpk>& speakers);
 std::vector<std::string> chunkTranscript(const std::vector<std::string>& lines,
                                          size_t max_chars = 6000);
+// The language the WRITTEN OUTPUT is in.
+//
+// Deliberately only on the PROSE prompts. mapPrompt, reducePrompt and foldPrompt emit notes that
+// are parsed back by the literal labels DECISIONS:, ACTIONS: and QUESTIONS: — instructing a
+// translation there would rename the very things the parser looks for.
+//
+// This is also what separates recognition from presentation: ASR stays faithful to what was
+// spoken, and this decides what the reader is handed. A Hindi meeting can therefore produce
+// English minutes without the Hindi ever having been destroyed.
 std::string mapPrompt(const std::string& chunk);
 std::string reducePrompt(const std::string& notes);
 
@@ -31,9 +40,9 @@ std::string reducePrompt(const std::string& notes);
 // field inside reducePrompt's schema, Qwen2.5-1.5B answered "No decisions were explicitly stated."
 // — commentary on its own extraction, contradicted by the two actions it listed beneath — while
 // the same weights given summaryPrompt wrote four specific, true sentences about the meeting.
-std::string narrativePrompt(const std::string& notes);
-std::string summaryPrompt(const std::string& narrative);
-std::string headlinePrompt(const std::string& summary);
+std::string narrativePrompt(const std::string& notes, const std::string& language = "en");
+std::string summaryPrompt(const std::string& narrative, const std::string& language = "en");
+std::string headlinePrompt(const std::string& summary, const std::string& language = "en");
 
 // Merge notes into notes, same format in and out, so the result can be folded again.
 std::string foldPrompt(const std::string& notes);
@@ -45,8 +54,8 @@ std::string foldPrompt(const std::string& notes);
 // and a bullet list, however firmly the prompt forbade headings. Fed dialogue or prose it writes
 // prose. Since the list items now come from the rule extractor, nothing in the prose chain needs
 // the notes at all — so each chunk is digested into prose and the digests are condensed.
-std::string digestPrompt(const std::string& chunk);
-std::string condensePrompt(const std::string& prose);
+std::string digestPrompt(const std::string& chunk, const std::string& language = "en");
+std::string condensePrompt(const std::string& prose, const std::string& language = "en");
 
 // Groups of note indices to merge so the joined notes fit max_chars. Empty when they already fit.
 //

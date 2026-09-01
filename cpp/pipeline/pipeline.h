@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "asr/whisper_asr.h"            // Utterance {start_ms,end_ms,text}
+#include "asr/asr_engine.h"             // Utterance {start_ms,end_ms,text}
 #include "diar/diarizer.h"              // DiarSegment
 #include "minutes/minutes_extractor.h"  // DraftMinute, MinuteUtt, MinuteSpk
 #include "vad/silero_vad.h"             // Segment
@@ -23,12 +23,14 @@ struct AlignedUtterance {
 };
 
 struct PipelineConfig {
-  std::string asr_model;       // required
+  std::string asr_model;       // required: the whisper weights file
+  std::string qwen3_model_dir; // "" = Qwen3-ASR not installed; a DIRECTORY when it is
+  std::string asr_engine;      // "" = choose by language; "whisper"/"qwen3" forces one
   std::string vad_model;       // "" = skip VAD, fall back to fixed 30 s windows
   std::string diar_seg_model;  // both diar paths "" = skip diarization
   std::string diar_emb_model;
   std::string llm_model;       // "" = rule-based minutes only
-  std::string language = "auto";  // whisper language code, or "auto" to detect per chunk
+  std::string language = "en";  // a language code; "auto" re-detects per chunk (the bug, not the default)
   int num_speakers = 0;        // 0 = auto clustering
   float diar_threshold = 1.0f; // auto-clustering merge distance; smaller splits more
   int sample_rate = 16000;

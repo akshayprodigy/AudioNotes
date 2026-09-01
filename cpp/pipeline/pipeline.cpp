@@ -1,5 +1,9 @@
 #include "pipeline/pipeline.h"
 
+#include "asr/asr_engine.h"
+
+#include <memory>
+
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -114,14 +118,32 @@ bool Pipeline::run(const std::string& pcm_path, PipelineResult* out,
   std::vector<Utterance> utts;
   if (!out->segments.empty()) {
     const int64_t t0 = nowMs();
-    WhisperAsr asr(cfg_.asr_model, cfg_.language);
-    if (!asr.ok()) {
-      error_ = "asr: failed to load model " + cfg_.asr_model;
+    AsrConfig acfg;
+    acfg.engine = cfg_.asr_engine;
+    acfg.language = cfg_.language;
+    acfg.whisper_model = cfg_.asr_model;
+    acfg.qwen3_model_dir = cfg_.qwen3_model_dir;
+    std::unique_ptr<AsrEngine> asr = makeAsrEngine(acfg);
+    if (!asr->ok()) {
+      // Prefer the engine's own reason. Saying "failed to load ggml-base-q5_1.bin" when the real
+      // problem is that qwen3 was requested and is not installed sends the reader after the
+      // wrong file.
+      const std::string why = asr->unavailableReason();
+      error_ = "asr: " + (why.empty() ? ("failed to load model " + cfg_.asr_model) : why);
       return false;
     }
-    utts = asr.transcribe(pcm_path, out->segments, cfg_.sample_rate, cfg_.asr_threads,
-                          [&report](int done, int total) { report("asr", done, total); },
-                          cancel ? PipelineCancelFn(cancel) : nullptr);
+    AsrRun asr_run = asr->transcribe(
+        pcm_path, out->segments, cfg_.sample_rate, cfg_.asr_threads,
+        [&report](int done, int total) { report("asr", done, total); },
+        cancel ? AsrCancelFn(cancel) : nullptr);
+    // Decoding that failed on every window is not a quiet room, and must not be reported as one.
+    if (asr_run.allChunksFailed()) {
+      error_ = "asr: every chunk failed to decode (" +
+               std::to_string(asr_run.chunks_failed) + "/" +
+               std::to_string(asr_run.chunks_total) + ")";
+      return false;
+    }
+    utts = std::move(asr_run.utterances);
     out->asr_ms = nowMs() - t0;
     // A mid-ASR cancel leaves a partial transcript; stop rather than diarize and mint minutes
     // from half a meeting.
