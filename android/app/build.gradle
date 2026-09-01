@@ -168,6 +168,19 @@ def enableProguardInReleaseBuilds = false
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+// See the versioning note in defaultConfig below. Change THIS line for a release, nothing else.
+def appVersionName = "1.0.0"
+def versionParts = appVersionName.tokenize('.').collect { it.toInteger() }
+if (versionParts.size() != 3) {
+    throw new GradleException("appVersionName must be MAJOR.MINOR.PATCH, got '${appVersionName}'")
+}
+if (versionParts[1] > 99 || versionParts[2] > 99) {
+    throw new GradleException(
+        "appVersionName '${appVersionName}': minor and patch must each be <= 99, or the derived " +
+        "versionCode stops increasing monotonically and Play will reject the upload.")
+}
+def appVersionCode = versionParts[0] * 10000 + versionParts[1] * 100 + versionParts[2]
+
 android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
@@ -207,8 +220,24 @@ android {
         applicationId "com.innocorelabs.verbale"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+
+        // ---------------------------------------------------------------------
+        // Versioning — ONE number to change, per release.
+        //
+        // Play permanently rejects a versionCode it has already accepted, and a code cannot be
+        // reused or reclaimed. Worse, an accidentally HIGH one burns every value beneath it
+        // forever. The classic way to lose an afternoon is bumping versionName for a release and
+        // forgetting versionCode, so the code is DERIVED rather than maintained alongside:
+        //
+        //     1.0.0 -> 10000      1.2.3 -> 10203      2.0.0 -> 20000
+        //
+        // Bump appVersionName only. Anything else is a mistake the build should catch, which is
+        // what the check below does — minor and patch above 99 would carry into the next field
+        // and could produce a code that DECREASES, and Play's rejection message would not tell
+        // you that was why.
+        // ---------------------------------------------------------------------
+        versionCode appVersionCode
+        versionName appVersionName
         // Lets `./gradlew connectedDebugAndroidTest` exercise the C++ core (VAD/ASR/diarize)
         // directly on a device, with no UI driving and no dependence on the logcat buffer.
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"

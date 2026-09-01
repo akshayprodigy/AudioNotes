@@ -231,6 +231,27 @@ off the phishing surface.
 
 ---
 
+## Versioning
+
+Change **one line** for a release: `appVersionName` at the top of `android/app/build.gradle`.
+
+`versionCode` is derived from it — `1.0.0` → `10000`, `1.2.3` → `10203` — rather than maintained
+beside it, because the classic release mistake is bumping the name and forgetting the code, and
+Play's rejection tells you the code is duplicate without telling you why it never changed.
+
+Two things about Play's rules make this worth automating rather than remembering:
+
+- A `versionCode` Play has accepted can never be reused, even if you unpublish that release.
+- An accidentally high code burns **every value beneath it, permanently**. Uploading `999` once
+  means the next 998 releases have nowhere to go.
+
+The build refuses a minor or patch above 99, because the arithmetic would carry into the next
+field and could produce a code that *decreases* — which Play rejects with the same unhelpful
+duplicate-version message. Both guards are verified to fire.
+
+The current release is `1.0.0` / `10000`. Do not start higher "to leave room": there is no
+benefit, and the room is what you would be destroying.
+
 ## Still to do before filing
 
 - [ ] Release keystore, and enrol in Play App Signing
