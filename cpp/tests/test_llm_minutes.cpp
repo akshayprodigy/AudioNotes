@@ -381,6 +381,40 @@ int main(int argc, char** argv) {
     CHECK(calls == 1, "narrate should stop after the failed narrative, made %d calls", calls);
   }
 
+  // A meeting recognised in Hindi must not be summarised into English by accident, and one
+  // recognised in English must not drift out of it. The prompts state the language; they used to
+  // state nothing at all, so the output language was whatever the model felt like.
+  {
+    const std::string notes = "Ravi will send the deck.";
+    const std::string en = audionotes::narrativePrompt(notes, "en");
+    const std::string hi = audionotes::narrativePrompt(notes, "hi");
+    // English carries NO directive: it is the tuned, measured path and must not be perturbed.
+    CHECK(en.find("Write in") == std::string::npos, "en prompt must carry no directive");
+    CHECK(hi.find("Hindi") != std::string::npos, "hi prompt names Hindi");
+    CHECK(hi != en, "language must actually change the prompt");
+
+    // The default keeps every existing caller — JNI, Narrator, the CLI — behaving as it does now.
+    CHECK(audionotes::narrativePrompt(notes) == en, "default is en");
+
+    // The whole prose chain, not just the narrative: a summary in one language under a narrative
+    // in another is worse than either.
+    CHECK(audionotes::summaryPrompt(notes, "hi").find("Hindi") != std::string::npos, "summary");
+    CHECK(audionotes::headlinePrompt(notes, "hi").find("Hindi") != std::string::npos, "headline");
+    CHECK(audionotes::digestPrompt(notes, "hi").find("Hindi") != std::string::npos, "digest");
+    CHECK(audionotes::condensePrompt(notes, "hi").find("Hindi") != std::string::npos, "condense");
+
+    // An unknown code falls back to English rather than naming a language the model may write
+    // badly, or worse, echoing the raw code into the instruction.
+    CHECK(audionotes::narrativePrompt(notes, "zz") == en, "unknown code falls back to en");
+
+    // NOT the structured prompts. Their output is parsed by the literal labels DECISIONS: and
+    // ACTIONS:, so instructing a translation would rename the very things the parser looks for.
+    CHECK(audionotes::mapPrompt(notes).find("Write in") == std::string::npos,
+          "mapPrompt must carry no language directive");
+    CHECK(audionotes::reducePrompt(notes).find("Write in") == std::string::npos,
+          "reducePrompt must carry no language directive");
+  }
+
   if (failures) { std::fprintf(stderr, "%d failure(s)\n", failures); return 1; }
   std::printf("test_llm_minutes OK\n");
   return 0;
