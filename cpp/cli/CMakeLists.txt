@@ -89,6 +89,8 @@ add_executable(audionotes_cli
   ${CORE}/asr/whisper_asr.cpp
   ${CORE}/asr/asr_chunker.cpp
   ${CORE}/asr/asr_postprocess.cpp
+  ${CORE}/asr/asr_factory.cpp
+  ${CORE}/asr/qwen3_asr.cpp
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
@@ -151,6 +153,27 @@ audionotes_add_test(test_asr_postprocess
   ${CORE}/asr/asr_postprocess.cpp
   ${CORE}/util/utf8.cpp)
 
+audionotes_add_test(test_asr_factory
+  ${CORE}/tests/test_asr_factory.cpp
+  ${CORE}/asr/asr_factory.cpp
+  ${CORE}/asr/asr_chunker.cpp
+  ${CORE}/asr/asr_postprocess.cpp
+  ${CORE}/asr/whisper_asr.cpp
+  ${CORE}/asr/qwen3_asr.cpp
+  ${CORE}/util/utf8.cpp
+  ${CORE}/util/ort_init.cpp
+  ${CORE}/vad/silero_vad.cpp)
+target_include_directories(test_asr_factory PRIVATE
+  ${TP}/onnxruntime/include ${TP}/whisper.cpp/include ${TP}/whisper.cpp/ggml/include)
+target_compile_definitions(test_asr_factory PRIVATE HAVE_WHISPER)
+target_link_libraries(test_asr_factory PRIVATE whisper ${CMAKE_DL_LIBS})
+if(ORT_LIB)
+  target_compile_definitions(test_asr_factory PRIVATE HAVE_SHERPA=1)
+  target_include_directories(test_asr_factory PRIVATE ${TP}/sherpa-onnx)
+  target_link_libraries(test_asr_factory PRIVATE sherpa-onnx-c-api)
+  set_target_properties(test_asr_factory PROPERTIES BUILD_RPATH "${ORT_ROOT}/lib")
+endif()
+
 audionotes_add_test(test_minutes
   ${CORE}/tests/test_minutes.cpp
   ${CORE}/minutes/minutes_extractor.cpp)
@@ -170,6 +193,8 @@ audionotes_add_test(test_pipeline_align
   ${CORE}/asr/whisper_asr.cpp
   ${CORE}/asr/asr_chunker.cpp
   ${CORE}/asr/asr_postprocess.cpp
+  ${CORE}/asr/asr_factory.cpp
+  ${CORE}/asr/qwen3_asr.cpp
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
@@ -198,6 +223,8 @@ audionotes_add_test(test_cancel
   ${CORE}/asr/whisper_asr.cpp
   ${CORE}/asr/asr_chunker.cpp
   ${CORE}/asr/asr_postprocess.cpp
+  ${CORE}/asr/asr_factory.cpp
+  ${CORE}/asr/qwen3_asr.cpp
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
@@ -226,6 +253,8 @@ audionotes_add_test(test_capi
   ${CORE}/asr/whisper_asr.cpp
   ${CORE}/asr/asr_chunker.cpp
   ${CORE}/asr/asr_postprocess.cpp
+  ${CORE}/asr/asr_factory.cpp
+  ${CORE}/asr/qwen3_asr.cpp
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp

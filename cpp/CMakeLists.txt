@@ -17,6 +17,8 @@ add_library(audionotes SHARED
   asr/whisper_asr.cpp
   asr/asr_chunker.cpp
   asr/asr_postprocess.cpp
+  asr/asr_factory.cpp
+  asr/qwen3_asr.cpp
   diar/diarizer.cpp
   llm/llama_engine.cpp
   # Rule-based minutes, shared with the CLI and minutes.ts (see jni nativeMinutes). The rest of

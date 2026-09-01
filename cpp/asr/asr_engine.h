@@ -57,6 +57,11 @@ class AsrEngine {
   virtual bool ok() const = 0;
 
   virtual const char* name() const = 0;
+
+  // Why ok() is false, when the engine can say. Empty otherwise. Not pure: most engines have
+  // nothing to add beyond "the weights did not load", and a caller naming the wrong model file
+  // sends whoever reads the log hunting the wrong problem.
+  virtual std::string unavailableReason() const { return std::string(); }
   virtual int64_t maxChunkMs() const = 0;
   virtual ChunkMode chunkMode() const = 0;
   virtual bool supports(const std::string& language) const = 0;
