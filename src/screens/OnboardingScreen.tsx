@@ -10,6 +10,8 @@ import Icon, { type IconName } from '../components/Icon';
 import Mascot from '../components/Mascot';
 import { Button, Pop, ProgressBar, Raised, SoftButton, Switch, Txt } from '../components/ui';
 import { db } from '../db/queries';
+import SignInForm from '../billing/SignInForm';
+import { TRIAL_DAYS, startTrial } from '../billing/trial';
 import { radius, s, sv, useTheme, type Colors } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Onboarding'>;
@@ -91,6 +93,10 @@ export default function OnboardingScreen({ navigation }: Props) {
   // 1.2 GB. That is a better first impression than the one it replaces, not a worse one.
   const [paid, setPaid] = useState(false);
   const [wantWriter, setWantWriter] = useState(false);
+  // Which tier was picked at setup. null means they have not been asked yet, which is the state
+  // the intro sits in until they choose.
+  const [tier, setTier] = useState<'free' | 'pro' | null>(null);
+  const [showSignIn, setShowSignIn] = useState(false);
 
   useEffect(() => {
     Licence.status()
@@ -126,11 +132,35 @@ export default function OnboardingScreen({ navigation }: Props) {
   // with every model present offered "Download the AI (114 MB)" — a number that was wrong in the
   // direction that makes the app look worse, and which used to be true because download() really
   // did fetch them all again. That is fixed natively; this is the half the user reads.
-  const chosen = paid && wantWriter ? [...essentials, ...writer] : essentials;
+  /** Entitled to the paid models, either already or by the trial just started. */
+  const proChosen = paid || tier === 'pro';
+
+  const chosen = proChosen && wantWriter ? [...essentials, ...writer] : essentials;
   const totalMb = Math.round(
     chosen.filter(m => !m.installed).reduce((a, m) => a + m.sizeBytes, 0) / 1e6,
   );
   const writerMb = Math.round(writer.reduce((a, m) => a + m.sizeBytes, 0) / 1e6);
+
+  /**
+   * Taking Pro at setup starts the TRIAL, not a purchase.
+   *
+   * Asking for a card before the app has transcribed a single meeting is the weakest possible ask,
+   * and the trial is the only honest answer to "is it any good on MY meetings" — the only question
+   * that matters for this product. Buying outright stays on the Pro screen and in Settings.
+   *
+   * A trial that fails to start drops to free rather than dead-ending setup. A first run that
+   * cannot proceed because a billing helper threw is a far worse outcome than a missing trial.
+   */
+  const choosePro = async () => {
+    try {
+      await startTrial();
+      setTier('pro');
+      setWantWriter(true);
+    } catch {
+      setTier('free');
+      setWantWriter(false);
+    }
+  };
 
   const finish = async () => {
     await db.setSetting('onboarded', '1');
@@ -300,24 +330,72 @@ export default function OnboardingScreen({ navigation }: Props) {
               <View style={st.flex}>
                 <Txt variant="cardTitleSm">Write the minutes in plain English</Txt>
                 <Txt variant="chip" color={colors.inkSoft} style={st.bulletBody}>
-                  {paid
+                  {proChosen
                     ? `Adds ${writerMb} MB. Without it you still get minutes, pulled out by rule rather than written as prose.`
                     : `Part of the subscription — a ${writerMb} MB model that runs on your phone. You still get minutes without it, pulled out by rule rather than written as prose.`}
                 </Txt>
               </View>
               {/* No switch when there is nothing to switch on. A control that reports a
                   subscription error on tap is worse than an honest sentence. */}
-              {paid ? <Switch on={wantWriter} onToggle={() => setWantWriter(v => !v)} /> : null}
+              {proChosen ? <Switch on={wantWriter} onToggle={() => setWantWriter(v => !v)} /> : null}
             </View>
           </Raised>
         ) : null}
-        <Button
-          label={totalMb > 0 ? `Download the AI (${totalMb} MB)` : 'Download the AI'}
-          icon="download"
-          onPress={downloadAll}
-          disabled={chosen.length === 0}
-          full
-        />
+        {/*
+            The tier choice, made here because it cannot be made later: taking Pro adds 1.2 GB to
+            this download, and asking afterwards would mean a second one.
+
+            Free asks for nothing — no account, no email — which is the promise the web page makes
+            and the reason somebody chose a private note-taker in the first place. A login wall
+            here would contradict both, and is the single most reliable place to lose an install.
+        */}
+        {tier === null ? (
+          <>
+            <Button
+              label="Start free"
+              icon="download"
+              onPress={() => setTier('free')}
+              disabled={essentials.length === 0}
+              full
+            />
+            <View style={st.tierGap}>
+              <SoftButton label={`Try Pro free for ${TRIAL_DAYS} days`} icon="ai" onPress={choosePro} />
+            </View>
+            <Txt variant="chip" color={colors.inkFaint} style={[st.centerText, st.note]}>
+              Free records, transcribes and pulls out the decisions and actions — no account, for
+              as long as you use it. Pro writes the minutes as prose, and downloads {writerMb} MB
+              more.
+            </Txt>
+            {showSignIn ? (
+              <View style={st.tierGap}>
+                <SignInForm
+                  onSignedIn={res => {
+                    if (res.paid) {
+                      setTier('pro');
+                      setWantWriter(true);
+                    }
+                  }}
+                />
+              </View>
+            ) : (
+              <View style={st.tierGap}>
+                <SoftButton
+                  label="Already subscribed? Sign in"
+                  icon="lock"
+                  onPress={() => setShowSignIn(true)}
+                />
+              </View>
+            )}
+          </>
+        ) : (
+          <Button
+            label={totalMb > 0 ? `Download (${totalMb} MB)` : 'Download'}
+            icon="download"
+            onPress={downloadAll}
+            disabled={chosen.length === 0}
+            full
+          />
+        )}
         {/* Said plainly, before the tap. The models are not in the app — shipping them would put
             it well past a gigabyte on the store — so this download is what makes the app work at
             all.
@@ -365,6 +443,7 @@ function makeStyles(c: Colors) {
     bulletBody: { marginTop: s(3) },
     footer: { gap: s(8) },
     note: { marginTop: s(4) },
+    tierGap: { marginTop: s(10) },
     skipRow: { flexDirection: 'row' },
     mt: { marginTop: s(22) },
     sub: { marginTop: s(6), textAlign: 'center' },
