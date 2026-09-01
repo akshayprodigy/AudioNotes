@@ -15,6 +15,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import ModelManager from '../native/NativeModelManager';
 import { NOTICES } from '../legal/notices';
+import SignInForm from '../billing/SignInForm';
 import { db } from '../db/queries';
 import { PipelineController } from '../pipeline/PipelineController';
 import AudioPipeline from '../native/NativeAudioPipeline';
@@ -31,6 +32,7 @@ import {
   SectionRule,
   Segmented,
   SoftButton,
+  Switch,
   Txt,
 } from '../components/ui';
 import Backup from '../native/NativeBackup';
@@ -40,16 +42,13 @@ import {
   playAvailable,
   playPrice,
   restorePlayPurchase,
-  signIn,
   signOut,
 } from '../billing/subscription';
 import {
-  TRIAL_DAYS,
-  TRIAL_SUMMARIES,
-  entitlement,
-  isProModel,
-  type Entitlement,
-} from '../billing/trial';
+  crashConsent,
+  crashReportingAvailable,
+  setCrashConsent,
+} from '../telemetry/crash';
 import { radius, s, useTheme, type Colors, type ThemeMode } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
@@ -123,9 +122,6 @@ export default function SettingsScreen({ navigation }: Props) {
   // Subscription. The app never advertises a price or links to a checkout — it signs in, and
   // buying happens on the web. That separation is deliberate; see the licence server's README.
   const [lic, setLic] = React.useState<LicenceStatus | null>(null);
-  const [licEmail, setLicEmail] = React.useState('');
-  const [licPass, setLicPass] = React.useState('');
-  const [licBusy, setLicBusy] = React.useState(false);
   const [signedInAs, setSignedInAs] = React.useState<string | null>(null);
 
   // Google Play Billing. `playCan` is false on a side-load or an install from another store, where
@@ -159,26 +155,6 @@ export default function SettingsScreen({ navigation }: Props) {
   React.useEffect(() => {
     refreshLicence();
   }, [refreshLicence]);
-
-  const onSignIn = React.useCallback(async () => {
-    setLicBusy(true);
-    try {
-      const res = await signIn(licEmail, licPass);
-      setSignedInAs(res.email);
-      setLicPass('');
-      await refreshLicence();
-      if (!res.paid) {
-        Alert.alert(
-          'Signed in',
-          'This account does not have a subscription yet. Everything except the written summary keeps working.',
-        );
-      }
-    } catch (e: any) {
-      Alert.alert('Could not sign in', String(e?.message ?? e));
-    } finally {
-      setLicBusy(false);
-    }
-  }, [licEmail, licPass, refreshLicence]);
 
   // What Play can do here, asked once. Both calls are cheap and both fail closed: a device with
   // no Play Store answers false and the UI falls back to the web account.
@@ -294,6 +270,16 @@ export default function SettingsScreen({ navigation }: Props) {
   const [language, setLanguage] = useState('en');
   const [languages, setLanguages] = useState<LanguageChoice[]>(FALLBACK_LANGUAGES);
   const [empties, setEmpties] = useState(0);
+  // Same reason as `retention` above: null until read, so the switch never animates itself from a
+  // guess to the truth. Consent is the last thing that should appear to change on its own.
+  const [crashOn, setCrashOn] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!crashReportingAvailable()) return;
+    crashConsent()
+      .then(v => setCrashOn(v === 'on'))
+      .catch(() => {});
+  }, []);
 
   const refresh = () => ModelManager.list().then(r => setModels(JSON.parse(r)));
 
@@ -448,37 +434,16 @@ export default function SettingsScreen({ navigation }: Props) {
     refresh();
   };
 
-  // One form, two places: on a Play install it sits behind "I already have an account", and on a
-  // build Play Billing cannot serve it is the only way in.
+  // One form, three places now: here, behind "I already have an account" on a Play install, and
+  // on the paywall — which is the screen that explains Pro and, until recently, offered an
+  // existing subscriber no way to say they already had it.
   const emailSignIn = (
-    <>
-                  <TextInput
-                    style={[st.pass, { borderColor: colors.line, color: colors.ink }]}
-                    value={licEmail}
-                    onChangeText={setLicEmail}
-                    placeholder="Email"
-                    placeholderTextColor={colors.inkFaint}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                  <TextInput
-                    style={[st.pass, { borderColor: colors.line, color: colors.ink }]}
-                    value={licPass}
-                    onChangeText={setLicPass}
-                    placeholder="Password"
-                    placeholderTextColor={colors.inkFaint}
-                    secureTextEntry
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                  <SoftButton
-                    icon="lock"
-                    label={licBusy ? 'Signing in…' : 'Sign in'}
-                    onPress={onSignIn}
-                    disabled={licBusy || !licEmail || !licPass}
-                  />
-    </>
+    <SignInForm
+      onSignedIn={async res => {
+        setSignedInAs(res.email);
+        await refreshLicence();
+      }}
+    />
   );
 
   return (
@@ -872,6 +837,42 @@ export default function SettingsScreen({ navigation }: Props) {
             </View>
           </Raised>
         </View>
+
+        {/* Only shown when the build can actually report a crash. With no DSN configured there is
+            nothing behind this switch, and a privacy control that does nothing is worse than an
+            absent one — it invites somebody to believe they turned something off. */}
+        {crashReportingAvailable() && crashOn !== null ? (
+          <>
+            <View style={st.ruleWrap}>
+              <SectionRule label="DIAGNOSTICS" />
+            </View>
+            <View style={st.list}>
+              <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={5}>
+                <View style={st.rowPad}>
+                  <View style={st.row}>
+                    <Icon name="shield" size={s(18)} color={colors.inkSoft} strokeWidth={2.4} />
+                    <View style={st.flex}>
+                      <Txt variant="bodyStrong">Send crash reports</Txt>
+                      <Txt variant="meta" color={colors.inkDim}>
+                        If the app crashes, send the technical details of the crash so it can be
+                        fixed. No audio, no transcript, no minutes, no account — those never leave
+                        this phone whether this is on or off.
+                      </Txt>
+                    </View>
+                    <Switch
+                      on={crashOn}
+                      onToggle={() => {
+                        const next = !crashOn;
+                        setCrashOn(next);
+                        setCrashConsent(next).catch(() => {});
+                      }}
+                    />
+                  </View>
+                </View>
+              </Raised>
+            </View>
+          </>
+        ) : null}
 
         <View style={st.ruleWrap}>
           <SectionRule label="ABOUT" />

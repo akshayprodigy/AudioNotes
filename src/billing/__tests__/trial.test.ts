@@ -6,12 +6,18 @@
  * allowed to set its clock to anything they like.
  */
 import {
+  NUDGE_EVERY,
+  NUDGE_MAX_REFUSALS,
   TRIAL_DAYS,
   TRIAL_SUMMARIES,
   entitlement,
   isProModel,
   markPaywallSeen,
+  noteNudgeShown,
   noteTrialSummary,
+  nudgeState,
+  refuseNudge,
+  shouldNudgeForPro,
   shouldOfferPaywall,
   startTrial,
   trialState,
@@ -194,5 +200,72 @@ describe('what Pro covers', () => {
   it('leaves the guaranteed path free', () => {
     expect(isProModel({ id: 'whisper-base', needsSubscription: false })).toBe(false);
     expect(isProModel({ id: 'silero-vad', needsSubscription: false })).toBe(false);
+  });
+});
+
+describe('shouldNudgeForPro', () => {
+  const free = { paid: false };
+  const paid = { paid: true };
+
+  it('waits until enough meetings have been finished', () => {
+    expect(shouldNudgeForPro({ completed: 4, lastShownAt: 0, refusals: 0, entitlement: free })).toBe(false);
+    expect(shouldNudgeForPro({ completed: 5, lastShownAt: 0, refusals: 0, entitlement: free })).toBe(true);
+  });
+
+  it('waits another full interval after each showing', () => {
+    expect(shouldNudgeForPro({ completed: 6, lastShownAt: 5, refusals: 1, entitlement: free })).toBe(false);
+    expect(shouldNudgeForPro({ completed: 10, lastShownAt: 5, refusals: 1, entitlement: free })).toBe(true);
+  });
+
+  it('survives a jump that skips the exact multiple', () => {
+    // Importing several files at once moves the count 4 -> 7. A "multiple of 5" rule would never
+    // fire again; this one does.
+    expect(shouldNudgeForPro({ completed: 7, lastShownAt: 0, refusals: 0, entitlement: free })).toBe(true);
+  });
+
+  it('does not re-fire when meetings are deleted and remade', () => {
+    // Shown at 10, user deletes down to 6. Nothing new has happened, so nothing is offered.
+    expect(shouldNudgeForPro({ completed: 6, lastShownAt: 10, refusals: 1, entitlement: free })).toBe(false);
+  });
+
+  it('never offers to someone who is entitled', () => {
+    // `paid` is true for a subscriber AND for a running trial — see entitlement().
+    expect(shouldNudgeForPro({ completed: 50, lastShownAt: 0, refusals: 0, entitlement: paid })).toBe(false);
+  });
+
+  it('stops for good after the third refusal', () => {
+    expect(
+      shouldNudgeForPro({ completed: 100, lastShownAt: 0, refusals: NUDGE_MAX_REFUSALS, entitlement: free }),
+    ).toBe(false);
+    expect(
+      shouldNudgeForPro({ completed: 100, lastShownAt: 0, refusals: NUDGE_MAX_REFUSALS - 1, entitlement: free }),
+    ).toBe(true);
+  });
+
+  it('the interval is the one the card copy promises', () => {
+    expect(NUDGE_EVERY).toBe(5);
+  });
+});
+
+describe('nudge persistence', () => {
+  it('starts at zero on a fresh install', async () => {
+    expect(await nudgeState()).toEqual({ refusals: 0, lastShownAt: 0 });
+  });
+
+  it('remembers the count it was last shown at', async () => {
+    await noteNudgeShown(5);
+    expect(await nudgeState()).toEqual({ refusals: 0, lastShownAt: 5 });
+  });
+
+  it('counts refusals up to the cap', async () => {
+    await refuseNudge();
+    await refuseNudge();
+    expect((await nudgeState()).refusals).toBe(2);
+  });
+
+  it('refusing does not disturb the count it was shown at', async () => {
+    await noteNudgeShown(10);
+    await refuseNudge();
+    expect(await nudgeState()).toEqual({ refusals: 1, lastShownAt: 10 });
   });
 });

@@ -139,4 +139,14 @@ jest.mock('react-native/Libraries/EventEmitter/NativeEventEmitter', () => ({
   },
 }));
 
+// Sentry ships ESM, which this project's transformIgnorePatterns deliberately does not transform.
+// Mocking is the right answer anyway rather than adding it to that list: no test wants a real
+// crash SDK initialised, and transforming the package on every run would cost seconds for
+// something whose behaviour under test should be "was init called", not "did it network".
+jest.mock('@sentry/react-native', () => ({
+  init: jest.fn(),
+  close: jest.fn(),
+  captureException: jest.fn(),
+}));
+
 global.__TEST_NATIVE_MODULES__ = mockNativeModules;

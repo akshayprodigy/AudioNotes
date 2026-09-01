@@ -15,6 +15,9 @@ buildscript {
         classpath("com.android.tools.build:gradle")
         classpath("com.facebook.react:react-native-gradle-plugin")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+        // Uploads the R8 mapping and the native (C++/JNI) debug symbols so a crash report is a
+        // stack trace rather than a column of hex addresses. Inert without SENTRY_AUTH_TOKEN.
+        classpath("io.sentry:sentry-android-gradle-plugin:5.8.0")
     }
 }
 

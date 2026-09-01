@@ -10,6 +10,9 @@ import Icon, { type IconName } from '../components/Icon';
 import Mascot from '../components/Mascot';
 import { Button, Pop, ProgressBar, Raised, SoftButton, Switch, Txt } from '../components/ui';
 import { db } from '../db/queries';
+import SignInForm from '../billing/SignInForm';
+import { TRIAL_DAYS, startTrial } from '../billing/trial';
+import { crashReportingAvailable, setCrashConsent } from '../telemetry/crash';
 import { radius, s, sv, useTheme, type Colors } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Onboarding'>;
@@ -83,6 +86,10 @@ export default function OnboardingScreen({ navigation }: Props) {
    */
   const [plan, setPlan] = useState<Essential[]>([]);
   const [writer, setWriter] = useState<Essential[]>([]);
+  // The rest of what a subscription pays for — today that is whisper-small alone. Separate from
+  // `writer` because the switch belongs to the writer: the Pro screen sells the larger
+  // transcriber as part of the subscription, not as something to turn off.
+  const [proExtras, setProExtras] = useState<Essential[]>([]);
   // Whether the writer model may be fetched at all. ModelManager.download refuses it without a
   // subscription — that refusal is the enforcement — so offering the switch to someone who has
   // not subscribed would be offering a button that cannot work.
@@ -91,6 +98,13 @@ export default function OnboardingScreen({ navigation }: Props) {
   // 1.2 GB. That is a better first impression than the one it replaces, not a worse one.
   const [paid, setPaid] = useState(false);
   const [wantWriter, setWantWriter] = useState(false);
+  // Which tier was picked at setup. null means they have not been asked yet, which is the state
+  // the intro sits in until they choose.
+  const [tier, setTier] = useState<'free' | 'pro' | null>(null);
+  const [showSignIn, setShowSignIn] = useState(false);
+  // Off until tapped. Consent that starts switched on is not consent, and this one is about
+  // network traffic leaving a device whose entire selling point is that none does.
+  const [crashOptIn, setCrashOptIn] = useState(false);
 
   useEffect(() => {
     Licence.status()
@@ -107,6 +121,12 @@ export default function OnboardingScreen({ navigation }: Props) {
         const all: Essential[] = JSON.parse(r);
         setEssentials(all.filter(m => m.required));
         setWriter(all.filter(m => !m.required && m.kind === 'llm'));
+        // Read from needsSubscription — the catalog's own rule — rather than testing `kind`
+        // again here. This screen used to select the paid models with `kind === 'llm'` alone,
+        // which is a second copy of a rule the catalog already owns, and it had drifted: the
+        // Pro screen advertises "The larger transcriber" and neither path that starts a trial
+        // ever downloaded it. whisper-small was reachable only by finding it in Settings.
+        setProExtras(all.filter(m => !m.required && m.needsSubscription && m.kind !== 'llm'));
       })
       .catch(() => {});
   }, []);
@@ -126,11 +146,41 @@ export default function OnboardingScreen({ navigation }: Props) {
   // with every model present offered "Download the AI (114 MB)" — a number that was wrong in the
   // direction that makes the app look worse, and which used to be true because download() really
   // did fetch them all again. That is fixed natively; this is the half the user reads.
-  const chosen = paid && wantWriter ? [...essentials, ...writer] : essentials;
+  /** Entitled to the paid models, either already or by the trial just started. */
+  const proChosen = paid || tier === 'pro';
+
+  const chosen = proChosen
+    ? [...essentials, ...proExtras, ...(wantWriter ? writer : [])]
+    : essentials;
   const totalMb = Math.round(
     chosen.filter(m => !m.installed).reduce((a, m) => a + m.sizeBytes, 0) / 1e6,
   );
   const writerMb = Math.round(writer.reduce((a, m) => a + m.sizeBytes, 0) / 1e6);
+  /** What taking Pro adds over free, which is more than the writer on its own. */
+  const proMb = Math.round(
+    [...proExtras, ...writer].reduce((a, m) => a + m.sizeBytes, 0) / 1e6,
+  );
+
+  /**
+   * Taking Pro at setup starts the TRIAL, not a purchase.
+   *
+   * Asking for a card before the app has transcribed a single meeting is the weakest possible ask,
+   * and the trial is the only honest answer to "is it any good on MY meetings" — the only question
+   * that matters for this product. Buying outright stays on the Pro screen and in Settings.
+   *
+   * A trial that fails to start drops to free rather than dead-ending setup. A first run that
+   * cannot proceed because a billing helper threw is a far worse outcome than a missing trial.
+   */
+  const choosePro = async () => {
+    try {
+      await startTrial();
+      setTier('pro');
+      setWantWriter(true);
+    } catch {
+      setTier('free');
+      setWantWriter(false);
+    }
+  };
 
   const finish = async () => {
     await db.setSetting('onboarded', '1');
@@ -233,6 +283,34 @@ export default function OnboardingScreen({ navigation }: Props) {
           <Txt variant="body" color={colors.inkSoft} style={[st.centerText, st.sub]}>
             Pip is ready to sit in on your next meeting.
           </Txt>
+          {/* Asked here rather than only in Settings, because a diagnostics switch nobody finds
+              produces no diagnostics — and the reason to have it is a native crash on a phone we
+              will never hold. Asked once, off until tapped, and changeable later in Settings.
+              Absent entirely when the build has no DSN. */}
+          {crashReportingAvailable() ? (
+            <Raised edge={colors.line} fill={colors.card} rad={radius.card} depth={5}>
+              <View style={st.bullet}>
+                <View style={[st.bulletIcon, { backgroundColor: colors.primarySoft }]}>
+                  <Icon name="shield" size={s(20)} color={colors.primary} strokeWidth={2.4} />
+                </View>
+                <View style={st.flex}>
+                  <Txt variant="cardTitleSm">Send crash reports</Txt>
+                  <Txt variant="chip" color={colors.inkSoft} style={st.bulletBody}>
+                    Technical details only, and only if it crashes. Your recordings, transcripts
+                    and minutes stay on this phone either way.
+                  </Txt>
+                </View>
+                <Switch
+                  on={crashOptIn}
+                  onToggle={() => {
+                    const next = !crashOptIn;
+                    setCrashOptIn(next);
+                    setCrashConsent(next).catch(() => {});
+                  }}
+                />
+              </View>
+            </Raised>
+          ) : null}
           <View style={st.cta}>
             <Button label="Start recording" icon="mic" onPress={finish} full />
           </View>
@@ -270,6 +348,36 @@ export default function OnboardingScreen({ navigation }: Props) {
         </Pop>
       </View>
 
+      {/*
+          The tier choice sits under the hero and ABOVE the bullets, because it has to be on the
+          first screen without scrolling.
+
+          It read better below them — learn what the app does, then choose — but on a Pixel 7 Pro
+          that put "Try Pro free for 7 days" roughly 70px past the bottom edge. The only visible
+          option was "Start free", so the choice this step exists to offer was invisible on one of
+          the taller phones on the market, and worse on anything smaller. The bullets still sell
+          the app; they now do it underneath the choice.
+      */}
+      {tier === null ? (
+        <Pop index={2} style={st.tierChoice}>
+          <Button
+            label="Start free"
+            icon="download"
+            onPress={() => setTier('free')}
+            disabled={essentials.length === 0}
+            full
+          />
+          <View style={st.tierGap}>
+            <SoftButton label={`Try Pro free for ${TRIAL_DAYS} days`} icon="ai" onPress={choosePro} />
+          </View>
+          <Txt variant="chip" color={colors.inkFaint} style={[st.centerText, st.note]}>
+            Free records, transcribes and pulls out the decisions and actions — no account, for as
+            long as you use it. Pro writes the minutes as prose, transcribes with a larger model,
+            and downloads {proMb} MB more.
+          </Txt>
+        </Pop>
+      ) : null}
+
       <View style={st.list}>
         {BULLETS.map((b, i) => (
           <Pop key={b.title} index={i + 2}>
@@ -300,24 +408,77 @@ export default function OnboardingScreen({ navigation }: Props) {
               <View style={st.flex}>
                 <Txt variant="cardTitleSm">Write the minutes in plain English</Txt>
                 <Txt variant="chip" color={colors.inkSoft} style={st.bulletBody}>
-                  {paid
+                  {proChosen
                     ? `Adds ${writerMb} MB. Without it you still get minutes, pulled out by rule rather than written as prose.`
                     : `Part of the subscription — a ${writerMb} MB model that runs on your phone. You still get minutes without it, pulled out by rule rather than written as prose.`}
                 </Txt>
               </View>
               {/* No switch when there is nothing to switch on. A control that reports a
                   subscription error on tap is worse than an honest sentence. */}
-              {paid ? <Switch on={wantWriter} onToggle={() => setWantWriter(v => !v)} /> : null}
+              {proChosen ? <Switch on={wantWriter} onToggle={() => setWantWriter(v => !v)} /> : null}
             </View>
           </Raised>
         ) : null}
-        <Button
-          label={totalMb > 0 ? `Download the AI (${totalMb} MB)` : 'Download the AI'}
-          icon="download"
-          onPress={downloadAll}
-          disabled={chosen.length === 0}
-          full
-        />
+        {/* The rest of the paid set, once Pro is taken. Without this the button reads
+            "Download (1421 MB)" while the only card above it accounts for 1117 of them, and the
+            missing 190 has no explanation anywhere on the screen — the same surprise the total
+            above is calculated to avoid. No switch: this one is not optional within Pro. */}
+        {proChosen
+          ? proExtras.map(m => (
+              <Raised
+                key={m.id}
+                edge={colors.line}
+                fill={colors.card}
+                rad={radius.card}
+                depth={5}>
+                <View style={st.bullet}>
+                  <View style={[st.bulletIcon, { backgroundColor: colors.primarySoft }]}>
+                    <Icon name="mic" size={s(20)} color={colors.primary} strokeWidth={2.4} />
+                  </View>
+                  <View style={st.flex}>
+                    <Txt variant="cardTitleSm">{m.purpose}</Txt>
+                    <Txt variant="chip" color={colors.inkSoft} style={st.bulletBody}>
+                      Adds {Math.round(m.sizeBytes / 1e6)} MB.
+                    </Txt>
+                  </View>
+                </View>
+              </Raised>
+            ))
+          : null}
+        {/*
+            The choice itself is above the bullets; what stays down here is the way back in for
+            somebody who has already paid — on the website, or on a previous phone. It belongs
+            below the fold in a way the choice does not: it is the rare case, and putting it
+            beside the two tier buttons would read as a third option for a new install.
+        */}
+        {tier === null ? (
+          <View style={st.tierGap}>
+            {showSignIn ? (
+              <SignInForm
+                onSignedIn={res => {
+                  if (res.paid) {
+                    setTier('pro');
+                    setWantWriter(true);
+                  }
+                }}
+              />
+            ) : (
+              <SoftButton
+                label="Already subscribed? Sign in"
+                icon="lock"
+                onPress={() => setShowSignIn(true)}
+              />
+            )}
+          </View>
+        ) : (
+          <Button
+            label={totalMb > 0 ? `Download (${totalMb} MB)` : 'Download'}
+            icon="download"
+            onPress={downloadAll}
+            disabled={chosen.length === 0}
+            full
+          />
+        )}
         {/* Said plainly, before the tap. The models are not in the app — shipping them would put
             it well past a gigabyte on the store — so this download is what makes the app work at
             all.
@@ -365,6 +526,8 @@ function makeStyles(c: Colors) {
     bulletBody: { marginTop: s(3) },
     footer: { gap: s(8) },
     note: { marginTop: s(4) },
+    tierGap: { marginTop: s(10) },
+    tierChoice: { marginTop: s(18) },
     skipRow: { flexDirection: 'row' },
     mt: { marginTop: s(22) },
     sub: { marginTop: s(6), textAlign: 'center' },

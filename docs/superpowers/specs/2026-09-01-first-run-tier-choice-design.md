@@ -74,8 +74,7 @@ refusals, and only the second one has any information in it.
 A dismissible card above the meeting list in `LibraryScreen`.
 
 **Shown when all of:**
-- completed meeting count is a positive multiple of `NUDGE_EVERY` (5)
-- the count has grown since it was last shown (so it appears once per threshold, not on every render)
+- at least `NUDGE_EVERY` (5) meetings have finished since the card was last shown
 - not entitled — neither a paid subscription nor a trial currently running
 - refusals so far `< NUDGE_MAX_REFUSALS` (3)
 

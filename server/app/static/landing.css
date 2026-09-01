@@ -1,0 +1,314 @@
+/*
+  The landing page.
+
+  Zero third-party requests, on purpose. No Google Fonts, no CDN, no analytics, no embedded
+  anything. A page whose headline is "nothing leaves your phone" cannot credibly ask the browser
+  to call four other companies before it finishes painting, and anyone who checks the network tab
+  is exactly the kind of customer this product is for. That constraint is why the type is a system
+  stack and why the hero effect is a hand-written shader rather than a 600 KB library.
+
+  The forms (signup, account, reset) keep the older stylesheet in pages.py. They are a different
+  job — short, functional, read once — and giving them this page's proportions would make them
+  worse, not better.
+*/
+
+:root {
+  color-scheme: light dark;
+
+  --ink: #101227;
+  --ink-2: #3A4059;
+  --dim: #666C82;
+  --line: #E4E8F3;
+  --line-soft: #EFF2F9;
+  --bg: #FAFBFE;
+  --bg-2: #F1F4FB;
+  --card: #FFFFFF;
+
+  --primary: #4A56D2;
+  --primary-2: #7A5AE0;
+  --primary-soft: #EEF0FE;
+  --green: #0E9F6E;
+  --green-soft: #E7F6F0;
+
+  --radius: 18px;
+  --radius-lg: 26px;
+  --maxw: 1080px;
+
+  --shadow-sm: 0 1px 2px rgba(16, 18, 39, .05), 0 4px 14px rgba(16, 18, 39, .05);
+  --shadow-lg: 0 2px 6px rgba(16, 18, 39, .05), 0 24px 60px rgba(16, 18, 39, .10);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #F3F5FC;
+    --ink-2: #C4CADC;
+    --dim: #939AB1;
+    --line: #262C42;
+    --line-soft: #1C2134;
+    --bg: #0A0C15;
+    --bg-2: #10131F;
+    --card: #141828;
+
+    --primary: #7C87F0;
+    --primary-2: #A98CF5;
+    --primary-soft: #1B2040;
+    --green: #34C79A;
+    --green-soft: #10281F;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .5), 0 4px 14px rgba(0, 0, 0, .35);
+    --shadow-lg: 0 2px 6px rgba(0, 0, 0, .5), 0 24px 60px rgba(0, 0, 0, .5);
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 17px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+        sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.shell { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+
+/* ---------------------------------------------------------------- nav */
+
+.nav {
+  position: sticky; top: 0; z-index: 40;
+  backdrop-filter: saturate(180%) blur(14px);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  border-bottom: 1px solid transparent;
+  transition: border-color .25s ease, background .25s ease;
+}
+.nav.stuck { border-bottom-color: var(--line); }
+.nav-in { display: flex; align-items: center; gap: 14px; height: 64px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -.02em;
+         color: var(--ink); font-size: 18px; }
+.brand:hover { text-decoration: none; }
+.brand img { width: 28px; height: 28px; display: block; }
+.nav-spacer { flex: 1; }
+.nav-links { display: flex; align-items: center; gap: 22px; }
+.nav-links a { color: var(--ink-2); font-size: 15px; font-weight: 500; }
+.nav-links a:hover { color: var(--ink); text-decoration: none; }
+@media (max-width: 720px) { .nav-links .hide-sm { display: none; } }
+
+/* ---------------------------------------------------------------- buttons */
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+  padding: 13px 22px; border-radius: 13px; border: 1px solid transparent;
+  font-size: 15.5px; font-weight: 600; letter-spacing: -.01em; cursor: pointer;
+  transition: transform .16s cubic-bezier(.2,.7,.3,1), box-shadow .16s ease, background .16s ease;
+  white-space: nowrap;
+}
+.btn:hover { text-decoration: none; transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+.btn-primary {
+  background: linear-gradient(180deg, var(--primary-2), var(--primary));
+  color: #fff; box-shadow: 0 1px 2px rgba(74,86,210,.4), 0 10px 26px -8px rgba(74,86,210,.6);
+}
+.btn-primary:hover { box-shadow: 0 1px 2px rgba(74,86,210,.4), 0 16px 34px -8px rgba(74,86,210,.7); }
+.btn-ghost { background: var(--card); color: var(--ink); border-color: var(--line);
+             box-shadow: var(--shadow-sm); }
+.btn-sm { padding: 9px 16px; font-size: 14.5px; border-radius: 11px; }
+.btn[aria-disabled="true"] { opacity: .5; pointer-events: none; }
+
+/* ---------------------------------------------------------------- hero */
+
+.hero { position: relative; padding: 96px 0 84px; overflow: hidden; }
+#field {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  display: block; z-index: 0; opacity: .92;
+}
+/* The shader normalises by height, so a portrait viewport shows a narrow slice of x and the
+   ribbons arrive as wide sweeping curves rather than a distant field. Handsome, but it lands
+   right behind the paragraph, so it is pulled back where the text has nowhere else to go. */
+@media (max-width: 720px) { #field { opacity: .5; } }
+/* Painted before and behind the canvas so the page never flashes bare while WebGL starts, and
+   so a browser that refuses WebGL entirely still gets a considered background rather than a
+   blank rectangle. */
+.hero::before {
+  content: ""; position: absolute; inset: 0; z-index: -1;
+  background:
+    radial-gradient(60% 80% at 18% 8%, color-mix(in srgb, var(--primary) 22%, transparent), transparent 70%),
+    radial-gradient(50% 70% at 88% 22%, color-mix(in srgb, var(--primary-2) 20%, transparent), transparent 72%);
+}
+.hero::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 220px; z-index: 1;
+  background: linear-gradient(180deg, transparent, var(--bg));
+  pointer-events: none;
+}
+.hero-in { position: relative; z-index: 2; text-align: center; }
+
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 14px 7px 9px; border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 70%, transparent);
+  border: 1px solid var(--line); box-shadow: var(--shadow-sm);
+  font-size: 13.5px; font-weight: 600; color: var(--ink-2); letter-spacing: -.01em;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green);
+       box-shadow: 0 0 0 4px var(--green-soft); }
+
+h1 {
+  margin: 24px auto 0; max-width: 15ch;
+  font-size: clamp(40px, 7.4vw, 76px); line-height: 1.02;
+  letter-spacing: -.045em; font-weight: 800;
+}
+.grad {
+  background: linear-gradient(115deg, var(--primary) 8%, var(--primary-2) 52%, var(--primary) 96%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.lede {
+  margin: 22px auto 0; max-width: 56ch; color: var(--dim);
+  font-size: clamp(17px, 2.1vw, 20px); line-height: 1.6;
+}
+.cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 34px; }
+.cta-note { margin-top: 16px; font-size: 14px; color: var(--dim); }
+
+/* ---------------------------------------------------------------- phone */
+
+.stage { perspective: 1400px; margin-top: 62px; display: flex; justify-content: center; }
+.phone {
+  width: 300px; border-radius: 40px; padding: 11px;
+  /* Fixed, not themed. --ink is near-white in dark mode, which turned the bezel into a white
+     slab around a dark screen — a phone nobody makes. A handset is a dark object under both
+     colour schemes. */
+  background: linear-gradient(160deg, #262B40, #05060C);
+  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(255,255,255,.06) inset;
+  transform: rotateX(var(--rx, 12deg)) rotateY(var(--ry, -13deg)) rotateZ(1.5deg);
+  transform-style: preserve-3d;
+  transition: transform .5s cubic-bezier(.2,.7,.3,1);
+  will-change: transform;
+}
+.screen {
+  border-radius: 30px; background: var(--card); overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+}
+.screen-top {
+  display: flex; align-items: center; gap: 8px; padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.pill { font-size: 10.5px; font-weight: 800; letter-spacing: .07em; color: var(--green);
+        background: var(--green-soft); padding: 4px 9px; border-radius: 999px; }
+.screen-title { font-size: 13.5px; font-weight: 700; letter-spacing: -.01em; }
+.screen-body { padding: 14px 16px 18px; }
+.k { font-size: 10px; font-weight: 800; letter-spacing: .1em; color: var(--dim); }
+.line { height: 9px; border-radius: 5px; background: var(--line); margin-top: 9px; }
+.line.w80 { width: 80%; } .line.w62 { width: 62%; } .line.w92 { width: 92%; }
+.chips { display: flex; gap: 6px; margin-top: 14px; flex-wrap: wrap; }
+.chip { font-size: 11px; font-weight: 600; padding: 5px 10px; border-radius: 999px;
+        background: var(--primary-soft); color: var(--primary); }
+.wave { display: flex; align-items: flex-end; gap: 3px; height: 34px; margin-top: 16px; }
+.wave i { flex: 1; border-radius: 3px; background: linear-gradient(180deg, var(--primary-2), var(--primary));
+          opacity: .85; animation: bob 1.8s ease-in-out infinite; }
+@keyframes bob { 0%, 100% { transform: scaleY(.35); } 50% { transform: scaleY(1); } }
+
+/* ---------------------------------------------------------------- sections */
+
+section { padding: 92px 0; }
+.section-head { max-width: 62ch; }
+.section-head.center { margin: 0 auto; text-align: center; }
+h2 { font-size: clamp(29px, 4.2vw, 44px); line-height: 1.1; letter-spacing: -.035em;
+     font-weight: 800; margin: 0; }
+.sub { margin: 16px 0 0; color: var(--dim); font-size: 17.5px; }
+
+.band { background: var(--bg-2); border-block: 1px solid var(--line); }
+
+.grid { display: grid; gap: 18px; margin-top: 48px; }
+.g3 { grid-template-columns: repeat(3, 1fr); }
+.g2 { grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 860px) { .g3, .g2 { grid-template-columns: 1fr; } }
+
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 26px; box-shadow: var(--shadow-sm);
+  transition: transform .25s cubic-bezier(.2,.7,.3,1), box-shadow .25s ease;
+}
+.card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+.card h3 { margin: 16px 0 8px; font-size: 19px; letter-spacing: -.02em; }
+.card p { margin: 0; color: var(--dim); font-size: 15.5px; }
+.ico {
+  width: 44px; height: 44px; border-radius: 13px; display: grid; place-items: center;
+  background: var(--primary-soft); color: var(--primary);
+}
+.ico svg { width: 22px; height: 22px; }
+.num { font-size: 12px; font-weight: 800; letter-spacing: .1em; color: var(--primary); }
+
+/* pricing */
+.tier { display: flex; flex-direction: column; }
+.tier.pro { border-color: color-mix(in srgb, var(--primary) 45%, var(--line));
+            box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 22%, transparent), var(--shadow-lg); }
+.tier h3 { margin: 0; font-size: 21px; }
+.price { font-size: 34px; font-weight: 800; letter-spacing: -.035em; margin: 10px 0 2px; }
+.price small { font-size: 15px; font-weight: 600; color: var(--dim); letter-spacing: 0; }
+.feat { list-style: none; padding: 0; margin: 20px 0 26px; display: grid; gap: 11px; }
+.feat li { display: flex; gap: 10px; align-items: flex-start; font-size: 15.5px; color: var(--ink-2); }
+.tick { flex: none; margin-top: 3px; width: 17px; height: 17px; color: var(--green); }
+.tier .btn { margin-top: auto; }
+
+/* privacy strip */
+.claim {
+  display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center;
+  padding: 30px; border-radius: var(--radius-lg);
+  background: var(--green-soft); border: 1px solid color-mix(in srgb, var(--green) 26%, transparent);
+}
+.claim p { margin: 6px 0 0; color: var(--ink-2); font-size: 16.5px; }
+.claim strong { display: block; font-size: 20px; letter-spacing: -.02em; color: var(--ink); }
+@media (max-width: 640px) { .claim { grid-template-columns: 1fr; } }
+
+/* faq */
+details {
+  border-bottom: 1px solid var(--line); padding: 20px 0;
+}
+summary {
+  cursor: pointer; font-weight: 650; font-size: 17.5px; letter-spacing: -.02em;
+  list-style: none; display: flex; justify-content: space-between; gap: 16px; align-items: center;
+}
+summary::-webkit-details-marker { display: none; }
+summary::after {
+  content: "+"; font-weight: 400; font-size: 24px; color: var(--dim); line-height: 1;
+  transition: transform .2s ease;
+}
+details[open] summary::after { transform: rotate(45deg); }
+details p { margin: 12px 0 0; color: var(--dim); max-width: 68ch; }
+
+/* footer */
+footer { border-top: 1px solid var(--line); padding: 44px 0 60px; color: var(--dim);
+         font-size: 14.5px; }
+.foot-in { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; }
+.foot-in a { color: var(--dim); }
+.foot-in a:hover { color: var(--ink); }
+
+/* ---------------------------------------------------------------- reveal */
+
+.rise { opacity: 0; transform: translateY(18px); }
+.rise.in { opacity: 1; transform: none; transition: opacity .7s ease, transform .7s cubic-bezier(.2,.7,.3,1); }
+.rise.d1 { transition-delay: .07s; }
+.rise.d2 { transition-delay: .14s; }
+.rise.d3 { transition-delay: .21s; }
+
+/*
+  One switch turns off every moving part: the shader stops rendering, the phone stops tilting,
+  the bars stop bobbing and the reveals resolve to their final state. Motion here is decoration,
+  and decoration is not worth making somebody unwell.
+*/
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .rise, .rise.in { opacity: 1; transform: none; transition: none; }
+  .wave i { animation: none; transform: scaleY(.7); }
+  .phone { transition: none; }
+  .card:hover, .btn:hover { transform: none; }
+  #field { display: none; }
+}

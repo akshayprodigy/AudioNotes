@@ -53,6 +53,10 @@ const KEY_CLOCK_FLOOR = 'licence_clock_floor';
 /** When the contextual paywall was last shown, so it stays a moment rather than becoming a nag. */
 const KEY_PAYWALL_SEEN = 'paywall_seen_at';
 
+/** The recurring library offer: how many times it has been declined, and when it last appeared. */
+const KEY_NUDGE_REFUSALS = 'pro_nudge_refusals';
+const KEY_NUDGE_LAST_COUNT = 'pro_nudge_last_count';
+
 export type TrialStatus = 'unstarted' | 'active' | 'ended';
 
 /** Why a trial is over. Worth distinguishing: the two want different sentences on screen. */
@@ -250,6 +254,73 @@ export async function shouldOfferPaywall(): Promise<boolean> {
 export async function markPaywallSeen(): Promise<void> {
   const now = await monotonicNow();
   await db.setSetting(KEY_PAYWALL_SEEN, String(now)).catch(() => {});
+}
+
+/**
+ * How often the library offers Pro again to a free user, counted in finished meetings.
+ *
+ * Deliberately "another N since we last asked" rather than "every Nth meeting". Somebody who
+ * imports four files at once moves the count 4 -> 7, and a multiple-of-N rule steps straight over
+ * the threshold and never fires again. This form also copes with deletion: the count can fall, and
+ * nothing is offered again until it has genuinely grown past where it was.
+ */
+export const NUDGE_EVERY = 5;
+
+/**
+ * After this many refusals the app stops asking, permanently.
+ *
+ * Somebody who has said no three times is not a customer being lost by silence — they are one
+ * being kept by it. This product's whole pitch is that it does not behave like the incumbents, and
+ * "it keeps nagging me" is the most common complaint levelled at them.
+ */
+export const NUDGE_MAX_REFUSALS = 3;
+
+export interface NudgeInput {
+  /** Meetings that reached 'done'. One still processing has shown the user nothing. */
+  completed: number;
+  /** `completed` at the moment the card was last shown; 0 if it never has been. */
+  lastShownAt: number;
+  refusals: number;
+  /** Only `paid` is read: it is already true for a subscriber OR a running trial. */
+  entitlement: Pick<Entitlement, 'paid'>;
+}
+
+/** Whether the library should offer Pro right now. Pure: no clock, no database. */
+export function shouldNudgeForPro(i: NudgeInput): boolean {
+  if (i.entitlement.paid) return false;
+  if (i.refusals >= NUDGE_MAX_REFUSALS) return false;
+  return i.completed >= i.lastShownAt + NUDGE_EVERY;
+}
+
+export interface NudgeState {
+  refusals: number;
+  lastShownAt: number;
+}
+
+/**
+ * Both halves of the nudge's memory, read together so a render never sees one without the other.
+ *
+ * Every read is guarded: a settings row that cannot be read degrades to "never shown, never
+ * refused", which at worst offers Pro once more than intended. Defaulting the other way would
+ * silence the feature permanently on a transient error, and nothing would ever report it.
+ */
+export async function nudgeState(): Promise<NudgeState> {
+  const [refusals, lastShownAt] = await Promise.all([
+    db.getSetting(KEY_NUDGE_REFUSALS).catch(() => null),
+    db.getSetting(KEY_NUDGE_LAST_COUNT).catch(() => null),
+  ]);
+  return { refusals: int(refusals), lastShownAt: int(lastShownAt) };
+}
+
+/** Called when the card is actually rendered, not when it merely becomes eligible. */
+export async function noteNudgeShown(completed: number): Promise<void> {
+  await db.setSetting(KEY_NUDGE_LAST_COUNT, String(completed)).catch(() => {});
+}
+
+/** "Not now". Counts towards NUDGE_MAX_REFUSALS, after which the card never returns. */
+export async function refuseNudge(): Promise<void> {
+  const { refusals } = await nudgeState();
+  await db.setSetting(KEY_NUDGE_REFUSALS, String(refusals + 1)).catch(() => {});
 }
 
 /**
