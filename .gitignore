@@ -92,3 +92,6 @@ eval/fixtures/real-*/
 eval/corpus/_cache/
 eval/results/
 eval/models/
+
+# Visual brainstorming sessions (mockups kept locally, not shipped)
+.superpowers/
