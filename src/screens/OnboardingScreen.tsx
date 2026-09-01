@@ -85,6 +85,10 @@ export default function OnboardingScreen({ navigation }: Props) {
    */
   const [plan, setPlan] = useState<Essential[]>([]);
   const [writer, setWriter] = useState<Essential[]>([]);
+  // The rest of what a subscription pays for — today that is whisper-small alone. Separate from
+  // `writer` because the switch belongs to the writer: the Pro screen sells the larger
+  // transcriber as part of the subscription, not as something to turn off.
+  const [proExtras, setProExtras] = useState<Essential[]>([]);
   // Whether the writer model may be fetched at all. ModelManager.download refuses it without a
   // subscription — that refusal is the enforcement — so offering the switch to someone who has
   // not subscribed would be offering a button that cannot work.
@@ -113,6 +117,12 @@ export default function OnboardingScreen({ navigation }: Props) {
         const all: Essential[] = JSON.parse(r);
         setEssentials(all.filter(m => m.required));
         setWriter(all.filter(m => !m.required && m.kind === 'llm'));
+        // Read from needsSubscription — the catalog's own rule — rather than testing `kind`
+        // again here. This screen used to select the paid models with `kind === 'llm'` alone,
+        // which is a second copy of a rule the catalog already owns, and it had drifted: the
+        // Pro screen advertises "The larger transcriber" and neither path that starts a trial
+        // ever downloaded it. whisper-small was reachable only by finding it in Settings.
+        setProExtras(all.filter(m => !m.required && m.needsSubscription && m.kind !== 'llm'));
       })
       .catch(() => {});
   }, []);
@@ -135,11 +145,17 @@ export default function OnboardingScreen({ navigation }: Props) {
   /** Entitled to the paid models, either already or by the trial just started. */
   const proChosen = paid || tier === 'pro';
 
-  const chosen = proChosen && wantWriter ? [...essentials, ...writer] : essentials;
+  const chosen = proChosen
+    ? [...essentials, ...proExtras, ...(wantWriter ? writer : [])]
+    : essentials;
   const totalMb = Math.round(
     chosen.filter(m => !m.installed).reduce((a, m) => a + m.sizeBytes, 0) / 1e6,
   );
   const writerMb = Math.round(writer.reduce((a, m) => a + m.sizeBytes, 0) / 1e6);
+  /** What taking Pro adds over free, which is more than the writer on its own. */
+  const proMb = Math.round(
+    [...proExtras, ...writer].reduce((a, m) => a + m.sizeBytes, 0) / 1e6,
+  );
 
   /**
    * Taking Pro at setup starts the TRIAL, not a purchase.
@@ -300,6 +316,36 @@ export default function OnboardingScreen({ navigation }: Props) {
         </Pop>
       </View>
 
+      {/*
+          The tier choice sits under the hero and ABOVE the bullets, because it has to be on the
+          first screen without scrolling.
+
+          It read better below them — learn what the app does, then choose — but on a Pixel 7 Pro
+          that put "Try Pro free for 7 days" roughly 70px past the bottom edge. The only visible
+          option was "Start free", so the choice this step exists to offer was invisible on one of
+          the taller phones on the market, and worse on anything smaller. The bullets still sell
+          the app; they now do it underneath the choice.
+      */}
+      {tier === null ? (
+        <Pop index={2} style={st.tierChoice}>
+          <Button
+            label="Start free"
+            icon="download"
+            onPress={() => setTier('free')}
+            disabled={essentials.length === 0}
+            full
+          />
+          <View style={st.tierGap}>
+            <SoftButton label={`Try Pro free for ${TRIAL_DAYS} days`} icon="ai" onPress={choosePro} />
+          </View>
+          <Txt variant="chip" color={colors.inkFaint} style={[st.centerText, st.note]}>
+            Free records, transcribes and pulls out the decisions and actions — no account, for as
+            long as you use it. Pro writes the minutes as prose, transcribes with a larger model,
+            and downloads {proMb} MB more.
+          </Txt>
+        </Pop>
+      ) : null}
+
       <View style={st.list}>
         {BULLETS.map((b, i) => (
           <Pop key={b.title} index={i + 2}>
@@ -341,52 +387,57 @@ export default function OnboardingScreen({ navigation }: Props) {
             </View>
           </Raised>
         ) : null}
+        {/* The rest of the paid set, once Pro is taken. Without this the button reads
+            "Download (1421 MB)" while the only card above it accounts for 1117 of them, and the
+            missing 190 has no explanation anywhere on the screen — the same surprise the total
+            above is calculated to avoid. No switch: this one is not optional within Pro. */}
+        {proChosen
+          ? proExtras.map(m => (
+              <Raised
+                key={m.id}
+                edge={colors.line}
+                fill={colors.card}
+                rad={radius.card}
+                depth={5}>
+                <View style={st.bullet}>
+                  <View style={[st.bulletIcon, { backgroundColor: colors.primarySoft }]}>
+                    <Icon name="mic" size={s(20)} color={colors.primary} strokeWidth={2.4} />
+                  </View>
+                  <View style={st.flex}>
+                    <Txt variant="cardTitleSm">{m.purpose}</Txt>
+                    <Txt variant="chip" color={colors.inkSoft} style={st.bulletBody}>
+                      Adds {Math.round(m.sizeBytes / 1e6)} MB.
+                    </Txt>
+                  </View>
+                </View>
+              </Raised>
+            ))
+          : null}
         {/*
-            The tier choice, made here because it cannot be made later: taking Pro adds 1.2 GB to
-            this download, and asking afterwards would mean a second one.
-
-            Free asks for nothing — no account, no email — which is the promise the web page makes
-            and the reason somebody chose a private note-taker in the first place. A login wall
-            here would contradict both, and is the single most reliable place to lose an install.
+            The choice itself is above the bullets; what stays down here is the way back in for
+            somebody who has already paid — on the website, or on a previous phone. It belongs
+            below the fold in a way the choice does not: it is the rare case, and putting it
+            beside the two tier buttons would read as a third option for a new install.
         */}
         {tier === null ? (
-          <>
-            <Button
-              label="Start free"
-              icon="download"
-              onPress={() => setTier('free')}
-              disabled={essentials.length === 0}
-              full
-            />
-            <View style={st.tierGap}>
-              <SoftButton label={`Try Pro free for ${TRIAL_DAYS} days`} icon="ai" onPress={choosePro} />
-            </View>
-            <Txt variant="chip" color={colors.inkFaint} style={[st.centerText, st.note]}>
-              Free records, transcribes and pulls out the decisions and actions — no account, for
-              as long as you use it. Pro writes the minutes as prose, and downloads {writerMb} MB
-              more.
-            </Txt>
+          <View style={st.tierGap}>
             {showSignIn ? (
-              <View style={st.tierGap}>
-                <SignInForm
-                  onSignedIn={res => {
-                    if (res.paid) {
-                      setTier('pro');
-                      setWantWriter(true);
-                    }
-                  }}
-                />
-              </View>
+              <SignInForm
+                onSignedIn={res => {
+                  if (res.paid) {
+                    setTier('pro');
+                    setWantWriter(true);
+                  }
+                }}
+              />
             ) : (
-              <View style={st.tierGap}>
-                <SoftButton
-                  label="Already subscribed? Sign in"
-                  icon="lock"
-                  onPress={() => setShowSignIn(true)}
-                />
-              </View>
+              <SoftButton
+                label="Already subscribed? Sign in"
+                icon="lock"
+                onPress={() => setShowSignIn(true)}
+              />
             )}
-          </>
+          </View>
         ) : (
           <Button
             label={totalMb > 0 ? `Download (${totalMb} MB)` : 'Download'}
@@ -444,6 +495,7 @@ function makeStyles(c: Colors) {
     footer: { gap: s(8) },
     note: { marginTop: s(4) },
     tierGap: { marginTop: s(10) },
+    tierChoice: { marginTop: s(18) },
     skipRow: { flexDirection: 'row' },
     mt: { marginTop: s(22) },
     sub: { marginTop: s(6), textAlign: 'center' },
