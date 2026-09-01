@@ -104,7 +104,15 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeTranscribe(
   std::string json = "[";
   try {
     audionotes::WhisperAsr asr(model, language);
-    auto utts = asr.transcribe(pcm, segs, static_cast<int>(sampleRate), static_cast<int>(threads));
+    // All six arguments spelled out: defaults on a virtual are resolved by static type, so the
+    // interface deliberately declares none.
+    audionotes::AsrRun run = asr.transcribe(pcm, segs, static_cast<int>(sampleRate),
+                                            static_cast<int>(threads), nullptr, nullptr);
+    if (run.allChunksFailed()) {
+      throwRuntime(env, "every ASR chunk failed to decode");
+      return env->NewStringUTF("[]");
+    }
+    const auto& utts = run.utterances;
     for (size_t i = 0; i < utts.size(); ++i) {
       if (i) json += ",";
       std::string esc;

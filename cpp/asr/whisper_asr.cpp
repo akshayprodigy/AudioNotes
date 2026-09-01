@@ -51,8 +51,9 @@ struct WhisperAsr::Impl {
 #endif
   bool ok = false;
   std::string language;
+  std::string model_path;
 
-  Impl(const std::string& model_path, const std::string& lang) : language(lang) {
+  Impl(const std::string& path, const std::string& lang) : language(lang), model_path(path) {
 #ifdef HAVE_WHISPER
     whisper_context_params cparams = whisper_context_default_params();
     ctx = whisper_init_from_file_with_params(model_path.c_str(), cparams);
@@ -75,19 +76,34 @@ WhisperAsr::WhisperAsr(const std::string& model_path, const std::string& languag
 WhisperAsr::~WhisperAsr() { delete impl_; }
 bool WhisperAsr::ok() const { return impl_->ok; }
 
-std::vector<Utterance> WhisperAsr::transcribe(
+bool WhisperAsr::supports(const std::string& language) const {
+#ifdef HAVE_WHISPER
+  // "auto" is not a language, it is the absence of a choice — still accepted, still not default.
+  if (language == "auto") return true;
+  return whisper_lang_id(language.c_str()) >= 0;
+#else
+  (void)language;
+  return false;
+#endif
+}
+
+AsrRun WhisperAsr::transcribe(
     const std::string& pcm_path,
     const std::vector<Segment>& segments,
     int sample_rate,
     int threads_override,
     const AsrProgressFn& progress,
     const AsrCancelFn& cancel) {
-  std::vector<Utterance> utts;
+  AsrRun run;
+  run.engine = name();
+  run.model_path = impl_->model_path;
+  run.language = impl_->language;
 #ifdef HAVE_WHISPER
   if (!impl_->ok) throw std::runtime_error("whisper model not loaded");
 
   const auto chunks = makeChunks(segments, kChunkMs);
   const int total = static_cast<int>(chunks.size());
+  run.chunks_total = total;
   const int threads = threads_override > 0 ? threads_override : inferenceThreadCount();
   ASRLOGI("transcribing %d chunk(s) with %d threads", total, threads);
 
@@ -96,6 +112,7 @@ std::vector<Utterance> WhisperAsr::transcribe(
     // abort callback; utterances decoded so far are kept and returned.
     if (cancel && cancel()) {
       ASRLOGI("cancelled after %d/%d chunk(s)", ci, total);
+      run.cancelled = true;
       break;
     }
     const auto& ch = chunks[ci];
@@ -115,6 +132,9 @@ std::vector<Utterance> WhisperAsr::transcribe(
     wparams.no_context = true;
 
     if (whisper_full(impl_->ctx, wparams, samples.data(), static_cast<int>(samples.size())) != 0) {
+      // Counted, not swallowed. A run where every chunk lands here used to be indistinguishable
+      // from a silent room, and the pipeline called both "no speech detected".
+      ++run.chunks_failed;
       if (progress) progress(ci + 1, total);
       continue;
     }
@@ -134,7 +154,7 @@ std::vector<Utterance> WhisperAsr::transcribe(
       // are extracted from this text and an action's item hash is computed over it, so cleaning
       // it downstream would leave two strings both claiming to be the same utterance.
       const std::string s = normalizeSegmentText(text ? text : "");
-      if (!s.empty()) utts.push_back(Utterance{ch.start_ms + t0, ch.start_ms + t1, s});
+      if (!s.empty()) run.utterances.push_back(Utterance{ch.start_ms + t0, ch.start_ms + t1, s});
     }
     if (progress) progress(ci + 1, total);
   }
@@ -145,7 +165,7 @@ std::vector<Utterance> WhisperAsr::transcribe(
   (void)progress;
   throw std::runtime_error("whisper.cpp not compiled in (vendor cpp/third_party/whisper.cpp)");
 #endif
-  return utts;
+  return run;
 }
 
 }  // namespace audionotes

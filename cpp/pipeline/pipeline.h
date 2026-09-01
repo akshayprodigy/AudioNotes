@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "asr/whisper_asr.h"            // Utterance {start_ms,end_ms,text}
+#include "asr/asr_engine.h"             // Utterance {start_ms,end_ms,text}
 #include "diar/diarizer.h"              // DiarSegment
 #include "minutes/minutes_extractor.h"  // DraftMinute, MinuteUtt, MinuteSpk
 #include "vad/silero_vad.h"             // Segment

@@ -2,29 +2,14 @@
 // and re-anchors whisper's per-chunk timestamps back onto the global meeting timeline.
 #pragma once
 #include <cstdint>
-#include <functional>
 #include <string>
 #include <vector>
 
-#include "vad/silero_vad.h"  // reuse Segment
+#include "asr/asr_engine.h"
 
 namespace audionotes {
 
-struct Utterance {
-  int64_t start_ms;
-  int64_t end_ms;
-  std::string text;
-};
-
-// progress(done_chunks, total_chunks)
-using AsrProgressFn = std::function<void(int, int)>;
-
-// Polled before each chunk; true = stop and return what has been transcribed so far. ASR is by
-// far the longest stage (whisper-base runs ~0.68x realtime), so a between-stages-only check
-// would leave a cancel unanswered for minutes.
-using AsrCancelFn = std::function<bool()>;
-
-class WhisperAsr {
+class WhisperAsr : public AsrEngine {
  public:
   // language: a whisper language code ("en", "hi", ...) or "auto". With no_context set, "auto"
   // re-detects per 30 s chunk, so one meeting can come back in several languages AND several
@@ -34,20 +19,34 @@ class WhisperAsr {
   // above rather than a feature. Any other language is pinned the same way — this layer never
   // asks an engine to emit one language for audio in another.
   explicit WhisperAsr(const std::string& model_path, const std::string& language = "en");
-  ~WhisperAsr();
+  ~WhisperAsr() override;
 
-  bool ok() const;  // false if whisper is not compiled in or the model failed to load
+  bool ok() const override;  // false if whisper is not compiled in or the model failed to load
+
+  const char* name() const override { return "whisper"; }
+
+  // 30 s is whisper's own internal window; matching it means a chunk is one forward pass.
+  int64_t maxChunkMs() const override { return 30000; }
+
+  // whisper returns its own timestamped segments within a window, so packing costs no utterance
+  // granularity — unlike an engine that returns one untimestamped result per window.
+  ChunkMode chunkMode() const override { return ChunkMode::kPack; }
+
+  // whisper covers ~99 languages; whisper_lang_id() rejects anything it does not know.
+  bool supports(const std::string& language) const override;
 
   // pcm_path: 16 kHz mono PCM16. segments: VAD speech spans (ms). Returns utterances in ms.
-  // `threads` <= 0 selects the automatic big.LITTLE-aware default (see asrThreadCount).
+  // `threads` <= 0 selects the automatic big.LITTLE-aware default (see cpu_topology.h).
   // Exposed so a benchmark can sweep it and so tiers can trade speed for battery later.
-  std::vector<Utterance> transcribe(
-      const std::string& pcm_path,
-      const std::vector<Segment>& segments,
-      int sample_rate,
-      int threads = 0,
-      const AsrProgressFn& progress = nullptr,
-      const AsrCancelFn& cancel = nullptr);
+  //
+  // No default arguments: they are resolved by STATIC type on a virtual, so the same call would
+  // mean different things through AsrEngine& than through WhisperAsr&. Callers pass all six.
+  AsrRun transcribe(const std::string& pcm_path,
+                    const std::vector<Segment>& segments,
+                    int sample_rate,
+                    int threads,
+                    const AsrProgressFn& progress,
+                    const AsrCancelFn& cancel) override;
 
  private:
   struct Impl;

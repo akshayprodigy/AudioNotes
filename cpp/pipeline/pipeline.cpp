@@ -1,5 +1,7 @@
 #include "pipeline/pipeline.h"
 
+#include "asr/whisper_asr.h"
+
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -119,9 +121,18 @@ bool Pipeline::run(const std::string& pcm_path, PipelineResult* out,
       error_ = "asr: failed to load model " + cfg_.asr_model;
       return false;
     }
-    utts = asr.transcribe(pcm_path, out->segments, cfg_.sample_rate, cfg_.asr_threads,
-                          [&report](int done, int total) { report("asr", done, total); },
-                          cancel ? PipelineCancelFn(cancel) : nullptr);
+    AsrRun asr_run = asr.transcribe(
+        pcm_path, out->segments, cfg_.sample_rate, cfg_.asr_threads,
+        [&report](int done, int total) { report("asr", done, total); },
+        cancel ? AsrCancelFn(cancel) : nullptr);
+    // Decoding that failed on every window is not a quiet room, and must not be reported as one.
+    if (asr_run.allChunksFailed()) {
+      error_ = "asr: every chunk failed to decode (" +
+               std::to_string(asr_run.chunks_failed) + "/" +
+               std::to_string(asr_run.chunks_total) + ")";
+      return false;
+    }
+    utts = std::move(asr_run.utterances);
     out->asr_ms = nowMs() - t0;
     // A mid-ASR cancel leaves a partial transcript; stop rather than diarize and mint minutes
     // from half a meeting.
