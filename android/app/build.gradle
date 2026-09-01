@@ -1,6 +1,42 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
+apply plugin: "io.sentry.android.gradle"
+
+/**
+ * Crash-report symbolication.
+ *
+ * The half of this app that crashes is native — whisper.cpp, llama.cpp, sherpa-onnx and the JNI
+ * between them — and R8 renames the Kotlin either side of it. Without the mapping and the .so
+ * debug symbols, a production crash arrives as hex addresses against obfuscated frames, which is
+ * indistinguishable from having no crash reporting at all.
+ *
+ * Everything auto-* is gated on SENTRY_AUTH_TOKEN being present in the environment. With no token
+ * the plugin does its local work and uploads nothing, so a clone with no Sentry account builds
+ * exactly as it did before this plugin existed — the same shape as the release signing config
+ * below, which falls back rather than failing.
+ */
+def sentryToken = System.getenv("SENTRY_AUTH_TOKEN")
+
+sentry {
+    // Source context would upload our own source files to Sentry. This is a private codebase and
+    // the stack trace is enough; off deliberately, not by omission.
+    includeSourceContext = false
+
+    autoUploadProguardMapping = sentryToken != null
+    uploadNativeSymbols = sentryToken != null
+    autoUploadNativeSymbols = sentryToken != null
+
+    // The SDK is started from JS, only after consent — see src/telemetry/crash.ts. Letting the
+    // plugin add its own auto-installation would start it before anyone had been asked.
+    autoInstallation { enabled = false }
+
+    // No bytecode rewriting for tracing: the JS side sets tracesSampleRate to 0, and an app that
+    // tells people it does not use the network should not ship instrumentation that phones home.
+    tracingInstrumentation { enabled = false }
+
+    ignoredBuildTypes = ["debug"]
+}
 
 /**
  * Path to libonnxruntime.so for the build ABI, extracted from the onnxruntime-android AAR.

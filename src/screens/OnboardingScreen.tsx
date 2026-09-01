@@ -12,6 +12,7 @@ import { Button, Pop, ProgressBar, Raised, SoftButton, Switch, Txt } from '../co
 import { db } from '../db/queries';
 import SignInForm from '../billing/SignInForm';
 import { TRIAL_DAYS, startTrial } from '../billing/trial';
+import { crashReportingAvailable, setCrashConsent } from '../telemetry/crash';
 import { radius, s, sv, useTheme, type Colors } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Onboarding'>;
@@ -101,6 +102,9 @@ export default function OnboardingScreen({ navigation }: Props) {
   // the intro sits in until they choose.
   const [tier, setTier] = useState<'free' | 'pro' | null>(null);
   const [showSignIn, setShowSignIn] = useState(false);
+  // Off until tapped. Consent that starts switched on is not consent, and this one is about
+  // network traffic leaving a device whose entire selling point is that none does.
+  const [crashOptIn, setCrashOptIn] = useState(false);
 
   useEffect(() => {
     Licence.status()
@@ -279,6 +283,34 @@ export default function OnboardingScreen({ navigation }: Props) {
           <Txt variant="body" color={colors.inkSoft} style={[st.centerText, st.sub]}>
             Pip is ready to sit in on your next meeting.
           </Txt>
+          {/* Asked here rather than only in Settings, because a diagnostics switch nobody finds
+              produces no diagnostics — and the reason to have it is a native crash on a phone we
+              will never hold. Asked once, off until tapped, and changeable later in Settings.
+              Absent entirely when the build has no DSN. */}
+          {crashReportingAvailable() ? (
+            <Raised edge={colors.line} fill={colors.card} rad={radius.card} depth={5}>
+              <View style={st.bullet}>
+                <View style={[st.bulletIcon, { backgroundColor: colors.primarySoft }]}>
+                  <Icon name="shield" size={s(20)} color={colors.primary} strokeWidth={2.4} />
+                </View>
+                <View style={st.flex}>
+                  <Txt variant="cardTitleSm">Send crash reports</Txt>
+                  <Txt variant="chip" color={colors.inkSoft} style={st.bulletBody}>
+                    Technical details only, and only if it crashes. Your recordings, transcripts
+                    and minutes stay on this phone either way.
+                  </Txt>
+                </View>
+                <Switch
+                  on={crashOptIn}
+                  onToggle={() => {
+                    const next = !crashOptIn;
+                    setCrashOptIn(next);
+                    setCrashConsent(next).catch(() => {});
+                  }}
+                />
+              </View>
+            </Raised>
+          ) : null}
           <View style={st.cta}>
             <Button label="Start recording" icon="mic" onPress={finish} full />
           </View>

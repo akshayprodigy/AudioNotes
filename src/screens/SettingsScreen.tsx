@@ -29,6 +29,7 @@ import {
   SectionRule,
   Segmented,
   SoftButton,
+  Switch,
   Txt,
 } from '../components/ui';
 import Backup from '../native/NativeBackup';
@@ -41,12 +42,10 @@ import {
   signOut,
 } from '../billing/subscription';
 import {
-  TRIAL_DAYS,
-  TRIAL_SUMMARIES,
-  entitlement,
-  isProModel,
-  type Entitlement,
-} from '../billing/trial';
+  crashConsent,
+  crashReportingAvailable,
+  setCrashConsent,
+} from '../telemetry/crash';
 import { radius, s, useTheme, type Colors, type ThemeMode } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
@@ -270,6 +269,16 @@ export default function SettingsScreen({ navigation }: Props) {
   const [retention, setRetention] = useState<number | null>(null);
   const [language, setLanguage] = useState('auto');
   const [empties, setEmpties] = useState(0);
+  // Same reason as `retention` above: null until read, so the switch never animates itself from a
+  // guess to the truth. Consent is the last thing that should appear to change on its own.
+  const [crashOn, setCrashOn] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!crashReportingAvailable()) return;
+    crashConsent()
+      .then(v => setCrashOn(v === 'on'))
+      .catch(() => {});
+  }, []);
 
   const refresh = () => ModelManager.list().then(r => setModels(JSON.parse(r)));
 
@@ -819,6 +828,42 @@ export default function SettingsScreen({ navigation }: Props) {
             </View>
           </Raised>
         </View>
+
+        {/* Only shown when the build can actually report a crash. With no DSN configured there is
+            nothing behind this switch, and a privacy control that does nothing is worse than an
+            absent one — it invites somebody to believe they turned something off. */}
+        {crashReportingAvailable() && crashOn !== null ? (
+          <>
+            <View style={st.ruleWrap}>
+              <SectionRule label="DIAGNOSTICS" />
+            </View>
+            <View style={st.list}>
+              <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={5}>
+                <View style={st.rowPad}>
+                  <View style={st.row}>
+                    <Icon name="shield" size={s(18)} color={colors.inkSoft} strokeWidth={2.4} />
+                    <View style={st.flex}>
+                      <Txt variant="bodyStrong">Send crash reports</Txt>
+                      <Txt variant="meta" color={colors.inkDim}>
+                        If the app crashes, send the technical details of the crash so it can be
+                        fixed. No audio, no transcript, no minutes, no account — those never leave
+                        this phone whether this is on or off.
+                      </Txt>
+                    </View>
+                    <Switch
+                      on={crashOn}
+                      onToggle={() => {
+                        const next = !crashOn;
+                        setCrashOn(next);
+                        setCrashConsent(next).catch(() => {});
+                      }}
+                    />
+                  </View>
+                </View>
+              </Raised>
+            </View>
+          </>
+        ) : null}
 
         <View style={st.ruleWrap}>
           <SectionRule label="ABOUT" />
