@@ -2,6 +2,8 @@
 // No weights needed: ok() is false throughout, but name() reports the routing decision, and the
 // routing decision is the whole subject.
 #include "asr/asr_engine.h"
+#include "asr/qwen3_asr.h"
+#include "asr/whisper_asr.h"
 
 #include <cstdio>
 #include <string>
@@ -60,6 +62,28 @@ int main() {
     auto e = makeAsrEngine(c);
     CHECK(e->maxChunkMs() == 30000, "whisper budget %lld", (long long)e->maxChunkMs());
     CHECK(e->chunkMode() == audionotes::ChunkMode::kPack, "whisper packs"); }
+
+  // The chunking contract each engine declares. These are not style choices — every one was
+  // measured on the 2026-08-19 Hindi recording, and both of the obvious-looking alternatives were
+  // materially worse. Named directly (which the encapsulation check permits in tests) because the
+  // factory cannot hand back a Qwen engine without weights present.
+  {
+    audionotes::Qwen3Asr q("/nonexistent/qwen3-asr", "hi");
+
+    // 25 s truncated mid-word against max_new_tokens=128 and lost half the transcript: 692 words
+    // against 1,205 at 10 s, with one 24.9 s window returning a single word.
+    CHECK(q.maxChunkMs() == 10000, "qwen budget %lld, want 10000", (long long)q.maxChunkMs());
+
+    // Packing, NOT per-span. Per-span looks right — this model returns one untimestamped result
+    // per window, so packing blurs speaker assignment — but a median 1.5 s span starves the
+    // decoder and it answers in Mandarin: 11.1% CJK per-span against 0.8% packed.
+    CHECK(q.chunkMode() == audionotes::ChunkMode::kPack, "qwen must pack, not chunk per span");
+
+    // Whisper keeps its own window, which is one internal forward pass and needs no packing help.
+    audionotes::WhisperAsr w("/nonexistent/ggml-base-q5_1.bin", "en");
+    CHECK(w.maxChunkMs() == 30000, "whisper budget %lld", (long long)w.maxChunkMs());
+    CHECK(w.chunkMode() == audionotes::ChunkMode::kPack, "whisper packs");
+  }
 
   if (failures == 0) std::printf("test_asr_factory OK\n");
   return failures == 0 ? 0 : 1;

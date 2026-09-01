@@ -10,8 +10,9 @@
 //    per window; this never fills result.timestamps. Since speakers are assigned per utterance
 //    (see alignSpeakers), packing 30 s of audio into one window would hand everything said in it
 //    a single speaker label. Hence ChunkMode::kPerSpan.
-// 2. Its decoder has a fixed token budget (max_total_len, 512 by default) and SILENTLY TRUNCATES
-//    audio that exceeds it — roughly 38 s. maxChunkMs() stays well inside that.
+// 2. Its decoder has TWO budgets and silently truncates against either: max_total_len (512)
+//    covers prompt plus audio, and max_new_tokens (128) caps the text it may emit. The second is
+//    the one that bites — see maxChunkMs().
 #pragma once
 #include <cstdint>
 #include <string>
@@ -34,12 +35,30 @@ class Qwen3Asr : public AsrEngine {
   bool ok() const override;
   const char* name() const override { return "qwen3"; }
 
-  // Well inside the ~38 s the 512-token budget allows: the budget is consumed by the prompt and
-  // any hotwords too, and running near a silent-truncation cliff is not worth the speed.
-  int64_t maxChunkMs() const override { return 25000; }
+  // MEASURED, on the 2026-08-19 Hindi recording. An earlier version of this file said 25 s was
+  // "well inside the ~38 s the 512-token budget allows" — which named the wrong cliff. The binding
+  // limit is max_new_tokens (128) on the OUTPUT, not the audio length, and 25 s of speech produces
+  // more text than 128 tokens can hold. It truncated mid-word and lost half the transcript:
+  //
+  //     windows   words   Devanagari   CJK     median utterance
+  //     25 s       692      53.7%      0.0%       23.3 s   <- truncating; 1 word from one window
+  //     10 s     1,205      69.8%      0.8%        8.5 s   <- this
+  //     per-span 1,338      59.6%     11.1%        1.5 s   <- see below
+  int64_t maxChunkMs() const override { return 10000; }
 
-  // One result per window and no timestamps, so the window must be the turn. See the header note.
-  ChunkMode chunkMode() const override { return ChunkMode::kPerSpan; }
+  // ALSO MEASURED, and the opposite of what the first version of this file assumed.
+  //
+  // The reasoning for kPerSpan was sound and the result was still wrong. This model returns one
+  // untimestamped result per window, so packing costs utterance granularity and blurs speaker
+  // assignment — all true. But a VAD span is a median 1.5 s, and handed a sub-second backchannel
+  // this model answers in ITS home language: 33 of the 34 Chinese and Korean utterances in the
+  // per-span run were under two seconds, a median of 0.64 s against 2.08 s for everything else.
+  // "嗯" is Mandarin for "hmm".
+  //
+  // Packing to 10 s is what actually fixes the language leak — 11.1% CJK down to 0.8% — because
+  // context, not the language hint alone, is what keeps the decoder in the right language. The
+  // granularity cost is real and accepted: 8.5 s utterances instead of 1.5 s.
+  ChunkMode chunkMode() const override { return ChunkMode::kPack; }
 
   bool supports(const std::string& language) const override;
 

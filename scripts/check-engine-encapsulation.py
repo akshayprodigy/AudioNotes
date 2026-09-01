@@ -23,6 +23,11 @@ ALLOWED = {
     os.path.join("cpp", "asr", "qwen3_asr.cpp"),
 }
 
+# Tests name engines on purpose, to assert the contract each one declares — chunk budget, chunk
+# mode, supported languages. That is the opposite of the bug this guards: it pins the values a
+# production caller relies on rather than bypassing the choice between them.
+ALLOWED_PREFIXES = (os.path.join("cpp", "tests") + os.sep,)
+
 ENGINES = ("WhisperAsr", "Qwen3Asr")
 # A constructor call or a declaration, not a mention in a comment or a type in a header.
 PATTERN = re.compile(r"^\s*(?:audionotes::)?(?:%s)\s+\w+\s*\(|new\s+(?:audionotes::)?(?:%s)\s*\("
@@ -38,7 +43,7 @@ def main():
                 continue
             path = os.path.join(dirpath, name)
             rel = os.path.relpath(path, ROOT)
-            if rel in ALLOWED:
+            if rel in ALLOWED or rel.startswith(ALLOWED_PREFIXES):
                 continue
             with open(path, encoding="utf-8", errors="replace") as f:
                 for lineno, line in enumerate(f, 1):
