@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
+#include <initializer_list>
 #include <vector>
 
 #ifdef HAVE_SHERPA
@@ -30,6 +31,28 @@ namespace {
 std::string join(const std::string& dir, const char* leaf) {
   if (dir.empty()) return leaf;
   return dir.back() == '/' ? dir + leaf : dir + "/" + leaf;
+}
+
+// First candidate that is actually present.
+//
+// The published export is int8-quantised — sherpa's own release ships encoder.int8.onnx and
+// decoder.int8.onnx, NOT encoder.onnx — so those names are tried first. Accepting both means a
+// full-precision export drops in without a code change, and it means the user is not required to
+// rename files to satisfy a convention invented here. An earlier version of this file hard-coded
+// the plain names, which would have found nothing in the real download and fallen back to whisper
+// without ever saying why.
+std::string firstPresent(const std::string& dir, std::initializer_list<const char*> candidates) {
+  for (const char* leaf : candidates) {
+    const std::string path = join(dir, leaf);
+    FILE* f = std::fopen(path.c_str(), "rb");
+    if (f) {
+      std::fclose(f);
+      return path;
+    }
+  }
+  // Nothing found: return the first candidate so the readable() check below reports a sensible
+  // path rather than an empty string.
+  return join(dir, *candidates.begin());
 }
 
 // sherpa's factories do not tolerate a path they cannot read: instead of returning null they
@@ -76,12 +99,17 @@ struct Qwen3Asr::Impl {
 
   Impl(const std::string& dir, const std::string& lang) : language(lang), model_dir(dir) {
 #ifdef HAVE_SHERPA
-    const std::string conv_frontend = join(dir, "conv_frontend.onnx");
-    const std::string encoder = join(dir, "encoder.onnx");
-    const std::string decoder = join(dir, "decoder.onnx");
+    const std::string conv_frontend = firstPresent(dir, {"conv_frontend.onnx",
+                                                        "conv_frontend.int8.onnx"});
+    const std::string encoder = firstPresent(dir, {"encoder.int8.onnx", "encoder.onnx"});
+    const std::string decoder = firstPresent(dir, {"decoder.int8.onnx", "decoder.onnx"});
     const std::string tokenizer = join(dir, "tokenizer");
 
     if (!readable(conv_frontend) || !readable(encoder) || !readable(decoder)) {
+      // Say which one is missing. "Qwen unavailable" with no path sent me looking at the wrong
+      // file once already.
+      std::fprintf(stderr, "qwen3: missing weights in %s (conv_frontend=%d encoder=%d decoder=%d)\n",
+                   dir.c_str(), readable(conv_frontend), readable(encoder), readable(decoder));
       ok = false;
       return;
     }
