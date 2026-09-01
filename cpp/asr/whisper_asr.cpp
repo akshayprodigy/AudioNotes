@@ -1,8 +1,7 @@
 #include "asr/whisper_asr.h"
 
 #include "asr/asr_chunker.h"
-#include "util/utf8.h"
-
+#include "asr/asr_postprocess.h"
 #include "util/cpu_topology.h"
 
 #include <algorithm>
@@ -130,14 +129,11 @@ std::vector<Utterance> WhisperAsr::transcribe(
       // arrives as a fragment, and that fragment terminates every consumer downstream (JSON
       // dump throws, JNI NewStringUTF aborts the VM) — found on a Hindi/English meeting, after
       // the whole recording had already been processed. Scrub once, here at the source.
-      std::string s = sanitizeUtf8(text ? text : "");
-      // trim leading space whisper tends to add
-      if (!s.empty() && s.front() == ' ') s.erase(0, 1);
-      // ...and the dialogue dash it adds in front of a turn when it hears two people. Stripped
-      // here with the rest of the scrubbing, because the minutes are extracted from this text and
-      // the item hash carrying an action's tick is computed over it: cleaning it downstream would
-      // leave two different strings both claiming to be the same utterance.
-      s = stripDialogueDash(s);
+      // Every engine's output goes through the same door — see asr_postprocess.h for the two
+      // crashes that door exists to stop, and why an engine must not do this itself. The minutes
+      // are extracted from this text and an action's item hash is computed over it, so cleaning
+      // it downstream would leave two strings both claiming to be the same utterance.
+      const std::string s = normalizeSegmentText(text ? text : "");
       if (!s.empty()) utts.push_back(Utterance{ch.start_ms + t0, ch.start_ms + t1, s});
     }
     if (progress) progress(ci + 1, total);
