@@ -1,5 +1,6 @@
 #include "asr/whisper_asr.h"
 
+#include "asr/asr_chunker.h"
 #include "util/utf8.h"
 
 #include "util/cpu_topology.h"
@@ -42,19 +43,6 @@ std::vector<float> readWindow(const std::string& pcm_path, int sr, int64_t start
   out.resize(got);
   for (size_t i = 0; i < got; ++i) out[i] = static_cast<float>(raw[i]) / 32768.0f;
   return out;
-}
-
-// Combine VAD spans into chunks no longer than ~kChunkMs (measured from chunk start).
-std::vector<std::pair<int64_t, int64_t>> makeChunks(const std::vector<Segment>& segs) {
-  std::vector<std::pair<int64_t, int64_t>> chunks;
-  for (const auto& s : segs) {
-    if (chunks.empty() || s.end_ms - chunks.back().first > kChunkMs) {
-      chunks.emplace_back(s.start_ms, s.end_ms);
-    } else {
-      chunks.back().second = s.end_ms;
-    }
-  }
-  return chunks;
 }
 }  // namespace
 
@@ -99,7 +87,7 @@ std::vector<Utterance> WhisperAsr::transcribe(
 #ifdef HAVE_WHISPER
   if (!impl_->ok) throw std::runtime_error("whisper model not loaded");
 
-  const auto chunks = makeChunks(segments);
+  const auto chunks = makeChunks(segments, kChunkMs);
   const int total = static_cast<int>(chunks.size());
   const int threads = threads_override > 0 ? threads_override : inferenceThreadCount();
   ASRLOGI("transcribing %d chunk(s) with %d threads", total, threads);
@@ -112,7 +100,7 @@ std::vector<Utterance> WhisperAsr::transcribe(
       break;
     }
     const auto& ch = chunks[ci];
-    std::vector<float> samples = readWindow(pcm_path, sample_rate, ch.first, ch.second);
+    std::vector<float> samples = readWindow(pcm_path, sample_rate, ch.start_ms, ch.end_ms);
     if (samples.empty()) {
       if (progress) progress(ci + 1, total);
       continue;
@@ -150,7 +138,7 @@ std::vector<Utterance> WhisperAsr::transcribe(
       // the item hash carrying an action's tick is computed over it: cleaning it downstream would
       // leave two different strings both claiming to be the same utterance.
       s = stripDialogueDash(s);
-      if (!s.empty()) utts.push_back(Utterance{ch.first + t0, ch.first + t1, s});
+      if (!s.empty()) utts.push_back(Utterance{ch.start_ms + t0, ch.start_ms + t1, s});
     }
     if (progress) progress(ci + 1, total);
   }

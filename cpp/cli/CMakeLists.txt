@@ -87,6 +87,7 @@ endif()
 add_executable(audionotes_cli
   main.cpp
   ${CORE}/asr/whisper_asr.cpp
+  ${CORE}/asr/asr_chunker.cpp
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
@@ -140,6 +141,10 @@ audionotes_add_test(test_utf8
   ${CORE}/tests/test_utf8.cpp
   ${CORE}/util/utf8.cpp)
 
+audionotes_add_test(test_asr_chunker
+  ${CORE}/tests/test_asr_chunker.cpp
+  ${CORE}/asr/asr_chunker.cpp)
+
 audionotes_add_test(test_minutes
   ${CORE}/tests/test_minutes.cpp
   ${CORE}/minutes/minutes_extractor.cpp)
@@ -157,6 +162,7 @@ audionotes_add_test(test_pipeline_align
   ${CORE}/minutes/llm_minutes.cpp
   ${CORE}/minutes/llm_prompts.cpp
   ${CORE}/asr/whisper_asr.cpp
+  ${CORE}/asr/asr_chunker.cpp
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
@@ -183,6 +189,7 @@ audionotes_add_test(test_cancel
   ${CORE}/minutes/llm_minutes.cpp
   ${CORE}/minutes/llm_prompts.cpp
   ${CORE}/asr/whisper_asr.cpp
+  ${CORE}/asr/asr_chunker.cpp
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
@@ -209,6 +216,7 @@ audionotes_add_test(test_capi
   ${CORE}/minutes/llm_minutes.cpp
   ${CORE}/minutes/llm_prompts.cpp
   ${CORE}/asr/whisper_asr.cpp
+  ${CORE}/asr/asr_chunker.cpp
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
