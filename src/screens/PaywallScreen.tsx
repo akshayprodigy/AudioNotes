@@ -15,6 +15,7 @@ import {
   startTrial,
   type Entitlement,
 } from '../billing/trial';
+import SignInForm from '../billing/SignInForm';
 import { buyWithPlay, playAvailable, playPrice } from '../billing/subscription';
 import { radius, s, sv, useTheme, type Colors } from '../theme';
 
@@ -78,6 +79,7 @@ export default function PaywallScreen({ navigation }: Props) {
   // a spinner-shaped silence and a genuine failure deserve different sentences.
   const [priceAsked, setPriceAsked] = useState(false);
   const [busy, setBusy] = useState<'trial' | 'buy' | null>(null);
+  const [showSignIn, setShowSignIn] = useState(false);
 
   // The writer model, which is what a trial actually needs on disk. A trial that grants an
   // entitlement to run a model the phone does not have is a trial of nothing.
@@ -320,9 +322,32 @@ export default function PaywallScreen({ navigation }: Props) {
               ) : (
                 <Txt variant="chip" color={colors.inkFaint} style={st.note}>
                   This install cannot buy through the Play Store. If you already subscribed
-                  elsewhere, sign in from Settings and it will be picked up here.
+                  elsewhere, sign in below and it will be picked up here.
                 </Txt>
               )}
+
+              {/*
+                The way in for somebody who already paid — on the website, or on a phone they no
+                longer have. Until this existed, the one screen in the app that explains Pro gave
+                them nothing to do about it but go hunting through Settings, which is exactly where
+                the product review said the purchase had been hiding all along.
+
+                Collapsed by default: this screen is for people deciding, and a login form at the
+                top of it reads as a wall. It only has to be findable by the minority who need it.
+              */}
+              {!ent?.licence?.paid ? (
+                <View style={st.signIn}>
+                  {showSignIn ? (
+                    <SignInForm onSignedIn={res => { if (res.paid) navigation.goBack(); }} />
+                  ) : (
+                    <SoftButton
+                      icon="lock"
+                      label="Already subscribed? Sign in"
+                      onPress={() => setShowSignIn(true)}
+                    />
+                  )}
+                </View>
+              ) : null}
 
               {trial?.status === 'ended' ? (
                 <Txt variant="chip" color={colors.inkFaint} style={st.note}>
@@ -372,5 +397,6 @@ function makeStyles(c: Colors) {
     cta: { marginTop: s(20), gap: s(10) },
     secondary: { flexDirection: 'row' },
     note: { marginTop: s(2) },
+    signIn: { marginTop: s(18) },
   });
 }
