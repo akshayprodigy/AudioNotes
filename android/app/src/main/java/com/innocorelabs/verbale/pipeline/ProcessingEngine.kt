@@ -116,8 +116,13 @@ class ProcessingEngine(
           // point, somebody whose meeting came back in the wrong script can pin the language and
           // reprocess, which would be impossible if the choice were frozen when they hit record.
           val language = db.getSetting("asrLanguage")?.takeIf { it.isNotBlank() } ?: "en"
+          // Where a Qwen3-ASR export lives if one has been installed. Passed on every run, not
+          // only Hindi ones: the ENGINE choice belongs to the core's policy table, and deciding
+          // it here as well would put the same rule in two places that could disagree.
+          val qwen3Dir = ModelCatalog.qwen3DirFor(ctx)
           val json = NativeBridge.nativeTranscribe(
             audioPath, asrFile.absolutePath, RecordingService.SAMPLE_RATE, starts, ends, 0, language,
+            if (qwen3Dir.isDirectory) qwen3Dir.absolutePath else "",
           )
           stageDone("asr", t0)
           db.setLanguage(meetingId, language)

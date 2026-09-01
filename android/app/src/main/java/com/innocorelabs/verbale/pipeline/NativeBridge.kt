@@ -52,7 +52,14 @@ object NativeBridge {
    * Detection is per 30-second chunk, not per meeting, because whisper runs with no_context set.
    * On Hindi/English code-switched speech — the audio this product is actually for — that returns
    * one meeting in several languages and several SCRIPTS: a measured 39% of utterances came back
-   * in Urdu script. Pinning is the only fix available short of a better model.
+   * in Urdu script. So the default is "en", not "auto".
+   *
+   * @param qwen3ModelDir directory holding the Qwen3-ASR export, or "" when it is not installed.
+   *
+   * The language picks the ENGINE, not just the decoder hint: Hindi selects Qwen3-ASR when this
+   * directory has the weights in it, because whisper cannot hear Hindi — it read one recording at
+   * 891 words and 8.8% Devanagari where Qwen read 1,211 at 87.6%. When the directory is empty or
+   * missing, the run falls back to whisper and says so in the log rather than failing.
    */
   external fun nativeTranscribe(
     pcmPath: String,
@@ -61,7 +68,8 @@ object NativeBridge {
     segStarts: LongArray,
     segEnds: LongArray,
     threads: Int = 0,
-    language: String = "auto",
+    language: String = "en",
+    qwen3ModelDir: String = "",
   ): String
 
   /**

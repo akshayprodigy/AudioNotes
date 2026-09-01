@@ -223,6 +223,21 @@ object ModelCatalog {
   fun fileFor(context: Context, id: String): File? =
     byId(id)?.let { File(modelsDir(context), it.filename) }
 
+  /**
+   * Where a Qwen3-ASR export lives, installed or not.
+   *
+   * A DIRECTORY, not a file, because that engine needs four artifacts — conv_frontend.onnx,
+   * encoder.onnx, decoder.onnx and tokenizer/ — and the core resolves them by convention from one
+   * path, so a single string crosses JNI for either engine.
+   *
+   * It is deliberately NOT in ALL yet. Every entry there carries a sha256 computed from the exact
+   * bytes at its URL, and this comment is not the place to invent four of them: a blank hash turns
+   * the download path into an unverified one, which the notes at the top of this file call a
+   * supply-chain gate rather than a nicety. Until the export is pinned and hashed, the model can
+   * be side-loaded here and the engine will pick it up; nothing else needs to change.
+   */
+  fun qwen3DirFor(context: Context): File = File(modelsDir(context), "qwen3-asr")
+
   /** ASR model id for the requested whisper size ("base" | "small"). */
   fun asrIdForModel(model: String): String = if (model == "small") "whisper-small" else "whisper-base"
 }

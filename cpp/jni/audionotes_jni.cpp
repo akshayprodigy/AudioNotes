@@ -7,6 +7,19 @@
 #include <string>
 #include <vector>
 
+#include <memory>
+
+#ifdef __ANDROID__
+#include <android/log.h>
+// Which engine actually ran, and how much of it failed. Without this the only evidence of a
+// fallback — Hindi silently transcribed by whisper because Qwen was not installed — is a
+// disappointing transcript.
+#define ASRLOG(...) __android_log_print(ANDROID_LOG_INFO, "AudioNotesJNI", __VA_ARGS__)
+#else
+#define ASRLOG(...) ((void)0)
+#endif
+
+#include "asr/asr_engine.h"
 #include "asr/whisper_asr.h"
 #include "util/utf8.h"
 
@@ -86,9 +99,13 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeVad(
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeTranscribe(
     JNIEnv* env, jobject /*thiz*/, jstring jPcmPath, jstring jModelPath, jint sampleRate,
-    jlongArray jStarts, jlongArray jEnds, jint threads, jstring jLanguage) {
+    jlongArray jStarts, jlongArray jEnds, jint threads, jstring jLanguage,
+    jstring jQwen3Dir) {
   const std::string pcm = jstr(env, jPcmPath);
   const std::string model = jstr(env, jModelPath);
+  // Empty when Qwen3-ASR is not installed, which is the normal case today. The factory then falls
+  // back to whisper and records that it did.
+  const std::string qwen3_dir = jstr(env, jQwen3Dir);
   // Empty means the caller has no opinion, which resolves to the shipped default, "en".
   std::string language = jstr(env, jLanguage);
   if (language.empty()) language = "en";
@@ -108,15 +125,29 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeTranscribe(
 
   std::string json = "[";
   try {
-    audionotes::WhisperAsr asr(model, language);
+    // Through the factory, not a named class. This is what makes a second engine reachable from
+    // the phone at all: the language decides which engine runs, and Hindi selects Qwen3-ASR when
+    // its weights are present. Without this line the engine is compiled in and never called.
+    audionotes::AsrConfig acfg;
+    acfg.language = language;
+    acfg.whisper_model = model;
+    acfg.qwen3_model_dir = qwen3_dir;
+    std::unique_ptr<audionotes::AsrEngine> asr = audionotes::makeAsrEngine(acfg);
+    if (!asr->ok()) {
+      const std::string why = asr->unavailableReason();
+      throwRuntime(env, why.empty() ? "ASR model failed to load" : why.c_str());
+      return env->NewStringUTF("[]");
+    }
     // All six arguments spelled out: defaults on a virtual are resolved by static type, so the
     // interface deliberately declares none.
-    audionotes::AsrRun run = asr.transcribe(pcm, segs, static_cast<int>(sampleRate),
-                                            static_cast<int>(threads), nullptr, nullptr);
+    audionotes::AsrRun run = asr->transcribe(pcm, segs, static_cast<int>(sampleRate),
+                                             static_cast<int>(threads), nullptr, nullptr);
     if (run.allChunksFailed()) {
       throwRuntime(env, "every ASR chunk failed to decode");
       return env->NewStringUTF("[]");
     }
+    ASRLOG("transcribed with %s (%d chunk(s), %d failed)", run.engine.c_str(),
+           run.chunks_total, run.chunks_failed);
     const auto& utts = run.utterances;
     for (size_t i = 0; i < utts.size(); ++i) {
       if (i) json += ",";
