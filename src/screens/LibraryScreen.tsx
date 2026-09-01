@@ -9,6 +9,14 @@ import { loadActions, tally } from './actionsData';
 import { useImport } from './useImport';
 import { PipelineController } from '../pipeline/PipelineController';
 import { db } from '../db/queries';
+import ProNudgeCard from './ProNudgeCard';
+import {
+  entitlement,
+  noteNudgeShown,
+  nudgeState,
+  refuseNudge,
+  shouldNudgeForPro,
+} from '../billing/trial';
 import Icon, { type IconName } from '../components/Icon';
 import Mascot from '../components/Mascot';
 import RecordingBar from '../components/RecordingBar';
@@ -290,6 +298,37 @@ export default function LibraryScreen({ navigation }: Props) {
       },
     ];
   };
+
+  const [nudge, setNudge] = useState(false);
+
+  /**
+   * Meetings that actually finished.
+   *
+   * A meeting still processing has shown its owner nothing, so it is not evidence that they are
+   * getting value out of the app and must not count towards asking them to pay for more of it.
+   */
+  const completed = useMemo(() => meetings.filter(m => m.status === 'done').length, [meetings]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const [ent, seen] = await Promise.all([entitlement(), nudgeState()]);
+      const show = shouldNudgeForPro({
+        completed,
+        lastShownAt: seen.lastShownAt,
+        refusals: seen.refusals,
+        entitlement: ent,
+      });
+      if (!alive) return;
+      setNudge(show);
+      // Recorded when it is rendered, not when it becomes eligible: otherwise somebody who never
+      // opened the library would burn the offer without ever seeing it.
+      if (show) await noteNudgeShown(completed);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [completed]);
 
   const streak = useMemo(() => captureStreak(meetings), [meetings]);
   const totalMin = useMemo(
@@ -615,6 +654,20 @@ export default function LibraryScreen({ navigation }: Props) {
               </View>
             </Raised>
           </Pop>
+        ) : null}
+
+        {nudge ? (
+          <ProNudgeCard
+            meetings={completed}
+            onOpen={() => {
+              setNudge(false);
+              navigation.navigate('Paywall');
+            }}
+            onDismiss={() => {
+              setNudge(false);
+              refuseNudge();
+            }}
+          />
         ) : null}
 
         {meetings.length === 0 ? (
