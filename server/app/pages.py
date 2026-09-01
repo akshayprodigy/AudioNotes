@@ -23,6 +23,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import mailer
+from . import landing
 from .billing import cancel_subscription, start_subscription
 from .branding import PRODUCT_NAME
 from .legal import register_legal
@@ -67,7 +68,8 @@ DEFAULT_DESCRIPTION = (
 )
 
 
-def layout(title: str, body: str, description: str | None = None) -> str:
+def layout(title: str, body: str, description: str | None = None, *,
+           head_extra: str = "", wrap: bool = True) -> str:
     """
     One page shell.
 
@@ -75,6 +77,11 @@ def layout(title: str, body: str, description: str | None = None) -> str:
     without it the preview is a bare link, which converts far worse than a card. og:image is an
     absolute path because relative ones are ignored by most crawlers — PUBLIC_BASE_URL is what
     makes it absolute, and is the same setting the reset emails need.
+
+    `wrap` and `head_extra` exist for the landing page, which needs the full width of the window
+    and its own stylesheet. Everything above the <body> tag is shared regardless: the OG card, the
+    icon and the description rules are the same job on every page, and forking the shell to give
+    one page a wider column is how two subtly different sets of meta tags start to exist.
     """
     description = description or DEFAULT_DESCRIPTION
     base = mailer.public_base_url("")
@@ -96,7 +103,10 @@ def layout(title: str, body: str, description: str | None = None) -> str:
         "<meta property=\"og:image:height\" content=\"630\">\n"
         "<meta name=\"twitter:card\" content=\"summary_large_image\">\n"
         f"<style>{CSS}</style>\n"
-        f"</head><body><div class=\"wrap\">{body}</div></body></html>"
+        f"{head_extra}"
+        "</head><body>"
+        + (f'<div class="wrap">{body}</div>' if wrap else body)
+        + "</body></html>"
     )
 
 
@@ -137,42 +147,23 @@ def register_pages(app: FastAPI, store: Store) -> None:
 
     @app.get("/", response_class=HTMLResponse)
     def home() -> HTMLResponse:
-        return _page(
-            "Meeting notes that never leave your phone",
-            f"""<h1>{esc(PRODUCT_NAME)}</h1>
-         <p>Records a meeting, writes the minutes, and does all of it on your phone. No recording,
-            no transcript and no summary is ever uploaded &mdash; there is no server here that could
-            hold one.</p>
+        """
+        The landing page, which is the only page here with a job other than "work".
 
-         <div class="card">
-           <h2 style="margin-top:0">Free, forever</h2>
-           <ul>
-             <li>Record any meeting</li>
-             <li>Full transcript, separated by speaker</li>
-             <li>Decisions, actions and open questions, pulled from what was actually said</li>
-           </ul>
-           <p class="muted">No account needed. Nothing expires.</p>
-         </div>
-
-         <div class="card">
-           <h2 style="margin-top:0">Pro</h2>
-           <ul>
-             <li>Everything above</li>
-             <li>The summary and the minutes, written in plain English by a model that runs on
-                 your own phone</li>
-             <li>Up to {DEVICE_LIMIT} devices on one subscription</li>
-           </ul>
-           <p class="muted">Your notes stay yours if you stop paying &mdash; every summary already
-              written stays readable, and you can export everything at any time.</p>
-           <a href="/signup"><button>Create an account</button></a>
-           <p class="muted" style="text-align:center;margin-top:14px">
-             Already have one? <a href="/account">Sign in</a>
-           </p>
-         </div>
-
-         <p class="muted" style="text-align:center">
-           <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
-         </p>""",
+        It renders through the same layout() as the forms so that the OG card, the icon and the
+        description stay identical everywhere, but takes the full window rather than the 560px
+        column the forms use, and brings its own stylesheet. The markup lives in landing.py.
+        """
+        return HTMLResponse(
+            layout(
+                "Meeting notes that never leave your phone",
+                landing.body(DEVICE_LIMIT),
+                head_extra=(
+                    '<link rel="stylesheet" href="/static/landing.css">\n'
+                    '<script src="/static/landing.js" defer></script>\n'
+                ),
+                wrap=False,
+            )
         )
 
     @app.get("/signup", response_class=HTMLResponse)
