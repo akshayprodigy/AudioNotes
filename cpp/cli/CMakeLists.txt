@@ -144,6 +144,13 @@ audionotes_add_test(test_utf8
   ${CORE}/tests/test_utf8.cpp
   ${CORE}/util/utf8.cpp)
 
+# An architectural invariant no compiler can express: the language -> engine mapping exists once,
+# in asr_factory.cpp. Enforced because it was once violated silently — the JNI named WhisperAsr
+# directly, so Qwen3-ASR was compiled in and unreachable while every unit test passed.
+get_filename_component(REPO_ROOT ${CORE}/.. ABSOLUTE)
+add_test(NAME engine_encapsulation
+         COMMAND python3 ${REPO_ROOT}/scripts/check-engine-encapsulation.py)
+
 audionotes_add_test(test_asr_chunker
   ${CORE}/tests/test_asr_chunker.cpp
   ${CORE}/asr/asr_chunker.cpp)
