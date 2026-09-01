@@ -10,6 +10,12 @@ export interface Spec extends TurboModule {
   // Stop capture; the meeting row is left in status 'captured'.
   stop(sessionId: string): Promise<void>;
 
+  // Every language the transcriber can be pinned to, as JSON [{code,label}].
+  //
+  // Read from the engine rather than listed in the UI, because a hand-maintained shortlist drifts
+  // from what the model can actually do — and this app ships in India, the US and Europe.
+  supportedLanguages(): Promise<string>;
+
   // Run the offline pipeline (vad -> asr -> diarize -> align -> structure) for a meeting.
   // Narration is a native pipeline stage now, so there is no flag for it here: it runs whenever
   // the model is installed, the device is capable, and the transcript is long enough to summarise

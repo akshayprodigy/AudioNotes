@@ -138,6 +138,16 @@ object NativeBridge {
    * the model writes "**Meeting Topic:**" under every prompt wording tried, so the reader would
    * otherwise see the asterisks. One definition, shared with the CLI, rather than a Kotlin copy.
    */
+  /**
+   * Every language the transcriber can be pinned to, as a JSON array of {code,label}.
+   *
+   * Asked of the engine rather than listed in the UI, because a hand-maintained shortlist drifts
+   * from what the model can actually do. Verbale ships in India, the US and Europe; the picker
+   * used to offer three choices, which is how somebody ends up unable to select the language they
+   * are about to speak.
+   */
+  external fun nativeSupportedLanguages(): String
+
   external fun nativeStripMarkdown(text: String): String
 
   external fun nativeTrimToSentence(text: String): String
