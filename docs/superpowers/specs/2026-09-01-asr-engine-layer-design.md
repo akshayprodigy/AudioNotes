@@ -161,7 +161,10 @@ whisper because Qwen was not downloaded is a legitimate, inspectable outcome —
 downgrade. CJK joins the Qwen row only once measured; the table is not a place for guesses.
 
 `AsrConfig` carries `engine` (`""` = choose by policy, or an explicit override for the eval
-harness), `model_path`, and `language`.
+harness), `language`, and a path *per engine* — `whisper_model` (a file) and `qwen3_model_dir` (a
+directory, `""` when not installed). One shared `model_path` cannot work: the factory routes by
+language, so it must be able to reach either engine's weights without the caller having guessed
+which engine it was going to pick.
 
 ### 4. Qwen's four artifacts resolve from one directory
 
@@ -172,6 +175,26 @@ the engine resolves its own artifacts from it by convention.
 This keeps the CLI, the JNI and the eval harness all passing one string, and it pre-answers the
 `ModelSpec` problem in the follow-up work: the catalog gains one directory-shaped entry rather
 than four file-shaped ones.
+
+### 4a. Qwen has no timestamps, so it must chunk per VAD span
+
+`offline-recognizer-qwen3-asr-impl.cc` sets `result.text` and never `result.timestamps`. Whisper
+returns several timestamped segments per chunk; Qwen returns one untimestamped blob per chunk. So
+for Qwen, **utterance granularity is exactly chunk granularity**.
+
+That matters well beyond tidiness. Speakers are assigned per utterance by summed overlap
+(`alignSpeakers`), so a 30 s Qwen chunk covering three people becomes one utterance with one
+speaker label — silently making diarization far worse on precisely the multi-speaker meetings the
+product exists for.
+
+Qwen therefore declares a chunking mode of **one VAD span per chunk** (split when a span exceeds
+its budget), not "merge spans up to the budget". VAD spans approximate speaker turns, so this
+keeps utterances turn-shaped. It costs more decoder invocations, which is a real cost at 1.14x
+realtime and is the right trade against silently wrong speaker labels.
+
+`AsrEngine` therefore exposes `chunkMode()` alongside `maxChunkMs()`, and the chunker honours it.
+
+The same result struct carries an optional `lang` label, which populates `AsrRun.detected_language`.
 
 ### 5. `cpp/asr/asr_chunker.{h,cpp}` — shared, and correct
 
