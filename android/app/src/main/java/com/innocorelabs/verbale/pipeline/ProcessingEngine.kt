@@ -115,7 +115,7 @@ class ProcessingEngine(
           // the Quick Settings tile or the PiP window all reach this one line — and, more to the
           // point, somebody whose meeting came back in the wrong script can pin the language and
           // reprocess, which would be impossible if the choice were frozen when they hit record.
-          val language = db.getSetting("asrLanguage")?.takeIf { it.isNotBlank() } ?: "auto"
+          val language = db.getSetting("asrLanguage")?.takeIf { it.isNotBlank() } ?: "en"
           val json = NativeBridge.nativeTranscribe(
             audioPath, asrFile.absolutePath, RecordingService.SAMPLE_RATE, starts, ends, 0, language,
           )

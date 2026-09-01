@@ -91,7 +91,7 @@ int main(int argc, char** argv) {
   std::string vad_model, diar_seg, diar_emb, llm_model, json_out;
   int num_speakers = 0;  // 0 = auto (threshold clustering), matching the Android pipeline
   float diar_threshold = 1.0f;
-  std::string language = "auto";
+  std::string language = "en";
   for (int i = 3; i < argc; ++i) {
     if (std::strcmp(argv[i], "--vad") == 0 && i + 1 < argc) vad_model = argv[++i];
     else if (std::strcmp(argv[i], "--diar-seg") == 0 && i + 1 < argc) diar_seg = argv[++i];

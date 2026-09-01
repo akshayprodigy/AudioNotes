@@ -28,9 +28,12 @@ class WhisperAsr {
  public:
   // language: a whisper language code ("en", "hi", ...) or "auto". With no_context set, "auto"
   // re-detects per 30 s chunk, so one meeting can come back in several languages AND several
-  // scripts — a Hindi/English meeting produced Urdu script for 39% of its utterances. Pin it
-  // when the language is known.
-  explicit WhisperAsr(const std::string& model_path, const std::string& language = "auto");
+  // scripts — a Hindi/English meeting produced Urdu script for 39% of its utterances.
+  //
+  // Defaults to "en": most first meetings are in English, and per-chunk re-detection is the bug
+  // above rather than a feature. Any other language is pinned the same way — this layer never
+  // asks an engine to emit one language for audio in another.
+  explicit WhisperAsr(const std::string& model_path, const std::string& language = "en");
   ~WhisperAsr();
 
   bool ok() const;  // false if whisper is not compiled in or the model failed to load

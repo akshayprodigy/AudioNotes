@@ -84,9 +84,9 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeTranscribe(
     jlongArray jStarts, jlongArray jEnds, jint threads, jstring jLanguage) {
   const std::string pcm = jstr(env, jPcmPath);
   const std::string model = jstr(env, jModelPath);
-  // Empty means the caller has no opinion, which is what WhisperAsr spells "auto".
+  // Empty means the caller has no opinion, which resolves to the shipped default, "en".
   std::string language = jstr(env, jLanguage);
-  if (language.empty()) language = "auto";
+  if (language.empty()) language = "en";
 
   std::vector<audionotes::Segment> segs;
   const jsize n = env->GetArrayLength(jStarts);

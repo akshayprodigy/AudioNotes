@@ -17,6 +17,13 @@ int main() {
   using audionotes::DiarSegment;
   using audionotes::Utterance;
 
+  // The shipped default. `auto` re-detects the language every chunk, which is what returned one
+  // meeting in five scripts including Korean and Chinese. Pinned so it cannot drift back.
+  {
+    audionotes::PipelineConfig cfg;
+    CHECK(cfg.language == "en", "default language is '%s', want 'en'", cfg.language.c_str());
+  }
+
   // Utterance A overlaps cluster 0 for 800ms and cluster 1 for 200ms -> 0.
   // Utterance B overlaps only cluster 1 -> 1. Utterance C overlaps nothing -> -1.
   std::vector<Utterance> utts = {

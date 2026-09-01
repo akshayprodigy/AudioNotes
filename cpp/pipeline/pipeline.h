@@ -28,7 +28,7 @@ struct PipelineConfig {
   std::string diar_seg_model;  // both diar paths "" = skip diarization
   std::string diar_emb_model;
   std::string llm_model;       // "" = rule-based minutes only
-  std::string language = "auto";  // whisper language code, or "auto" to detect per chunk
+  std::string language = "en";  // a language code; "auto" re-detects per chunk (the bug, not the default)
   int num_speakers = 0;        // 0 = auto clustering
   float diar_threshold = 1.0f; // auto-clustering merge distance; smaller splits more
   int sample_rate = 16000;
