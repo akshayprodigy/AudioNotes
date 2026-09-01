@@ -27,12 +27,17 @@ enum class ChunkMode {
   kPerSpan,
 };
 
-// Combine VAD spans into decode windows.
+// Combine VAD spans into decode windows. No window exceeds `max_chunk_ms`, and consecutive
+// windows are contiguous, so no audio is dropped between them.
 //
-// KNOWN DEFECT, PINNED DELIBERATELY (fixed in a later commit, with its own test diff): in kPack
-// mode a single span longer than `max_chunk_ms` becomes one chunk of its FULL length, because the
-// budget is only consulted when deciding whether to append another span. whisper survives this by
-// re-windowing internally; an engine with a fixed token budget silently truncates instead.
+// The budget is a hard guarantee and not a hint, because it used to be one: a single span longer
+// than the budget once became a window of its full length, which whisper survived by re-windowing
+// internally and a token-budgeted engine would have silently truncated.
+//
+// Windows do NOT overlap. Overlap would need per-engine de-duplication — whisper returns
+// timestamps you could dedupe against, while an engine returning one untimestamped result per
+// window would duplicate whole utterances — and there is no fixture demonstrating boundary word
+// loss to tune it against. Duplicated or deleted speech is a worse failure than a clipped word.
 std::vector<Chunk> makeChunks(const std::vector<Segment>& segs, int64_t max_chunk_ms,
                               ChunkMode mode = ChunkMode::kPack);
 

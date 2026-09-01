@@ -52,11 +52,42 @@ int main() {
   expectChunks(makeChunks({{0, 5000}, {25000, 30001}}, kBudget),
                {{0, 5000}, {25000, 30001}}, "one ms past the budget");
 
-  // THE DEFECT, pinned. A 120 s uninterrupted span becomes ONE 120 s chunk — four times the
-  // budget. whisper hides this by re-windowing internally; a token-budgeted engine truncates.
-  // When this assertion is changed, the commit doing it is changing decoded audio on purpose.
-  expectChunks(makeChunks({{0, 120000}}, kBudget), {{0, 120000}},
-               "DEFECT: over-long span is not split");
+  // Was the defect: a 120 s uninterrupted span used to become ONE 120 s chunk, four times the
+  // budget. whisper hid it by re-windowing internally; a token-budgeted engine truncates instead.
+  // Now split into equal contiguous windows, none over budget and no audio dropped between them.
+  expectChunks(makeChunks({{0, 120000}}, kBudget),
+               {{0, 30000}, {30000, 60000}, {60000, 90000}, {90000, 120000}},
+               "over-long span is split at the budget");
+
+  // EQUAL parts, not greedy budget-sized ones. Greedy would leave a remainder window, and the
+  // pathological remainder is the point: a 30,001 ms span would become a 30,000 ms window plus a
+  // ONE MILLISECOND window — a whole decoder invocation on nothing. Equal parts cannot do that.
+  expectChunks(makeChunks({{0, 45000}}, kBudget), {{0, 22500}, {22500, 45000}},
+               "split into equal halves, not 30000 + 15000");
+  expectChunks(makeChunks({{0, 30001}}, kBudget), {{0, 15001}, {15001, 30001}},
+               "one ms over budget does not produce a one ms sliver");
+
+  // Contiguous: the end of each window is the start of the next, so nothing is skipped.
+  {
+    const auto cs = makeChunks({{0, 100000}}, kBudget);
+    for (size_t i = 1; i < cs.size(); ++i) {
+      CHECK(cs[i].start_ms == cs[i - 1].end_ms, "gap between window %zu and %zu", i - 1, i);
+    }
+    for (const auto& c : cs) {
+      CHECK(c.end_ms - c.start_ms <= kBudget, "window of %lld ms exceeds budget",
+            (long long)(c.end_ms - c.start_ms));
+    }
+  }
+
+  // A long span must be split in kPerSpan too — a VAD span can exceed the budget on its own,
+  // and that is exactly the engine whose decoder truncates silently.
+  {
+    const auto cs = makeChunks({{0, 60000}}, 25000, ChunkMode::kPerSpan);
+    CHECK(cs.size() == 3, "per-span split into %zu windows, want 3", cs.size());
+    for (const auto& c : cs) {
+      CHECK(c.end_ms - c.start_ms <= 25000, "per-span window exceeds budget");
+    }
+  }
 
   // kPerSpan never merges, which is what keeps utterances turn-shaped for an engine that
   // returns one untimestamped result per window.
