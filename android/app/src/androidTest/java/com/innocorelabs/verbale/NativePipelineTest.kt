@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.innocorelabs.verbale.data.AudioDb
+import com.innocorelabs.verbale.billing.LicenceStore
 import com.innocorelabs.verbale.data.ModelCatalog
 import com.innocorelabs.verbale.pipeline.NativeBridge
 import com.innocorelabs.verbale.pipeline.Narrator
@@ -13,6 +14,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -51,6 +53,44 @@ class NativePipelineTest {
     val ort = File(ModelCatalog.modelsDir(ctx), "libonnxruntime.so")
     assumeTrue("libonnxruntime.so not downloaded yet on this device", ort.exists())
     NativeBridge.ensureLoaded(ctx)
+    grantTrial()
+  }
+
+  // Mirrors the private key names in billing/Trial.kt, which BackupManager and trial.ts also spell
+  // out by hand. A rename that misses this copy cannot pass silently: the trial stops being granted
+  // and every narration test below fails with "narration produced nothing".
+  private val trialKeys = listOf("trial_started_at", "trial_summaries_used", "trial_ended_at")
+  private var savedTrial: List<String?>? = null
+
+  /**
+   * Open the paid gate for the duration of the run, then put it back exactly as it was.
+   *
+   * Narration is gated on [LicenceStore.entitled], and on a phone with no subscription the only
+   * key is the trial — which is spent by using it. The trial allows three summaries, and three is
+   * precisely how many tests here narrate, so a green run consumes the whole trial and every run
+   * after it fails with "narration produced nothing". That is not hypothetical; it is what this
+   * suite did, and the failure looks like a broken LLM rather than a spent entitlement.
+   *
+   * Restoring matters as much as granting. This runs on a developer's own phone, carrying a real
+   * trial or a real subscription and real recordings; a test run must not spend either.
+   */
+  private fun grantTrial() {
+    val db = AudioDb.get(ctx)
+    savedTrial = trialKeys.map { db.getSetting(it) }
+    println("TRIAL before: " + trialKeys.zip(savedTrial!!).joinToString { "${'$'}{it.first}=${'$'}{it.second}" })
+    db.putSetting("trial_started_at", LicenceStore.now(ctx).toString())
+    db.putSetting("trial_summaries_used", "0")
+    db.putSetting("trial_ended_at", "0")
+  }
+
+  @After
+  fun restoreTrial() {
+    val saved = savedTrial ?: return
+    val db = AudioDb.get(ctx)
+    // Trial reads these through a parser that treats null, blank and non-numeric alike as 0, so
+    // writing "0" restores a key that was never set in the first place.
+    trialKeys.zip(saved).forEach { (key, value) -> db.putSetting(key, value ?: "0") }
+    savedTrial = null
   }
 
   /** Copy the packed fixture out of androidTest assets into a real file the C++ side can fopen. */

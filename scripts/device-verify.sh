@@ -38,15 +38,59 @@ if ! "$ADB" devices | grep -qE "device$"; then
   exit 1
 fi
 
-echo "==> building"
-(cd android && ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -q)
-
+# Which key the debug build is signed with is not a preference — it has to match whatever is
+# already on the phone. Signatures that differ mean INSTALL_FAILED_UPDATE_INCOMPATIBLE, and the
+# only way past that is an uninstall, which takes the downloaded models and the recordings
+# database with it. That is the one thing this script exists to avoid.
+#
+# The phone can be carrying any of three things: a release build signed with the upload key, a
+# debug build from this script signed with that same key, or a plain debug-key build. dumpsys
+# reports no signer in a form worth parsing, and "is it debuggable" answers the wrong question —
+# so try the likely key and fall back to the other. Worst case is two builds, both of which Gradle
+# has already cached.
 APK=android/app/build/outputs/apk/debug/app-debug.apk
 TEST_APK=android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 
-echo "==> installing (-r keeps app data, and with it the downloaded models)"
-"$ADB" install -r "$APK"      > /dev/null
-"$ADB" install -r "$TEST_APK" > /dev/null
+SIGN_FLAGS=""
+if grep -qs '^AUDIONOTES_STORE_FILE' "$HOME/.gradle/gradle.properties"; then
+  SIGN_FLAGS="-PAUDIONOTES_DEBUG_UPLOAD_SIGNING"
+fi
+
+# `adb install` prints "Failure [...]" and still exits 0, so set -e never sees it and the run
+# carries on testing whichever build was already on the phone. Check the output, not the status.
+INSTALL_ERR=""
+install_apk() {
+  local out
+  out=$("$ADB" install -r "$1" 2>&1 || true)
+  if printf '%s' "$out" | grep -q 'Failure\|failed to install'; then
+    INSTALL_ERR="$out"
+    return 1
+  fi
+  return 0
+}
+
+attempt() {
+  INSTALL_ERR=""
+  echo "==> building${1:+ (signed with the upload key)}"
+  (cd android && ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -q $1)
+  echo "==> installing (-r keeps app data, and with it the downloaded models)"
+  install_apk "$APK" && install_apk "$TEST_APK"
+}
+
+if ! attempt "$SIGN_FLAGS"; then
+  if ! printf '%s' "$INSTALL_ERR" | grep -q 'UPDATE_INCOMPATIBLE'; then
+    printf '%s\n' "$INSTALL_ERR"
+    exit 1
+  elif [ -n "$SIGN_FLAGS" ]; then
+    echo "==> the installed build is not signed with the upload key; retrying with the debug key"
+    attempt "" || { printf '%s\n' "$INSTALL_ERR"; exit 1; }
+  else
+    echo "The installed build is signed with a key this machine does not have. Set"
+    echo "AUDIONOTES_STORE_FILE in ~/.gradle/gradle.properties, or uninstall the app first —"
+    echo "which WIPES the downloaded models and the recordings database."
+    exit 1
+  fi
+fi
 
 FAILED=0
 : > /tmp/instr.skips

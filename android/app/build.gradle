@@ -326,7 +326,20 @@ android {
     }
     buildTypes {
         debug {
-            signingConfig signingConfigs.debug
+            // A debug build will not install over a release-signed one: the signatures differ and
+            // adb fails with INSTALL_FAILED_UPDATE_INCOMPATIBLE. The only other way through is an
+            // uninstall, which takes the downloaded models (~2.4 GB once Qwen is in) and the
+            // recordings database with it. Signing debug with the upload key makes `adb install -r`
+            // work and leaves app data alone, which is what on-device testing against a real phone
+            // needs.
+            //
+            // Opt-in, and never the default: a plain debug build on a machine that has never seen
+            // the keystore has to keep working, and a debug APK signed with the upload key must
+            // never be produced by accident.
+            signingConfig project.hasProperty('AUDIONOTES_DEBUG_UPLOAD_SIGNING')
+                    && project.findProperty('AUDIONOTES_STORE_FILE')
+                ? signingConfigs.release
+                : signingConfigs.debug
         }
         release {
             // Falls back to the debug key ONLY so that a release-flavoured build is still
