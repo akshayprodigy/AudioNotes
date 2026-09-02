@@ -3,7 +3,7 @@ Google Play Billing: verifying that somebody actually paid.
 
 The app hands us a purchase token. That token is worth nothing on its own — anyone can send a
 string — so it is checked against Google's Android Publisher API, and only Google's answer decides
-entitlement. This is the Play equivalent of the Razorpay webhook: the one thing that may mark a
+entitlement. This is the one thing in the system that may mark a
 subscription paid.
 
 ## Why there is no Google client library here
@@ -47,6 +47,16 @@ _EARLY_REFRESH_SECONDS = 120
 
 class PlayError(RuntimeError):
     """Google said no, or could not be reached. Never a reason to grant entitlement."""
+
+    def __init__(self, message: str, status: int | None = None) -> None:
+        super().__init__(message)
+        #: The HTTP status Google answered with, or None when Google was never reached.
+        #:
+        #: Carried as a number because callers have to tell a settled fact (404 — no such
+        #: subscription, there is nothing to cancel) from a transient one (5xx, a timeout — try
+        #: again, and refuse to delete the account meanwhile). The alternative is matching on the
+        #: text of a message, which works until Google rewords it.
+        self.status = status
 
 
 @dataclass(frozen=True)
@@ -161,7 +171,7 @@ def _get(path: str) -> dict:
         detail = e.read().decode()[:300]
         # 404 means Google has never heard of this token. That is a forged or stale string, not a
         # transient failure, and it must not be retried into an entitlement.
-        raise PlayError(f"Play API {e.code}: {detail}") from e
+        raise PlayError(f"Play API {e.code}: {detail}", status=e.code) from e
     except (urllib.error.URLError, OSError) as e:
         raise PlayError(f"could not reach Google: {e}") from e
 
@@ -176,15 +186,15 @@ def _post(path: str, body: dict) -> None:
     try:
         urllib.request.urlopen(request, timeout=20).read()
     except urllib.error.HTTPError as e:
-        raise PlayError(f"Play API {e.code}: {e.read().decode()[:300]}") from e
+        raise PlayError(f"Play API {e.code}: {e.read().decode()[:300]}", status=e.code) from e
     except (urllib.error.URLError, OSError) as e:
         raise PlayError(f"could not reach Google: {e}") from e
 
 
 #: Google's subscription states, mapped onto ours.
 #:
-#: IN_GRACE_PERIOD is Google retrying a failed payment — the same situation Razorpay's `pending`
-#: describes, and the customer keeps working. ON_HOLD is after those retries have failed; it maps
+#: IN_GRACE_PERIOD is Google retrying a failed payment, and the customer keeps working throughout.
+#: ON_HOLD is after those retries have failed; it maps
 #: to past_due too, but its expiry has already passed, so entitlement ends on the date rather than
 #: on the label. PAUSED is a subscription the user deliberately suspended: not cancelled, but not
 #: entitled either, which `cancelled` with a past expiry expresses exactly.
@@ -261,5 +271,25 @@ def acknowledge(purchase_token: str, product_id: str) -> None:
     _post(
         f"/applications/{package_name()}/purchases/subscriptions/"
         f"{urllib.parse.quote(product_id, safe='')}/tokens/{quoted}:acknowledge",
+        {},
+    )
+
+
+def cancel(purchase_token: str, product_id: str) -> None:
+    """
+    Cancel a subscription at Google, effective at the end of the period already paid for.
+
+    Called when an account is deleted. Deleting our row stops us knowing about a subscription; it
+    does not stop Google charging the card, and somebody billed for an account they deleted is the
+    worst thing this system can do to a person.
+
+    Google does not refund the remainder and neither should we pretend to: the subscription stops
+    renewing and runs to its existing expiry. That is what `cancel` means on Play, and it is why
+    the caller may delete the account immediately afterwards without stranding anybody's money.
+    """
+    quoted = urllib.parse.quote(purchase_token, safe="")
+    _post(
+        f"/applications/{package_name()}/purchases/subscriptions/"
+        f"{urllib.parse.quote(product_id, safe='')}/tokens/{quoted}:cancel",
         {},
     )

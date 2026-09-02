@@ -12,28 +12,24 @@ claim is that recordings never leave the phone, and the way to keep a claim like
 build a server with nowhere to put them. If a schema change here ever seems to need a column
 describing a user's content, something has gone wrong upstream of the schema.
 
-It is also the only place a subscription is sold. The Android app never links here — that is what
-keeps the arrangement inside store policy — so these pages have to stand on their own for somebody
-arriving from an email or a bookmark.
+These pages have to stand on their own for somebody arriving from an email or a bookmark: they are
+where an account is managed, not where a subscription is bought.
 
-## Two ways to pay, one entitlement
+## One way to pay
 
-Play Billing for Play installs; Razorpay on the web for every other Android store and, later, for
-desktop. Both end in the same `subscriptions` row and the same licence token, because entitlement
-is one concept and keeping two of it is how somebody ends up paying twice or losing access on the
-wrong device.
+Subscriptions are bought in the app, through Google Play Billing, and nowhere else. There is no web
+checkout. A second payment provider that nothing calls is not optionality — it is a second way for
+entitlement to be wrong, and every change to entitlement has to be reasoned about twice.
 
-Play Billing alone would not do: it cannot serve other Android stores and a desktop build cannot
-use it at all. Razorpay alone is the arrangement Play is most likely to take exception to from a
-developer with no track record — the design is legitimate (the app shows no price and links to no
-checkout) but it rests on a reviewer's judgement, and the downside is the account rather than the
-commission.
+Play **pulls** rather than pushes: the purchase token is re-verified against Google on every licence
+refresh, which is what makes real-time notifications, a Pub/Sub topic and another service to keep
+alive unnecessary. There is no webhook to receive and no webhook signature to check. The app
+refreshes about weekly and a token lasts a fortnight, so the worst case is a cancelled subscriber
+keeping Pro slightly longer — the right direction to err in.
 
-They differ in one structural way. Razorpay **pushes**: a signed webhook is the only thing that may
-mark a subscription paid. Play **pulls**: the purchase token is re-verified against Google on every
-licence refresh, which is what makes real-time notifications, a Pub/Sub topic and another service
-to keep alive unnecessary. The app refreshes about weekly and a token lasts a fortnight, so the
-worst case is a cancelled subscriber keeping Pro slightly longer — the right direction to err in.
+If a desktop build or a second store ever needs a web checkout, it gets written then, against
+whatever the business is by then. Razorpay was removed on 2026-09-02; see
+`docs/superpowers/specs/2026-09-02-play-only-billing-and-admin-console-design.md`.
 
 A Play purchase creates an account with **no email and no password**. Google has already
 established who the person is, and making them invent a password to receive what they just paid
@@ -47,7 +43,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/python -m app.keygen          # once, ever — see below
 LICENCE_PRIVATE_KEY_PEM="$(cat key.pem)" \
   .venv/bin/python -m uvicorn app.main:create_app --factory --reload --port 8787
-.venv/bin/python -m pytest              # 87 tests
+.venv/bin/python -m pytest              # 216 tests
 ```
 
 Or the real thing, exactly as it runs in production:
@@ -66,9 +62,7 @@ docker compose up --build
 | `SMTP_HOST` / `SMTP_FROM` (+ `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`) | password reset | Unconfigured, the mail is logged instead of sent |
 | `PUBLIC_BASE_URL` | emailed links | Without it, links are built from the request's Host header |
 | `PLAY_SERVICE_ACCOUNT_JSON` / `PLAY_PACKAGE_NAME` | Play purchases | The link endpoint answers 503 without them |
-| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | buying on the web | Subscribe answers 503 without them |
-| `RAZORPAY_PLAN_ID` | buying | The monthly plan created in the Razorpay dashboard |
-| `RAZORPAY_WEBHOOK_SECRET` | renewals | The webhook answers 503 without it |
+| `ADMIN_SESSION_SECRET` / `VERBALE_ADMIN_EMAILS` | the admin console | `/admin` answers 404 without both |
 
 Everything except the signing key is optional, and the server is useful without any of them: the
 free tier, sign-in and the web pages all work with billing unconfigured.
@@ -203,9 +197,8 @@ fixture with `python scripts/contract_fixture.py`, and expect to re-run
 | `POST /api/account/signin` | `{email, password, deviceId}` → licence token + a device-scoped refresh key |
 | `POST /api/licence/refresh` | `{deviceId, refreshKey}` → a fresh token, no password |
 | `POST /api/billing/play/link` | `{purchaseToken, deviceId}` → licence token. Play's equivalent of signing in |
-| `POST /api/billing/subscribe` | Starts Razorpay checkout, returns the hosted URL |
-| `POST /api/billing/webhook` | Razorpay events. The **only** thing that marks a subscription paid |
 | `GET /healthz` | |
+| `GET /admin` | The console: who has subscribed. 404 unless configured |
 
 Pages: `/` (what it is and what Pro adds), `/signup`, `/account`, `/forgot`, `/reset`, `/privacy`,
 `/terms`, and the `/subscribe`, `/devices/forget` and `/account/delete` actions they post to.
@@ -221,15 +214,16 @@ paying customer at once. It also means no call home on launch, which is what kee
 claim literally true.
 
 **A token never outlives the paid period plus three days.** The grace exists because card renewals
-fail for boring reasons — an expired card, a bank's fraud heuristic — and Razorpay retries over the
-following days. Cutting someone off at the exact second their period ends punishes them for their
-bank's behaviour, mid-meeting.
+fail for boring reasons — an expired card, a bank's fraud heuristic. Google retries over the
+following days, and while it does the subscription is `IN_GRACE_PERIOD` with an expiry still in the
+future, so the window is never reached; it bites only after the retries fail. Cutting someone off
+at the exact second their period ends punishes them for their bank's behaviour, mid-meeting.
 
-**Only the webhook may mark a subscription paid.** Never a redirect back from checkout: a browser
-can be pointed anywhere by anyone.
+**Only a purchase Google has verified may mark a subscription paid.** Never a string from the
+client: a purchase token is a string, and anyone can send a string.
 
-**The paid-through date never moves backwards.** Webhook events can arrive out of order, and the
-version that moves it back takes away time somebody has already paid for.
+**Google's answer is the paid-through date.** It is not clamped to move only forwards — Google is
+the source of truth about what has been paid for, including when a plan changes.
 
 **Three devices per subscription.** "One subscription, all your devices" without a number becomes
 one subscription and all your friends. A device already on the list always re-registers, so
@@ -270,10 +264,11 @@ the limit by their own reset — they sign in again.
 offer this from the web, and it is correct anyway: an account somebody cannot get rid of is not
 theirs.
 
-The subscription is cancelled at Razorpay **first**, and a failure there stops the deletion. Our
-row going away does not stop Razorpay charging the card — being billed monthly for an account you
-deleted is the worst thing this system could do to somebody, so that path refuses rather than
-logging and stepping over it.
+The subscription is cancelled at Google **first**, and a failure there stops the deletion. Our row
+going away does not stop Google charging the card — being billed monthly for an account you deleted
+is the worst thing this system could do to somebody, so that path refuses rather than logging and
+stepping over it. "Already cancelled" and "Google has never heard of this token" both count as
+success; anything that means *we do not know* refuses.
 
 Everything else cascades from the foreign keys, which is why `PRAGMA foreign_keys = ON` at connect
 time is load-bearing and not tidiness.
@@ -301,7 +296,41 @@ pragma is re-asserted in `Store.__init__` after the commit, which is the only pl
 effect. Getting this wrong leaves the connection with foreign keys off, and account deletion then
 orphans rows instead of cascading — silently. There is a test for it.
 
+## The admin console
+
+`/admin` answers the one question the database could always answer and nothing could ask: who has
+subscribed, when they signed up, and what state their subscription is in. Overview counts, a
+filterable and searchable account table, one page per account, and a CSV export.
+
+Turn it on with two variables and a restart:
+
+```bash
+ADMIN_SESSION_SECRET="$(openssl rand -hex 32)"
+VERBALE_ADMIN_EMAILS=you@example.com
+```
+
+With either missing, every `/admin` route answers **404** — not 403. A console that is switched off
+should not tell a stranger it exists.
+
+Three things it deliberately will not do.
+
+**It cannot grant entitlement.** There is no "make this account Pro" button and no route that
+writes. An HTTP endpoint able to mark somebody paid is reachable by a session bug, a stolen cookie
+or a borrowed laptop, and only a purchase Google has verified may do that. Seeding a test account
+stays `deploy/seed-test-account.sh` — something a person runs on purpose, over ssh.
+
+**It cannot show you trials.** The free trial runs entirely on the device, enforced against a
+persisted monotonic clock in the app's own database, and never contacts this server. Counting
+trials would mean the app phoning home, which is a decision about the privacy promise rather than
+a dashboard feature.
+
+**It cannot show you money.** Play Console owns revenue. This owns *who*.
+
+Authentication is `store.authenticate` — the same scrypt verification as everywhere else, no second
+credential store. Authorisation is the environment variable, re-read on every request, so removing
+an address ends that person's session immediately rather than in eight hours.
+
 ## Not built yet
 
-- Nothing blocking. The remaining work is configuration the server cannot supply itself: Razorpay
-  live keys, SMTP credentials, and the DNS record that lets it serve a hostname over TLS.
+- Nothing blocking. The remaining work is configuration the server cannot supply itself: the Play
+  service account, SMTP credentials, and the DNS record that lets it serve a hostname over TLS.

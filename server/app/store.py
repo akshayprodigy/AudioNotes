@@ -54,16 +54,39 @@ class Account:
 class Subscription:
     account_id: str
     plan: str
-    #: The provider's own id — Razorpay's subscription id, or Play's purchase token. It is how an
-    #: incoming webhook or a re-verification finds the account it belongs to.
+    #: The provider's own id — a Google Play purchase token. It is how a re-verification finds the
+    #: account it belongs to.
     provider_id: str | None
     #: One of active | past_due | cancelled | none.
     status: str
     #: Seconds. The paid-through date; tokens are never minted beyond it.
     current_period_end: int
-    #: 'razorpay' or 'play'. Defaulted so every existing caller keeps working, but it decides how
-    #: the subscription is re-checked and how it is cancelled — the two are not interchangeable.
-    provider: str = "razorpay"
+    #: Always 'play' today. Kept as a column rather than dropped: removing it means rebuilding the
+    #: table, and the v1 migration below is a standing reminder of what a rebuild here can cost.
+    provider: str = "play"
+
+
+@dataclass(frozen=True)
+class AdminRow:
+    """
+    One line of the admin console's account table.
+
+    A type of its own rather than a raw sqlite row, so that what the console can render is decided
+    here, once, by what this class has fields for. `password_hash`, `refresh_hash` and reset tokens
+    are absent by construction — a query that selected one would have nowhere to put it.
+    """
+
+    account_id: str
+    #: Null for an account created by a Play purchase, which has no email until the person adds one.
+    email: str | None
+    created_at: int
+    plan: str
+    #: active | past_due | cancelled | none. 'none' covers an account with no subscription row.
+    status: str
+    provider: str
+    current_period_end: int
+    device_count: int
+    last_seen: int
 
 
 @dataclass(frozen=True)
@@ -89,10 +112,8 @@ SCHEMA = [
     """CREATE TABLE IF NOT EXISTS subscriptions(
          account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
          plan TEXT NOT NULL,
-         -- 'razorpay' or 'play'. Which one decides how the subscription is re-checked and how it
-         -- is cancelled, and the two are not interchangeable: cancelling a Play subscription
-         -- through Razorpay's API would silently do nothing.
-         provider TEXT NOT NULL DEFAULT 'razorpay',
+         -- Always 'play'. See the note on Subscription.provider for why the column stays.
+         provider TEXT NOT NULL DEFAULT 'play',
          provider_id TEXT,
          status TEXT NOT NULL,
          current_period_end INTEGER NOT NULL
@@ -106,12 +127,6 @@ SCHEMA = [
          first_seen INTEGER NOT NULL,
          last_seen INTEGER NOT NULL,
          PRIMARY KEY (account_id, device_id)
-       )""",
-    # Idempotency for webhooks. Razorpay retries on any non-2xx, and a retried
-    # `subscription.charged` must not extend a period twice.
-    """CREATE TABLE IF NOT EXISTS webhook_events(
-         id TEXT PRIMARY KEY,
-         received_at INTEGER NOT NULL
        )""",
     """CREATE TABLE IF NOT EXISTS password_resets(
          -- The token is stored hashed, so this table cannot be read out of a database dump and
@@ -170,7 +185,7 @@ def verify_password(password: str, stored: str) -> bool:
 
 
 #: Bumped whenever MIGRATIONS grows. Stored in SQLite's own `user_version`.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _migrate(db: sqlite3.Connection) -> None:
@@ -218,6 +233,21 @@ def _migrate(db: sqlite3.Connection) -> None:
             # the INSERT above opened one — so the statement would be silently ignored and the
             # connection would carry on with foreign keys off. Store.__init__ re-asserts it after
             # the commit, which is the only place it can take effect.
+
+    if version < 2:
+        # Razorpay is gone; Play is the only provider. Existing rows carry 'razorpay' because that
+        # was the column default, not because anything about them was Razorpay — the seeded test
+        # accounts are the only rows that ever existed. Rewriting them keeps `account_by_provider_id`
+        # (which scopes its lookup by provider) able to find them.
+        #
+        # A data update, not a shape change: the column keeps its type and its NOT NULL, so there
+        # is no table rebuild here and none of the foreign-key hazard the v1 block had to handle.
+        db.execute("UPDATE subscriptions SET provider = 'play' WHERE provider = 'razorpay'")
+
+        # `webhook_events` existed to make Razorpay's retries idempotent. Play is pulled, not
+        # pushed — there is no webhook and no event id to claim — so the table has no reader left.
+        # Safe to drop outright: nothing references it, so there is no cascade to worry about.
+        db.execute("DROP TABLE IF EXISTS webhook_events")
 
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
@@ -358,12 +388,12 @@ class Store:
             )
             self._db.commit()
 
-    def account_by_provider_id(self, provider_id: str, provider: str = "razorpay") -> str | None:
+    def account_by_provider_id(self, provider_id: str, provider: str = "play") -> str | None:
         """
         The account a provider's subscription id belongs to.
 
-        Scoped by provider: the two id spaces are unrelated, and a Razorpay webhook must never be
-        able to address a Play subscription by guessing a string that happens to collide.
+        Scoped by provider: id spaces from different providers are unrelated, and a value from one
+        must never be able to address a subscription from another by colliding with it.
         """
         with self._lock:
             row = self._db.execute(
@@ -545,17 +575,132 @@ class Store:
             )
             self._db.commit()
 
-    # ---- webhook idempotency ----
+    # ---- the admin console ----
+    #
+    # Read-only, every one of them. Nothing in this section writes, because the console must not be
+    # able to grant entitlement: an HTTP route that can mark somebody paid is reachable by a
+    # session bug, a stolen cookie or a borrowed laptop, and seeding a test account is a thing a
+    # person should have to do on purpose over ssh.
+    #
+    # Columns are listed explicitly rather than selected with *, so that adding a column to
+    # `accounts` later does not silently publish it to the customer list.
 
-    def claim_event(self, event_id: str) -> bool:
-        """True the first time an event id is seen, False every time after."""
+    def admin_overview(self, now: int | None = None) -> dict[str, int]:
+        """Counts for the front page. One query per number would be four round trips for nothing."""
+        now = int(time.time() if now is None else now)
         with self._lock:
-            try:
-                self._db.execute(
-                    "INSERT INTO webhook_events(id,received_at) VALUES(?,?)",
-                    (event_id, int(time.time())),
-                )
-                self._db.commit()
-                return True
-            except sqlite3.IntegrityError:
-                return False
+            row = self._db.execute(
+                """SELECT
+                     (SELECT COUNT(*) FROM accounts) AS accounts,
+                     (SELECT COUNT(*) FROM subscriptions WHERE status='active')    AS active,
+                     (SELECT COUNT(*) FROM subscriptions WHERE status='past_due')  AS past_due,
+                     (SELECT COUNT(*) FROM subscriptions WHERE status='cancelled') AS cancelled,
+                     (SELECT COUNT(*) FROM accounts WHERE created_at >= ?)         AS new_7d,
+                     (SELECT COUNT(*) FROM accounts WHERE created_at >= ?)         AS new_30d""",
+                (now - 7 * 86400, now - 30 * 86400),
+            ).fetchone()
+        counts = {k: row[k] for k in
+                  ("accounts", "active", "past_due", "cancelled", "new_7d", "new_30d")}
+        # Every account that is not counted above has no subscription worth anything today.
+        counts["never_subscribed"] = (
+            counts["accounts"] - counts["active"] - counts["past_due"] - counts["cancelled"]
+        )
+        return counts
+
+    def admin_accounts(
+        self,
+        status: str | None = None,
+        search: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[AdminRow]:
+        """
+        The account table, newest first.
+
+        A LEFT JOIN, because an account with no subscription is the common case and leaving it out
+        would make the console answer a narrower question than the one being asked.
+        """
+        where, params = [], []
+        if status:
+            # COALESCE, so filtering by 'none' finds accounts with no subscription row at all
+            # rather than only those explicitly recorded as 'none'.
+            where.append("COALESCE(s.status, 'none') = ?")
+            params.append(status)
+        if search:
+            where.append("a.email LIKE ?")
+            params.append(f"%{search.strip().lower()}%")
+        clause = ("WHERE " + " AND ".join(where)) if where else ""
+
+        # Bounded here rather than trusting the caller: a hand-edited query string must not be able
+        # to ask for the whole table at once.
+        limit = max(1, min(int(limit), 500))
+
+        with self._lock:
+            rows = self._db.execute(
+                f"""SELECT a.id, a.email, a.created_at,
+                          COALESCE(s.plan, 'free')            AS plan,
+                          COALESCE(s.status, 'none')          AS status,
+                          COALESCE(s.provider, '')            AS provider,
+                          COALESCE(s.current_period_end, 0)   AS current_period_end,
+                          (SELECT COUNT(*)         FROM devices d WHERE d.account_id = a.id) AS device_count,
+                          (SELECT COALESCE(MAX(d.last_seen), 0) FROM devices d WHERE d.account_id = a.id) AS last_seen
+                     FROM accounts a
+                     LEFT JOIN subscriptions s ON s.account_id = a.id
+                     {clause}
+                    ORDER BY a.created_at DESC
+                    LIMIT ? OFFSET ?""",
+                (*params, limit, max(0, int(offset))),
+            ).fetchall()
+
+        return [
+            AdminRow(
+                account_id=r["id"], email=r["email"], created_at=r["created_at"],
+                plan=r["plan"], status=r["status"], provider=r["provider"],
+                current_period_end=r["current_period_end"],
+                device_count=r["device_count"], last_seen=r["last_seen"],
+            )
+            for r in rows
+        ]
+
+    def admin_account_count(self, status: str | None = None, search: str | None = None) -> int:
+        """How many rows the filters match, so the console can page without guessing."""
+        where, params = [], []
+        if status:
+            where.append("COALESCE(s.status, 'none') = ?")
+            params.append(status)
+        if search:
+            where.append("a.email LIKE ?")
+            params.append(f"%{search.strip().lower()}%")
+        clause = ("WHERE " + " AND ".join(where)) if where else ""
+        with self._lock:
+            row = self._db.execute(
+                f"""SELECT COUNT(*) AS n FROM accounts a
+                     LEFT JOIN subscriptions s ON s.account_id = a.id
+                     {clause}""",
+                tuple(params),
+            ).fetchone()
+        return row["n"]
+
+    def admin_account(self, account_id: str) -> AdminRow | None:
+        with self._lock:
+            row = self._db.execute(
+                """SELECT a.id, a.email, a.created_at,
+                          COALESCE(s.plan, 'free')          AS plan,
+                          COALESCE(s.status, 'none')        AS status,
+                          COALESCE(s.provider, '')          AS provider,
+                          COALESCE(s.current_period_end, 0) AS current_period_end,
+                          (SELECT COUNT(*)         FROM devices d WHERE d.account_id = a.id) AS device_count,
+                          (SELECT COALESCE(MAX(d.last_seen), 0) FROM devices d WHERE d.account_id = a.id) AS last_seen
+                     FROM accounts a
+                     LEFT JOIN subscriptions s ON s.account_id = a.id
+                    WHERE a.id = ?""",
+                (account_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return AdminRow(
+            account_id=row["id"], email=row["email"], created_at=row["created_at"],
+            plan=row["plan"], status=row["status"], provider=row["provider"],
+            current_period_end=row["current_period_end"],
+            device_count=row["device_count"], last_seen=row["last_seen"],
+        )

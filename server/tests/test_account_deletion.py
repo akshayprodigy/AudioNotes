@@ -23,7 +23,7 @@ def client(store, signing_key):
 def cancels(monkeypatch):
     """Record cancellation attempts, and succeed."""
     calls: list[str] = []
-    monkeypatch.setattr(pages, "cancel_subscription",
+    monkeypatch.setattr(pages, "cancel_play_subscription",
                         lambda pid: (calls.append(pid) or (True, None)))
     return calls
 
@@ -85,11 +85,11 @@ def test_a_past_due_subscription_is_also_cancelled(client, store, cancels):
 
 def test_nothing_is_deleted_when_the_provider_will_not_cancel(client, store, monkeypatch):
     """Being billed for an account you deleted is the worst thing this system could do."""
-    monkeypatch.setattr(pages, "cancel_subscription", lambda pid: (False, "Razorpay is down"))
+    monkeypatch.setattr(pages, "cancel_play_subscription", lambda pid: (False, "Google is down"))
     subscribed(store)
     r = delete(client)
     assert r.status_code == 502
-    assert "Razorpay is down" in r.text
+    assert "Google is down" in r.text
     assert store.account_by_email("a@example.com") is not None, "the account survived, as it must"
 
 

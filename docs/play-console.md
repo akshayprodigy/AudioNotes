@@ -263,4 +263,5 @@ benefit, and the room is what you would be destroying.
 - [ ] Test on a low-RAM, non-Pixel device — the 1.5B model is the risk
 - [ ] Decide pricing, create the `verbale_pro_monthly` subscription in Play Console
 - [ ] Google Cloud service account with the Android Publisher API, linked to Play Console (`PLAY_SERVICE_ACCOUNT_JSON`)
-- [ ] Razorpay plan — needed only for the web/desktop route, no longer blocking the Android launch
+- [ ] Grant that service account **Manage orders and subscriptions** — account deletion cancels the
+      subscription at Google first, and refuses to delete if it cannot

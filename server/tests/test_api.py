@@ -136,17 +136,6 @@ def test_refreshing_after_the_subscription_lapses_returns_no_token(client, store
                        json={"deviceId": "d1", "refreshKey": key}).json()["token"] is None
 
 
-# ---- billing ----
-
-def test_subscribing_without_razorpay_configured_says_so(client, store, monkeypatch):
-    monkeypatch.delenv("RAZORPAY_KEY_ID", raising=False)
-    monkeypatch.delenv("RAZORPAY_PLAN_ID", raising=False)
-    store.create_account("a@example.com", "password123")
-    r = client.post("/api/billing/subscribe",
-                    json={"email": "a@example.com", "password": "password123"})
-    assert r.status_code == 503
-
-
 # ---- pages ----
 
 @pytest.mark.parametrize("path", ["/", "/signup", "/account"])

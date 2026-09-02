@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import play
-from app.billing import link_play_purchase, refresh_play_subscription
+from app.billing import cancel_play_subscription, link_play_purchase, refresh_play_subscription
 from app.main import create_app
 from app.play import PlayError, PlaySubscription, parse_subscription
 from app.store import DEVICE_LIMIT, Subscription
@@ -235,9 +235,14 @@ def test_a_google_outage_does_not_revoke_a_paying_customer(store, google):
     assert store.subscription(account_id).status == "active"
 
 
-def test_refreshing_a_razorpay_account_does_not_call_google(store, google):
+def test_a_subscription_that_is_not_a_play_one_is_not_sent_to_google(store, google):
+    """
+    Play is the only provider now, so this guard has nothing left to exclude — and that is exactly
+    why it is worth a test. A row reaching Google with an id Google cannot parse is a lookup that
+    fails on every refresh; the guard is what keeps a non-Play row inert instead.
+    """
     account = store.create_account("a@example.com", "password123")
-    store.upsert_subscription(Subscription(account_id=account.id, plan="pro", provider="razorpay",
+    store.upsert_subscription(Subscription(account_id=account.id, plan="pro", provider="other",
                                            provider_id="sub_x", status="active",
                                            current_period_end=FUTURE))
     refresh_play_subscription(store, account.id)  # would raise if it asked Google about "sub_x"
@@ -269,3 +274,116 @@ def test_the_device_limit_applies_to_play_purchases_too(client, store, google):
 def test_an_unconfigured_server_says_so_rather_than_granting(store, monkeypatch):
     monkeypatch.setattr(play, "is_configured", lambda: False)
     assert link_play_purchase(store, "t").status == 503
+
+
+# ---- cancelling, which is what makes account deletion safe ----
+
+def test_cancel_posts_to_googles_cancel_endpoint(monkeypatch):
+    """
+    The URL is built by hand from three variables, so it is worth asserting once.
+
+    A wrong path here does not fail loudly: Google answers 404, the caller reads that as "already
+    cancelled", and an account is deleted while the card keeps being charged.
+    """
+    calls: list[tuple[str, dict]] = []
+    monkeypatch.setenv("PLAY_PACKAGE_NAME", "com.innocorelabs.verbale")
+    monkeypatch.setattr(play, "_post", lambda path, body: calls.append((path, body)))
+
+    play.cancel("token-123", "pro_monthly")
+
+    assert calls == [(
+        "/applications/com.innocorelabs.verbale/purchases/subscriptions/"
+        "pro_monthly/tokens/token-123:cancel",
+        {},
+    )]
+
+
+def test_cancel_quotes_a_token_containing_a_slash(monkeypatch):
+    """Purchase tokens are opaque base64-ish strings; an unquoted / would change the path."""
+    calls: list[tuple[str, dict]] = []
+    monkeypatch.setenv("PLAY_PACKAGE_NAME", "pkg")
+    monkeypatch.setattr(play, "_post", lambda path, body: calls.append((path, body)))
+
+    play.cancel("aa/bb+cc", "pro_monthly")
+
+    assert calls[0][0].endswith("/tokens/aa%2Fbb%2Bcc:cancel")
+
+
+# ---- cancel_play_subscription: the guarantee account deletion rests on ----
+#
+# The asymmetry under test throughout: "already gone" must read as success, or an account can
+# never be deleted; "we don't know" must read as failure, or somebody keeps being charged for an
+# account that no longer exists.
+
+@pytest.fixture
+def cancellable(monkeypatch):
+    """Google, for the cancel path: verify answers, and cancels are recorded."""
+    state = {"answer": purchase(), "verify_error": None, "cancel_error": None, "cancelled": []}
+
+    def verify(token):
+        if state["verify_error"]:
+            raise state["verify_error"]
+        return state["answer"]
+
+    def cancel(token, product_id):
+        if state["cancel_error"]:
+            raise state["cancel_error"]
+        state["cancelled"].append((token, product_id))
+
+    monkeypatch.setattr(play, "is_configured", lambda: True)
+    monkeypatch.setattr(play, "verify", verify)
+    monkeypatch.setattr(play, "cancel", cancel)
+    return state
+
+
+def test_a_live_subscription_is_cancelled_at_google(cancellable):
+    assert cancel_play_subscription("t") == (True, None)
+    assert cancellable["cancelled"] == [("t", "pro_monthly")]
+
+
+def test_an_already_cancelled_subscription_is_a_success_and_is_not_cancelled_twice(cancellable):
+    """Otherwise the account could never be deleted — there is no card left to stop."""
+    cancellable["answer"] = purchase(status="cancelled")
+    assert cancel_play_subscription("t") == (True, None)
+    assert cancellable["cancelled"] == []
+
+
+def test_a_token_google_has_never_heard_of_is_a_success(cancellable):
+    cancellable["verify_error"] = PlayError("Play API 404: nope", status=404)
+    assert cancel_play_subscription("t") == (True, None)
+
+
+def test_google_being_unreachable_refuses_the_deletion(cancellable):
+    """A maybe is a no. Refusing costs a retry; wrongly succeeding costs money every month."""
+    cancellable["verify_error"] = PlayError("could not reach Google: timeout")
+    ok, error = cancel_play_subscription("t")
+    assert ok is False and "could not reach Google" in error
+
+
+def test_a_server_error_from_google_refuses_the_deletion(cancellable):
+    cancellable["verify_error"] = PlayError("Play API 503: try later", status=503)
+    assert cancel_play_subscription("t")[0] is False
+
+
+def test_a_failing_cancel_call_refuses_the_deletion(cancellable):
+    cancellable["cancel_error"] = PlayError("Play API 500: boom", status=500)
+    assert cancel_play_subscription("t")[0] is False
+
+
+def test_a_cancel_that_404s_is_a_success(cancellable):
+    """Between the verify and the cancel it stopped existing. That is the state we wanted."""
+    cancellable["cancel_error"] = PlayError("Play API 404: gone", status=404)
+    assert cancel_play_subscription("t") == (True, None)
+
+
+def test_a_live_subscription_with_no_product_id_refuses_the_deletion(cancellable):
+    """The cancel URL cannot be built, so the honest answer is that we could not cancel it."""
+    cancellable["answer"] = purchase(product="")
+    ok, error = cancel_play_subscription("t")
+    assert ok is False and "which product" in error
+    assert cancellable["cancelled"] == []
+
+
+def test_an_unconfigured_server_refuses_rather_than_pretending(store, monkeypatch):
+    monkeypatch.setattr(play, "is_configured", lambda: False)
+    assert cancel_play_subscription("t")[0] is False

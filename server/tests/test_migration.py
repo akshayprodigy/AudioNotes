@@ -79,11 +79,27 @@ def test_the_paying_customer_survives(old_db):
     store.close()
 
 
-def test_an_existing_subscription_is_assumed_to_be_razorpay(old_db):
-    """It is the only provider that existed when those rows were written."""
+def test_an_existing_subscription_is_migrated_to_play(old_db):
+    """
+    v1 stamped every row 'razorpay' because that was the column default. v2 rewrites them.
+
+    The lookup matters as much as the column: `account_by_provider_id` scopes by provider, so a row
+    left saying 'razorpay' would be invisible to every caller after the default changed — the
+    subscription would still be in the database and the account would behave as though it had none.
+    """
     store = Store(old_db)
-    assert store.subscription("acct_old").provider == "razorpay"
-    assert store.account_by_provider_id("sub_razorpay", provider="razorpay") == "acct_old"
+    assert store.subscription("acct_old").provider == "play"
+    assert store.account_by_provider_id("sub_razorpay") == "acct_old"
+    store.close()
+
+
+def test_the_dead_webhook_table_is_dropped(old_db):
+    """It existed only for Razorpay's retries. Play is pulled, so nothing claims events."""
+    store = Store(old_db)
+    names = {r[0] for r in store._db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "webhook_events" not in names
+    assert {"accounts", "subscriptions", "devices"} <= names, "and nothing else went with it"
     store.close()
 
 

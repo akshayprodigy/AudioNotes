@@ -18,10 +18,14 @@ from .store import Store, Subscription
 
 #: How long past the paid-through date a token may still be minted.
 #:
-#: Card renewals fail for boring reasons -- an expired card, a bank's fraud heuristic, a daily limit
-#: -- and Razorpay retries over the following days. Cutting someone off at the exact second their
-#: period ends would punish them for their bank's behaviour, in an app they are mid-meeting with.
-#: Three days covers the retries without turning a cancellation into a free fortnight.
+#: Card renewals fail for boring reasons -- an expired card, a bank's fraud heuristic, a daily limit.
+#: Google's own handling covers most of it: while it retries, the subscription is IN_GRACE_PERIOD
+#: and the expiry it reports is still in the future, so this window is never even reached. It bites
+#: only after those retries fail and the subscription goes ON_HOLD with an expiry already past.
+#:
+#: Three days there is deliberate. Cutting someone off at the exact second their period ends would
+#: punish them for their bank's behaviour, in an app they are mid-meeting with; Google's hold can
+#: run for thirty days, and matching that would turn a failed payment into a free month.
 PAYMENT_GRACE_SECONDS = 3 * 24 * 60 * 60
 
 

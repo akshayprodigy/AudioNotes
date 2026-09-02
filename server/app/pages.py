@@ -19,12 +19,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import mailer
 from . import landing
-from .billing import cancel_subscription, start_subscription
+from .billing import cancel_play_subscription
 from .branding import PRODUCT_NAME
 from .legal import register_legal
 from .entitlement import is_entitled
@@ -265,14 +265,14 @@ def register_pages(app: FastAPI, store: Store) -> None:
                 else f"<p>Renews {renews}.</p>"
             )
         else:
-            plan_block = f"""<p>The summary and written minutes need a subscription. Everything else in the
-                    app keeps working without one.</p>
-                  <form method="post" action="/subscribe">
-                    <input type="hidden" name="email" value="{esc(acct.email)}">
-                    <label for="p">Confirm your password</label>
-                    <input id="p" name="password" type="password" required autocomplete="current-password">
-                    <button type="submit">Subscribe</button>
-                  </form>"""
+            # No checkout here. Subscribing happens through Google Play, inside the app, and this
+            # page has no way to start it — so it says where to go rather than offering a button
+            # that cannot work.
+            plan_block = """<p>The summary and written minutes need a subscription. Everything else in
+                    the app keeps working without one.</p>
+                  <p>Subscribe in the app: open <strong>Settings</strong> and choose
+                     <strong>Upgrade</strong>. Billing is handled by Google Play, and the
+                     subscription is tied to the Google account that bought it.</p>"""
 
         if devices:
             device_rows = "".join(
@@ -476,11 +476,11 @@ If it was not you, nothing has happened and you can ignore this. Your password h
 
         sub = store.subscription(acct.id)
         if sub.provider_id and sub.status in ("active", "past_due"):
-            # Deleting our row stops us knowing about a subscription; it does not stop Razorpay
+            # Deleting our row stops us knowing about a subscription; it does not stop Google
             # charging the card. Being billed monthly for an account you deleted is the worst
             # thing this system could do to somebody, so a failure here stops the deletion rather
             # than being logged and stepped over.
-            cancelled, error = cancel_subscription(sub.provider_id)
+            cancelled, error = cancel_play_subscription(sub.provider_id)
             if not cancelled:
                 return _page(
                     "Delete this account",
@@ -505,22 +505,3 @@ If it was not you, nothing has happened and you can ignore this. Your password h
            <a href="/"><button>Done</button></a>
          </div>""",
         )
-
-    @app.post("/subscribe")
-    async def subscribe(request: Request):
-        """Kick off Razorpay checkout from the account page."""
-        form = await request.form()
-        result = start_subscription(
-            store, str(form.get("email") or ""), str(form.get("password") or "")
-        )
-        if result.checkout_url is None:
-            return _page(
-                "Subscribe",
-                f"""<h1>Could not start the subscription</h1>
-            <p class="err">{esc(result.error or "Unknown error")}</p>
-            <a href="/account">Back to my account</a>""",
-                status=result.status,
-            )
-        # 303, so the browser turns this POST into a GET of the checkout page. A 302 leaves the
-        # method up to the browser, and a POST to Razorpay's hosted page is not what we mean.
-        return RedirectResponse(result.checkout_url, status_code=303)

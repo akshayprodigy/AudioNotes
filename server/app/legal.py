@@ -74,9 +74,9 @@ def _privacy() -> str:
    models, and then never again.</p>
 
 <h2>Payments</h2>
-<p>Subscriptions are processed by Razorpay. Your card or UPI details go to them and never to us —
-   we receive only a subscription identifier and whether it is paid. Razorpay's own privacy policy
-   governs what they hold.</p>
+<p>Subscriptions are bought and billed through Google Play. Your payment details go to Google and
+   never to us — we receive only a purchase identifier and whether it is paid. Google's own privacy
+   policy governs what they hold.</p>
 
 <h2>Server logs</h2>
 <p>Our web server keeps ordinary access logs — IP address, time, the page requested — as any web
@@ -122,12 +122,14 @@ def _terms() -> str:
 
 <h2>The subscription</h2>
 <ul>
-  <li>Billed monthly through Razorpay until cancelled.</li>
+  <li>Bought in the app and billed monthly through Google Play until cancelled.</li>
   <li>One subscription covers up to {DEVICE_LIMIT} devices. You can change which devices from your
       account page.</li>
-  <li>Cancel any time from your account page. Access continues to the end of the period you have
-      already paid for; we do not cut it short.</li>
-  <li>If a payment fails, we allow three days for your bank to retry before paid features stop.</li>
+  <li>Cancel any time in Google Play, under Subscriptions. Deleting your account here cancels it
+      too. Access continues to the end of the period you have already paid for; we do not cut it
+      short.</li>
+  <li>If a payment fails, Google retries. Paid features keep working while it does, and for three
+      days after.</li>
 </ul>
 
 <h2>Refunds</h2>

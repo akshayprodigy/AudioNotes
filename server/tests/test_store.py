@@ -98,12 +98,6 @@ def test_reissuing_a_refresh_key_retires_the_old_one(store):
     assert store.account_for_refresh_key("dev_1", first) is None
 
 
-def test_an_event_id_can_only_be_claimed_once(store):
-    assert store.claim_event("evt_1")
-    assert not store.claim_event("evt_1")
-    assert store.claim_event("evt_2")
-
-
 def test_the_store_survives_being_reopened(tmp_path):
     path = str(tmp_path / "reopen.db")
     first = Store(path)

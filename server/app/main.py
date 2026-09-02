@@ -16,13 +16,14 @@ from typing import Any
 
 from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse
 
 from . import mailer
 from .branding import PRODUCT_NAME
-from .billing import apply_webhook, link_play_purchase, refresh_play_subscription, start_subscription
+from .billing import link_play_purchase, refresh_play_subscription
 from .entitlement import issue
 from .licence import signing_key_from_env
+from .admin import register_admin
 from .pages import register_pages
 from .store import DEVICE_LIMIT, Store
 
@@ -139,8 +140,8 @@ def create_app(
             return _error(401, "Sign in again")
 
         # A Play subscription is pulled, not pushed: there is no webhook telling us it lapsed, so
-        # this is where a cancellation or expiry gets noticed. It is a no-op for Razorpay accounts
-        # and silent on any Google failure — an outage there must not revoke a paying customer.
+        # this is where a cancellation or expiry gets noticed. Silent on any Google failure — an
+        # outage there must not revoke a paying customer.
         refresh_play_subscription(store, account_id)
 
         licence = issue(store, key, account_id, device_id)
@@ -151,17 +152,6 @@ def create_app(
         }
 
     # ---- billing ----
-
-    @app.post("/api/billing/subscribe")
-    async def subscribe(request: Request):
-        body = await _json_body(request)
-        email, password = body.get("email"), body.get("password")
-        if not isinstance(email, str) or not isinstance(password, str):
-            return _error(400, "Sign in to subscribe")
-        result = start_subscription(store, email, password)
-        if result.checkout_url is None:
-            return _error(result.status, result.error or "Could not start the subscription")
-        return {"subscriptionId": result.subscription_id, "checkoutUrl": result.checkout_url}
 
     @app.post("/api/billing/play/link")
     async def play_link(request: Request):
@@ -204,22 +194,14 @@ def create_app(
             "expiresAt": licence.expires_at if licence else 0,
         }
 
-    @app.post("/api/billing/webhook")
-    async def webhook(request: Request):
-        # The signature is over the RAW body -- a parsed and re-serialised body does not hash to
-        # the same bytes, so this route reads bytes and parses them itself.
-        raw = await request.body()
-        status, message = apply_webhook(
-            store,
-            raw,
-            request.headers.get("x-razorpay-signature", ""),
-            request.headers.get("x-razorpay-event-id", ""),
-        )
-        return PlainTextResponse(message, status_code=status)
-
     # ---- web pages ----
 
     register_pages(app, store)
+
+    # The admin console. Mounted always, but every route inside answers 404 until
+    # ADMIN_SESSION_SECRET and VERBALE_ADMIN_EMAILS are both set — so turning it on is a restart,
+    # not a different build, and a server that was never configured for it does not advertise it.
+    register_admin(app, store)
 
     @app.get("/healthz")
     def healthz():
