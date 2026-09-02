@@ -52,6 +52,11 @@ import java.io.File
  *                               Revisit if that comes up. Reverting is this one ModelSpec: no
  *                               code depends on which embedding model is used.
  *   llm-qwen      Apache-2.0    Qwen2.5-1.5B-Instruct
+ *   qwen3-asr     Apache-2.0    Qwen3-ASR-0.6B. The ONNX export is a third-party conversion
+ *                               (github.com/Wasser1462/Qwen3-ASR-onnx, mirrored on ModelScope);
+ *                               the weights it converts are Alibaba's under Apache-2.0. The
+ *                               hashes below were computed from the bytes in the sherpa-onnx
+ *                               release tarball, verified 2026-09-02.
  */
 /**
  * @param purpose  What this model DOES, in the user's words. This is the headline in Settings;
@@ -64,6 +69,31 @@ import java.io.File
  * @param upstream Where the file originates. Used as-is when no CDN is configured, and as the
  *                 fallback when one is — see [ModelCatalog.sourcesFor].
  */
+/**
+ * One downloadable file. Most models are a single part; Qwen3-ASR is six.
+ *
+ * Each part is fetched, sha256-verified and renamed into place on its own, exactly as a
+ * single-file model always was — the multi-part case repeats that logic rather than replacing it,
+ * which is deliberate: this is the path standing between a hijacked mirror and code executing on
+ * a user's phone, and it was not worth redesigning to save a loop.
+ *
+ * `filename` may contain a subdirectory ("qwen3-asr/encoder.int8.onnx"). The download creates
+ * parent directories; nothing else needs to know.
+ */
+data class ModelPart(
+  val filename: String,
+  val sha256: String,
+  val sizeBytes: Long,
+  /**
+   * Where THIS file comes from, in full.
+   *
+   * Held per part rather than rebuilt from a shared base plus the filename, because the two are
+   * not related: diar-seg is stored as `diar_segmentation.onnx` and served upstream as
+   * `model.onnx`. A base-plus-filename scheme would have quietly produced a 404 for it.
+   */
+  val upstream: String,
+)
+
 data class ModelSpec(
   val id: String,
   val name: String,
@@ -71,10 +101,25 @@ data class ModelSpec(
   val detail: String,
   val kind: String, // vad | asr | diar | llm
   val required: Boolean,
-  val filename: String,
-  val upstream: String,
-  val sha256: String,
-  val sizeBytes: Long,
+  val parts: List<ModelPart>,
+) {
+  /** Total download, which is what the user is deciding about. */
+  val sizeBytes: Long get() = parts.sumOf { it.sizeBytes }
+
+  /** The single part, for the many places that still only ever deal with one. */
+  val filename: String get() = parts.first().filename
+}
+
+/**
+ * Single-file model — the shape every entry had before Qwen3-ASR arrived, kept so those entries
+ * read exactly as they did and a one-file model never has to think about parts.
+ */
+fun ModelSpec(
+  id: String, name: String, purpose: String, detail: String, kind: String, required: Boolean,
+  filename: String, upstream: String, sha256: String, sizeBytes: Long,
+): ModelSpec = ModelSpec(
+  id, name, purpose, detail, kind, required,
+  parts = listOf(ModelPart(filename, sha256, sizeBytes, upstream)),
 )
 
 object ModelCatalog {
@@ -139,6 +184,49 @@ object ModelCatalog {
       "https://huggingface.co/csukuangfj/speaker-embedding-models/resolve/main/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx",
       "aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2", 28_281_164L,
     ),
+    // Qwen3-ASR 0.6B, int8 — the Hindi transcriber, and the reason the ASR layer has two engines.
+    //
+    // Measured on a real Hindi/English meeting (2026-08-19), against whisper-base on the same
+    // audio and the same VAD spans: 69.8% Devanagari against 4.1%, 1,205 words against 976, and
+    // the Urdu-script junk that made those transcripts unreadable down from 18.0% to 6.6%.
+    //
+    // SIX FILES, one model. sherpa-onnx needs the conv frontend, encoder, decoder and a tokenizer
+    // directory, and Qwen3Asr resolves them by convention from the parent directory — so the
+    // filenames below are load-bearing and must not be "tidied".
+    //
+    // Not shipped as one archive on purpose: bz2 takes 987 MB to 878 MB, an 11% saving, in
+    // exchange for needing the archive AND its contents on disk at once — 1.9 GB peak on a phone
+    // for a 972 MB model. Six resumable files never exceed the model's own size, and a dropped
+    // connection costs one file rather than the lot.
+    //
+    // required=false and behind the subscription: it is an optional "Hindi and English" download,
+    // and at 972 MB it is the largest thing this app will ever ask for.
+    ModelSpec(
+      "qwen3-asr", "Qwen3-ASR",
+      "Writes down Hindi properly",
+      "Hears Hindi and Hinglish the way they are actually spoken, in Devanagari rather than the garbled script the standard transcriber falls back to. A large download, and only worth it if you record in Hindi.",
+      "asr", false,
+      parts = listOf(
+        ModelPart("qwen3-asr/conv_frontend.onnx",
+          "d22dc4423e0940e49884e903d2ea2f7e5567c14fc1aed97e4e26d6b8f208ef9e", 44_148_281L,
+          "https://modelscope.cn/models/zengshuishui/Qwen3-ASR-onnx/resolve/master/model_0.6B/conv_frontend.onnx"),
+        ModelPart("qwen3-asr/encoder.int8.onnx",
+          "60748d3e6744a57c9c91e1b17424a6c2990567e8adceb0783940c03ed98fa9d9", 182_491_662L,
+          "https://modelscope.cn/models/zengshuishui/Qwen3-ASR-onnx/resolve/master/model_0.6B/encoder.int8.onnx"),
+        ModelPart("qwen3-asr/decoder.int8.onnx",
+          "4f6885be5959ae26af3089d38ee7972c5fafbeeb1cf8d5e76eab6d8b61ca5771", 755_914_231L,
+          "https://modelscope.cn/models/zengshuishui/Qwen3-ASR-onnx/resolve/master/model_0.6B/decoder.int8.onnx"),
+        ModelPart("qwen3-asr/tokenizer/vocab.json",
+          "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910", 2_776_833L,
+          "https://modelscope.cn/models/zengshuishui/Qwen3-ASR-onnx/resolve/master/tokenizer/vocab.json"),
+        ModelPart("qwen3-asr/tokenizer/merges.txt",
+          "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5", 1_671_853L,
+          "https://modelscope.cn/models/zengshuishui/Qwen3-ASR-onnx/resolve/master/tokenizer/merges.txt"),
+        ModelPart("qwen3-asr/tokenizer/tokenizer_config.json",
+          "4942d005604266809309cabc9f4e9cb89ce855d59b14681fdc0e1cc62ea26c4c", 12_487L,
+          "https://modelscope.cn/models/zengshuishui/Qwen3-ASR-onnx/resolve/master/tokenizer/tokenizer_config.json"),
+      ),
+    ),
     // On-device LLM: writes the summary, the MOM narrative and the library one-liner (Narrator).
     // Qwen family is Apache-2.0. Swap to a Qwen3 GGUF when you settle on one; Qwen2.5-1.5B-Instruct
     // is a safe, widely available default.
@@ -176,10 +264,10 @@ object ModelCatalog {
    * the hash in this catalog — a substituted or corrupted file fails the same way from either
    * source. Leave it empty and behaviour is exactly as before.
    */
-  fun sourcesFor(spec: ModelSpec): List<String> {
+  fun sourcesFor(part: ModelPart): List<String> {
     val base = BuildConfig.MODEL_BASE_URL.trim().trimEnd('/')
-    if (base.isEmpty()) return listOf(spec.upstream)
-    return listOf("$base/models/v1/${spec.filename}", spec.upstream)
+    if (base.isEmpty()) return listOf(part.upstream)
+    return listOf("$base/models/v1/${part.filename}", part.upstream)
   }
 
   /**
@@ -214,7 +302,7 @@ object ModelCatalog {
    * refusal that matters — it is what a patched JS bundle cannot reach.
    */
   fun needsSubscription(spec: ModelSpec): Boolean =
-    spec.kind == "llm" || spec.id == "whisper-small"
+    spec.kind == "llm" || spec.id == "whisper-small" || spec.id == "qwen3-asr"
 
   fun byId(id: String): ModelSpec? = ALL.firstOrNull { it.id == id }
 

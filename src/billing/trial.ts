@@ -336,7 +336,7 @@ export async function refuseNudge(): Promise<void> {
  * This list is what the UI shows. The refusal that MATTERS is ModelCatalog.needsSubscription, on
  * the native side, and until it names this id too a free user can still fetch the weights.
  */
-export const PRO_MODEL_IDS: readonly string[] = ['whisper-small'];
+export const PRO_MODEL_IDS: readonly string[] = ['whisper-small', 'qwen3-asr'];
 
 export function isProModel(m: { id: string; needsSubscription: boolean }): boolean {
   return m.needsSubscription || PRO_MODEL_IDS.includes(m.id);

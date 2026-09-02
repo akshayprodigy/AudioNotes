@@ -43,9 +43,15 @@ ssh "$HOST" "python3 '$STAGE_DIR/scripts/mirror-models.py' fetch --dir '$SERVE_D
 
 # nginx runs as www-data and needs to traverse and read. 755/644 and nothing group-writable: these
 # are files the whole internet downloads and executes as model weights on people's phones.
+#
+# Directories and files are chmod'ed SEPARATELY, by type. A flat `chmod 644 .../v1/*` was fine for
+# as long as every model was a single file, and silently broke the first one that was not: a
+# directory without its execute bit cannot be traversed, so qwen3-asr/ and everything under it
+# returned 404 while the files beside it served normally.
 echo "==> permissions"
 ssh "$HOST" "chmod 755 '$SERVE_DIR' '$SERVE_DIR/models' '$SERVE_DIR/models/v1' &&
-             chmod 644 '$SERVE_DIR/models/v1/'* &&
+             find '$SERVE_DIR/models/v1' -type d -exec chmod 755 {} + &&
+             find '$SERVE_DIR/models/v1' -type f -exec chmod 644 {} + &&
              ls -la '$SERVE_DIR/models/v1/'"
 
 echo

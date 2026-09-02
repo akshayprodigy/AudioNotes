@@ -30,7 +30,7 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
   fun list(promise: Promise) {
     val arr = JSONArray()
     for (spec in ModelCatalog.ALL) {
-      val f = File(ModelCatalog.modelsDir(ctx), spec.filename)
+      val dir = ModelCatalog.modelsDir(ctx)
       arr.put(
         JSONObject()
           .put("id", spec.id)
@@ -47,7 +47,11 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
           // Compared against the size rather than the sha256 deliberately: this runs on every
           // list() call, and hashing the 1.1 GB LLM each time to catch a rare case is not worth
           // it. The full sha256 is still verified after every download.
-          .put("installed", f.exists() && f.length() == spec.sizeBytes)
+          // Every part, not just the first. A six-file model with five files on disk is not
+          // installed, and reporting it as such would hand the engine a directory it cannot load.
+          .put("installed", spec.parts.all { p ->
+            File(dir, p.filename).let { it.exists() && it.length() == p.sizeBytes }
+          })
           // So the UI can say "Pro" against it rather than offering a download that will be
           // refused. The refusal in download() is the enforcement; this is only the honesty.
           .put("needsSubscription", ModelCatalog.needsSubscription(spec))
@@ -90,27 +94,44 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
     // interrupted download lives in a .part file and never has this name; a swapped model changes
     // the size. Re-hashing 1.1 GB on every call to catch what download() already verified once
     // would cost more than the case is worth.
-    val present = File(ModelCatalog.modelsDir(ctx), spec.filename)
-    if (present.exists() && present.length() == spec.sizeBytes) {
+    val modelsDir = ModelCatalog.modelsDir(ctx)
+    val allPresent = spec.parts.all { p ->
+      File(modelsDir, p.filename).let { it.exists() && it.length() == p.sizeBytes }
+    }
+    if (allPresent) {
       // A leftover .part is garbage once the real file is complete, and returning early is what
       // makes it permanent: nothing else ever looks at these. Before this early return, a later
       // download resumed into the .part and eventually renamed it away, so the leak had no way to
       // last. Interrupt the 1.1 GB writer model and get it another way and that is a gigabyte kept
       // for nothing, on a phone, forever.
-      File(present.parentFile, spec.filename + ".part").delete()
-      emitProgress(id, present.length(), present.length())
-      promise.resolve(present.absolutePath)
+      for (p in spec.parts) File(modelsDir, p.filename + ".part").delete()
+      emitProgress(id, spec.sizeBytes, spec.sizeBytes)
+      promise.resolve(File(modelsDir, spec.parts.first().filename).absolutePath)
       return
     }
     Thread {
-      val dest = File(ModelCatalog.modelsDir(ctx), spec.filename)
-      val part = File(dest.parentFile, spec.filename + ".part")
       try {
+       // One part at a time, each fetched, hashed and renamed exactly as a single-file model
+       // always was. Sequential rather than parallel: these are hundreds of megabytes over a
+       // phone's connection, and three at once is slower than three in a row as well as being
+       // three ways to run the battery down.
+       var doneBytes = 0L
+       for (part_ in spec.parts) {
+        val dest = File(modelsDir, part_.filename)
+        val part = File(modelsDir, part_.filename + ".part")
+        // Parts may live in a subdirectory ("qwen3-asr/tokenizer/vocab.json"), which will not
+        // exist on a fresh install.
+        dest.parentFile?.mkdirs()
+        if (dest.exists() && dest.length() == part_.sizeBytes) {
+          doneBytes += part_.sizeBytes
+          emitProgress(id, doneBytes, spec.sizeBytes)
+          continue
+        }
         // Try each source in turn — our mirror first, upstream as the fallback. A source that
         // fails part-way leaves a .part file, and the next attempt resumes into it via Range,
         // which is safe across sources ONLY because the bytes are identical by definition: the
         // sha256 below is what proves it, and a mismatch discards the file rather than loading it.
-        val sources = ModelCatalog.sourcesFor(spec)
+        val sources = ModelCatalog.sourcesFor(part_)
         var lastError: Exception? = null
         var fetched = false
         for ((i, source) in sources.withIndex()) {
@@ -125,9 +146,9 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
         }
         if (!fetched) throw lastError ?: IllegalStateException("no source for $id")
 
-        if (spec.sha256.isNotEmpty()) {
+        if (part_.sha256.isNotEmpty()) {
           val actual = sha256(part)
-          if (!actual.equals(spec.sha256, ignoreCase = true)) {
+          if (!actual.equals(part_.sha256, ignoreCase = true)) {
             // Discard it. Left in place, the next attempt resumes into bytes already known to be
             // wrong and can never converge — the download would fail identically forever.
             part.delete()
@@ -139,13 +160,17 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
 
         if (dest.exists()) dest.delete()
         if (!part.renameTo(dest)) throw IllegalStateException("could not finalize $id")
+        doneBytes += part_.sizeBytes
+        emitProgress(id, doneBytes, spec.sizeBytes)
+       }
 
+        val first = File(modelsDir, spec.parts.first().filename)
         AudioDb.get(ctx).upsertModel(
-          spec.id, spec.name, spec.kind, dest.absolutePath, spec.sha256, dest.length(),
-          System.currentTimeMillis(),
+          spec.id, spec.name, spec.kind, first.absolutePath, spec.parts.first().sha256,
+          spec.sizeBytes, System.currentTimeMillis(),
         )
-        emitProgress(id, dest.length(), dest.length())
-        promise.resolve(dest.absolutePath)
+        emitProgress(id, spec.sizeBytes, spec.sizeBytes)
+        promise.resolve(first.absolutePath)
       } catch (e: Exception) {
         Log.e("ModelManager", "download failed for $id", e)
         promise.reject("download_failed", e)
@@ -200,17 +225,19 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
   @ReactMethod
   fun verify(id: String, promise: Promise) {
     val spec = ModelCatalog.byId(id)
-    val f = spec?.let { File(ModelCatalog.modelsDir(ctx), it.filename) }
-    if (spec == null || f == null || !f.exists()) {
+    if (spec == null) {
       promise.resolve(false)
       return
     }
-    if (spec.sha256.isEmpty()) {
-      promise.resolve(true) // nothing to check against
-      return
-    }
     try {
-      promise.resolve(sha256(f).equals(spec.sha256, ignoreCase = true))
+      // Every part has to hold. One good file out of six is not a verified model.
+      for (p in spec.parts) {
+        val f = File(ModelCatalog.modelsDir(ctx), p.filename)
+        if (!f.exists()) { promise.resolve(false); return }
+        if (p.sha256.isEmpty()) continue // nothing to check this one against
+        if (!sha256(f).equals(p.sha256, ignoreCase = true)) { promise.resolve(false); return }
+      }
+      promise.resolve(true)
     } catch (e: Exception) {
       promise.reject("verify_failed", e)
     }
@@ -220,7 +247,11 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
   fun remove(id: String, promise: Promise) {
     val spec = ModelCatalog.byId(id)
     if (spec != null) {
-      File(ModelCatalog.modelsDir(ctx), spec.filename).delete()
+      val dir = ModelCatalog.modelsDir(ctx)
+      for (p in spec.parts) {
+        File(dir, p.filename).delete()
+        File(dir, p.filename + ".part").delete()  // a half-finished part is storage too
+      }
       try { AudioDb.get(ctx).deleteModel(id) } catch (_: Exception) {}
     }
     promise.resolve(null)

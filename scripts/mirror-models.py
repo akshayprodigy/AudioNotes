@@ -117,14 +117,16 @@ def blocks(text: str) -> list[str]:
     Every ModelSpec( ... ) argument list, by balanced parentheses.
 
     Skips `data class ModelSpec(...)` itself, which is the same nine characters followed by the
-    field declarations rather than by values.
+    field declarations rather than by values — and `fun ModelSpec(...)`, the single-file
+    convenience constructor, for the same reason.
     """
     found, start = [], 0
     while True:
         start = text.find("ModelSpec(", start)
         if start < 0:
             return found
-        if text[:start].rstrip().endswith("class"):
+        preceding = text[:start].rstrip()
+        if preceding.endswith("class") or preceding.endswith("fun"):
             start += len("ModelSpec(")
             continue
         i = start + len("ModelSpec(")
@@ -139,20 +141,79 @@ def blocks(text: str) -> list[str]:
         start = i
 
 
+def part_blocks(text: str) -> list[str]:
+    """Every ModelPart( ... ) argument list inside one ModelSpec, by balanced parentheses."""
+    found, start = [], 0
+    while True:
+        start = text.find("ModelPart(", start)
+        if start < 0:
+            return found
+        if text[:start].rstrip().endswith("class"):
+            start += len("ModelPart(")
+            continue
+        i = start + len("ModelPart(")
+        depth = 1
+        while i < len(text) and depth:
+            if text[i] == "(":
+                depth += 1
+            elif text[i] == ")":
+                depth -= 1
+            i += 1
+        found.append(text[start + len("ModelPart(") : i - 1])
+        start = i
+
+
 def parse_catalog() -> list[Spec]:
     """
-    Read the specs out of the Kotlin.
+    Read the specs out of the Kotlin, ONE ENTRY PER FILE.
+
+    A model may be several files — Qwen3-ASR is six — and every one of them has to be fetched and
+    hashed, so the flat list of files is what the rest of this script wants. The model id repeats
+    across its parts, which is what the progress output should say anyway.
 
     Strict on purpose: a parser that silently found six of seven models would mirror six of seven,
     and the missing one would fail on first run for exactly the users who have no mirror to fall
-    back to... which is nobody, until upstream moves.
+    back to... which is nobody, until upstream moves. That strictness is why this refused to run
+    when parts were introduced rather than quietly mirroring the models it still understood.
     """
     text = strip_comments(CATALOG.read_text())
     specs: list[Spec] = []
     for block in blocks(text):
+        # The single-file convenience constructor forwards to ModelSpec(...) by parameter NAME,
+        # so that call has no string literals in it at all. Neither does any other declaration.
+        # A real catalogue entry always names itself, so "no literals" means "not data".
+        if not STRING.search(block):
+            continue
+        flag = BOOL.search(block)
+        parts = part_blocks(block)
+        if parts:
+            # Multi-file: id/name/purpose/detail/kind come first, then a ModelPart each.
+            head = block[: block.index("ModelPart(")]
+            head_strings = [m.group(1) for m in STRING.finditer(head)]
+            if len(head_strings) != 5 or not flag:
+                raise SystemExit(
+                    f"could not parse a multi-part ModelSpec header:\n{head.strip()[:300]}"
+                )
+            for pb in parts:
+                pstrings = [m.group(1) for m in STRING.finditer(pb)]
+                psize = SIZE.search(pb)
+                if len(pstrings) != 3 or not psize:
+                    raise SystemExit(
+                        f"could not parse a ModelPart — expected filename, sha256, size, "
+                        f"upstream:\n{pb.strip()[:300]}"
+                    )
+                specs.append(
+                    Spec(
+                        id=head_strings[0], name=head_strings[1], kind=head_strings[4],
+                        required=flag.group(1) == "true",
+                        filename=pstrings[0], sha256=pstrings[1], upstream=pstrings[2],
+                        size=int(psize.group(1).replace("_", "")),
+                    )
+                )
+            continue
+
         strings = [m.group(1) for m in STRING.finditer(block)]
         size = SIZE.search(block)
-        flag = BOOL.search(block)
         if len(strings) != 8 or not size or not flag:
             raise SystemExit(
                 f"could not parse a ModelSpec — the catalog's shape changed:\n{block.strip()[:300]}"

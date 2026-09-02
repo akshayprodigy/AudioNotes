@@ -17,8 +17,10 @@ class ModelCatalogTest {
   @Test
   fun `the writer model and the better ASR are behind the subscription`() {
     val gated = ModelCatalog.ALL.filter { ModelCatalog.needsSubscription(it) }.map { it.id }
-    // In catalog order, which is the order they are offered during onboarding.
-    assertEquals(listOf("whisper-small", "llm-qwen"), gated)
+    // In catalog order, which is the order they are offered during onboarding. Deliberately an
+    // exact list rather than a contains-check: adding a model to the paid side is a pricing
+    // decision, and it should not be possible to make one by editing a boolean.
+    assertEquals(listOf("whisper-small", "qwen3-asr", "llm-qwen"), gated)
   }
 
   /**
@@ -53,9 +55,16 @@ class ModelCatalogTest {
 
   @Test
   fun `every model has a sha256 and a size to verify a download against`() {
+    // EVERY PART, not every model. A six-file model with one unhashed file has one unverified
+    // file, and that is the whole hole this check exists to keep shut.
     for (spec in ModelCatalog.ALL) {
-      assertEquals("${spec.id} sha256 is not 64 hex chars", 64, spec.sha256.length)
-      assertTrue("${spec.id} sha256 is not hex", spec.sha256.all { it in "0123456789abcdef" })
+      assertTrue("${spec.id} has no parts", spec.parts.isNotEmpty())
+      for (part in spec.parts) {
+        val where = "${spec.id}/${part.filename}"
+        assertEquals("$where sha256 is not 64 hex chars", 64, part.sha256.length)
+        assertTrue("$where sha256 is not hex", part.sha256.all { it in "0123456789abcdef" })
+        assertTrue("$where has no size", part.sizeBytes > 0)
+      }
       assertTrue("${spec.id} has no size", spec.sizeBytes > 0)
     }
   }
@@ -82,14 +91,44 @@ class ModelCatalogTest {
    * says, including empty.
    */
   @Test
+  fun `qwen3-asr ships the exact filenames the engine looks for`() {
+    // Qwen3Asr resolves its artifacts by convention from one directory, so these names are an
+    // interface between Kotlin and C++ that no compiler checks. It has already been wrong once:
+    // the engine looked for encoder.onnx while the real export ships encoder.int8.onnx, which
+    // would have failed to load and silently fallen back to whisper.
+    val spec = ModelCatalog.byId("qwen3-asr")!!
+    val names = spec.parts.map { it.filename }.toSet()
+    for (needed in listOf(
+      "qwen3-asr/conv_frontend.onnx",
+      "qwen3-asr/encoder.int8.onnx",
+      "qwen3-asr/decoder.int8.onnx",
+      "qwen3-asr/tokenizer/vocab.json",
+      "qwen3-asr/tokenizer/merges.txt",
+      "qwen3-asr/tokenizer/tokenizer_config.json",
+    )) {
+      assertTrue("qwen3-asr is missing $needed", needed in names)
+    }
+    // Every part lands under the one directory qwen3DirFor() names, or the engine cannot find it.
+    for (part in spec.parts) {
+      assertTrue("${part.filename} is outside the model directory",
+        part.filename.startsWith("qwen3-asr/"))
+    }
+    // Behind the subscription: it is the largest download this app has, and Pro is what pays for
+    // serving it.
+    assertTrue("qwen3-asr must be behind the subscription",
+      ModelCatalog.needsSubscription(spec))
+    assertFalse("qwen3-asr must not be required for a meeting to work", spec.required)
+  }
+
+  @Test
   fun `the mirror is tried first, at the path the server actually serves`() {
     val base = com.innocorelabs.verbale.BuildConfig.MODEL_BASE_URL.trim().trimEnd('/')
-    val spec = ModelCatalog.byId("whisper-base")!!
-    val sources = ModelCatalog.sourcesFor(spec)
+    val part = ModelCatalog.byId("whisper-base")!!.parts.first()
+    val sources = ModelCatalog.sourcesFor(part)
     if (base.isEmpty()) {
-      assertEquals(listOf(spec.upstream), sources)
+      assertEquals(listOf(part.upstream), sources)
     } else {
-      assertEquals(listOf("$base/models/v1/${spec.filename}", spec.upstream), sources)
+      assertEquals(listOf("$base/models/v1/${part.filename}", part.upstream), sources)
     }
   }
 
@@ -99,11 +138,13 @@ class ModelCatalogTest {
     // it degrades to a slower download rather than a failed first run. A model that lost its
     // upstream entry would turn every mirror hiccup into a broken install.
     for (spec in ModelCatalog.ALL) {
-      assertEquals(
-        "${spec.id} does not fall back to upstream",
-        spec.upstream,
-        ModelCatalog.sourcesFor(spec).last(),
-      )
+      for (part in spec.parts) {
+        assertEquals(
+          "${spec.id}/${part.filename} does not fall back to upstream",
+          part.upstream,
+          ModelCatalog.sourcesFor(part).last(),
+        )
+      }
     }
   }
 
@@ -112,7 +153,10 @@ class ModelCatalogTest {
     // These are weights that get loaded and executed. Plain http would let anyone on the path
     // choose them, and the sha256 check only helps if the catalog itself arrived intact.
     for (spec in ModelCatalog.ALL) {
-      assertTrue("${spec.id} is not https", spec.upstream.startsWith("https://"))
+      for (part in spec.parts) {
+        assertTrue("${spec.id}/${part.filename} is not https",
+          part.upstream.startsWith("https://"))
+      }
     }
   }
 }
