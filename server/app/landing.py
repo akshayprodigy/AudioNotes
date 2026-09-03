@@ -80,10 +80,10 @@ def hero_cta() -> str:
             f'<a class="btn btn-primary" href="{html.escape(PLAY_URL)}">Get it on Google Play</a>'
             '<a class="btn btn-ghost" href="#how">See how it works</a>'
         )
-    return (
-        '<a class="btn btn-primary" href="/signup">Create an account</a>'
-        '<a class="btn btn-ghost" href="#how">See how it works</a>'
-    )
+    # No Play listing yet, and nothing else to send anyone to: the app is the only way in, and
+    # there is no account to create on the web. So the page asks for attention rather than a
+    # signup it cannot honour.
+    return '<a class="btn btn-primary" href="#how">See how it works</a>'
 
 
 def hero_note() -> str:
@@ -103,7 +103,6 @@ def body(device_limit: int) -> str:
       <a class="hide-sm" href="#how">How it works</a>
       <a class="hide-sm" href="#pricing">Pricing</a>
       <a class="hide-sm" href="/privacy">Privacy</a>
-      <a class="btn btn-ghost btn-sm" href="/account">Sign in</a>
     </div>
   </div>
 </nav>
@@ -255,7 +254,7 @@ def body(device_limit: int) -> str:
           <li><span class="tick">{TICK}</span>Everything already written stays readable if you
               stop paying</li>
         </ul>
-        <a class="btn btn-primary" href="/signup">Start the free trial</a>
+        <p class="muted">The trial starts in the app. Nothing to sign up for here.</p>
       </div>
     </div>
   </div>
@@ -279,9 +278,10 @@ def body(device_limit: int) -> str:
             "working &mdash; those are the free tier and they do not expire. Every summary "
             "already written stays readable. You simply stop getting new ones written as prose.")}
       {_faq("Do I need an account?",
-            "Not for the free tier. An account only exists to carry a subscription between your "
-            'devices. You can delete it, and everything attached to it, from '
-            '<a href="/account">your account page</a>.')}
+            "No. There is nothing to sign up for. Subscribing happens in the app through Google "
+            "Play, and the account that carries it between your devices is created by the "
+            "purchase itself. To have it deleted, see "
+            '<a href="/delete-account">deleting your account</a>.')}
       {_faq("Which phones does it work on?",
             "Android, on 64-bit devices. It is doing real speech recognition locally, so a "
             "recent mid-range phone or better will be noticeably quicker than an old one.")}
@@ -303,7 +303,7 @@ def body(device_limit: int) -> str:
     <span class="nav-spacer"></span>
     <a href="/privacy">Privacy</a>
     <a href="/terms">Terms</a>
-    <a href="/account">Your account</a>
+    <a href="/delete-account">Delete your account</a>
   </div>
 </footer>
 """

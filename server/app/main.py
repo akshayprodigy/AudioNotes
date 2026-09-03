@@ -11,14 +11,12 @@ a title or a count of anything the user made. See store.py.
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from . import mailer
 from .branding import PRODUCT_NAME
 from .billing import link_play_purchase, refresh_play_subscription
 from .entitlement import issue
@@ -63,28 +61,7 @@ def create_app(
     store = Store() if store is None else store
     key = signing_key_from_env() if signing_key is None else signing_key
 
-    # Said once at boot rather than discovered by a customer who never got their reset link.
-    if not mailer.is_configured():
-        logging.getLogger("audionotes").warning(
-            "SMTP is not configured — password reset links will be logged, not sent."
-        )
-
     # ---- accounts ----
-
-    @app.post("/api/account/signup")
-    async def signup(request: Request):
-        body = await _json_body(request)
-        email, password = body.get("email"), body.get("password")
-        if not isinstance(email, str) or "@" not in email:
-            return _error(400, "A valid email is required")
-        if not isinstance(password, str) or len(password) < 8:
-            return _error(400, "Password must be at least 8 characters")
-        if store.account_by_email(email):
-            # Deliberately the same shape of answer as success would give a bot, minus the account:
-            # this endpoint should not become a way to test which emails are registered.
-            return _error(409, "That email is already registered")
-        account = store.create_account(email, password)
-        return {"accountId": account.id, "email": account.email}
 
     @app.post("/api/account/signin")
     async def signin(request: Request):

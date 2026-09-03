@@ -27,31 +27,10 @@ def make_paid(store, email="a@example.com", password="password123"):
     return account
 
 
-# ---- signup ----
-
-def test_signup_creates_an_account(client):
-    r = client.post("/api/account/signup", json={"email": "a@example.com", "password": "password123"})
-    assert r.status_code == 200
-    assert r.json()["email"] == "a@example.com"
-
-
-@pytest.mark.parametrize(
-    "body", [{"email": "notanemail", "password": "password123"},
-             {"email": "a@example.com", "password": "short"},
-             {}, {"email": 42, "password": "password123"}],
-)
-def test_signup_refuses_what_it_cannot_use(client, body):
-    assert client.post("/api/account/signup", json=body).status_code == 400
-
-
-def test_signup_is_not_a_way_to_enumerate_registered_emails(client):
-    client.post("/api/account/signup", json={"email": "a@example.com", "password": "password123"})
-    r = client.post("/api/account/signup", json={"email": "a@example.com", "password": "password123"})
-    assert r.status_code == 409
-
+# ---- malformed input ----
 
 def test_a_malformed_body_is_a_bad_request_not_a_crash(client):
-    r = client.post("/api/account/signup", content=b"{not json",
+    r = client.post("/api/account/signin", content=b"{not json",
                     headers={"content-type": "application/json"})
     assert r.status_code == 400
 
@@ -138,49 +117,10 @@ def test_refreshing_after_the_subscription_lapses_returns_no_token(client, store
 
 # ---- pages ----
 
-@pytest.mark.parametrize("path", ["/", "/signup", "/account"])
+@pytest.mark.parametrize("path", ["/", "/delete-account"])
 def test_the_public_pages_render(client, path):
     r = client.get(path)
     assert r.status_code == 200 and PRODUCT_NAME in r.text
-
-
-def test_the_account_page_shows_a_subscription_and_its_devices(client, store):
-    make_paid(store)
-    client.post("/api/account/signin", json={"email": "a@example.com",
-                                             "password": "password123", "deviceId": "d1abcdef"})
-    r = client.post("/account", data={"email": "a@example.com", "password": "password123"})
-    assert r.status_code == 200
-    assert "Pro" in r.text and "d1abcdef"[:8] in r.text and f"1 of {DEVICE_LIMIT}" in r.text
-
-
-def test_the_account_page_refuses_a_wrong_password(client, store):
-    store.create_account("a@example.com", "password123")
-    r = client.post("/account", data={"email": "a@example.com", "password": "wrong"})
-    assert r.status_code == 401
-
-
-def test_an_email_with_html_in_it_cannot_inject_markup(client, store):
-    """The email is echoed back onto the page, so it has to be escaped."""
-    store.create_account("a<script>@example.com", "password123")
-    r = client.post("/account", data={"email": "a<script>@example.com", "password": "password123"})
-    assert "<script>" not in r.text and "&lt;script&gt;" in r.text
-
-
-def test_forgetting_a_device_needs_the_password(client, store):
-    account = make_paid(store)
-    store.touch_device(account.id, "d1")
-    r = client.post("/devices/forget",
-                    data={"email": "a@example.com", "password": "wrong", "deviceId": "d1"})
-    assert r.status_code == 401
-    assert len(store.devices(account.id)) == 1
-
-
-def test_forgetting_a_device_removes_it(client, store):
-    account = make_paid(store)
-    store.touch_device(account.id, "d1")
-    r = client.post("/devices/forget",
-                    data={"email": "a@example.com", "password": "password123", "deviceId": "d1"})
-    assert r.status_code == 200 and store.devices(account.id) == []
 
 
 def test_healthz(client):
@@ -204,7 +144,7 @@ def test_the_legal_pages_render(client, path):
 def test_the_privacy_policy_says_what_the_schema_actually_holds(client):
     """If this list and store.py ever disagree, the policy is the thing that is wrong."""
     text = client.get("/privacy").text
-    for promised in ("email address", "scrypt hash", "subscription status", "password reset"):
+    for promised in ("email address", "scrypt hash", "subscription status"):
         assert promised in text
 
 
@@ -222,29 +162,10 @@ def test_the_product_name_is_not_hardcoded_in_the_legal_pages(client, monkeypatc
     assert "Renamed" in legal._terms()
 
 
-def test_the_reset_email_names_the_product_not_a_hardcoded_string(store, signing_key, monkeypatch):
-    """
-    The one place the product name had been hardcoded past branding.py.
-
-    It was found by renaming the app and watching three tests fail, which is the argument for
-    asserting on PRODUCT_NAME rather than on whatever the product happens to be called today.
-    """
-    sent: list[tuple[str, str, str]] = []
-    from app import mailer
-
-    monkeypatch.setattr(mailer, "send", lambda to, s_, b: sent.append((to, s_, b)) or True)
-    client = TestClient(create_app(store=store, signing_key=signing_key))
-    store.create_account("a@example.com", "password123")
-    client.post("/forgot", data={"email": "a@example.com"})
-    assert PRODUCT_NAME in sent[0][1]
-
-
-# ---- SEO and link previews ----
-
 def test_every_page_carries_a_description(client):
     """A page with no meta description gets whatever Google scrapes off it, which for a form is
     the form."""
-    for path in ("/", "/privacy", "/terms", "/signup"):
+    for path in ("/", "/privacy", "/terms", "/delete-account"):
         assert 'name="description"' in client.get(path).text, path
 
 
@@ -281,7 +202,54 @@ def test_the_og_image_url_is_absolute_when_configured(client, monkeypatch):
     assert 'content="https://verbale.example.com/static/og.png"' in client.get("/").text
 
 
-def test_robots_keeps_crawlers_off_the_account_pages(client):
+def test_robots_keeps_crawlers_off_the_admin_console_and_the_api(client):
+    """There is nothing to sign in to on the site; the console is the only thing worth hiding."""
     body = client.get("/robots.txt").text
-    assert "Disallow: /account" in body and "Disallow: /api/" in body
-    assert "Allow: /privacy" in body
+    assert "Disallow: /admin" in body and "Disallow: /api/" in body
+    assert "Allow: /privacy" in body and "Allow: /delete-account" in body
+
+
+# ---- the shape of the website ----
+#
+# The site is a landing page, the legal pages, a deletion-request page, and the admin console.
+# Nothing on it creates an account or signs a customer in: purchasing is Google Play Billing inside
+# the app, and an account is created by the purchase with no password to sign in with.
+
+@pytest.mark.parametrize("path", ["/signup", "/account", "/forgot", "/reset", "/subscribe"])
+def test_the_self_service_account_pages_are_gone(client, path):
+    assert client.get(path).status_code == 404
+    assert client.post(path, data={}).status_code == 404
+
+
+def test_there_is_no_way_to_create_an_account_over_http(client):
+    """An open account-creation endpoint would contradict every word of the page above it."""
+    r = client.post("/api/account/signup",
+                    json={"email": "a@example.com", "password": "password123"})
+    assert r.status_code == 404
+
+
+def test_the_landing_page_offers_no_sign_in(client):
+    """
+    A link to a page that 404s is worse than no link, and a "Sign in" button on a site with no
+    sign-in is a support question waiting to happen.
+    """
+    body = client.get("/").text
+    for dead in ('href="/signup"', 'href="/account"', 'href="/forgot"', 'href="/reset"'):
+        assert dead not in body, dead
+    assert "Sign in" not in body
+
+
+def test_every_page_the_site_links_to_actually_exists(client):
+    """Catches a dead link in the footer, which is where dead links go to live."""
+    import re
+    for path in ("/", "/privacy", "/terms", "/delete-account"):
+        for href in set(re.findall(r'href="(/[^"#]*)"', client.get(path).text)):
+            if href.startswith("/static") or href.startswith("/admin"):
+                continue
+            assert client.get(href).status_code == 200, f"{path} links to {href}"
+
+
+def test_the_deletion_page_is_reachable_without_signing_in(client):
+    """Play requires a deletion route that works from outside the app."""
+    r = client.get("/delete-account")
+    assert r.status_code == 200 and "delete" in r.text.lower()

@@ -21,6 +21,29 @@ from . import play
 from .store import Store, Subscription
 
 
+def delete_account_with_subscription(store: Store, account_id: str) -> tuple[bool, str | None]:
+    """
+    Erase an account, and stop the money first.
+
+    The order is the whole point. Deleting our row stops us knowing about a subscription; it does
+    not stop Google charging the card. Somebody billed monthly for an account they asked us to
+    delete is the worst thing this system can do to a person, so a failed cancellation refuses the
+    deletion rather than being logged and stepped over.
+
+    This lives here rather than in an HTTP handler because there is no longer a web page that does
+    it: subscriptions are bought in the app, the site is a landing page, and deletion requests
+    arrive by email and are honoured with `deploy/delete-account.sh`. A guarantee this important
+    should be one tested function, not a thing each caller remembers to do in the right order.
+    """
+    sub = store.subscription(account_id)
+    if sub.provider_id and sub.status in ("active", "past_due"):
+        cancelled, error = cancel_play_subscription(sub.provider_id)
+        if not cancelled:
+            return False, error or "Could not cancel the subscription"
+    store.delete_account(account_id)
+    return True, None
+
+
 def cancel_play_subscription(provider_id: str) -> tuple[bool, str | None]:
     """
     Cancel a subscription at Google, immediately.

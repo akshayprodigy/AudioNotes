@@ -59,7 +59,6 @@ docker compose up --build
 | `BIND_ADDRESS` / `HOST_PORT` | exposure | `127.0.0.1:9100`. nginx is the only thing that should reach it |
 | `DATABASE_PATH` | optional | `/data/licences.db` in the container |
 | `PORT` | optional | Defaults to 8787 |
-| `SMTP_HOST` / `SMTP_FROM` (+ `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`) | password reset | Unconfigured, the mail is logged instead of sent |
 | `PUBLIC_BASE_URL` | emailed links | Without it, links are built from the request's Host header |
 | `PLAY_SERVICE_ACCOUNT_JSON` / `PLAY_PACKAGE_NAME` | Play purchases | The link endpoint answers 503 without them |
 | `ADMIN_SESSION_SECRET` / `VERBALE_ADMIN_EMAILS` | the admin console | `/admin` answers 404 without both |
@@ -193,17 +192,20 @@ fixture with `python scripts/contract_fixture.py`, and expect to re-run
 
 | | |
 |---|---|
-| `POST /api/account/signup` | `{email, password}` |
 | `POST /api/account/signin` | `{email, password, deviceId}` → licence token + a device-scoped refresh key |
 | `POST /api/licence/refresh` | `{deviceId, refreshKey}` → a fresh token, no password |
 | `POST /api/billing/play/link` | `{purchaseToken, deviceId}` → licence token. Play's equivalent of signing in |
 | `GET /healthz` | |
 | `GET /admin` | The console: who has subscribed. 404 unless configured |
 
-Pages: `/` (what it is and what Pro adds), `/signup`, `/account`, `/forgot`, `/reset`, `/privacy`,
-`/terms`, and the `/subscribe`, `/devices/forget` and `/account/delete` actions they post to.
+Pages: `/` (what it is and what Pro adds), `/privacy`, `/terms`, `/delete-account`, and `/admin`.
 
-There is no `/docs`: six endpoints are documented above, and a generated explorer is only an
+**There is nothing to sign up for on the website, and no way to sign in as a customer.** Purchasing
+is Google Play Billing inside the app, and an account is created by the purchase — it has no
+password, so a web sign-in could not authenticate one even if it existed. The site is a landing
+page plus the legal pages, and `/admin` for the operator.
+
+There is no `/docs`: five endpoints are documented above, and a generated explorer is only an
 invitation to poke at the billing routes.
 
 ## Decisions worth not re-litigating
@@ -241,28 +243,30 @@ happily and failing every request. Uvicorn is run with `--factory` for this reas
 few requests a minute a global lock costs nothing and removes an entire class of interleaving bug;
 `Store` is the only module that touches SQL, so Postgres later is one file.
 
-## Password reset
+## The operator's account
 
-`/forgot` emails a link; `/reset` spends it. Two rules shape the whole flow:
+There is no password reset, and no signup, because there is nothing on the site that creates an
+account. The one account with a password is the operator's, and it is made over ssh:
 
-**The pages never reveal whether an address has an account.** `/forgot` returns byte-identical HTML
-either way, and sends nothing when there is no account. Otherwise this page is a way to ask who has
-registered here.
+```bash
+VERBALE_HOST=root@69.62.82.85 ./deploy/create-admin.sh you@example.com 'a long password'
+```
 
-**A link is worth nothing once used or aged out.** Single-use, one hour, and asking again retires
-the previous one — two live links means a request somebody did not make stays usable after one they
-did. Opening the link does *not* spend it, because mail clients prefetch.
-
-Resetting also clears every device's refresh key. A reset is the moment to evict whoever got in,
-and changing the password alone does not do that: a device that already signed in holds a renewal
-credential that is not derived from the password. The device rows survive, so nobody is pushed over
-the limit by their own reset — they sign in again.
+The same command resets the password of an account that already exists. That an HTTP route cannot
+do this is the point: a route that creates a privileged account is reachable, and this is not.
 
 ## Deleting an account
 
-`/account/delete`, from the account page, with the password. Play requires an app with accounts to
-offer this from the web, and it is correct anyway: an account somebody cannot get rid of is not
-theirs.
+Requests arrive by email — `/delete-account` says how — and are honoured with:
+
+```bash
+VERBALE_HOST=root@69.62.82.85 ./deploy/delete-account.sh them@example.com
+```
+
+There is no self-service page. An account is created by a Play purchase and has no password, so a
+web form could only ever be a way for a stranger to delete somebody else's subscription by typing
+their address. Play requires a deletion route reachable without the app; `/delete-account` is that
+route, and it is a page of instructions rather than a form for exactly this reason.
 
 The subscription is cancelled at Google **first**, and a failure there stops the deletion. Our row
 going away does not stop Google charging the card — being billed monthly for an account you deleted
@@ -333,4 +337,4 @@ an address ends that person's session immediately rather than in eight hours.
 ## Not built yet
 
 - Nothing blocking. The remaining work is configuration the server cannot supply itself: the Play
-  service account, SMTP credentials, and the DNS record that lets it serve a hostname over TLS.
+  service account and its "Manage orders and subscriptions" permission.

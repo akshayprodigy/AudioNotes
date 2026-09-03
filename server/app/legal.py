@@ -40,18 +40,21 @@ def _privacy() -> str:
 <p>If you export a backup, that file is encrypted with a passphrase you choose and is written
    wherever you send it. We never see it, and we cannot open it or recover the passphrase.</p>
 
-<h2>What we hold, if you make an account</h2>
-<p>An account is only needed for a subscription. The app works without one.</p>
+<h2>What we hold, if you subscribe</h2>
+<p>There is nothing to sign up for. The app works without an account, and an account exists only
+   because a subscription needs somewhere to live — it is created by the purchase itself, in Google
+   Play, and you never choose a password for it.</p>
 <ul>
-  <li>Your email address.</li>
-  <li>Your password, stored as a scrypt hash. We cannot read it.</li>
-  <li>Your subscription status, the paid-through date, and the subscription id our payment
-      provider gave us.</li>
+  <li>Your email address, if you gave us one. A subscription bought in Google Play does not
+      require one, and most accounts have none.</li>
+  <li>A password, if your account has one, stored as a scrypt hash we cannot read. Accounts
+      created by a Google Play purchase have no password at all.</li>
+  <li>Your subscription status, the paid-through date, and the purchase identifier Google gave
+      us.</li>
   <li>For each device you sign in on: a random identifier the app generated for itself, the dates
       it was first and last seen, and a hashed renewal credential. This identifier is not your
       advertising ID, not your Android ID, and not tied to your hardware — it is a random number
       the app made up, and reinstalling produces a different one.</li>
-  <li>If you ask for a password reset, a hashed single-use token for one hour.</li>
 </ul>
 
 <h2>What we do not hold</h2>
@@ -65,7 +68,8 @@ def _privacy() -> str:
 <ul>
   <li><strong>First run:</strong> it downloads the speech models. That request reaches our file
       host, or the original publisher's, and carries nothing but the file name.</li>
-  <li><strong>Signing in:</strong> your email, your password and the device identifier.</li>
+  <li><strong>When you subscribe:</strong> the purchase token Google gave the app, and the device
+      identifier, so the subscription can be checked with Google and tied to your devices.</li>
   <li><strong>About once a week, if you subscribe:</strong> the device identifier and its renewal
       credential, to get a fresh licence. Nothing about your meetings is sent, because nothing
       about your meetings is on our side to compare it to.</li>
@@ -92,10 +96,11 @@ def _privacy() -> str:
 </ul>
 
 <h2>Keeping and deleting</h2>
-<p>We keep your account until you delete it. You can delete it yourself from
-   <a href="/account">your account page</a>: that cancels the subscription and erases the account,
-   the devices and the subscription record. It does not touch anything on your phones, because we
-   cannot reach it.</p>
+<p>We keep your account until it is deleted. Ask us at
+   <a href="/delete-account">this page</a> and we erase the account, its devices and the
+   subscription record, and cancel the subscription so the card stops being charged. It does not
+   touch anything on your phones, because we cannot reach it — uninstalling the app removes
+   that.</p>
 
 <h2>Children</h2>
 <p>{PRODUCT_NAME} is not directed at children under 13 and we do not knowingly hold data from
@@ -196,5 +201,5 @@ def register_legal(app: FastAPI, layout) -> None:
 def _footer() -> str:
     return """<p class="muted" style="margin-top:32px">
        <a href="/">Home</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> ·
-       <a href="/account">Your account</a>
+       <a href="/delete-account">Delete your account</a>
      </p>"""

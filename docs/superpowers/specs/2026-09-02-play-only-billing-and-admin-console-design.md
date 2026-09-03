@@ -230,3 +230,38 @@ system. It is unauditable, easy to get wrong, and gets copied into a shell histo
    is kept either way, only the ergonomics differ.
 2. **IP-allowlisting `/admin` at nginx** as defence in depth. Cheap; blocks operator access from
    phones and cafés. Decide at deploy, not in code.
+
+---
+
+## Addendum — 2026-09-02, later: the website loses its account area
+
+Decided after the console shipped, and it follows from Part A rather than adding to it.
+
+If purchasing is Play-only, an account is created **by the purchase** and has no password. A web
+sign-in cannot authenticate such an account, a web signup creates one nobody needs, and a "Sign in"
+button on the landing page is a support question waiting to happen. So the site becomes what it
+actually is: a landing page, the legal pages, a deletion-request page, and `/admin`.
+
+**Removed:** `/signup`, `/account`, `/devices/forget`, `/forgot`, `/reset`, `/account/delete`,
+`POST /api/account/signup` (nothing called it), the `password_resets` table and its three store
+methods, `clear_refresh_keys`, `_token_hash`, and SMTP configuration. `POST /api/account/signin`
+stays — the app still uses it.
+
+Three consequences that had to be handled rather than discovered:
+
+1. **The admin console had no way to exist.** It authenticates with `store.authenticate`, and
+   nothing created accounts any more. `deploy/create-admin.sh` creates or re-passwords the
+   operator's account over ssh. That an HTTP route cannot do this is the point.
+2. **Account deletion lost its only caller**, which would have left `cancel_play_subscription`
+   dead and the guarantee unenforceable. The cancel-then-delete ordering moved out of the HTTP
+   handler into `billing.delete_account_with_subscription`, where it is one tested function, and
+   `deploy/delete-account.sh` calls it. Better placed than it was.
+3. **Play still requires a deletion route reachable without the app.** `/delete-account` is a page
+   of instructions, not a form — there is nothing to authenticate against, so a form could only be
+   a way for a stranger to delete somebody else's subscription by typing their address.
+
+The privacy policy was corrected again: it listed a password-reset token we no longer store, and
+described an account created by signing up rather than by purchasing.
+
+Guarded by tests that fail if the account area returns: every removed path must 404, the landing
+page must contain no sign-in link, and every internal link on every page must resolve to a 200.
