@@ -19,6 +19,11 @@ std::string resultToJson(const PipelineResult& res, const std::string& error) {
                                  {"speaker", u.speaker}, {"text", u.text}});
   doc["minutes_source"] = res.minutes_source;
   doc["cancelled"] = res.cancelled;
+  // Provenance: what the audio sounded like, and whether we refused to read it. In the eval
+  // harness this is the column that tells a bad transcript apart from a refused one.
+  doc["detected_language"] = res.detected_language;
+  doc["detected_confidence"] = res.detected_confidence;
+  doc["unsupported_language"] = res.unsupported_language;
   doc["minutes"] = json::array();
   for (const auto& m : res.minutes)
     doc["minutes"].push_back({{"kind", m.kind}, {"content", m.content}, {"source", m.source}});

@@ -125,8 +125,29 @@ class ProcessingEngine(
             if (qwen3Dir.isDirectory) qwen3Dir.absolutePath else "",
           )
           stageDone("asr", t0)
+
+          // The core answers with an object, not a bare array, so that "we refused to read this"
+          // is tellable from "nobody spoke". Both would otherwise arrive as an empty list and the
+          // stages below would write minutes over nothing.
+          val asr = org.json.JSONObject(json)
+          if (asr.optBoolean("unsupported_language", false)) {
+            val heard = asr.optString("detected_language", "")
+            // Record what was actually HEARD rather than what was asked for. The setting still
+            // says English; the meeting was not, and the person needs to be told which.
+            db.setLanguage(meetingId, heard.ifBlank { language })
+            db.setStatus(meetingId, "unsupported_language")
+            db.setSummaryLine(meetingId, unsupportedLanguageMessage(heard))
+            listener.onStage("asr", 1, 1)
+            // Returning stops diarization, minutes and narration for this meeting. That is the
+            // entire point: a summary assembled over audio we cannot read is indistinguishable
+            // from a real one to anybody who was not in the room. The audio is kept, so the
+            // meeting can be reprocessed the day the language is supported.
+            Log.i(TAG, "refused $meetingId: heard '$heard', which this build cannot transcribe")
+            return
+          }
+
           db.setLanguage(meetingId, language)
-          val count = db.replaceUtterancesJson(meetingId, json)
+          val count = db.replaceUtterancesJson(meetingId, asr.getJSONArray("utterances").toString())
           db.setStatus(meetingId, "asr")
           listener.onStage("asr", 1, 1)
           transcribed = count > 0
@@ -249,6 +270,28 @@ class ProcessingEngine(
       try { AudioDb.get(ctx).setStatus(meetingId, "error") } catch (_: Exception) {}
       listener.onComplete("error", e.message ?: e.toString())
     }
+  }
+
+  /**
+   * What to tell somebody whose recording will not be transcribed.
+   *
+   * Written to be read by the person, not by us: it names the language we heard, says plainly that
+   * we did not transcribe it, and — the part that matters most — promises the recording is still
+   * there. Somebody who has just given us an hour of their meeting needs to know they have not
+   * lost it.
+   *
+   * No apology and no error framing. The app is working correctly; it simply cannot read this
+   * language yet, and saying so is more useful than sounding broken.
+   */
+  private fun unsupportedLanguageMessage(code: String): String {
+    val name =
+      if (code.isBlank()) ""
+      else java.util.Locale.forLanguageTag(code).getDisplayLanguage(java.util.Locale.ENGLISH)
+    val heard =
+      if (name.isBlank() || name.equals(code, ignoreCase = true)) "not in English"
+      else "in $name"
+    return "This recording sounds $heard, and Verbale transcribes English today. " +
+      "It has not been transcribed, and the audio is saved."
   }
 
   private fun checkCancelled(): Boolean {

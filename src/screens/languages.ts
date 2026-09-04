@@ -7,25 +7,24 @@
 export type LanguageChoice = { code: string; label: string };
 
 /**
- * Shown only until the engine answers, and if it never does.
+ * Shown only until the native side answers, and if it never does.
  *
- * These three were the WHOLE list until now, which is an India-only menu in a product launching
- * in the US and Europe — a German user could not select German, so the app could not capture
- * their meeting at all. The real list comes from the transcriber itself (~99 languages), because
- * a hand-maintained copy drifts from what the model can actually do.
+ * One row, matching cpp/asr/asr_languages.cpp, which is the source of truth. This list was once
+ * ~99 languages read out of whisper's tokenizer table; offering Bengali produced an hour-long
+ * meeting transcribed as fluent invented English, with a summary that read as correct to somebody
+ * who had been in the room. A language appears here when there is a measurement behind it.
  */
-export const FALLBACK_LANGUAGES: LanguageChoice[] = [
-  { code: 'auto', label: 'Auto-detect' },
-  { code: 'en', label: 'English' },
-  { code: 'hi', label: 'Hindi' },
-];
+export const FALLBACK_LANGUAGES: LanguageChoice[] = [{ code: 'en', label: 'English' }];
 
 /**
- * Pinned to the top of the picker. A 99-item list in raw engine order is unusable, and these are
- * the ones the product is measured on. 'auto' stays reachable but is last of the three and is no
- * longer the default, because per-chunk re-detection is the bug this release fixes.
+ * Pinned to the top of the picker.
+ *
+ * 'auto' is deliberately gone as well as the other languages: with one supported language there is
+ * nothing to choose between, and "auto-detect" would promise a capability the build does not have.
+ * Detection still runs — it is how an unsupported recording is refused instead of being
+ * transcribed into nonsense — but it is not a setting anybody picks.
  */
-export const PINNED_LANGUAGES = ['en', 'hi', 'auto'];
+export const PINNED_LANGUAGES = ['en'];
 
 /** Pinned codes first in their listed order, then everything else alphabetically by label. */
 export function orderLanguages(all: LanguageChoice[]): LanguageChoice[] {

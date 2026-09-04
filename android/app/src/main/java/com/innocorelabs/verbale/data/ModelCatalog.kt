@@ -102,6 +102,14 @@ data class ModelSpec(
   val kind: String, // vad | asr | diar | llm
   val required: Boolean,
   val parts: List<ModelPart>,
+  /**
+   * Whether this model is shown to the user as something they can download.
+   *
+   * An unoffered model is not deleted: its catalogue row, its hashes and its place on the mirror
+   * all stay, so it comes back by flipping one flag. What it must not do is sit in the list asking
+   * somebody to fetch weights that nothing can currently select.
+   */
+  val offered: Boolean = true,
 ) {
   /** Total download, which is what the user is deciding about. */
   val sizeBytes: Long get() = parts.sumOf { it.sizeBytes }
@@ -120,6 +128,7 @@ fun ModelSpec(
 ): ModelSpec = ModelSpec(
   id, name, purpose, detail, kind, required,
   parts = listOf(ModelPart(filename, sha256, sizeBytes, upstream)),
+  offered = true,
 )
 
 object ModelCatalog {
@@ -201,6 +210,11 @@ object ModelCatalog {
     //
     // required=false and behind the subscription: it is an optional "Hindi and English" download,
     // and at 972 MB it is the largest thing this app will ever ask for.
+    //
+    // offered=false since 2026-09-04. Nothing can select it: the engine routing table sends only
+    // Hindi to Qwen, and Hindi is not an offered language while it has script evidence but no
+    // accuracy number. Asking somebody to download 972 MB that cannot run is worse than not
+    // mentioning it. The row, the hashes and the mirror all stay — this returns with Hindi.
     ModelSpec(
       "qwen3-asr", "Qwen3-ASR",
       "Writes down Hindi properly",
@@ -226,6 +240,7 @@ object ModelCatalog {
           "4942d005604266809309cabc9f4e9cb89ce855d59b14681fdc0e1cc62ea26c4c", 12_487L,
           "https://modelscope.cn/models/zengshuishui/Qwen3-ASR-onnx/resolve/master/tokenizer/tokenizer_config.json"),
       ),
+      offered = false,
     ),
     // On-device LLM: writes the summary, the MOM narrative and the library one-liner (Narrator).
     // Qwen family is Apache-2.0. Swap to a Qwen3 GGUF when you settle on one; Qwen2.5-1.5B-Instruct

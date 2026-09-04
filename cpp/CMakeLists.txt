@@ -18,6 +18,7 @@ add_library(audionotes SHARED
   asr/asr_chunker.cpp
   asr/asr_postprocess.cpp
   asr/asr_factory.cpp
+  asr/asr_languages.cpp
   asr/qwen3_asr.cpp
   diar/diarizer.cpp
   llm/llama_engine.cpp

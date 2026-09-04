@@ -43,6 +43,13 @@ struct AsrRun {
   std::string model_path;
   std::string language;           // what was requested
   std::string detected_language;  // what the engine reported, where it can; "" otherwise
+  float detected_confidence = 0.f;  // 0..1 for detected_language; 0 when nothing was detected
+
+  // Set when the audio was confidently in a language this product does not transcribe, in which
+  // case the run STOPS rather than producing text. Fluent invented English over Bengali audio,
+  // summarised into plausible minutes, is the failure this exists to prevent — see
+  // docs/superpowers/specs/2026-09-04-english-only-and-refusing-to-fabricate-design.md.
+  bool unsupported_language = false;
 
   // The state that must never again be reported as silence.
   bool allChunksFailed() const { return chunks_total > 0 && chunks_failed == chunks_total; }

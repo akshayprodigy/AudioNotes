@@ -20,6 +20,7 @@
 #endif
 
 #include "asr/asr_engine.h"
+#include "asr/asr_languages.h"
 #include "asr/whisper_asr.h"
 #include "util/utf8.h"
 
@@ -157,12 +158,24 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeTranscribe(
               ",\"end_ms\":" + std::to_string(utts[i].end_ms) +
               ",\"text\":\"" + esc + "\"}";
     }
+    json += "]";
+
+    // Wrapped in an object rather than returned as a bare array, because a refused recording has
+    // to be TELLABLE from a silent one. Returning [] for "this was Bengali and we will not guess
+    // at it" is the same lie as returning [] for "nobody spoke" — and the caller would go on to
+    // write minutes over an empty transcript.
+    std::string detected;
+    jsonEscape(audionotes::sanitizeUtf8(run.detected_language), detected);
+    return env->NewStringUTF(
+        ("{\"utterances\":" + json +
+         ",\"detected_language\":\"" + detected + "\"" +
+         ",\"detected_confidence\":" + std::to_string(run.detected_confidence) +
+         ",\"unsupported_language\":" + (run.unsupported_language ? "true" : "false") +
+         "}").c_str());
   } catch (const std::exception& e) {
     throwRuntime(env, e.what());
-    return env->NewStringUTF("[]");
+    return env->NewStringUTF("{\"utterances\":[],\"unsupported_language\":false}");
   }
-  json += "]";
-  return env->NewStringUTF(json.c_str());
 }
 
 // ---- LLM (llama.cpp) — handle-based so the model loads once and is reused across generate() ----
@@ -170,24 +183,25 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeTranscribe(
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeSupportedLanguages(
     JNIEnv* env, jobject /*thiz*/) {
-  // Asked of the ENGINE rather than written down, because a hand-maintained shortlist drifts from
-  // what the model can actually do — and the failure that causes is a user unable to select the
-  // language they are about to speak. Verbale ships in India, the US and Europe.
+  // Read from the product's OWN table, not from whisper's.
+  //
+  // This used to enumerate whisper_lang_max_id() — every language the tokenizer knows, ~99 of them
+  // — on the reasoning that a hand-maintained shortlist drifts from what the model can do. The
+  // reasoning was sound and the conclusion was wrong: the engine's table is what whisper can
+  // TOKENIZE, not what this product can deliver. It offered Bengali, somebody recorded an hour of
+  // Bengali, and the app returned fluent invented English with a summary that read as correct.
+  //
+  // A shortlist that drifts means somebody cannot pick their language and knows it. A list that
+  // over-promises means somebody picks their language and is handed nonsense they cannot tell
+  // from the truth. See asr_languages.cpp for the table and the evidence behind every row.
   std::string json = "[";
-#ifdef HAVE_WHISPER
-  for (int id = 0; id <= whisper_lang_max_id(); ++id) {
-    const char* code = whisper_lang_str(id);
-    const char* label = whisper_lang_str_full(id);
-    if (!code || !label) continue;
-    // These strings come from a third-party table and cross into NewStringUTF, which aborts the
-    // ART VM on a malformed byte. Scrub them like any other foreign text.
+  for (const audionotes::Language& lang : audionotes::supportedLanguages()) {
     std::string esc_code, esc_label;
-    jsonEscape(audionotes::sanitizeUtf8(code), esc_code);
-    jsonEscape(audionotes::sanitizeUtf8(label), esc_label);
+    jsonEscape(audionotes::sanitizeUtf8(lang.code), esc_code);
+    jsonEscape(audionotes::sanitizeUtf8(lang.label), esc_label);
     if (json.size() > 1) json += ",";
     json += "{\"code\":\"" + esc_code + "\",\"label\":\"" + esc_label + "\"}";
   }
-#endif
   json += "]";
   return env->NewStringUTF(json.c_str());
 }

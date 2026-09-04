@@ -57,6 +57,17 @@ struct PipelineResult {
   // Stopped early at the caller's request. Distinct from failure: whatever completed before the
   // cancel is still in this result, and callers must NOT treat it as a finished meeting.
   bool cancelled = false;
+
+  // What the recording actually sounded like, and whether we refused it.
+  //
+  // `unsupported_language` means the audio was confidently in a language this build does not
+  // transcribe, so ASR stopped after one window and NOTHING downstream ran — no transcript, no
+  // minutes, and above all no narration. Plausible minutes written over a language we cannot read
+  // is the failure this flag exists to make impossible; the audio is kept so the meeting can be
+  // reprocessed when the language is supported.
+  std::string detected_language;
+  float detected_confidence = 0.f;
+  bool unsupported_language = false;
   // Per-stage wall-clock ms (same rationale as ProcessingEngine's stageDone logging).
   int64_t vad_ms = 0, asr_ms = 0, diar_ms = 0, minutes_ms = 0;
 };

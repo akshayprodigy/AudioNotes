@@ -29,7 +29,9 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
   @ReactMethod
   fun list(promise: Promise) {
     val arr = JSONArray()
-    for (spec in ModelCatalog.ALL) {
+    // Only what can actually be used. A model whose engine nothing routes to would otherwise sit
+    // in the list inviting a download that can never run — 972 MB, in Qwen3-ASR's case.
+    for (spec in ModelCatalog.ALL.filter { it.offered }) {
       val dir = ModelCatalog.modelsDir(ctx)
       arr.put(
         JSONObject()

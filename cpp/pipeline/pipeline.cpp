@@ -136,6 +136,19 @@ bool Pipeline::run(const std::string& pcm_path, PipelineResult* out,
         pcm_path, out->segments, cfg_.sample_rate, cfg_.asr_threads,
         [&report](int done, int total) { report("asr", done, total); },
         cancel ? AsrCancelFn(cancel) : nullptr);
+    out->detected_language = asr_run.detected_language;
+    out->detected_confidence = asr_run.detected_confidence;
+    out->unsupported_language = asr_run.unsupported_language;
+
+    // Refused, not failed. The recording is fine and the app is working correctly — it is simply
+    // not a language this build can read, and the honest answer is to say so. Returning here is
+    // what stops diarization, minutes and the LLM from running: a summary assembled over audio we
+    // cannot transcribe reads as authoritative to anyone who was not in the room.
+    if (asr_run.unsupported_language) {
+      out->asr_ms = nowMs() - t0;
+      return true;
+    }
+
     // Decoding that failed on every window is not a quiet room, and must not be reported as one.
     if (asr_run.allChunksFailed()) {
       error_ = "asr: every chunk failed to decode (" +

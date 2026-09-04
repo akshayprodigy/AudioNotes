@@ -1,6 +1,7 @@
 #include "asr/whisper_asr.h"
 
 #include "asr/asr_chunker.h"
+#include "asr/asr_languages.h"
 #include "asr/asr_postprocess.h"
 #include "util/cpu_topology.h"
 
@@ -10,6 +11,7 @@
 #include <cstdlib>
 #include <stdexcept>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #ifdef HAVE_WHISPER
@@ -87,6 +89,47 @@ bool WhisperAsr::supports(const std::string& language) const {
 #endif
 }
 
+#ifdef HAVE_WHISPER
+namespace {
+
+//: How sure whisper must be before we refuse to transcribe somebody's meeting.
+//:
+//: The two mistakes are not symmetric. Refusing English that really was English destroys an hour
+//: of somebody's work and they can never get it back. Accepting an unsupported language produces
+//: nonsense, which is bad — but the audio is kept and can be reprocessed later. So the bar is set
+//: high and ambiguity always resolves to "carry on".
+//:
+//: MEASURED, not guessed (2026-09-04, whisper-base):
+//:
+//:   bn  0.70  the real Bengali meeting, as recorded      -> refuse
+//:   bn  0.76  the same audio amplified 21.6 dB           -> refuse
+//:   de  0.998 clean German                               -> refuse
+//:   fr  0.995 clean French                               -> refuse
+//:   en  0.987 noisy English                              -> transcribe
+//:   en  0.449 heavy code-switching                       -> transcribe
+//:
+//: 0.60 sits in the gap. The code-switching sample is the one that sets the floor: mixed speech
+//: reads as LOW confidence, not as a foreign language, so it stays on the transcribing side —
+//: which matters because Indian English meetings code-switch constantly and refusing one would be
+//: the worse mistake.
+constexpr float kRefuseConfidence = 0.60f;
+
+/** The language whisper hears in these samples, and how sure it is. {"" , 0} if it cannot tell. */
+std::pair<std::string, float> detectLanguage(whisper_context* ctx,
+                                             const std::vector<float>& samples, int threads) {
+  if (whisper_pcm_to_mel(ctx, samples.data(), static_cast<int>(samples.size()), threads) != 0) {
+    return {std::string(), 0.f};
+  }
+  std::vector<float> probs(static_cast<size_t>(whisper_lang_max_id()) + 1, 0.f);
+  const int id = whisper_lang_auto_detect(ctx, 0, threads, probs.data());
+  if (id < 0 || static_cast<size_t>(id) >= probs.size()) return {std::string(), 0.f};
+  const char* code = whisper_lang_str(id);
+  return {code ? std::string(code) : std::string(), probs[static_cast<size_t>(id)]};
+}
+
+}  // namespace
+#endif
+
 AsrRun WhisperAsr::transcribe(
     const std::string& pcm_path,
     const std::vector<Segment>& segments,
@@ -120,6 +163,25 @@ AsrRun WhisperAsr::transcribe(
     if (samples.empty()) {
       if (progress) progress(ci + 1, total);
       continue;
+    }
+
+    // Ask what language this actually is, once, on the first window that carries speech.
+    //
+    // Done even when a language was explicitly chosen, because the choice is exactly what goes
+    // wrong: the picker defaults to English, somebody records a meeting in another language, and
+    // whisper obligingly invents fluent English over it. One encoder pass over 30 seconds, against
+    // an hour of decoding, and it is checked BEFORE any text is produced so an unsupported
+    // recording costs one chunk rather than an hour of CPU.
+    if (run.detected_language.empty()) {
+      const std::pair<std::string, float> heard = detectLanguage(impl_->ctx, samples, threads);
+      run.detected_language = heard.first;
+      run.detected_confidence = heard.second;
+      if (!heard.first.empty() && heard.second >= kRefuseConfidence && !isSupported(heard.first)) {
+        run.unsupported_language = true;
+        ASRLOGI("stopping: heard %s (p=%.2f), which this build does not transcribe",
+                heard.first.c_str(), static_cast<double>(heard.second));
+        break;
+      }
     }
 
     whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
