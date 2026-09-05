@@ -95,3 +95,10 @@ eval/models/
 
 # Visual brainstorming sessions (mockups kept locally, not shipped)
 .superpowers/
+
+# Python bytecode. These were tracked by mistake and every eval run dirtied the tree.
+__pycache__/
+*.pyc
+
+# graphify output: a generated knowledge graph (~17 MB), re-derivable from the repo it describes
+graphify-out/
