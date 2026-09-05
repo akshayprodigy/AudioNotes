@@ -101,7 +101,7 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeTranscribe(
     JNIEnv* env, jobject /*thiz*/, jstring jPcmPath, jstring jModelPath, jint sampleRate,
     jlongArray jStarts, jlongArray jEnds, jint threads, jstring jLanguage,
-    jstring jQwen3Dir) {
+    jstring jQwen3Dir, jboolean jForceLanguage) {
   const std::string pcm = jstr(env, jPcmPath);
   const std::string model = jstr(env, jModelPath);
   // Empty when Qwen3-ASR is not installed, which is the normal case today. The factory then falls
@@ -133,6 +133,8 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeTranscribe(
     acfg.language = language;
     acfg.whisper_model = model;
     acfg.qwen3_model_dir = qwen3_dir;
+    // Set only by "Transcribe it anyway" on a meeting this build already refused once.
+    acfg.skip_language_refusal = (jForceLanguage == JNI_TRUE);
     std::unique_ptr<audionotes::AsrEngine> asr = audionotes::makeAsrEngine(acfg);
     if (!asr->ok()) {
       const std::string why = asr->unavailableReason();

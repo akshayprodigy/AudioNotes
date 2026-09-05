@@ -70,6 +70,7 @@ object NativeBridge {
     threads: Int = 0,
     language: String = "en",
     qwen3ModelDir: String = "",
+    forceLanguage: Boolean = false,
   ): String
 
   /**
