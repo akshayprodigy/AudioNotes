@@ -28,6 +28,8 @@ struct PipelineConfig {
   // A sherpa-onnx export of Parakeet-TDT or Moonshine. Measurement-only today: neither is
   // reachable unless asr_engine names it, because no language routes there yet.
   std::string sherpa_model_dir;
+  // Overrule the language refusal for this run. See AsrConfig::skip_language_refusal.
+  bool skip_language_refusal = false;
   std::string asr_engine;      // "" = choose by language; a name forces one (see asr_factory)
   std::string vad_model;       // "" = skip VAD, fall back to fixed 30 s windows
   std::string diar_seg_model;  // both diar paths "" = skip diarization
