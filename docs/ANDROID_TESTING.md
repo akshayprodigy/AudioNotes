@@ -19,6 +19,38 @@ whisper/sherpa/llama build time by ~3×.
 
 ---
 
+## Verifying the native core — use `npm run test:device`
+
+```bash
+npm run test:device            # the whole native suite
+npm run test:device Minutes    # only classes matching a substring
+```
+
+`scripts/device-verify.sh` installs both APKs with `adb install -r` and drives the runner with
+`am instrument`, which leaves app data alone. It also refuses to call a run green when every test
+skipped itself, and prints what the run did *not* exercise.
+
+> **Never run `./gradlew connectedDebugAndroidTest` against a phone with recordings on it.**
+> AGP uninstalls the app when the task finishes, and uninstalls it again to get past
+> `INSTALL_FAILED_UPDATE_INCOMPATIBLE` if the signatures differ. Either one wipes app-private
+> storage: the downloaded models (~1.4 GB with Qwen) *and* `audionotes.db` with the recordings in
+> it. `allowBackup="false"`, so there is nothing to restore from. This has now destroyed real
+> recordings twice.
+>
+> Unqualified, the task is worse still: it runs in every subproject, and
+> `:sentry_react-native:mergeDebugAndroidTestNativeLibs` fails on two copies of
+> `lib/arm64-v8a/libc++_shared.so` (Sentry's AAR and `react-android`). That break is confined to
+> that module's `androidTest` variant — the app's own debug and release builds are unaffected.
+
+**Restoring the models without re-downloading them.** `eval/models/` on a dev machine holds the
+same bytes the catalog fetches, and `libonnxruntime.so` is in the Gradle cache under
+`onnxruntime-android-1.20.0/jni/arm64-v8a/`. With a debuggable build installed, stage each through
+`/data/local/tmp` (`adb push`, `chmod 644`, `run-as <pkg> cp … files/models/`) and check them with
+`run-as <pkg> sha256sum files/models/*` against the hashes in `ModelCatalog.kt`. The app treats a
+model as installed on file existence and exact size, so pushed files show up as installed.
+
+---
+
 ## Stage 1 — Smoke test: UI + VAD + encrypted storage (no submodules)
 
 This proves the toolchain, the RN New-Architecture module wiring, capture, storage, and VAD. Only

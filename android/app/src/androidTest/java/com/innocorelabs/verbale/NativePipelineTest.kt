@@ -110,6 +110,34 @@ class NativePipelineTest {
   private fun whisperModel(): File? =
     ModelCatalog.fileFor(ctx, "whisper-base")?.takeIf { it.exists() }
 
+  /**
+   * The utterances of a transcribe result, having first checked the run was not refused.
+   *
+   * `nativeTranscribe` answered with a bare JSON array until `8ea6f60` wrapped it in an object, so
+   * that "we refused to read this" is tellable from "nobody spoke" — the same parse ProcessingEngine
+   * does. These tests were never updated, so both of them threw JSONException against the new
+   * shape. That is how the ASR path went unverified on hardware through the very week it changed,
+   * and it did not show up as a red suite: on a phone with no models the tests skip themselves,
+   * and a skip reads as green.
+   *
+   * The refusal check belongs in here rather than in one test. The fixture is English, so every
+   * caller wants the same answer, and it is precisely the regression the Galaxy A07 recording
+   * produced — one window heard Turkish at p=0.88 and would have destroyed a valid meeting.
+   */
+  private fun utterancesOf(json: String): JSONArray {
+    val run = org.json.JSONObject(json)
+    assertFalse(
+      "English audio was refused as '${run.optString("detected_language")}' " +
+        "(p=${run.optDouble("detected_confidence", 0.0)})",
+      run.optBoolean("unsupported_language", false),
+    )
+    println(
+      "ASR detection: language=${run.optString("detected_language")} " +
+        "p=${run.optDouble("detected_confidence", 0.0)}",
+    )
+    return run.getJSONArray("utterances")
+  }
+
   @Test
   fun vad_finds_speech_and_strips_silence() {
     val model = vadModel()
@@ -150,7 +178,7 @@ class NativePipelineTest {
     val json = NativeBridge.nativeTranscribe(pcm.absolutePath, asr!!.absolutePath, 16000, starts, ends)
     val elapsed = System.currentTimeMillis() - started
 
-    val arr = JSONArray(json)
+    val arr = utterancesOf(json)
     val text = buildString {
       for (i in 0 until arr.length()) append(arr.getJSONObject(i).optString("text")).append(' ')
     }.lowercase()
@@ -272,7 +300,7 @@ class NativePipelineTest {
 
     // whisper reports timestamps relative to each chunk; they must be re-anchored to the global
     // meeting timeline or the transcript drifts badly on long meetings.
-    val arr = JSONArray(json)
+    val arr = utterancesOf(json)
     for (i in 0 until arr.length()) {
       val o = arr.getJSONObject(i)
       val s = o.getLong("start_ms")
