@@ -38,6 +38,13 @@ export interface Meeting {
    * inventing — the library row falls back to the live processing state.
    */
   summaryLine?: string | null;
+  /**
+   * Set when a person overruled a "not English" refusal on this meeting. Both the reason the run
+   * bypassed detection and the reason its result is marked forever.
+   */
+  transcribeForcedAt?: number | null;
+  /** What was heard before they overruled it. Null when detection never named a language. */
+  forcedFromLanguage?: string | null;
 }
 
 export interface Utterance {

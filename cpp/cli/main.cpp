@@ -82,7 +82,7 @@ int main(int argc, char** argv) {
                  "          [--diar-seg segmentation.onnx --diar-emb embedding.onnx] "
                  "[--speakers N] [--diar-threshold F] [--language en|hi|auto]\n"
                  "          [--asr-engine whisper|qwen3|parakeet|moonshine]\n"
-                 "          [--qwen3-model DIR] [--sherpa-model DIR]\n"
+                 "          [--qwen3-model DIR] [--sherpa-model DIR] [--force-language]\n"
                  "          [--llm model.gguf] [--json out.json]\n",
                  argv[0]);
     return 2;
@@ -95,6 +95,7 @@ int main(int argc, char** argv) {
   float diar_threshold = 1.0f;
   std::string language = "en";
   std::string asr_engine, qwen3_model, sherpa_model;
+  bool force_language = false;
   for (int i = 3; i < argc; ++i) {
     if (std::strcmp(argv[i], "--vad") == 0 && i + 1 < argc) vad_model = argv[++i];
     else if (std::strcmp(argv[i], "--diar-seg") == 0 && i + 1 < argc) diar_seg = argv[++i];
@@ -105,6 +106,7 @@ int main(int argc, char** argv) {
     else if (std::strcmp(argv[i], "--asr-engine") == 0 && i + 1 < argc) asr_engine = argv[++i];
     else if (std::strcmp(argv[i], "--qwen3-model") == 0 && i + 1 < argc) qwen3_model = argv[++i];
     else if (std::strcmp(argv[i], "--sherpa-model") == 0 && i + 1 < argc) sherpa_model = argv[++i];
+    else if (std::strcmp(argv[i], "--force-language") == 0) force_language = true;
     else if (std::strcmp(argv[i], "--llm") == 0 && i + 1 < argc) llm_model = argv[++i];
     else if (std::strcmp(argv[i], "--json") == 0 && i + 1 < argc) json_out = argv[++i];
   }
@@ -134,6 +136,9 @@ int main(int argc, char** argv) {
   cfg.asr_engine = asr_engine;
   cfg.qwen3_model_dir = qwen3_model;
   cfg.sherpa_model_dir = sherpa_model;
+  // The desktop mirror of "Transcribe it anyway". Present so the override can be exercised
+  // against a real recording without a phone in the loop.
+  cfg.skip_language_refusal = force_language;
 
   audionotes::Pipeline pipeline(cfg);
   audionotes::PipelineResult res;

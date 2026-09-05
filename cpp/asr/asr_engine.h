@@ -95,6 +95,15 @@ struct AsrConfig {
   // because `engine` already says which is meant and only one of them is ever being measured at
   // a time; two fields would let a caller name parakeet and point at moonshine's weights.
   std::string sherpa_model_dir;
+
+  // Overrule the language refusal for ONE run, because a person said the recording really is in
+  // the language they asked for.
+  //
+  // Not a setting and not a policy: refusing is what stops an hour of Bengali coming back as
+  // confident invented English, and a build that could switch that off globally would not have
+  // the guarantee at all. This is per-run recovery from a detector that was wrong, which the
+  // Galaxy A07 recording proved is possible — English heard as Turkish at p=0.88.
+  bool skip_language_refusal = false;
 };
 
 // The one place a language becomes a class. Never returns null: when nothing usable is available

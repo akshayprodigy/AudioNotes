@@ -93,7 +93,8 @@ std::unique_ptr<AsrEngine> makeAsrEngine(const AsrConfig& cfg) {
   if (cfg.whisper_model.empty()) {
     return std::unique_ptr<AsrEngine>(new UnavailableAsr("no whisper model configured"));
   }
-  return std::unique_ptr<AsrEngine>(new WhisperAsr(cfg.whisper_model, cfg.language));
+  return std::unique_ptr<AsrEngine>(
+      new WhisperAsr(cfg.whisper_model, cfg.language, cfg.skip_language_refusal));
 }
 
 }  // namespace audionotes

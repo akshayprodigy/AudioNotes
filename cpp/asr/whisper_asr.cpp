@@ -55,8 +55,11 @@ struct WhisperAsr::Impl {
   bool ok = false;
   std::string language;
   std::string model_path;
+  //: A person overruled the refusal for this meeting. Never a default, never global.
+  bool skip_refusal = false;
 
-  Impl(const std::string& path, const std::string& lang) : language(lang), model_path(path) {
+  Impl(const std::string& path, const std::string& lang, bool skip)
+      : language(lang), model_path(path), skip_refusal(skip) {
 #ifdef HAVE_WHISPER
     whisper_context_params cparams = whisper_context_default_params();
     ctx = whisper_init_from_file_with_params(model_path.c_str(), cparams);
@@ -74,8 +77,9 @@ struct WhisperAsr::Impl {
   }
 };
 
-WhisperAsr::WhisperAsr(const std::string& model_path, const std::string& language)
-    : impl_(new Impl(model_path, language)) {}
+WhisperAsr::WhisperAsr(const std::string& model_path, const std::string& language,
+                       bool skip_language_refusal)
+    : impl_(new Impl(model_path, language, skip_language_refusal)) {}
 WhisperAsr::~WhisperAsr() { delete impl_; }
 bool WhisperAsr::ok() const { return impl_->ok; }
 
@@ -200,7 +204,11 @@ AsrRun WhisperAsr::transcribe(
     // Refuse only on AGREEMENT: a strict majority of the windows that produced an answer must
     // have heard the same unsupported language, and been confident on average. One window is not
     // evidence — that is what refused a real English meeting as Turkish.
-    if (shouldRefuse(heard, kRefuseConfidence)) {
+    // The override guards ONLY this branch. Detection above still runs and still populates
+    // run.detected_language / run.detected_confidence, which is what lets a forced transcript say
+    // "we heard Turkish and you overruled us" rather than only "you forced this". The cost is a
+    // handful of encoder passes that every run already pays.
+    if (!impl_->skip_refusal && shouldRefuse(heard, kRefuseConfidence)) {
       run.unsupported_language = true;
       ASRLOGI("stopping: heard %s in %d of %d window(s) (mean p=%.2f), which this build does not "
               "transcribe",

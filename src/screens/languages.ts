@@ -77,3 +77,46 @@ export function unsupportedLanguageShort(code: string | null | undefined): strin
   const name = languageName(code);
   return name ? `Not transcribed — sounds like ${name}.` : 'Not transcribed — not English.';
 }
+
+/**
+ * What to ask before overruling a refusal.
+ *
+ * Both outcomes, in the order that decides the answer. A generic "are you sure" would get tapped
+ * through: the person already believes the recording is English, so the only useful sentence is
+ * the one describing what happens if they are wrong — fluent invented text that reads as real,
+ * which is the failure the refusal exists to prevent.
+ */
+export function forceTranscribePrompt(code: string | null | undefined): {
+  title: string;
+  body: string;
+} {
+  const name = languageName(code);
+  const heard = name ? `This sounds like ${name}.` : 'This does not sound like English.';
+  return {
+    title: 'Transcribe it anyway?',
+    body:
+      `${heard} If we heard wrong, this will transcribe it as English. ` +
+      'If we heard right, the result will be invented text that reads as real.',
+  };
+}
+
+/**
+ * The banner a forced transcript carries for the rest of its life.
+ *
+ * Not dismissible where it is rendered, and composed here rather than stored, for the reason
+ * unsupportedLanguageNote records: a status message parked in a content field outlives its status.
+ * The person who forced it knew what they were doing; the person reading it three weeks later, or
+ * the colleague they forwarded it to, did not.
+ *
+ * Kept word for word in step with FileExportModule.forcedMarker, which builds the same sentence in
+ * Kotlin for the exported file. Both are pinned by tests, because the same meeting saying two
+ * different things depending on where it is read would undo the point of saying it at all.
+ */
+export function forcedTranscriptNote(code: string | null | undefined): string {
+  const name = languageName(code);
+  return name
+    ? `Forced transcript — heard as ${name}, transcribed as English. ` +
+        'If it was not English, the words below are invented.'
+    : 'Forced transcript — this did not sound like English, and was transcribed as English ' +
+        'anyway. If it was not English, the words below are invented.';
+}

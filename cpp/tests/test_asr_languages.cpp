@@ -7,6 +7,8 @@
 // says so out loud.
 #include "asr/asr_languages.h"
 
+#include "asr/asr_engine.h"
+
 #include <cstdio>
 #include <string>
 
@@ -131,6 +133,27 @@ int main() {
     CHECK(!audionotes::shouldRefuse(v, 0.60f),
           "no language holding a majority must never refuse (leader '%s' %d/%d)", v.code.c_str(),
           v.votes, v.samples);
+  }
+
+  // ---- the override ----
+  //
+  // A wrong refusal used to be unrecoverable: Redo re-runs the same detection and reaches the same
+  // verdict. The flag exists so a person who knows the recording was English can overrule it.
+  //
+  // Asserted against shouldRefuse rather than a whole transcribe() run because the decision is
+  // pure and the run needs 60 MB of weights. What this pins is that the flag changes the DECISION
+  // and nothing else — a bypass that also skipped detection could not tell anyone what was heard.
+  {
+    audionotes::LanguageVerdict turkish;
+    turkish.code = "tr";
+    turkish.mean_p = 0.95f;
+    turkish.votes = 4;
+    turkish.samples = 5;
+    CHECK(audionotes::shouldRefuse(turkish, 0.7f),
+          "a confident majority for an unsupported language must still refuse by default");
+
+    audionotes::AsrConfig cfg;
+    CHECK(!cfg.skip_language_refusal, "the override must be off unless somebody asks for it");
   }
 
   if (failures == 0) std::printf("test_asr_languages: OK\n");

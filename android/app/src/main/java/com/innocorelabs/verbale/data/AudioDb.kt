@@ -321,6 +321,20 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     db.execSQL("UPDATE meetings SET language=? WHERE id=?", arrayOf<Any?>(language, id))
   }
 
+  /**
+   * Null when this meeting was never forced.
+   *
+   * Read-only here on purpose. The write lives in src/db/queries.ts, which already updates
+   * `meetings` directly through Storage.query the same way clearNarration does — forcing is always
+   * a tap in the app, and a second writer in Kotlin would be a second place for one rule to live.
+   */
+  fun transcribeForcedAt(id: String): Long? {
+    db.rawQuery("SELECT transcribe_forced_at FROM meetings WHERE id=?", arrayOf(id)).use { c ->
+      if (!c.moveToFirst() || c.isNull(0)) return null
+      return c.getLong(0)
+    }
+  }
+
   fun setStatus(id: String, status: String) {
     db.execSQL("UPDATE meetings SET status=? WHERE id=?", arrayOf<Any?>(status, id))
   }
@@ -920,7 +934,21 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       // is not yet 'done', not only on an explicit reprocess. A stamped column is the only thing
       // that distinguishes "we named this" from "the user named this".
       Triple("meetings", "title_edited_at", "INTEGER"),
+      // "Transcribe it anyway": a person overruled the language refusal on this meeting. The
+      // timestamp is both the REQUEST (ProcessingEngine reads it to bypass the check) and the
+      // RECORD (the banner and every export read it forever). One column, because a transient
+      // flag plus a separate marker can disagree — a forced run that crashes would leave a marker
+      // with no transcript, or invented text with no marker.
+      Triple("meetings", "transcribe_forced_at", "INTEGER"),
+      // What was HEARD before the override, captured because the forced run destroys it: the
+      // refusal path writes the heard code into `language`, the success path overwrites it with
+      // the requested one. Without this the banner cannot say "heard as Turkish" an hour later.
+      Triple("meetings", "forced_from_language", "TEXT"),
     )
+
+    /** The migration list, for a unit test that must not open an encrypted database. */
+    @JvmStatic
+    fun addedColumnsForTest(): List<Triple<String, String, String>> = ADDED_COLUMNS.toList()
 
     private fun addMissingColumns(db: SQLiteDatabase) {
       for ((table, column, decl) in ADDED_COLUMNS) {
