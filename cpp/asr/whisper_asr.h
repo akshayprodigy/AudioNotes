@@ -18,7 +18,11 @@ class WhisperAsr : public AsrEngine {
   // Defaults to "en": most first meetings are in English, and per-chunk re-detection is the bug
   // above rather than a feature. Any other language is pinned the same way — this layer never
   // asks an engine to emit one language for audio in another.
-  explicit WhisperAsr(const std::string& model_path, const std::string& language = "en");
+  // `skip_language_refusal` overrules the refusal for this run only — see
+  // AsrConfig::skip_language_refusal. Detection still runs, so the run can still report what it
+  // heard; only the decision to stop is bypassed.
+  explicit WhisperAsr(const std::string& model_path, const std::string& language = "en",
+                      bool skip_language_refusal = false);
   ~WhisperAsr() override;
 
   bool ok() const override;  // false if whisper is not compiled in or the model failed to load
