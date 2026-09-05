@@ -106,9 +106,13 @@ struct SherpaAsr::Impl {
     std::string preprocessor, uncached_decoder, cached_decoder;
 
     if (flavour == Flavour::kParakeet) {
-      encoder = firstPresent(dir, {"encoder.int8.onnx", "encoder.onnx"});
-      decoder = firstPresent(dir, {"decoder.int8.onnx", "decoder.onnx"});
-      joiner = firstPresent(dir, {"joiner.int8.onnx", "joiner.onnx"});
+      // int8, then fp16, then full precision. Each published export lives in its own directory
+      // with exactly one variant, so the order only decides which name is reported when a
+      // directory is empty — but listing fp16 is not cosmetic: it is how the question "is the
+      // quiet-audio cliff an int8 artefact or the model?" gets asked at all.
+      encoder = firstPresent(dir, {"encoder.int8.onnx", "encoder.fp16.onnx", "encoder.onnx"});
+      decoder = firstPresent(dir, {"decoder.int8.onnx", "decoder.fp16.onnx", "decoder.onnx"});
+      joiner = firstPresent(dir, {"joiner.int8.onnx", "joiner.fp16.onnx", "joiner.onnx"});
       if (!readable(encoder) || !readable(decoder) || !readable(joiner) || !readable(tokens)) {
         why = "parakeet: missing weights in " + dir;
         std::fprintf(stderr, "%s (encoder=%d decoder=%d joiner=%d tokens=%d)\n", why.c_str(),
@@ -124,9 +128,11 @@ struct SherpaAsr::Impl {
       config.model_config.model_type = "nemo_transducer";
     } else {
       preprocessor = firstPresent(dir, {"preprocess.onnx", "preprocess.int8.onnx"});
-      encoder = firstPresent(dir, {"encode.int8.onnx", "encode.onnx"});
-      uncached_decoder = firstPresent(dir, {"uncached_decode.int8.onnx", "uncached_decode.onnx"});
-      cached_decoder = firstPresent(dir, {"cached_decode.int8.onnx", "cached_decode.onnx"});
+      encoder = firstPresent(dir, {"encode.int8.onnx", "encode.fp16.onnx", "encode.onnx"});
+      uncached_decoder = firstPresent(dir, {"uncached_decode.int8.onnx",
+                                           "uncached_decode.fp16.onnx", "uncached_decode.onnx"});
+      cached_decoder = firstPresent(dir, {"cached_decode.int8.onnx", "cached_decode.fp16.onnx",
+                                         "cached_decode.onnx"});
       if (!readable(preprocessor) || !readable(encoder) || !readable(uncached_decoder) ||
           !readable(cached_decoder) || !readable(tokens)) {
         why = "moonshine: missing weights in " + dir;

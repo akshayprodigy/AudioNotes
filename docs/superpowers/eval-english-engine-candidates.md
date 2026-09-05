@@ -94,6 +94,38 @@ whisper; it would need re-asking for any swap.
 
 ---
 
+## The cliff is not an int8 artefact — fp16 has it too
+
+"int8 quantisation collapses on low-energy features" was the likely story. It is wrong.
+`sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-fp16` fails on exactly the same clips, at exactly the same
+threshold:
+
+| gain applied | int8 | fp16 |
+|---|---|---|
+| ×1 | *(empty)* | `<unk><unk><unk>…` |
+| ×2 | *(empty)* | `<unk><unk><unk>…` |
+| ×3 | correct transcript | correct transcript |
+| ×4, ×8 | correct transcript | correct transcript |
+
+Same cliff, same ×3 recovery point. Only the *shape* of the failure changes: int8 collapses to a
+blank, fp16 collapses to unknown tokens. Over the whole of ES2003a, ungained, fp16 produced output
+for all 30 windows and **18 of them were pure `<unk>` spam** — the same 18 windows int8 left
+empty. WER 66.1%, against int8's 69.7%: no better.
+
+**fp16's failure is the worse one for this product.** An empty window looks like a quiet room; a
+window of `<unk><unk><unk>` is visible garbage in the user's transcript, and it would flow into
+the minutes. This project already has a rule about producing text that was not in the audio.
+
+It is also disqualified on cost alone, twice over: 1.26 GB against int8's 661 MB, and **0.27x
+realtime against 0.018x — fifteen times slower**, because ONNX Runtime has no native fp16 CPU
+kernel and emulates it.
+
+So the cliff sits in the model or in sherpa's NeMo feature path, not in the quantiser. Anyone
+picking this up later should start at `normalize_type=per_feature` and the log-mel floor, not at
+the export.
+
+---
+
 ## Method, and what these numbers do not say
 
 **Both engines were given whisper's chunking**, not their own comfortable window: 30 s budget,
@@ -113,10 +145,11 @@ several. Parakeet's DER of 38.2% against whisper's 19.1% measures that shape dif
 diarization quality. Only WER is comparable, because WER concatenates the whole meeting on both
 sides before aligning and cannot see utterance boundaries at all.
 
-**AMI is British and European meeting-room speech from the 2000s.** §1 item 4 — an accent-diverse
-English test set — is unbuilt, so none of this is evidence about American, Australian, Indian,
-Singaporean or Scottish speakers. A 30% relative gain on one corpus is a reason to keep going, not
-a reason to swap.
+**Every number here is AMI** — British and European meeting-room speech from the 2000s. The
+accent-diverse set built the same day (`eval-accent-baseline.md`) covers whisper only; neither new
+engine has been run against it, so nothing here says how they behave on American, Indian, Scottish,
+Nigerian or Kenyan speech. A 30% relative gain on one corpus is a reason to keep going, not a
+reason to swap — and a re-measurement worth doing first, if the cliff is ever fixed.
 
 ---
 
@@ -124,11 +157,8 @@ a reason to swap.
 
 1. **Do not swap on this evidence.** The accuracy is real; the silent-empty failure is
    disqualifying on its own, and size and speed are each independently serious.
-2. **The cliff needs a root cause, not a workaround.** It is upstream of us — in the int8 export,
-   or in sherpa's NeMo feature path. Worth checking the fp16 export
-   (`sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-fp16`) and v3 before concluding it is inherent to the
-   model, because "int8 quantisation collapses on low-energy features" is a testable and quite
-   likely story.
+2. ~~Check the fp16 export before concluding the cliff is inherent~~ — **done, and it is not the
+   quantisation.** See below.
 3. **This couples to a parked decision.** `docs/NEXT.md` §5 parks recording gain normalisation —
    "Built, measured, rejected", `2026-09-04-recording-gain-rejected.md`. That rejection was
    measured against whisper, which is level-robust. If Parakeet ever becomes the engine, gain stops
