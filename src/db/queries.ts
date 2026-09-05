@@ -65,7 +65,8 @@ export const db = {
   listMeetings: (sort: MeetingSort = 'recent', tag?: string | null) =>
     run<Meeting>(
       'SELECT id, title, created_at AS createdAt, duration_ms AS durationMs, language, ' +
-        'status, tier_used AS tierUsed, audio_retained AS audioRetained, summary_line AS summaryLine ' +
+        'status, tier_used AS tierUsed, audio_retained AS audioRetained, summary_line AS summaryLine, ' +
+        'transcribe_forced_at AS transcribeForcedAt, forced_from_language AS forcedFromLanguage ' +
         'FROM meetings WHERE archived_at IS NULL' +
         (tag ? ' AND EXISTS(SELECT 1 FROM tags t WHERE t.meeting_id = meetings.id AND t.name = ?)' : '') +
         ` ORDER BY ${MEETING_ORDER[sort] ?? MEETING_ORDER.recent}`,
@@ -75,7 +76,8 @@ export const db = {
   listArchived: () =>
     run<Meeting>(
       'SELECT id, title, created_at AS createdAt, duration_ms AS durationMs, language, ' +
-        'status, tier_used AS tierUsed, audio_retained AS audioRetained, summary_line AS summaryLine ' +
+        'status, tier_used AS tierUsed, audio_retained AS audioRetained, summary_line AS summaryLine, ' +
+        'transcribe_forced_at AS transcribeForcedAt, forced_from_language AS forcedFromLanguage ' +
         'FROM meetings WHERE archived_at IS NOT NULL ORDER BY archived_at DESC',
     ),
 
@@ -116,7 +118,8 @@ export const db = {
   getMeeting: (id: string) =>
     run<Meeting>(
       'SELECT id, title, created_at AS createdAt, duration_ms AS durationMs, language, ' +
-        'status, tier_used AS tierUsed, audio_retained AS audioRetained, summary_line AS summaryLine ' +
+        'status, tier_used AS tierUsed, audio_retained AS audioRetained, summary_line AS summaryLine, ' +
+        'transcribe_forced_at AS transcribeForcedAt, forced_from_language AS forcedFromLanguage ' +
         'FROM meetings WHERE id = ?',
       [id],
     ).then(r => r[0]),
@@ -197,6 +200,20 @@ export const db = {
    * Scoped to source='llm', the mirror of replaceMinutes above. The rule-based items are the
    * guaranteed floor and stay put, so the screen never blanks out while the model reruns.
    */
+  /**
+   * Record that a person overruled the "not English" refusal on this meeting.
+   *
+   * `heardLanguage` is passed in by the caller rather than read here: the meeting row still holds
+   * it at the moment of the tap, and will not once the forced run succeeds and overwrites
+   * `language` with the requested code. That is the whole reason it is a separate column.
+   */
+  markTranscribeForced: async (meetingId: string, heardLanguage: string | null) => {
+    await run(
+      'UPDATE meetings SET transcribe_forced_at = ?, forced_from_language = ? WHERE id = ?',
+      [Date.now(), heardLanguage && heardLanguage.trim() ? heardLanguage : null, meetingId],
+    );
+  },
+
   clearNarration: async (meetingId: string) => {
     await run("DELETE FROM minutes WHERE meeting_id = ? AND source = 'llm'", [meetingId]);
     await run('UPDATE meetings SET summary_line = NULL WHERE id = ?', [meetingId]);

@@ -1,4 +1,4 @@
-import { unsupportedLanguageNote } from './languages';
+import { unsupportedLanguageNote, forceTranscribePrompt, forcedTranscriptNote } from './languages';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -22,6 +22,7 @@ import Mascot from '../components/Mascot';
 import { confirmDestructive, quoted } from '../components/confirm';
 import {
   Badge,
+  Button,
   IconButton,
   ProgressRing,
   GradientFill,
@@ -257,6 +258,32 @@ export default function MeetingScreen({ route, navigation }: Props) {
     },
     [meetingId, refresh, reprocessing],
   );
+
+  /**
+   * Overrule a refusal we may have got wrong.
+   *
+   * Stamps the meeting FIRST, then reprocesses: ProcessingEngine reads the column at the top of
+   * its ASR stage, so the order matters — reprocessing first would run the same detection, refuse
+   * again, and the button would look broken.
+   *
+   * The heard language is passed from the row we are looking at, because the successful run
+   * overwrites `language` with the requested code and there would be nothing left to name.
+   */
+  const onTranscribeAnyway = useCallback(() => {
+    const prompt = forceTranscribePrompt(meeting?.language);
+    Alert.alert(prompt.title, prompt.body, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Transcribe anyway',
+        style: 'destructive',
+        onPress: async () => {
+          await db.markTranscribeForced(meetingId, meeting?.language ?? null);
+          await refresh();
+          await onReprocess();
+        },
+      },
+    ]);
+  }, [meeting?.language, meetingId, onReprocess, refresh]);
 
   /**
    * Rename the meeting.
@@ -762,6 +789,15 @@ export default function MeetingScreen({ route, navigation }: Props) {
           <Txt variant="sub" color={colors.inkDim} style={st.emptyBody}>
             Your recording is kept. Redo will transcribe it the day its language is supported.
           </Txt>
+          {/* The only route onward used to be Redo, buried in the overflow sheet — which re-runs
+              the same detection and lands back here. An action that appears to do nothing is
+              worse than no action, and detection can be wrong: a real English meeting was heard
+              as Turkish at p=0.88 on a Galaxy A07. */}
+          <Button
+            label="Transcribe it anyway"
+            onPress={onTranscribeAnyway}
+            style={st.emptyAction}
+          />
         </View>
       ) : empty ? (
         <View style={st.emptyWrap}>
@@ -776,6 +812,15 @@ export default function MeetingScreen({ route, navigation }: Props) {
         </View>
       ) : (
         <>
+          {/* Not dismissible: its whole purpose is to outlive the moment of the decision. The
+              person who forced it knew; the person reading it three weeks later did not. */}
+          {meeting?.transcribeForcedAt ? (
+            <View style={st.forcedBanner}>
+              <Txt variant="sub" color={colors.warning}>
+                {forcedTranscriptNote(meeting?.forcedFromLanguage)}
+              </Txt>
+            </View>
+          ) : null}
           <Segmented items={TABS} value={tab} onChange={setTab} style={st.tabs} />
           {/* Each tab owns its own scroll. Hosting them in one page scroll is what the split was
               for: the transcript can be a virtualised list only if it is the thing scrolling. */}
@@ -1031,5 +1076,14 @@ function makeStyles(c: Colors) {
     emptyWrap: { alignItems: 'center', paddingTop: sv(60), paddingHorizontal: s(30) },
     emptyTitle: { marginTop: s(18) },
     emptyBody: { textAlign: 'center', marginTop: s(8) },
+    emptyAction: { marginTop: s(20), alignSelf: 'center' },
+    forcedBanner: {
+      backgroundColor: c.warningSoft,
+      borderRadius: s(10),
+      paddingHorizontal: s(12),
+      paddingVertical: s(10),
+      marginHorizontal: s(16),
+      marginBottom: s(8),
+    },
   });
 }
