@@ -122,10 +122,13 @@ class ProcessingEngine(
           // Where a Qwen3-ASR export lives if one has been installed. Passed on every run, not
           // only Hindi ones: the ENGINE choice belongs to the core's policy table, and deciding
           // it here as well would put the same rule in two places that could disagree.
+          // Set by "Transcribe it anyway" on a meeting this build already refused. Read per run
+          // rather than held, so a reprocess of a forced meeting stays forced.
+          val forced = db.transcribeForcedAt(meetingId) != null
           val qwen3Dir = ModelCatalog.qwen3DirFor(ctx)
           val json = NativeBridge.nativeTranscribe(
             audioPath, asrFile.absolutePath, RecordingService.SAMPLE_RATE, starts, ends, 0, language,
-            if (qwen3Dir.isDirectory) qwen3Dir.absolutePath else "",
+            if (qwen3Dir.isDirectory) qwen3Dir.absolutePath else "", forced,
           )
           stageDone("asr", t0)
 
@@ -161,6 +164,11 @@ class ProcessingEngine(
             return
           }
 
+          // `language` records what the meeting was transcribed IN, so a forced run correctly
+          // sets it to the requested code. `forced_from_language` is a different fact — what was
+          // heard before somebody overruled us — written once by the app and never touched here.
+          // Clearing it would empty the banner without breaking anything, which is the whole
+          // reason it is a separate column.
           db.setLanguage(meetingId, language)
           val count = db.replaceUtterancesJson(meetingId, asr.getJSONArray("utterances").toString())
           db.setStatus(meetingId, "asr")
