@@ -57,6 +57,82 @@ int main() {
     }
   }
 
+  // ---- deciding a language from several windows ----
+  //
+  // The failure this exists to stop, reproduced exactly: a real English meeting on a Galaxy A07,
+  // whose FIRST window was heard as Turkish at p=0.88 while every later window heard English.
+  // The old code trusted that first window alone and refused the recording.
+  {
+    const audionotes::LanguageVerdict v = audionotes::tallyLanguage({
+        {"tr", 0.88f}, {"en", 0.91f}, {"en", 0.86f}, {"en", 0.94f}, {"en", 0.77f}});
+    CHECK(v.code == "en", "the majority language must win, got '%s'", v.code.c_str());
+    CHECK(v.votes == 4 && v.samples == 5, "votes/samples wrong: %d/%d", v.votes, v.samples);
+    CHECK(!audionotes::shouldRefuse(v, 0.60f), "an English meeting must NOT be refused");
+  }
+
+  // A genuinely unsupported recording still gets refused: agreement across windows.
+  {
+    const audionotes::LanguageVerdict v = audionotes::tallyLanguage({
+        {"bn", 0.70f}, {"bn", 0.76f}, {"bn", 0.68f}, {"en", 0.55f}});
+    CHECK(v.code == "bn", "the majority language must win, got '%s'", v.code.c_str());
+    CHECK(audionotes::shouldRefuse(v, 0.60f), "a Bengali meeting must be refused");
+  }
+
+  // Confident but outnumbered: one loud wrong answer cannot refuse a recording.
+  {
+    const audionotes::LanguageVerdict v =
+        audionotes::tallyLanguage({{"de", 0.99f}, {"en", 0.50f}, {"en", 0.52f}});
+    CHECK(v.code == "en", "the majority must win even against a confident minority");
+    CHECK(!audionotes::shouldRefuse(v, 0.60f), "a confident minority must not refuse");
+  }
+
+  // Agreed on an unsupported language, but unsure: ambiguity resolves to carrying on.
+  {
+    const audionotes::LanguageVerdict v = audionotes::tallyLanguage({{"bn", 0.40f}, {"bn", 0.45f}});
+    CHECK(v.code == "bn", "tally should still report what was heard");
+    CHECK(!audionotes::shouldRefuse(v, 0.60f), "low mean confidence must not refuse");
+  }
+
+  // A tie resolves to the supported language: refusing wrongly costs somebody their meeting.
+  {
+    const audionotes::LanguageVerdict v = audionotes::tallyLanguage({{"bn", 0.90f}, {"en", 0.90f}});
+    CHECK(v.code == "en", "a tie must resolve to the supported language, got '%s'", v.code.c_str());
+    CHECK(!audionotes::shouldRefuse(v, 0.60f), "a tie must not refuse");
+  }
+
+  // Nothing heard at all — silence, or a detector that could not tell. Never refuse on no evidence.
+  {
+    const audionotes::LanguageVerdict none = audionotes::tallyLanguage({});
+    CHECK(none.samples == 0 && none.code.empty(), "an empty tally must be empty");
+    CHECK(!audionotes::shouldRefuse(none, 0.60f), "no evidence must never refuse");
+    const audionotes::LanguageVerdict blanks = audionotes::tallyLanguage({{"", 0.9f}, {"", 0.8f}});
+    CHECK(blanks.samples == 0, "blank codes must not count as samples");
+    CHECK(!audionotes::shouldRefuse(blanks, 0.60f), "blank codes must never refuse");
+  }
+
+  // A single window CAN still refuse when it is all there is (a very short recording), because
+  // one sample is its own majority — but it must clear the confidence bar.
+  {
+    const audionotes::LanguageVerdict sure = audionotes::tallyLanguage({{"de", 0.99f}});
+    CHECK(audionotes::shouldRefuse(sure, 0.60f), "a lone confident window may refuse");
+    const audionotes::LanguageVerdict unsure = audionotes::tallyLanguage({{"de", 0.30f}});
+    CHECK(!audionotes::shouldRefuse(unsure, 0.60f), "a lone unsure window must not refuse");
+  }
+
+  // Scattered guesses: the detector heard a different unsupported language in each window and
+  // none of them leads. This is what ambiguous or noisy audio looks like, and it is the case the
+  // majority rule exists for — the leader is unsupported, confident, and still not a majority.
+  {
+    const audionotes::LanguageVerdict v = audionotes::tallyLanguage(
+        {{"bn", 0.90f}, {"bn", 0.88f}, {"de", 0.92f}, {"de", 0.91f}, {"tr", 0.95f}});
+    CHECK(!audionotes::isSupported(v.code), "the leader here is an unsupported language");
+    CHECK(v.votes * 2 <= v.samples, "the leader must not hold a majority: %d of %d", v.votes,
+          v.samples);
+    CHECK(!audionotes::shouldRefuse(v, 0.60f),
+          "no language holding a majority must never refuse (leader '%s' %d/%d)", v.code.c_str(),
+          v.votes, v.samples);
+  }
+
   if (failures == 0) std::printf("test_asr_languages: OK\n");
   return failures == 0 ? 0 : 1;
 }

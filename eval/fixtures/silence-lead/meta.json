@@ -1,0 +1,5 @@
+{
+ "id": "silence-lead",
+ "source": "synthetic",
+ "notes": "60 s of room tone prepended to ES2003a. Invented words are scored in the tone only; WER over the rest is the regression check that a fix has not eaten real speech."
+}

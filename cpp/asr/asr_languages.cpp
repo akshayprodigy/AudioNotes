@@ -1,5 +1,7 @@
 #include "asr_languages.h"
 
+#include <map>
+
 namespace audionotes {
 namespace {
 
@@ -36,6 +38,36 @@ bool isSupported(const std::string& code) {
     if (l.code == code) return true;
   }
   return false;
+}
+
+LanguageVerdict tallyLanguage(const std::vector<LanguageHeard>& heard) {
+  LanguageVerdict out;
+  std::map<std::string, std::pair<int, float>> tally;  // code -> {votes, summed confidence}
+  for (const LanguageHeard& h : heard) {
+    if (h.code.empty()) continue;
+    auto& slot = tally[h.code];
+    slot.first += 1;
+    slot.second += h.confidence;
+    ++out.samples;
+  }
+  for (const auto& kv : tally) {
+    const bool wins = kv.second.first > out.votes;
+    const bool ties_but_supported =
+        kv.second.first == out.votes && isSupported(kv.first) && !isSupported(out.code);
+    if (wins || ties_but_supported) {
+      out.code = kv.first;
+      out.votes = kv.second.first;
+      out.mean_p = kv.second.second / static_cast<float>(kv.second.first);
+    }
+  }
+  return out;
+}
+
+bool shouldRefuse(const LanguageVerdict& verdict, float min_confidence) {
+  if (verdict.code.empty() || verdict.samples <= 0) return false;
+  if (isSupported(verdict.code)) return false;
+  if (verdict.votes * 2 <= verdict.samples) return false;  // no majority
+  return verdict.mean_p >= min_confidence;
 }
 
 }  // namespace audionotes

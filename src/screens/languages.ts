@@ -37,3 +37,43 @@ export function orderLanguages(all: LanguageChoice[]): LanguageChoice[] {
     .sort((a, b) => a.label.localeCompare(b.label));
   return [...pinned, ...rest];
 }
+
+/**
+ * The English name of a language code, or null if we cannot name it.
+ *
+ * Wrapped because Intl.DisplayNames is not guaranteed on every Hermes build, and a missing
+ * formatter must not take down the screen that reports a refusal.
+ */
+export function languageName(code: string | null | undefined): string | null {
+  if (!code) return null;
+  try {
+    const dn = new Intl.DisplayNames(['en'], { type: 'language' });
+    const name = dn.of(code);
+    // Intl returns the input unchanged for codes it does not know.
+    return name && name.toLowerCase() !== code.toLowerCase() ? name : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What to tell somebody whose recording was not transcribed.
+ *
+ * Composed here from the meeting's status and language rather than stored, because the stored
+ * version lived in `summary_line` — the field that says what a meeting was ABOUT. A recording that
+ * was refused and later transcribed successfully kept leading with "this sounds like Turkish",
+ * since only narration overwrites that field and narration is Pro-only. A status message in a
+ * content field outlives the status.
+ */
+export function unsupportedLanguageNote(code: string | null | undefined): string {
+  const name = languageName(code);
+  return name
+    ? `This recording sounds like ${name}, and Verbale transcribes English today.`
+    : 'This recording does not sound like English, and Verbale transcribes English today.';
+}
+
+/** The same fact, short enough for a library row. */
+export function unsupportedLanguageShort(code: string | null | undefined): string {
+  const name = languageName(code);
+  return name ? `Not transcribed — sounds like ${name}.` : 'Not transcribed — not English.';
+}

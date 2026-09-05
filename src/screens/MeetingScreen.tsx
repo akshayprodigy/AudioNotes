@@ -1,3 +1,4 @@
+import { unsupportedLanguageNote } from './languages';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -465,8 +466,15 @@ export default function MeetingScreen({ route, navigation }: Props) {
       { text: 'Cancel', style: 'cancel' },
     ]);
 
-  const working = stage !== null || reprocessing || (!settled && minutes.length === 0);
-  const empty = settled && !working && minutes.length === 0 && utterances.length === 0;
+  // A recording we declined to transcribe is FINISHED, not in flight. Without this it fell through
+  // to the progress view and span on "Writing your notes..." forever, because nothing was running
+  // to ever report completion — and once that was fixed it fell through again to "could not hear
+  // any speech", which is a different and untrue explanation. Cleared the moment a reprocess
+  // starts, so Redo shows real progress.
+  const refused =
+    meeting?.status === 'unsupported_language' && !reprocessing && stage === null;
+  const working = !refused && (stage !== null || reprocessing || (!settled && minutes.length === 0));
+  const empty = !refused && settled && !working && minutes.length === 0 && utterances.length === 0;
 
   /**
    * Per-meeting actions, in the overflow sheet.
@@ -738,7 +746,24 @@ export default function MeetingScreen({ route, navigation }: Props) {
         </View>
       ) : null}
 
-      {empty ? (
+      {refused ? (
+        <View style={st.emptyWrap}>
+          <Mascot mood="asleep" size={sv(130)} />
+          <Txt variant="display" style={st.emptyTitle}>
+            Not transcribed
+          </Txt>
+          <Txt variant="body" color={colors.inkSoft} style={st.emptyBody}>
+            {/* Composed from the meeting's language, never read out of summary_line: that field
+                says what a meeting was ABOUT, and a status message parked in it outlived the
+                status — a recording refused once and transcribed later still led with "this
+                sounds like Turkish". */}
+            {unsupportedLanguageNote(meeting?.language)}
+          </Txt>
+          <Txt variant="sub" color={colors.inkDim} style={st.emptyBody}>
+            Your recording is kept. Redo will transcribe it the day its language is supported.
+          </Txt>
+        </View>
+      ) : empty ? (
         <View style={st.emptyWrap}>
           <Mascot mood="asleep" size={sv(130)} />
           <Txt variant="display" style={st.emptyTitle}>

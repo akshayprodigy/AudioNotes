@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { unsupportedLanguageShort } from './languages';
 import { Animated, Easing, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -48,6 +49,10 @@ function statusOf(status: string, c: Colors) {
       return { label: 'RECORDING', color: c.danger, soft: c.dangerSoft, live: true };
     case 'captured':
       return { label: 'QUEUED', color: c.warning, soft: c.warningSoft, live: true };
+    // Finished, not in flight. This fell through to the default below and showed a live
+    // TRANSCRIBING badge on a meeting nothing was working on, forever.
+    case 'unsupported_language':
+      return { label: 'NOT ENGLISH', color: c.warning, soft: c.warningSoft, live: false };
     default:
       return { label: 'TRANSCRIBING', color: c.primary, soft: c.primarySoft, live: true };
   }
@@ -76,6 +81,10 @@ function subtitleOf(m: Meeting): string | null {
       return 'Writing down the words…';
     case 'diarized':
       return 'Telling the voices apart…';
+    case 'unsupported_language':
+      // Composed, never stored: see unsupportedLanguageShort. This row must say why it is not
+      // READY, and the refusal explanation must not survive into a meeting that later transcribes.
+      return unsupportedLanguageShort(m.language);
     case 'done':
       return null; // narrated meetings have a line; un-narrated ones say nothing rather than guess
     default:
@@ -671,7 +680,7 @@ export default function LibraryScreen({ navigation }: Props) {
         ) : null}
 
         {meetings.length === 0 ? (
-          <Pop style={st.empty}>
+          <Pop style={[st.empty, st.emptyGrow]}>
             <Mascot mood="asleep" size={s(150)} />
             <Txt variant="display" style={st.emptyTitle}>
               No meetings yet
@@ -776,7 +785,10 @@ function makeStyles(c: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: c.canvas },
     flex: { flex: 1 },
-    emptyFlex: { flexGrow: 1, justifyContent: 'center' },
+    // Fills the screen so the empty block below has room to centre itself in. Deliberately does
+    // NOT centre its own children: this is the ScrollView's content container, so centring here
+    // would take the header down to the middle of the screen with everything else.
+    emptyFlex: { flexGrow: 1 },
     filterRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -861,6 +873,9 @@ function makeStyles(c: Colors) {
     quietNum: { lineHeight: s(30) },
 
     empty: { alignItems: 'center', paddingHorizontal: s(30) },
+    // Only when there is nothing else in the list: takes the space the header and cards are not
+    // using, and centres the mascot inside that, leaving the header where a header belongs.
+    emptyGrow: { flexGrow: 1, justifyContent: 'center' },
     emptyTitle: { marginTop: s(18) },
     emptyBody: { textAlign: 'center', marginTop: s(8) },
 

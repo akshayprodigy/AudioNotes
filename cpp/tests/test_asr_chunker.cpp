@@ -48,7 +48,39 @@ int main() {
                {{0, 5000}, {40000, 45000}}, "second span past the budget starts a new chunk");
 
   // Boundary: ending exactly AT the budget still packs (the test is >, not >=).
-  expectChunks(makeChunks({{0, 5000}, {25000, 30000}}, kBudget), {{0, 30000}}, "exactly at budget");
+  //
+  // Spans chosen close together on purpose. This case used to be {0,5000},{25000,30000}, which
+  // also happens to be a TWENTY SECOND silent gap — so once packing learned to break on a long
+  // gap, the case stopped testing the budget boundary and started testing the gap rule instead.
+  expectChunks(makeChunks({{0, 27000}, {27500, 30000}}, kBudget), {{0, 30000}}, "exactly at budget");
+
+  // ---- long silences are not packed over ----
+  //
+  // The failure this prevents: 60 s of room tone before a real meeting produced 43 invented words.
+  // A 0.4 s creak in the quiet was merged with speech 24 seconds later, and whisper -- handed a
+  // window that is almost entirely silence -- filled the silence in with a meeting that never
+  // happened. See kMaxMergeGapMs.
+  {
+    const int64_t gap = audionotes::kMaxMergeGapMs;
+    // A blip, then a long silence, then real speech: two windows, and the silence is in neither.
+    expectChunks(makeChunks({{36400, 36800}, {36800 + gap + 1000, 45000}}, kBudget),
+                 {{36400, 36800}, {36800 + gap + 1000, 45000}},
+                 "a long silence must not be packed over");
+
+    // Just inside the limit still packs: ordinary pauses and speaker turns must not be split, or
+    // every chunk boundary becomes an extra 30 s encoder pass.
+    expectChunks(makeChunks({{0, 5000}, {5000 + gap - 500, 12000}}, kBudget),
+                 {{0, 12000}}, "a conversational pause must still pack");
+
+    // Exactly at the limit packs: the test is >, not >=, matching the budget rule above.
+    expectChunks(makeChunks({{0, 5000}, {5000 + gap, 12000}}, kBudget),
+                 {{0, 12000}}, "exactly at the gap limit still packs");
+
+    // Passing 0 turns the rule off, which is how the old behaviour is still reachable for a
+    // caller that wants it -- and how this test proves the rule is what changed the result.
+    expectChunks(makeChunks({{36400, 36800}, {60000, 65000}}, kBudget, ChunkMode::kPack, 0),
+                 {{36400, 65000}}, "gap 0 disables the rule");
+  }
   expectChunks(makeChunks({{0, 5000}, {25000, 30001}}, kBudget),
                {{0, 5000}, {25000, 30001}}, "one ms past the budget");
 

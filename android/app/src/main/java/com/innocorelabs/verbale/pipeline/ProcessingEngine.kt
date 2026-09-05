@@ -61,6 +61,9 @@ class ProcessingEngine(
       if (audioGone) Log.i(TAG, "audio gone for $meetingId — transcript-only re-run")
 
       val state = db.pipelineState(meetingId)
+      // Leaving the refused state: whatever one-liner this meeting carries was written before or
+      // during a refusal and does not describe the transcript we are about to produce.
+      if (state.status == "unsupported_language") db.clearSummaryLine(meetingId)
       val remaining = ResumePlan.remaining(state, forceNarrate)
       // Rows-only isn't enough: if the native minutes stage previously threw (e.g. replaceMinutes)
       // the outer catch sets status='error' while every stage's rows are already present, and a
@@ -136,13 +139,25 @@ class ProcessingEngine(
             // says English; the meeting was not, and the person needs to be told which.
             db.setLanguage(meetingId, heard.ifBlank { language })
             db.setStatus(meetingId, "unsupported_language")
-            db.setSummaryLine(meetingId, unsupportedLanguageMessage(heard))
+            // NOT written into summary_line. That field is what the meeting was about, and the app
+            // shows it wherever a summary belongs — so putting a status message in it meant a
+            // recording that was later transcribed successfully still led with "this sounds like
+            // Turkish", because only narration overwrites the field and narration is Pro-gated.
+            // status + language already say everything; the sentence is composed where it is shown.
+            db.clearSummaryLine(meetingId)
             listener.onStage("asr", 1, 1)
             // Returning stops diarization, minutes and narration for this meeting. That is the
             // entire point: a summary assembled over audio we cannot read is indistinguishable
             // from a real one to anybody who was not in the room. The audio is kept, so the
             // meeting can be reprocessed the day the language is supported.
             Log.i(TAG, "refused $meetingId: heard '$heard', which this build cannot transcribe")
+            // Terminal, so it must be reported like every other terminal path. Returning without
+            // this left the service running and the screen on "Writing your notes..." forever:
+            // the refusal reached the database and never reached the person waiting on it.
+            // "done" rather than "error" because nothing failed, and ProcessingService re-reads
+            // the meeting's own status before notifying — so a refused meeting completes quietly
+            // instead of announcing notes that were never written.
+            listener.onComplete("done")
             return
           }
 
@@ -272,27 +287,6 @@ class ProcessingEngine(
     }
   }
 
-  /**
-   * What to tell somebody whose recording will not be transcribed.
-   *
-   * Written to be read by the person, not by us: it names the language we heard, says plainly that
-   * we did not transcribe it, and — the part that matters most — promises the recording is still
-   * there. Somebody who has just given us an hour of their meeting needs to know they have not
-   * lost it.
-   *
-   * No apology and no error framing. The app is working correctly; it simply cannot read this
-   * language yet, and saying so is more useful than sounding broken.
-   */
-  private fun unsupportedLanguageMessage(code: String): String {
-    val name =
-      if (code.isBlank()) ""
-      else java.util.Locale.forLanguageTag(code).getDisplayLanguage(java.util.Locale.ENGLISH)
-    val heard =
-      if (name.isBlank() || name.equals(code, ignoreCase = true)) "not in English"
-      else "in $name"
-    return "This recording sounds $heard, and Verbale transcribes English today. " +
-      "It has not been transcribed, and the audio is saved."
-  }
 
   private fun checkCancelled(): Boolean {
     if (!cancelled) return false

@@ -45,6 +45,40 @@ int main() {
   // bytes are gone before the walk, the whitespace is contiguous, and "ok" survives alone.
   expect(" - \xE0\xA4 ok", "ok", "scrub precedes dash strip");
 
+  // ---- non-speech markers ----
+  //
+  // Measured: 120 seconds of room tone produced two "[BLANK_AUDIO]" utterances. That is whisper
+  // correctly reporting that nothing was said, and us storing it as though somebody had.
+  CHECK(audionotes::normalizeSegmentText("[BLANK_AUDIO]").empty(), "a blank-audio marker must not survive");
+  CHECK(audionotes::normalizeSegmentText(" [BLANK_AUDIO] ").empty(), "padding must not save a marker");
+  CHECK(audionotes::normalizeSegmentText("(upbeat music)").empty(), "a parenthesised annotation must not survive");
+  CHECK(audionotes::normalizeSegmentText("[ Silence ]").empty(), "a spaced marker must not survive");
+
+  // But only when the marker is the WHOLE segment: these carry real words.
+  CHECK(audionotes::normalizeSegmentText("[laughs] yes, agreed") == "[laughs] yes, agreed",
+        "a segment with words outside the brackets must be untouched");
+  CHECK(audionotes::normalizeSegmentText("we shipped it (finally)") == "we shipped it (finally)",
+        "a trailing parenthetical must be untouched");
+  CHECK(audionotes::normalizeSegmentText("[a] and [b]") == "[a] and [b]",
+        "two brackets with words between them must be untouched");
+
+  // ---- subtitle speaker markers ----
+  //
+  // whisper was trained on subtitles and reproduces ">>" for "a new speaker starts here". We have
+  // real diarization; the marker reached the transcript, the minutes and the clipboard.
+  CHECK(audionotes::normalizeSegmentText(">> Computer security, and the rest.") == "Computer security, and the rest.",
+        "a subtitle marker must be stripped");
+  CHECK(audionotes::normalizeSegmentText(">>> Okay") == "Okay", "a triple marker must be stripped");
+  CHECK(audionotes::normalizeSegmentText("- >> Okay") == "Okay", "dash then marker must both go");
+
+  // The space is required, as it is for the dialogue dash: without it these would be mangled.
+  CHECK(audionotes::normalizeSegmentText(">>=") == ">>=", "no space means it is not a speaker mark");
+  CHECK(audionotes::normalizeSegmentText(">>") == ">>", "a bare marker with nothing behind it is left alone");
+  CHECK(audionotes::normalizeSegmentText("a >> b") == "a >> b", "a marker mid-sentence must be left alone");
+
+  // A marker wrapped in a marker still reduces to nothing.
+  CHECK(audionotes::normalizeSegmentText(">> [BLANK_AUDIO]").empty(), "a marked-up blank must not survive");
+
   if (failures == 0) std::printf("test_asr_postprocess OK\n");
   return failures == 0 ? 0 : 1;
 }

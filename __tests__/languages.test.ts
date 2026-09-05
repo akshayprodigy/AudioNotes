@@ -2,6 +2,9 @@ import {
   FALLBACK_LANGUAGES,
   orderLanguages,
   PINNED_LANGUAGES,
+  languageName,
+  unsupportedLanguageNote,
+  unsupportedLanguageShort,
 } from '../src/screens/languages';
 
 /**
@@ -73,5 +76,42 @@ describe('the offered languages', () => {
     for (const unmeasured of ['bn', 'hi', 'de', 'es', 'fr', 'zh', 'ar']) {
       expect(FALLBACK_LANGUAGES.some(l => l.code === unmeasured)).toBe(false);
     }
+  });
+});
+
+describe('refusing a recording we cannot transcribe', () => {
+  // The bug this replaces: the sentence was written into meetings.summary_line, the field that
+  // says what a meeting was ABOUT. Only narration overwrites that field and narration is Pro-only,
+  // so a recording refused once and then transcribed successfully still led with "this recording
+  // sounds like Turkish". Composing it from the language means there is nothing to go stale.
+  it('names the language it heard', () => {
+    // Asserts the composition, not the CLDR vocabulary: Intl calls 'bn' "Bangla", not "Bengali",
+    // and pinning either would be testing the platform's word list rather than this code.
+    const name = languageName('bn');
+    expect(name).toBeTruthy();
+    expect(name).not.toBe('bn');
+    expect(unsupportedLanguageNote('bn')).toContain(name as string);
+    expect(unsupportedLanguageShort('bn')).toContain(name as string);
+  });
+
+  it('still says something useful when the code cannot be named', () => {
+    for (const code of ['', null, undefined, 'zzz']) {
+      const note = unsupportedLanguageNote(code as string);
+      expect(note.length).toBeGreaterThan(0);
+      expect(note).not.toContain('null');
+      expect(note).not.toContain('undefined');
+      expect(note).toContain('English');
+    }
+  });
+
+  it('never claims a language it could not name', () => {
+    expect(languageName('zzz')).toBeNull();
+    expect(languageName('')).toBeNull();
+    // An unnameable code must not leak the raw code at the reader.
+    expect(unsupportedLanguageShort('zzz')).not.toContain('zzz');
+  });
+
+  it('is short enough for a library row', () => {
+    expect(unsupportedLanguageShort('bn').length).toBeLessThan(60);
   });
 });

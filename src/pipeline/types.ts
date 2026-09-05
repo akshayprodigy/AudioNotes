@@ -9,6 +9,12 @@ export type MeetingStatus =
   | 'aligned'
   | 'structured'
   | 'done'
+  // Terminal, and written only by the native pipeline (ProcessingEngine.kt): speech was heard in a
+  // language this build does not transcribe, so nothing was written and the audio was kept. It
+  // belongs in this union because its absence is what let both screens treat a finished meeting as
+  // one still in flight — the library showed a live TRANSCRIBING badge and the meeting screen span
+  // on "Writing your notes..." with nothing running behind it.
+  | 'unsupported_language'
   | 'error';
 
 export type PipelineStage = 'vad' | 'asr' | 'diarize' | 'minutes' | 'align' | 'structure';

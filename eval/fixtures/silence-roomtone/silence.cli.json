@@ -1,0 +1,26 @@
+{
+ "audio_ms": 120000,
+ "cancelled": false,
+ "detected_confidence": 0.4476248025894165,
+ "detected_language": "en",
+ "minutes": [],
+ "minutes_source": "",
+ "segments": [
+  {
+   "end_ms": 36766,
+   "start_ms": 36354
+  },
+  {
+   "end_ms": 96766,
+   "start_ms": 96354
+  }
+ ],
+ "timings": {
+  "asr_ms": 428,
+  "diar_ms": 0,
+  "minutes_ms": 0,
+  "vad_ms": 497
+ },
+ "transcript": [],
+ "unsupported_language": false
+}

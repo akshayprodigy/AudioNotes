@@ -180,6 +180,7 @@ AsrRun Qwen3Asr::transcribe(const std::string& pcm_path,
   const auto chunks = makeChunks(segments, maxChunkMs(), chunkMode());
   const int total = static_cast<int>(chunks.size());
   run.chunks_total = total;
+
   QWENLOGI("transcribing %d chunk(s)", total);
 
   for (int ci = 0; ci < total; ++ci) {

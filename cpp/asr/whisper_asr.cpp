@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
 #include <stdexcept>
 #include <thread>
 #include <utility>
@@ -127,6 +128,41 @@ std::pair<std::string, float> detectLanguage(whisper_context* ctx,
   return {code ? std::string(code) : std::string(), probs[static_cast<size_t>(id)]};
 }
 
+//: How many windows we listen to before deciding what language a recording is in.
+//:
+//: More than one, because the opening of a real meeting is the worst possible thing to judge it
+//: by: greetings, cross-talk, a microphone settling, a few words over room noise. A single window
+//: heard a genuinely English meeting as Turkish at p=0.88 on a Galaxy A07 — past any threshold
+//: that would still catch the languages this check exists to catch. The confidence figures above
+//: were all measured on clean, content-rich audio, which is not what production ever gets first.
+constexpr int kDetectWindows = 5;
+
+/**
+ * Listen at several points across the recording and report what was heard at each.
+ *
+ * Windows are spread over the whole recording, so an atypical opening cannot decide it alone.
+ * The decision itself lives in asr_languages.h, where it can be tested without an audio file.
+ */
+std::vector<LanguageHeard> listenForLanguage(whisper_context* ctx, const std::string& pcm_path,
+                                             const std::vector<Chunk>& chunks, int sample_rate,
+                                             int threads, const AsrCancelFn& cancel) {
+  std::vector<LanguageHeard> heard;
+  if (chunks.empty()) return heard;
+  const int wanted = std::min<int>(kDetectWindows, static_cast<int>(chunks.size()));
+  for (int i = 0; i < wanted; ++i) {
+    if (cancel && cancel()) break;
+    const size_t idx = static_cast<size_t>(static_cast<double>(i) *
+                                           static_cast<double>(chunks.size()) / wanted);
+    const Chunk& ch = chunks[std::min(idx, chunks.size() - 1)];
+    std::vector<float> samples = readWindow(pcm_path, sample_rate, ch.start_ms, ch.end_ms);
+    if (samples.empty()) continue;
+    const std::pair<std::string, float> one = detectLanguage(ctx, samples, threads);
+    if (one.first.empty()) continue;
+    heard.push_back(LanguageHeard{one.first, one.second});
+  }
+  return heard;
+}
+
 }  // namespace
 #endif
 
@@ -148,6 +184,34 @@ AsrRun WhisperAsr::transcribe(
   const int total = static_cast<int>(chunks.size());
   run.chunks_total = total;
   const int threads = threads_override > 0 ? threads_override : inferenceThreadCount();
+
+  // Decide what language this is BEFORE producing any text.
+  //
+  // Checked even when a language was explicitly chosen, because the choice is exactly what goes
+  // wrong: the picker says English, somebody records a meeting in another language, and whisper
+  // obligingly invents fluent English over it. A handful of encoder passes against a whole
+  // recording of decoding, and an unsupported recording costs those passes rather than an hour
+  // of CPU.
+  {
+    const LanguageVerdict heard =
+        tallyLanguage(listenForLanguage(impl_->ctx, pcm_path, chunks, sample_rate, threads, cancel));
+    run.detected_language = heard.code;
+    run.detected_confidence = heard.mean_p;
+    // Refuse only on AGREEMENT: a strict majority of the windows that produced an answer must
+    // have heard the same unsupported language, and been confident on average. One window is not
+    // evidence — that is what refused a real English meeting as Turkish.
+    if (shouldRefuse(heard, kRefuseConfidence)) {
+      run.unsupported_language = true;
+      ASRLOGI("stopping: heard %s in %d of %d window(s) (mean p=%.2f), which this build does not "
+              "transcribe",
+              heard.code.c_str(), heard.votes, heard.samples, static_cast<double>(heard.mean_p));
+      return run;
+    }
+    ASRLOGI("language: heard %s in %d of %d window(s) (mean p=%.2f)",
+            heard.code.empty() ? "nothing" : heard.code.c_str(), heard.votes, heard.samples,
+            static_cast<double>(heard.mean_p));
+  }
+
   ASRLOGI("transcribing %d chunk(s) with %d threads", total, threads);
 
   for (int ci = 0; ci < total; ++ci) {
@@ -163,25 +227,6 @@ AsrRun WhisperAsr::transcribe(
     if (samples.empty()) {
       if (progress) progress(ci + 1, total);
       continue;
-    }
-
-    // Ask what language this actually is, once, on the first window that carries speech.
-    //
-    // Done even when a language was explicitly chosen, because the choice is exactly what goes
-    // wrong: the picker defaults to English, somebody records a meeting in another language, and
-    // whisper obligingly invents fluent English over it. One encoder pass over 30 seconds, against
-    // an hour of decoding, and it is checked BEFORE any text is produced so an unsupported
-    // recording costs one chunk rather than an hour of CPU.
-    if (run.detected_language.empty()) {
-      const std::pair<std::string, float> heard = detectLanguage(impl_->ctx, samples, threads);
-      run.detected_language = heard.first;
-      run.detected_confidence = heard.second;
-      if (!heard.first.empty() && heard.second >= kRefuseConfidence && !isSupported(heard.first)) {
-        run.unsupported_language = true;
-        ASRLOGI("stopping: heard %s (p=%.2f), which this build does not transcribe",
-                heard.first.c_str(), static_cast<double>(heard.second));
-        break;
-      }
     }
 
     whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);

@@ -684,6 +684,12 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     db.execSQL("DELETE FROM llm_notes WHERE meeting_id=?", arrayOf<Any?>(meetingId))
   }
 
+  /** Drops the one-liner, for a meeting whose summary no longer describes it. */
+  fun clearSummaryLine(meetingId: String) {
+    db.execSQL("UPDATE meetings SET summary_line=NULL WHERE id=?", arrayOf<Any?>(meetingId))
+    indexSummary(meetingId)
+  }
+
   fun setSummaryLine(meetingId: String, line: String) {
     db.execSQL("UPDATE meetings SET summary_line=? WHERE id=?", arrayOf<Any?>(line, meetingId))
     indexSummary(meetingId)

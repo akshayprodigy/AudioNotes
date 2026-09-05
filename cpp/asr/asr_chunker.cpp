@@ -28,7 +28,7 @@ void appendSplit(std::vector<Chunk>* out, int64_t start_ms, int64_t end_ms, int6
 }  // namespace
 
 std::vector<Chunk> makeChunks(const std::vector<Segment>& segs, int64_t max_chunk_ms,
-                              ChunkMode mode) {
+                              ChunkMode mode, int64_t max_gap_ms) {
   std::vector<Chunk> chunks;
 
   if (mode == ChunkMode::kPerSpan) {
@@ -44,7 +44,12 @@ std::vector<Chunk> makeChunks(const std::vector<Segment>& segs, int64_t max_chun
   // enough and keeps the packing decision itself untouched.
   std::vector<Chunk> packed;
   for (const auto& s : segs) {
-    if (packed.empty() || s.end_ms - packed.back().start_ms > max_chunk_ms) {
+    const bool over_budget =
+        !packed.empty() && s.end_ms - packed.back().start_ms > max_chunk_ms;
+    // A window that is mostly silence is a window whisper will fill in. See kMaxMergeGapMs.
+    const bool too_far_apart =
+        !packed.empty() && max_gap_ms > 0 && s.start_ms - packed.back().end_ms > max_gap_ms;
+    if (packed.empty() || over_budget || too_far_apart) {
       packed.push_back(Chunk{s.start_ms, s.end_ms});
     } else {
       packed.back().end_ms = s.end_ms;

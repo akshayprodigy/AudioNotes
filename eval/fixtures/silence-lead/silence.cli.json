@@ -1,0 +1,2631 @@
+{
+ "audio_ms": 1199765,
+ "cancelled": false,
+ "detected_confidence": 0.8386389017105103,
+ "detected_language": "en",
+ "minutes": [
+  {
+   "content": "Next: And you're going to be the user interface designer. — Unassigned; Of course, we'll have to go into a bit more detail in that, — Unassigned; Personally, I think that the original is going to be a very key aspect of this design. — Unassigned. 22 action items, 0 decisions, 20 open questions.",
+   "kind": "summary",
+   "source": "rule"
+  },
+  {
+   "content": "And you're going to be the user interface designer. — Unassigned",
+   "kind": "action",
+   "source": "rule"
+  },
+  {
+   "content": "Of course, we'll have to go into a bit more detail in that, — Unassigned",
+   "kind": "action",
+   "source": "rule"
+  },
+  {
+   "content": "Personally, I think that the original is going to be a very key aspect of this design. — Unassigned",
+   "kind": "action",
+   "source": "rule"
+  },
+  {
+   "content": "There's a lot of remote controls out there anyway, so we're going to need something that's — Unassigned",
+   "kind": "action",
+   "source": "rule"
+  },
+  {
+   "content": "really going to set it apart. — Unassigned",
+   "kind": "action",
+   "source": "rule"
+  },
+  {
+   "content": "This is how today seems to be going to work. — Unassigned (due today)",
+   "kind": "action",
+   "source": "rule"
+  },
+  {
+   "content": "We're going to have the three-k faces as you've probably already been told, the functional — Unassigned",
+   "kind": "action",
+   "source": "rule"
+  },
+  {
+   "content": "The first one is going to be covering the user requirements spec, technical functions, working design. — Unassigned",
+   "kind": "action",
+   "source": "rule"
+  },
+  {
+   "content": "Eric, would you like to have a shot at... — Unassigned",
+   "kind": "action",
+   "source": "rule"
+  },
+  {
+   "content": "You should also have your little helmet on as well. — Unassigned",
+   "kind": "action",
+   "source": "rule"
+  },
+  {
+   "content": "we're gonna have to be selling an awful lot of them. — Unassigned",
+   "kind": "action",
+   "source": "rule"
+  },
+  {
+   "content": "of a lot need to be sold. — Unassigned",
+   "kind": "action",
+   "source": "rule"
+  },
+  {
+   "content": "So I'm going to guess that we've all used remote controls. — Unassigned",
+   "kind": "action",
+   "source": "rule"
+  },
+  {
+   "content": "You don't have to be a really clever to use a remote control. — Unassigned",
+   "kind": "action",
+   "source": "rule"
+  },
+  {
+   "content": "We'll have to work fast — Unassigned",
+   "kind": "action",
+   "source": "rule"
+  },
+  {
+   "content": "We'll have to try and decide on some of the basic functionality um how the user interface might work — Unassigned",
+   "kind": "action",
+   "source": "rule"
+  },
+  {
+   "content": "That'll be a key aspect especially if the idea of um some kind of macro facility because you have to program it — Unassigned",
+   "kind": "action",
+   "source": "rule"
+  },
+  {
+   "content": "You have to have a lot of response back or at least some kind — Unassigned",
+   "kind": "action",
+   "source": "rule"
+  },
+  {
+   "content": "And we're going to maybe try and have to figure out what the user wants. — Unassigned",
+   "kind": "action",
+   "source": "rule"
+  },
+  {
+   "content": "Okay, that's definitely something that we should be able to do quite easily. — Unassigned",
+   "kind": "action",
+   "source": "rule"
+  },
+  {
+   "content": "Right, I'd say we finish this one up, we'll get started, I'll write up what — Unassigned",
+   "kind": "action",
+   "source": "rule"
+  },
+  {
+   "content": "kind of quickly done and I'll get that out to everybody. — Unassigned",
+   "kind": "action",
+   "source": "rule"
+  },
+  {
+   "content": "What can I say?",
+   "kind": "question",
+   "source": "rule"
+  },
+  {
+   "content": "Every user?",
+   "kind": "question",
+   "source": "rule"
+  },
+  {
+   "content": "Do you want to draw your favourite animal?",
+   "kind": "question",
+   "source": "rule"
+  },
+  {
+   "content": "A bit of artistry?",
+   "kind": "question",
+   "source": "rule"
+  },
+  {
+   "content": "I suppose, come on, the way, is it?",
+   "kind": "question",
+   "source": "rule"
+  },
+  {
+   "content": "Is this supposed to be clear?",
+   "kind": "question",
+   "source": "rule"
+  },
+  {
+   "content": "Dave, you like to have a dash?",
+   "kind": "question",
+   "source": "rule"
+  },
+  {
+   "content": "who is affectionately",
+   "kind": "question",
+   "source": "rule"
+  },
+  {
+   "content": "And what can you say?",
+   "kind": "question",
+   "source": "rule"
+  },
+  {
+   "content": "go into this market?",
+   "kind": "question",
+   "source": "rule"
+  },
+  {
+   "content": "Any takesness?",
+   "kind": "question",
+   "source": "rule"
+  },
+  {
+   "content": "When I was younger,",
+   "kind": "question",
+   "source": "rule"
+  },
+  {
+   "content": "What the user wants, yes.",
+   "kind": "question",
+   "source": "rule"
+  },
+  {
+   "content": "Has anybody got anything they'd like to add at this stage?",
+   "kind": "question",
+   "source": "rule"
+  },
+  {
+   "content": "Anything they think they might have been missed so far?",
+   "kind": "question",
+   "source": "rule"
+  },
+  {
+   "content": "When you talk about game and stuff, do you think they should have some sort of stick on",
+   "kind": "question",
+   "source": "rule"
+  },
+  {
+   "content": "it rather than weapons?",
+   "kind": "question",
+   "source": "rule"
+  },
+  {
+   "content": "or is that the ridiculous?",
+   "kind": "question",
+   "source": "rule"
+  },
+  {
+   "content": "and forms, would it need to be just a conform for the shape of the hand more efficiently anyway?",
+   "kind": "question",
+   "source": "rule"
+  },
+  {
+   "content": "Yeah?",
+   "kind": "question",
+   "source": "rule"
+  }
+ ],
+ "minutes_source": "rule",
+ "segments": [
+  {
+   "end_ms": 36766,
+   "start_ms": 36354
+  },
+  {
+   "end_ms": 63934,
+   "start_ms": 62146
+  },
+  {
+   "end_ms": 65950,
+   "start_ms": 65634
+  },
+  {
+   "end_ms": 70014,
+   "start_ms": 66658
+  },
+  {
+   "end_ms": 71230,
+   "start_ms": 70466
+  },
+  {
+   "end_ms": 72862,
+   "start_ms": 72034
+  },
+  {
+   "end_ms": 74526,
+   "start_ms": 73282
+  },
+  {
+   "end_ms": 75454,
+   "start_ms": 74658
+  },
+  {
+   "end_ms": 76766,
+   "start_ms": 75938
+  },
+  {
+   "end_ms": 80158,
+   "start_ms": 78434
+  },
+  {
+   "end_ms": 81566,
+   "start_ms": 80578
+  },
+  {
+   "end_ms": 82686,
+   "start_ms": 81762
+  },
+  {
+   "end_ms": 83742,
+   "start_ms": 83010
+  },
+  {
+   "end_ms": 86142,
+   "start_ms": 84450
+  },
+  {
+   "end_ms": 88286,
+   "start_ms": 86306
+  },
+  {
+   "end_ms": 90174,
+   "start_ms": 88514
+  },
+  {
+   "end_ms": 94206,
+   "start_ms": 93346
+  },
+  {
+   "end_ms": 96350,
+   "start_ms": 94402
+  },
+  {
+   "end_ms": 97758,
+   "start_ms": 96578
+  },
+  {
+   "end_ms": 100926,
+   "start_ms": 98210
+  },
+  {
+   "end_ms": 101982,
+   "start_ms": 101058
+  },
+  {
+   "end_ms": 109150,
+   "start_ms": 107714
+  },
+  {
+   "end_ms": 109726,
+   "start_ms": 109378
+  },
+  {
+   "end_ms": 110846,
+   "start_ms": 109986
+  },
+  {
+   "end_ms": 116254,
+   "start_ms": 113058
+  },
+  {
+   "end_ms": 122622,
+   "start_ms": 122146
+  },
+  {
+   "end_ms": 129342,
+   "start_ms": 123010
+  },
+  {
+   "end_ms": 130814,
+   "start_ms": 130274
+  },
+  {
+   "end_ms": 134814,
+   "start_ms": 131554
+  },
+  {
+   "end_ms": 137438,
+   "start_ms": 135842
+  },
+  {
+   "end_ms": 139902,
+   "start_ms": 137538
+  },
+  {
+   "end_ms": 144766,
+   "start_ms": 141506
+  },
+  {
+   "end_ms": 146942,
+   "start_ms": 145282
+  },
+  {
+   "end_ms": 148606,
+   "start_ms": 147458
+  },
+  {
+   "end_ms": 150014,
+   "start_ms": 149058
+  },
+  {
+   "end_ms": 153470,
+   "start_ms": 150498
+  },
+  {
+   "end_ms": 155294,
+   "start_ms": 153634
+  },
+  {
+   "end_ms": 160382,
+   "start_ms": 155874
+  },
+  {
+   "end_ms": 173118,
+   "start_ms": 165826
+  },
+  {
+   "end_ms": 174526,
+   "start_ms": 173858
+  },
+  {
+   "end_ms": 183102,
+   "start_ms": 179138
+  },
+  {
+   "end_ms": 188254,
+   "start_ms": 183682
+  },
+  {
+   "end_ms": 191902,
+   "start_ms": 189506
+  },
+  {
+   "end_ms": 194302,
+   "start_ms": 191970
+  },
+  {
+   "end_ms": 198910,
+   "start_ms": 198146
+  },
+  {
+   "end_ms": 199998,
+   "start_ms": 199298
+  },
+  {
+   "end_ms": 200894,
+   "start_ms": 200098
+  },
+  {
+   "end_ms": 202910,
+   "start_ms": 201282
+  },
+  {
+   "end_ms": 204158,
+   "start_ms": 203714
+  },
+  {
+   "end_ms": 205950,
+   "start_ms": 205474
+  },
+  {
+   "end_ms": 208606,
+   "start_ms": 208002
+  },
+  {
+   "end_ms": 216158,
+   "start_ms": 215618
+  },
+  {
+   "end_ms": 218974,
+   "start_ms": 216834
+  },
+  {
+   "end_ms": 222654,
+   "start_ms": 222210
+  },
+  {
+   "end_ms": 274910,
+   "start_ms": 272386
+  },
+  {
+   "end_ms": 277150,
+   "start_ms": 276130
+  },
+  {
+   "end_ms": 278974,
+   "start_ms": 278306
+  },
+  {
+   "end_ms": 280190,
+   "start_ms": 279330
+  },
+  {
+   "end_ms": 281694,
+   "start_ms": 280642
+  },
+  {
+   "end_ms": 285726,
+   "start_ms": 283202
+  },
+  {
+   "end_ms": 286782,
+   "start_ms": 285826
+  },
+  {
+   "end_ms": 288670,
+   "start_ms": 287554
+  },
+  {
+   "end_ms": 291582,
+   "start_ms": 288802
+  },
+  {
+   "end_ms": 292222,
+   "start_ms": 291746
+  },
+  {
+   "end_ms": 292862,
+   "start_ms": 292386
+  },
+  {
+   "end_ms": 297022,
+   "start_ms": 294626
+  },
+  {
+   "end_ms": 298494,
+   "start_ms": 297122
+  },
+  {
+   "end_ms": 299710,
+   "start_ms": 298786
+  },
+  {
+   "end_ms": 300830,
+   "start_ms": 300066
+  },
+  {
+   "end_ms": 301982,
+   "start_ms": 300930
+  },
+  {
+   "end_ms": 304542,
+   "start_ms": 303714
+  },
+  {
+   "end_ms": 305566,
+   "start_ms": 304738
+  },
+  {
+   "end_ms": 309214,
+   "start_ms": 307522
+  },
+  {
+   "end_ms": 312574,
+   "start_ms": 311586
+  },
+  {
+   "end_ms": 315166,
+   "start_ms": 314178
+  },
+  {
+   "end_ms": 319902,
+   "start_ms": 315906
+  },
+  {
+   "end_ms": 322686,
+   "start_ms": 320034
+  },
+  {
+   "end_ms": 324382,
+   "start_ms": 323810
+  },
+  {
+   "end_ms": 327422,
+   "start_ms": 325986
+  },
+  {
+   "end_ms": 327902,
+   "start_ms": 327522
+  },
+  {
+   "end_ms": 329854,
+   "start_ms": 327970
+  },
+  {
+   "end_ms": 334206,
+   "start_ms": 333282
+  },
+  {
+   "end_ms": 336062,
+   "start_ms": 334402
+  },
+  {
+   "end_ms": 345406,
+   "start_ms": 344578
+  },
+  {
+   "end_ms": 346750,
+   "start_ms": 345538
+  },
+  {
+   "end_ms": 348926,
+   "start_ms": 348322
+  },
+  {
+   "end_ms": 361150,
+   "start_ms": 360226
+  },
+  {
+   "end_ms": 363070,
+   "start_ms": 361410
+  },
+  {
+   "end_ms": 365694,
+   "start_ms": 365058
+  },
+  {
+   "end_ms": 371038,
+   "start_ms": 368482
+  },
+  {
+   "end_ms": 372222,
+   "start_ms": 371106
+  },
+  {
+   "end_ms": 377566,
+   "start_ms": 377122
+  },
+  {
+   "end_ms": 379006,
+   "start_ms": 377762
+  },
+  {
+   "end_ms": 379806,
+   "start_ms": 379074
+  },
+  {
+   "end_ms": 446366,
+   "start_ms": 445858
+  },
+  {
+   "end_ms": 455518,
+   "start_ms": 453922
+  },
+  {
+   "end_ms": 456286,
+   "start_ms": 455618
+  },
+  {
+   "end_ms": 459294,
+   "start_ms": 457954
+  },
+  {
+   "end_ms": 461310,
+   "start_ms": 459554
+  },
+  {
+   "end_ms": 464158,
+   "start_ms": 461634
+  },
+  {
+   "end_ms": 465246,
+   "start_ms": 464546
+  },
+  {
+   "end_ms": 468478,
+   "start_ms": 465538
+  },
+  {
+   "end_ms": 473566,
+   "start_ms": 468834
+  },
+  {
+   "end_ms": 474590,
+   "start_ms": 473890
+  },
+  {
+   "end_ms": 476638,
+   "start_ms": 475074
+  },
+  {
+   "end_ms": 477918,
+   "start_ms": 476866
+  },
+  {
+   "end_ms": 479390,
+   "start_ms": 478562
+  },
+  {
+   "end_ms": 480542,
+   "start_ms": 479874
+  },
+  {
+   "end_ms": 482238,
+   "start_ms": 480770
+  },
+  {
+   "end_ms": 483070,
+   "start_ms": 482402
+  },
+  {
+   "end_ms": 485854,
+   "start_ms": 484162
+  },
+  {
+   "end_ms": 489310,
+   "start_ms": 488450
+  },
+  {
+   "end_ms": 490814,
+   "start_ms": 489698
+  },
+  {
+   "end_ms": 491294,
+   "start_ms": 490914
+  },
+  {
+   "end_ms": 493534,
+   "start_ms": 492802
+  },
+  {
+   "end_ms": 621630,
+   "start_ms": 621250
+  },
+  {
+   "end_ms": 622622,
+   "start_ms": 621890
+  },
+  {
+   "end_ms": 623806,
+   "start_ms": 623330
+  },
+  {
+   "end_ms": 625118,
+   "start_ms": 624226
+  },
+  {
+   "end_ms": 626270,
+   "start_ms": 625506
+  },
+  {
+   "end_ms": 628190,
+   "start_ms": 626498
+  },
+  {
+   "end_ms": 628958,
+   "start_ms": 628386
+  },
+  {
+   "end_ms": 629822,
+   "start_ms": 629250
+  },
+  {
+   "end_ms": 634974,
+   "start_ms": 630178
+  },
+  {
+   "end_ms": 635806,
+   "start_ms": 635330
+  },
+  {
+   "end_ms": 637310,
+   "start_ms": 636162
+  },
+  {
+   "end_ms": 639454,
+   "start_ms": 638018
+  },
+  {
+   "end_ms": 640286,
+   "start_ms": 639554
+  },
+  {
+   "end_ms": 641758,
+   "start_ms": 640898
+  },
+  {
+   "end_ms": 644286,
+   "start_ms": 642050
+  },
+  {
+   "end_ms": 645470,
+   "start_ms": 644450
+  },
+  {
+   "end_ms": 646686,
+   "start_ms": 645602
+  },
+  {
+   "end_ms": 648254,
+   "start_ms": 646914
+  },
+  {
+   "end_ms": 649278,
+   "start_ms": 648738
+  },
+  {
+   "end_ms": 656286,
+   "start_ms": 654274
+  },
+  {
+   "end_ms": 657470,
+   "start_ms": 656482
+  },
+  {
+   "end_ms": 658590,
+   "start_ms": 658146
+  },
+  {
+   "end_ms": 719326,
+   "start_ms": 716610
+  },
+  {
+   "end_ms": 722846,
+   "start_ms": 719650
+  },
+  {
+   "end_ms": 725342,
+   "start_ms": 723330
+  },
+  {
+   "end_ms": 729054,
+   "start_ms": 725698
+  },
+  {
+   "end_ms": 731262,
+   "start_ms": 730210
+  },
+  {
+   "end_ms": 734142,
+   "start_ms": 731906
+  },
+  {
+   "end_ms": 740894,
+   "start_ms": 740514
+  },
+  {
+   "end_ms": 744510,
+   "start_ms": 741474
+  },
+  {
+   "end_ms": 745694,
+   "start_ms": 745282
+  },
+  {
+   "end_ms": 746558,
+   "start_ms": 746018
+  },
+  {
+   "end_ms": 748158,
+   "start_ms": 747138
+  },
+  {
+   "end_ms": 749406,
+   "start_ms": 748482
+  },
+  {
+   "end_ms": 751806,
+   "start_ms": 750530
+  },
+  {
+   "end_ms": 752798,
+   "start_ms": 752066
+  },
+  {
+   "end_ms": 756062,
+   "start_ms": 753794
+  },
+  {
+   "end_ms": 758654,
+   "start_ms": 756514
+  },
+  {
+   "end_ms": 762174,
+   "start_ms": 759266
+  },
+  {
+   "end_ms": 767358,
+   "start_ms": 765634
+  },
+  {
+   "end_ms": 769598,
+   "start_ms": 768162
+  },
+  {
+   "end_ms": 770974,
+   "start_ms": 769794
+  },
+  {
+   "end_ms": 771486,
+   "start_ms": 771106
+  },
+  {
+   "end_ms": 774430,
+   "start_ms": 771746
+  },
+  {
+   "end_ms": 776894,
+   "start_ms": 775394
+  },
+  {
+   "end_ms": 778942,
+   "start_ms": 777666
+  },
+  {
+   "end_ms": 781822,
+   "start_ms": 781154
+  },
+  {
+   "end_ms": 785278,
+   "start_ms": 782242
+  },
+  {
+   "end_ms": 788734,
+   "start_ms": 785890
+  },
+  {
+   "end_ms": 791902,
+   "start_ms": 790818
+  },
+  {
+   "end_ms": 795134,
+   "start_ms": 792098
+  },
+  {
+   "end_ms": 797534,
+   "start_ms": 796994
+  },
+  {
+   "end_ms": 800702,
+   "start_ms": 798594
+  },
+  {
+   "end_ms": 801406,
+   "start_ms": 800898
+  },
+  {
+   "end_ms": 804510,
+   "start_ms": 801698
+  },
+  {
+   "end_ms": 807358,
+   "start_ms": 804930
+  },
+  {
+   "end_ms": 811230,
+   "start_ms": 807714
+  },
+  {
+   "end_ms": 815934,
+   "start_ms": 811938
+  },
+  {
+   "end_ms": 817118,
+   "start_ms": 816002
+  },
+  {
+   "end_ms": 823966,
+   "start_ms": 817826
+  },
+  {
+   "end_ms": 832574,
+   "start_ms": 824418
+  },
+  {
+   "end_ms": 836478,
+   "start_ms": 833378
+  },
+  {
+   "end_ms": 841534,
+   "start_ms": 836706
+  },
+  {
+   "end_ms": 842398,
+   "start_ms": 841858
+  },
+  {
+   "end_ms": 845182,
+   "start_ms": 842530
+  },
+  {
+   "end_ms": 849726,
+   "start_ms": 845250
+  },
+  {
+   "end_ms": 851390,
+   "start_ms": 850018
+  },
+  {
+   "end_ms": 853022,
+   "start_ms": 852642
+  },
+  {
+   "end_ms": 856094,
+   "start_ms": 853858
+  },
+  {
+   "end_ms": 858334,
+   "start_ms": 856994
+  },
+  {
+   "end_ms": 861566,
+   "start_ms": 859362
+  },
+  {
+   "end_ms": 865854,
+   "start_ms": 861890
+  },
+  {
+   "end_ms": 867006,
+   "start_ms": 866402
+  },
+  {
+   "end_ms": 869438,
+   "start_ms": 867362
+  },
+  {
+   "end_ms": 871422,
+   "start_ms": 869762
+  },
+  {
+   "end_ms": 875134,
+   "start_ms": 872642
+  },
+  {
+   "end_ms": 876414,
+   "start_ms": 875266
+  },
+  {
+   "end_ms": 878814,
+   "start_ms": 876962
+  },
+  {
+   "end_ms": 880990,
+   "start_ms": 878946
+  },
+  {
+   "end_ms": 885758,
+   "start_ms": 881282
+  },
+  {
+   "end_ms": 889502,
+   "start_ms": 885954
+  },
+  {
+   "end_ms": 895518,
+   "start_ms": 889762
+  },
+  {
+   "end_ms": 896894,
+   "start_ms": 896098
+  },
+  {
+   "end_ms": 898654,
+   "start_ms": 896994
+  },
+  {
+   "end_ms": 900062,
+   "start_ms": 899010
+  },
+  {
+   "end_ms": 902942,
+   "start_ms": 900770
+  },
+  {
+   "end_ms": 904766,
+   "start_ms": 903394
+  },
+  {
+   "end_ms": 907742,
+   "start_ms": 905474
+  },
+  {
+   "end_ms": 914878,
+   "start_ms": 907842
+  },
+  {
+   "end_ms": 915998,
+   "start_ms": 915298
+  },
+  {
+   "end_ms": 917566,
+   "start_ms": 916642
+  },
+  {
+   "end_ms": 918974,
+   "start_ms": 918434
+  },
+  {
+   "end_ms": 920798,
+   "start_ms": 920002
+  },
+  {
+   "end_ms": 923486,
+   "start_ms": 921218
+  },
+  {
+   "end_ms": 928702,
+   "start_ms": 924514
+  },
+  {
+   "end_ms": 929758,
+   "start_ms": 929186
+  },
+  {
+   "end_ms": 931326,
+   "start_ms": 930818
+  },
+  {
+   "end_ms": 932542,
+   "start_ms": 931586
+  },
+  {
+   "end_ms": 934142,
+   "start_ms": 933058
+  },
+  {
+   "end_ms": 935390,
+   "start_ms": 934818
+  },
+  {
+   "end_ms": 938366,
+   "start_ms": 937762
+  },
+  {
+   "end_ms": 939166,
+   "start_ms": 938434
+  },
+  {
+   "end_ms": 939838,
+   "start_ms": 939522
+  },
+  {
+   "end_ms": 941790,
+   "start_ms": 940002
+  },
+  {
+   "end_ms": 944894,
+   "start_ms": 942338
+  },
+  {
+   "end_ms": 947326,
+   "start_ms": 945698
+  },
+  {
+   "end_ms": 949374,
+   "start_ms": 947394
+  },
+  {
+   "end_ms": 950750,
+   "start_ms": 949602
+  },
+  {
+   "end_ms": 953630,
+   "start_ms": 951298
+  },
+  {
+   "end_ms": 956830,
+   "start_ms": 954114
+  },
+  {
+   "end_ms": 957694,
+   "start_ms": 957218
+  },
+  {
+   "end_ms": 960990,
+   "start_ms": 958050
+  },
+  {
+   "end_ms": 963102,
+   "start_ms": 961314
+  },
+  {
+   "end_ms": 964830,
+   "start_ms": 963330
+  },
+  {
+   "end_ms": 969342,
+   "start_ms": 966466
+  },
+  {
+   "end_ms": 972766,
+   "start_ms": 970018
+  },
+  {
+   "end_ms": 973694,
+   "start_ms": 972962
+  },
+  {
+   "end_ms": 976094,
+   "start_ms": 973986
+  },
+  {
+   "end_ms": 977406,
+   "start_ms": 976482
+  },
+  {
+   "end_ms": 980126,
+   "start_ms": 977666
+  },
+  {
+   "end_ms": 980862,
+   "start_ms": 980194
+  },
+  {
+   "end_ms": 984062,
+   "start_ms": 980994
+  },
+  {
+   "end_ms": 987806,
+   "start_ms": 984706
+  },
+  {
+   "end_ms": 992350,
+   "start_ms": 988002
+  },
+  {
+   "end_ms": 995358,
+   "start_ms": 993890
+  },
+  {
+   "end_ms": 999262,
+   "start_ms": 995938
+  },
+  {
+   "end_ms": 1002590,
+   "start_ms": 999458
+  },
+  {
+   "end_ms": 1003806,
+   "start_ms": 1003202
+  },
+  {
+   "end_ms": 1006078,
+   "start_ms": 1004386
+  },
+  {
+   "end_ms": 1010814,
+   "start_ms": 1006306
+  },
+  {
+   "end_ms": 1012510,
+   "start_ms": 1011010
+  },
+  {
+   "end_ms": 1017246,
+   "start_ms": 1013026
+  },
+  {
+   "end_ms": 1019806,
+   "start_ms": 1018530
+  },
+  {
+   "end_ms": 1021822,
+   "start_ms": 1021090
+  },
+  {
+   "end_ms": 1025214,
+   "start_ms": 1022402
+  },
+  {
+   "end_ms": 1030814,
+   "start_ms": 1027010
+  },
+  {
+   "end_ms": 1032574,
+   "start_ms": 1030946
+  },
+  {
+   "end_ms": 1035198,
+   "start_ms": 1032738
+  },
+  {
+   "end_ms": 1036318,
+   "start_ms": 1035522
+  },
+  {
+   "end_ms": 1038558,
+   "start_ms": 1036546
+  },
+  {
+   "end_ms": 1039294,
+   "start_ms": 1038658
+  },
+  {
+   "end_ms": 1040990,
+   "start_ms": 1039426
+  },
+  {
+   "end_ms": 1042110,
+   "start_ms": 1041122
+  },
+  {
+   "end_ms": 1044062,
+   "start_ms": 1043330
+  },
+  {
+   "end_ms": 1047870,
+   "start_ms": 1046914
+  },
+  {
+   "end_ms": 1050526,
+   "start_ms": 1048354
+  },
+  {
+   "end_ms": 1053918,
+   "start_ms": 1051234
+  },
+  {
+   "end_ms": 1055326,
+   "start_ms": 1054498
+  },
+  {
+   "end_ms": 1061278,
+   "start_ms": 1056130
+  },
+  {
+   "end_ms": 1064990,
+   "start_ms": 1062370
+  },
+  {
+   "end_ms": 1066078,
+   "start_ms": 1065250
+  },
+  {
+   "end_ms": 1068094,
+   "start_ms": 1067202
+  },
+  {
+   "end_ms": 1070494,
+   "start_ms": 1068322
+  },
+  {
+   "end_ms": 1073278,
+   "start_ms": 1071074
+  },
+  {
+   "end_ms": 1074590,
+   "start_ms": 1073570
+  },
+  {
+   "end_ms": 1075806,
+   "start_ms": 1074850
+  },
+  {
+   "end_ms": 1081854,
+   "start_ms": 1076930
+  },
+  {
+   "end_ms": 1083102,
+   "start_ms": 1082306
+  },
+  {
+   "end_ms": 1086590,
+   "start_ms": 1083298
+  },
+  {
+   "end_ms": 1089150,
+   "start_ms": 1086882
+  },
+  {
+   "end_ms": 1091358,
+   "start_ms": 1090690
+  },
+  {
+   "end_ms": 1094206,
+   "start_ms": 1093186
+  },
+  {
+   "end_ms": 1096158,
+   "start_ms": 1094562
+  },
+  {
+   "end_ms": 1097854,
+   "start_ms": 1096418
+  },
+  {
+   "end_ms": 1108478,
+   "start_ms": 1107490
+  },
+  {
+   "end_ms": 1109726,
+   "start_ms": 1109314
+  },
+  {
+   "end_ms": 1113598,
+   "start_ms": 1110338
+  },
+  {
+   "end_ms": 1115998,
+   "start_ms": 1114018
+  },
+  {
+   "end_ms": 1119678,
+   "start_ms": 1116578
+  },
+  {
+   "end_ms": 1122014,
+   "start_ms": 1120066
+  },
+  {
+   "end_ms": 1123294,
+   "start_ms": 1122466
+  },
+  {
+   "end_ms": 1126526,
+   "start_ms": 1125378
+  },
+  {
+   "end_ms": 1129438,
+   "start_ms": 1128034
+  },
+  {
+   "end_ms": 1130782,
+   "start_ms": 1129570
+  },
+  {
+   "end_ms": 1134622,
+   "start_ms": 1132450
+  },
+  {
+   "end_ms": 1136190,
+   "start_ms": 1135586
+  },
+  {
+   "end_ms": 1138270,
+   "start_ms": 1136930
+  },
+  {
+   "end_ms": 1143678,
+   "start_ms": 1139042
+  },
+  {
+   "end_ms": 1147870,
+   "start_ms": 1143874
+  },
+  {
+   "end_ms": 1149054,
+   "start_ms": 1148482
+  },
+  {
+   "end_ms": 1152542,
+   "start_ms": 1149730
+  },
+  {
+   "end_ms": 1154750,
+   "start_ms": 1153282
+  },
+  {
+   "end_ms": 1156254,
+   "start_ms": 1155650
+  },
+  {
+   "end_ms": 1156990,
+   "start_ms": 1156418
+  },
+  {
+   "end_ms": 1161246,
+   "start_ms": 1160386
+  },
+  {
+   "end_ms": 1163934,
+   "start_ms": 1161730
+  },
+  {
+   "end_ms": 1165694,
+   "start_ms": 1164290
+  },
+  {
+   "end_ms": 1167486,
+   "start_ms": 1166530
+  },
+  {
+   "end_ms": 1169278,
+   "start_ms": 1167970
+  },
+  {
+   "end_ms": 1170398,
+   "start_ms": 1170082
+  },
+  {
+   "end_ms": 1170814,
+   "start_ms": 1170466
+  },
+  {
+   "end_ms": 1171422,
+   "start_ms": 1171042
+  },
+  {
+   "end_ms": 1172254,
+   "start_ms": 1171746
+  },
+  {
+   "end_ms": 1178238,
+   "start_ms": 1176962
+  },
+  {
+   "end_ms": 1179486,
+   "start_ms": 1178818
+  },
+  {
+   "end_ms": 1182590,
+   "start_ms": 1179682
+  },
+  {
+   "end_ms": 1183326,
+   "start_ms": 1182754
+  },
+  {
+   "end_ms": 1185214,
+   "start_ms": 1183714
+  },
+  {
+   "end_ms": 1186910,
+   "start_ms": 1185730
+  }
+ ],
+ "timings": {
+  "asr_ms": 6752,
+  "diar_ms": 0,
+  "minutes_ms": 32,
+  "vad_ms": 3862
+ },
+ "transcript": [
+  {
+   "end_ms": 63846,
+   "speaker": -1,
+   "start_ms": 62146,
+   "text": "Okay, well I think we're ready to begin."
+  },
+  {
+   "end_ms": 69106,
+   "speaker": -1,
+   "start_ms": 65626,
+   "text": "Right, my name's Adam Diggard, we're here because of real reaction."
+  },
+  {
+   "end_ms": 72586,
+   "speaker": -1,
+   "start_ms": 70386,
+   "text": "We have in the group."
+  },
+  {
+   "end_ms": 75346,
+   "speaker": -1,
+   "start_ms": 73546,
+   "text": "Ebenezer at Demisoy."
+  },
+  {
+   "end_ms": 76706,
+   "speaker": -1,
+   "start_ms": 75906,
+   "text": "He's like to support it."
+  },
+  {
+   "end_ms": 79866,
+   "speaker": -1,
+   "start_ms": 79066,
+   "text": "Yeah, go for it."
+  },
+  {
+   "end_ms": 81506,
+   "speaker": -1,
+   "start_ms": 80586,
+   "text": "And he said,"
+  },
+  {
+   "end_ms": 82586,
+   "speaker": -1,
+   "start_ms": 81906,
+   "text": "and he said,"
+  },
+  {
+   "end_ms": 83706,
+   "speaker": -1,
+   "start_ms": 83066,
+   "text": "he or"
+  },
+  {
+   "end_ms": 88226,
+   "speaker": -1,
+   "start_ms": 84426,
+   "text": "Ebenezer, your role is I'm the marketing expert."
+  },
+  {
+   "end_ms": 90066,
+   "speaker": -1,
+   "start_ms": 88506,
+   "text": "You're the marketing expert, okay."
+  },
+  {
+   "end_ms": 102066,
+   "speaker": -1,
+   "start_ms": 93346,
+   "text": "Next we have TireGrammer, T-A-R-I-K, T-R-I-K, and your role in this is industrial designer, industrial designer."
+  },
+  {
+   "end_ms": 110786,
+   "speaker": -1,
+   "start_ms": 107666,
+   "text": "And lastly we have Dave Cochran."
+  },
+  {
+   "end_ms": 115706,
+   "speaker": -1,
+   "start_ms": 112986,
+   "text": "And you're going to be the user interface designer."
+  },
+  {
+   "end_ms": 122626,
+   "speaker": -1,
+   "start_ms": 122106,
+   "text": "Right."
+  },
+  {
+   "end_ms": 124650,
+   "speaker": -1,
+   "start_ms": 123010,
+   "text": "This is the agenda for today's meeting."
+  },
+  {
+   "end_ms": 126410,
+   "speaker": -1,
+   "start_ms": 124650,
+   "text": "As you can see, we're opening acquaintance,"
+  },
+  {
+   "end_ms": 129330,
+   "speaker": -1,
+   "start_ms": 126410,
+   "text": "toll training, project plan, discussion and closing."
+  },
+  {
+   "end_ms": 134850,
+   "speaker": -1,
+   "start_ms": 131530,
+   "text": "We already got through opening and partially through acquaintance."
+  },
+  {
+   "end_ms": 137530,
+   "speaker": -1,
+   "start_ms": 135850,
+   "text": "So the reason we're here,"
+  },
+  {
+   "end_ms": 140050,
+   "speaker": -1,
+   "start_ms": 137530,
+   "text": "we're gonna design a new remote control, as you probably all know."
+  },
+  {
+   "end_ms": 145250,
+   "speaker": -1,
+   "start_ms": 141490,
+   "text": "The very broad overview is original, trendy and user friendly."
+  },
+  {
+   "end_ms": 149050,
+   "speaker": -1,
+   "start_ms": 145250,
+   "text": "Of course, we'll have to go into a bit more detail in that,"
+  },
+  {
+   "end_ms": 149890,
+   "speaker": -1,
+   "start_ms": 149050,
+   "text": "but,"
+  },
+  {
+   "end_ms": 155298,
+   "speaker": -1,
+   "start_ms": 150498,
+   "text": "Personally, I think that the original is going to be a very key aspect of this design."
+  },
+  {
+   "end_ms": 159058,
+   "speaker": -1,
+   "start_ms": 155298,
+   "text": "There's a lot of remote controls out there anyway, so we're going to need something that's"
+  },
+  {
+   "end_ms": 165898,
+   "speaker": -1,
+   "start_ms": 159058,
+   "text": "really going to set it apart."
+  },
+  {
+   "end_ms": 167738,
+   "speaker": -1,
+   "start_ms": 165898,
+   "text": "This is how today seems to be going to work."
+  },
+  {
+   "end_ms": 171298,
+   "speaker": -1,
+   "start_ms": 167738,
+   "text": "We're going to have the three-k faces as you've probably already been told, the functional"
+  },
+  {
+   "end_ms": 172698,
+   "speaker": -1,
+   "start_ms": 171298,
+   "text": "conceptual and the detailed design."
+  },
+  {
+   "end_ms": 183138,
+   "speaker": -1,
+   "start_ms": 179138,
+   "text": "The first one is going to be covering the user requirements spec, technical functions, working design."
+  },
+  {
+   "end_ms": 192138,
+   "speaker": -1,
+   "start_ms": 183138,
+   "text": "Second seems to be conceptual components, properties, materials, and the last one is a detailed analysis of our design so far."
+  },
+  {
+   "end_ms": 195138,
+   "speaker": -1,
+   "start_ms": 192138,
+   "text": "Of course you've all got the similar emails I believe."
+  },
+  {
+   "end_ms": 199138,
+   "speaker": -1,
+   "start_ms": 198138,
+   "text": "What can I say?"
+  },
+  {
+   "end_ms": 200138,
+   "speaker": -1,
+   "start_ms": 199138,
+   "text": "Every user?"
+  },
+  {
+   "end_ms": 203138,
+   "speaker": -1,
+   "start_ms": 200138,
+   "text": "Do you want to draw your favourite animal?"
+  },
+  {
+   "end_ms": 204138,
+   "speaker": -1,
+   "start_ms": 203138,
+   "text": "Sure."
+  },
+  {
+   "end_ms": 219018,
+   "speaker": -1,
+   "start_ms": 215618,
+   "text": "Okay, I'm gonna make this quick since we don't have much time."
+  },
+  {
+   "end_ms": 275146,
+   "speaker": -1,
+   "start_ms": 272386,
+   "text": "Okay, so it's not the best picture in the world."
+  },
+  {
+   "end_ms": 277346,
+   "speaker": -1,
+   "start_ms": 276106,
+   "text": "Here we have an elephant."
+  },
+  {
+   "end_ms": 281826,
+   "speaker": -1,
+   "start_ms": 278306,
+   "text": "First point begins with an E, same like Ebenezer."
+  },
+  {
+   "end_ms": 287066,
+   "speaker": -1,
+   "start_ms": 283226,
+   "text": "Also elephants have a very good memory, much like myself."
+  },
+  {
+   "end_ms": 290106,
+   "speaker": -1,
+   "start_ms": 287586,
+   "text": "And I can't remember back when I used to live in Nigeria,"
+  },
+  {
+   "end_ms": 293066,
+   "speaker": -1,
+   "start_ms": 290106,
+   "text": "but I think I used to have a pet elephant."
+  },
+  {
+   "end_ms": 297186,
+   "speaker": -1,
+   "start_ms": 294666,
+   "text": "So elephants are big, strong and gentle,"
+  },
+  {
+   "end_ms": 298826,
+   "speaker": -1,
+   "start_ms": 297186,
+   "text": "and they have great memories,"
+  },
+  {
+   "end_ms": 302026,
+   "speaker": -1,
+   "start_ms": 298826,
+   "text": "and they began to let it E, just like Ebenezer."
+  },
+  {
+   "end_ms": 305714,
+   "speaker": -1,
+   "start_ms": 303714,
+   "text": "brilliantly done. Thank you."
+  },
+  {
+   "end_ms": 309714,
+   "speaker": -1,
+   "start_ms": 307554,
+   "text": "Eric, would you like to have a shot at..."
+  },
+  {
+   "end_ms": 312594,
+   "speaker": -1,
+   "start_ms": 311594,
+   "text": "A bit of artistry?"
+  },
+  {
+   "end_ms": 316234,
+   "speaker": -1,
+   "start_ms": 313954,
+   "text": "I suppose, come on, the way, is it?"
+  },
+  {
+   "end_ms": 317874,
+   "speaker": -1,
+   "start_ms": 316234,
+   "text": "Oh, you can take them up to your belt."
+  },
+  {
+   "end_ms": 319114,
+   "speaker": -1,
+   "start_ms": 317874,
+   "text": "Oh, thank you."
+  },
+  {
+   "end_ms": 322794,
+   "speaker": -1,
+   "start_ms": 319114,
+   "text": "You should also have your little helmet on as well."
+  },
+  {
+   "end_ms": 327554,
+   "speaker": -1,
+   "start_ms": 326034,
+   "text": "All right, good, we can clip them on."
+  },
+  {
+   "end_ms": 329714,
+   "speaker": -1,
+   "start_ms": 327554,
+   "text": "Okay, yeah, this microphone is well at you."
+  },
+  {
+   "end_ms": 335282,
+   "speaker": -1,
+   "start_ms": 333282,
+   "text": "I'm just somewhere..."
+  },
+  {
+   "end_ms": 347282,
+   "speaker": -1,
+   "start_ms": 344282,
+   "text": "It's just a close-up, that's it."
+  },
+  {
+   "end_ms": 361282,
+   "speaker": -1,
+   "start_ms": 359282,
+   "text": "Is this supposed to be clear?"
+  },
+  {
+   "end_ms": 362282,
+   "speaker": -1,
+   "start_ms": 361282,
+   "text": "I think so."
+  },
+  {
+   "end_ms": 362922,
+   "speaker": -1,
+   "start_ms": 362282,
+   "text": "follow you if you."
+  },
+  {
+   "end_ms": 370058,
+   "speaker": -1,
+   "start_ms": 365058,
+   "text": "I'm probably sticking your pocket for now."
+  },
+  {
+   "end_ms": 371298,
+   "speaker": -1,
+   "start_ms": 370058,
+   "text": "I wouldn't worry too much."
+  },
+  {
+   "end_ms": 372138,
+   "speaker": -1,
+   "start_ms": 371298,
+   "text": "Show a good day."
+  },
+  {
+   "end_ms": 378898,
+   "speaker": -1,
+   "start_ms": 377058,
+   "text": "Yeah, I'm destroying your outfit here."
+  },
+  {
+   "end_ms": 457858,
+   "speaker": -1,
+   "start_ms": 453858,
+   "text": "All right, here we have a tiger."
+  },
+  {
+   "end_ms": 459858,
+   "speaker": -1,
+   "start_ms": 457858,
+   "text": "A vows of tigers."
+  },
+  {
+   "end_ms": 461858,
+   "speaker": -1,
+   "start_ms": 459858,
+   "text": "They're big, they're biggest cats."
+  },
+  {
+   "end_ms": 464858,
+   "speaker": -1,
+   "start_ms": 461858,
+   "text": "They're a project uncut to the world when it was a kid."
+  },
+  {
+   "end_ms": 468858,
+   "speaker": -1,
+   "start_ms": 464858,
+   "text": "And it was my favorite cat just because it looks the best."
+  },
+  {
+   "end_ms": 470858,
+   "speaker": -1,
+   "start_ms": 468858,
+   "text": "The stripes are in my dad used to talk about it."
+  },
+  {
+   "end_ms": 471858,
+   "speaker": -1,
+   "start_ms": 470858,
+   "text": "He's from Bangladesh."
+  },
+  {
+   "end_ms": 474858,
+   "speaker": -1,
+   "start_ms": 471858,
+   "text": "I used to tell him he had baddened when he was a kid."
+  },
+  {
+   "end_ms": 481554,
+   "speaker": -1,
+   "start_ms": 475074,
+   "text": "And they're just the most feared of animals in the wild."
+  },
+  {
+   "end_ms": 484154,
+   "speaker": -1,
+   "start_ms": 481554,
+   "text": "So that's why I like them."
+  },
+  {
+   "end_ms": 486314,
+   "speaker": -1,
+   "start_ms": 484154,
+   "text": "Don't say, \"Enter them at me really, but...\""
+  },
+  {
+   "end_ms": 489634,
+   "speaker": -1,
+   "start_ms": 488274,
+   "text": "Excellent. Thank you very much."
+  },
+  {
+   "end_ms": 493474,
+   "speaker": -1,
+   "start_ms": 489634,
+   "text": "Dave, you like to have a dash?"
+  },
+  {
+   "end_ms": 627010,
+   "speaker": -1,
+   "start_ms": 621250,
+   "text": "the monkey. The one for the... the one for the... the one for the... the one for the... the one for the..."
+  },
+  {
+   "end_ms": 633730,
+   "speaker": -1,
+   "start_ms": 627010,
+   "text": "somewhat oblique reference in fact to... or my... I have a three year old daughter who... who is affectionately"
+  },
+  {
+   "end_ms": 641170,
+   "speaker": -1,
+   "start_ms": 633730,
+   "text": "known as Miss Monkey. Monkey's have attitude, which I think is a good thing. And... I mean, for..."
+  },
+  {
+   "end_ms": 647250,
+   "speaker": -1,
+   "start_ms": 641890,
+   "text": "and from the point of view, the study of human evolution, they end up probably being so terribly"
+  },
+  {
+   "end_ms": 648090,
+   "speaker": -1,
+   "start_ms": 647250,
+   "text": "interesting."
+  },
+  {
+   "end_ms": 657874,
+   "speaker": -1,
+   "start_ms": 654274,
+   "text": "This one seems to have perhaps more attitude than most."
+  },
+  {
+   "end_ms": 718170,
+   "speaker": -1,
+   "start_ms": 716610,
+   "text": "hardly what I'd call the best drawing in the world,"
+  },
+  {
+   "end_ms": 719690,
+   "speaker": -1,
+   "start_ms": 718170,
+   "text": "but it'll be for now."
+  },
+  {
+   "end_ms": 722090,
+   "speaker": -1,
+   "start_ms": 719690,
+   "text": "Also not quite as feared as your average tiger,"
+  },
+  {
+   "end_ms": 724930,
+   "speaker": -1,
+   "start_ms": 722090,
+   "text": "but cats are one of my favorite animals."
+  },
+  {
+   "end_ms": 726850,
+   "speaker": -1,
+   "start_ms": 724930,
+   "text": "They're very independent."
+  },
+  {
+   "end_ms": 729210,
+   "speaker": -1,
+   "start_ms": 726850,
+   "text": "They're snotty as hell at the best of times."
+  },
+  {
+   "end_ms": 732490,
+   "speaker": -1,
+   "start_ms": 730250,
+   "text": "And what can you say?"
+  },
+  {
+   "end_ms": 734450,
+   "speaker": -1,
+   "start_ms": 732490,
+   "text": "You got all of those qualities in an animal."
+  },
+  {
+   "end_ms": 742770,
+   "speaker": -1,
+   "start_ms": 740490,
+   "text": "Right, I think we've all managed to master"
+  },
+  {
+   "end_ms": 745330,
+   "speaker": -1,
+   "start_ms": 742770,
+   "text": "every whiteboard there by looks at it."
+  },
+  {
+   "end_ms": 746490,
+   "speaker": -1,
+   "start_ms": 745330,
+   "text": "So, on to it."
+  },
+  {
+   "end_ms": 755378,
+   "speaker": -1,
+   "start_ms": 747138,
+   "text": "projects finance as you can see 12.5 euros per unit. That's not a terrible lot as far as"
+  },
+  {
+   "end_ms": 760658,
+   "speaker": -1,
+   "start_ms": 755378,
+   "text": "I'm aware and we're hoping to sell them for 25. If we're aiming for 50 million euros"
+  },
+  {
+   "end_ms": 763138,
+   "speaker": -1,
+   "start_ms": 760658,
+   "text": "we're gonna have to be selling an awful lot of them."
+  },
+  {
+   "end_ms": 770378,
+   "speaker": -1,
+   "start_ms": 763138,
+   "text": "Oh that was a profit aim that was in months so that's the month."
+  },
+  {
+   "end_ms": 776618,
+   "speaker": -1,
+   "start_ms": 770378,
+   "text": "Yeah, okay. Well 50 million and if you're making 12.5 euros in each one then"
+  },
+  {
+   "end_ms": 781146,
+   "speaker": -1,
+   "start_ms": 777666,
+   "text": "of a lot need to be sold."
+  },
+  {
+   "end_ms": 785866,
+   "speaker": -1,
+   "start_ms": 781146,
+   "text": "OK, now we better actually just get on the beat of a project."
+  },
+  {
+   "end_ms": 790826,
+   "speaker": -1,
+   "start_ms": 785866,
+   "text": "So I'm going to guess that we've all used remote controls."
+  },
+  {
+   "end_ms": 793906,
+   "speaker": -1,
+   "start_ms": 790826,
+   "text": "Any ideas of where you think a new remote control could"
+  },
+  {
+   "end_ms": 796986,
+   "speaker": -1,
+   "start_ms": 793906,
+   "text": "go into this market?"
+  },
+  {
+   "end_ms": 802746,
+   "speaker": -1,
+   "start_ms": 796986,
+   "text": "Well, one thing I'm aware of is that there are very high"
+  },
+  {
+   "end_ms": 803866,
+   "speaker": -1,
+   "start_ms": 802746,
+   "text": "price end of the market."
+  },
+  {
+   "end_ms": 807266,
+   "speaker": -1,
+   "start_ms": 803866,
+   "text": "there's an emerging market for touch screen."
+  },
+  {
+   "end_ms": 814794,
+   "speaker": -1,
+   "start_ms": 807714,
+   "text": "LCD remotes that can be programmed in much more sophisticated ways or conventional models."
+  },
+  {
+   "end_ms": 822114,
+   "speaker": -1,
+   "start_ms": 814794,
+   "text": "So you get the sort of, you get, you can redesign the interface to your own needs."
+  },
+  {
+   "end_ms": 827754,
+   "speaker": -1,
+   "start_ms": 822114,
+   "text": "You can program in macros and you get a much greater degree, I mean you get these sort"
+  },
+  {
+   "end_ms": 834514,
+   "speaker": -1,
+   "start_ms": 827754,
+   "text": "of three and one, five and all, but you can get integration between the different, the"
+  },
+  {
+   "end_ms": 836354,
+   "speaker": -1,
+   "start_ms": 834514,
+   "text": "different things that is designed to control."
+  },
+  {
+   "end_ms": 844866,
+   "speaker": -1,
+   "start_ms": 836706,
+   "text": "much greater extent you can have one macro to turn the TV to the right channel, get the"
+  },
+  {
+   "end_ms": 850866,
+   "speaker": -1,
+   "start_ms": 844866,
+   "text": "\"oo\" rewind the tape and the VCR and get it to play once as rewind for instance."
+  },
+  {
+   "end_ms": 862186,
+   "speaker": -1,
+   "start_ms": 850866,
+   "text": "It occurs to me there might be a niche for a remote that aimed towards some of that sort"
+  },
+  {
+   "end_ms": 867506,
+   "speaker": -1,
+   "start_ms": 862186,
+   "text": "functionality but using a conventional push button design."
+  },
+  {
+   "end_ms": 871402,
+   "speaker": -1,
+   "start_ms": 866402,
+   "text": "And therefore putting it into much lower price bracket."
+  },
+  {
+   "end_ms": 874442,
+   "speaker": -1,
+   "start_ms": 872642,
+   "text": "Okay, yeah, that's true."
+  },
+  {
+   "end_ms": 877922,
+   "speaker": -1,
+   "start_ms": 874442,
+   "text": "With the price range, we're looking at going for a touch screen"
+  },
+  {
+   "end_ms": 880242,
+   "speaker": -1,
+   "start_ms": 877922,
+   "text": "would probably possibly have a bit."
+  },
+  {
+   "end_ms": 881282,
+   "speaker": -1,
+   "start_ms": 880242,
+   "text": "Absolutely, yeah."
+  },
+  {
+   "end_ms": 884362,
+   "speaker": -1,
+   "start_ms": 881282,
+   "text": "But you think again, something to control multiple units"
+  },
+  {
+   "end_ms": 885962,
+   "speaker": -1,
+   "start_ms": 884362,
+   "text": "in a simple fashion."
+  },
+  {
+   "end_ms": 888922,
+   "speaker": -1,
+   "start_ms": 885962,
+   "text": "Yeah, I mean, I see, you get ones that you can switch"
+  },
+  {
+   "end_ms": 892722,
+   "speaker": -1,
+   "start_ms": 888922,
+   "text": "between multiple units, but something that could operate"
+  },
+  {
+   "end_ms": 895482,
+   "speaker": -1,
+   "start_ms": 892722,
+   "text": "between multiple units in a more integrated fashion."
+  },
+  {
+   "end_ms": 904018,
+   "speaker": -1,
+   "start_ms": 896098,
+   "text": "And ideally something into which would have some at least limited facility for running"
+  },
+  {
+   "end_ms": 909138,
+   "speaker": -1,
+   "start_ms": 904018,
+   "text": "macros would be idea something along the lines of one on button would turn on"
+  },
+  {
+   "end_ms": 916378,
+   "speaker": -1,
+   "start_ms": 909138,
+   "text": "say the video recorded the TV maybe the sound system as well on one go for instance"
+  },
+  {
+   "end_ms": 920378,
+   "speaker": -1,
+   "start_ms": 916378,
+   "text": "I say or"
+  },
+  {
+   "end_ms": 922898,
+   "speaker": -1,
+   "start_ms": 920378,
+   "text": "you press"
+  },
+  {
+   "end_ms": 929474,
+   "speaker": -1,
+   "start_ms": 924514,
+   "text": "play button for the DVD player and it turns the TV on and on to the right channel as well."
+  },
+  {
+   "end_ms": 939514,
+   "speaker": -1,
+   "start_ms": 929474,
+   "text": "Okay, that sounds like a good strong idea. Any takesness?"
+  },
+  {
+   "end_ms": 946754,
+   "speaker": -1,
+   "start_ms": 939514,
+   "text": "Well, I've noticed that gaming is becoming quite popular with television. When I was younger,"
+  },
+  {
+   "end_ms": 953554,
+   "speaker": -1,
+   "start_ms": 946754,
+   "text": "we used to play games using the cable. Using the cable, subscribe to cable providers."
+  },
+  {
+   "end_ms": 962714,
+   "speaker": -1,
+   "start_ms": 954114,
+   "text": "But our remote controls get worn out really easily and the remote controls not a great kind of keypad for playing games"
+  },
+  {
+   "end_ms": 964954,
+   "speaker": -1,
+   "start_ms": 962954,
+   "text": "so perhaps one that was more"
+  },
+  {
+   "end_ms": 969114,
+   "speaker": -1,
+   "start_ms": 966594,
+   "text": "specialized for a game playing or interactive television"
+  },
+  {
+   "end_ms": 975234,
+   "speaker": -1,
+   "start_ms": 969634,
+   "text": "They recently brought up this new remote control for people to sit their favorite channels"
+  },
+  {
+   "end_ms": 983634,
+   "speaker": -1,
+   "start_ms": 975234,
+   "text": "So I'm to record things instead of people entering in what time things start you simply try to slide a bar to say what time it begins"
+  },
+  {
+   "end_ms": 987986,
+   "speaker": -1,
+   "start_ms": 984706,
+   "text": "and slide a level bar to say what time it ends."
+  },
+  {
+   "end_ms": 990466,
+   "speaker": -1,
+   "start_ms": 987986,
+   "text": "Yeah, I've heard I've seen the bar call in the show before, yeah."
+  },
+  {
+   "end_ms": 992466,
+   "speaker": -1,
+   "start_ms": 990466,
+   "text": "Yeah, it's taken out the..."
+  },
+  {
+   "end_ms": 997786,
+   "speaker": -1,
+   "start_ms": 993866,
+   "text": "You don't have to be a really clever to use a remote control."
+  },
+  {
+   "end_ms": 1000466,
+   "speaker": -1,
+   "start_ms": 997786,
+   "text": "I think the gaming, you know, you want some big buttons"
+  },
+  {
+   "end_ms": 1002706,
+   "speaker": -1,
+   "start_ms": 1000466,
+   "text": "for up, down, left, and right, shoot."
+  },
+  {
+   "end_ms": 1007306,
+   "speaker": -1,
+   "start_ms": 1004946,
+   "text": "You wanna be able to change angles"
+  },
+  {
+   "end_ms": 1008546,
+   "speaker": -1,
+   "start_ms": 1007306,
+   "text": "in the interactive television,"
+  },
+  {
+   "end_ms": 1010986,
+   "speaker": -1,
+   "start_ms": 1008546,
+   "text": "so you need buttons to change the television angle,"
+  },
+  {
+   "end_ms": 1012826,
+   "speaker": -1,
+   "start_ms": 1010986,
+   "text": "the camera angles and stuff like that."
+  },
+  {
+   "end_ms": 1016866,
+   "speaker": -1,
+   "start_ms": 1013026,
+   "text": "Okay, well we're beginning to run out of time now so we've got a couple of ideas we can"
+  },
+  {
+   "end_ms": 1020386,
+   "speaker": -1,
+   "start_ms": 1018386,
+   "text": "We'll have to work fast"
+  },
+  {
+   "end_ms": 1022386,
+   "speaker": -1,
+   "start_ms": 1021026,
+   "text": "Um"
+  },
+  {
+   "end_ms": 1024946,
+   "speaker": -1,
+   "start_ms": 1022386,
+   "text": "All right as you can see we've got 30 minutes until the next meeting so"
+  },
+  {
+   "end_ms": 1032226,
+   "speaker": -1,
+   "start_ms": 1026866,
+   "text": "We'll have to try and decide on some of the basic functionality um how the user interface might work"
+  },
+  {
+   "end_ms": 1039186,
+   "speaker": -1,
+   "start_ms": 1032626,
+   "text": "That'll be a key aspect especially if the idea of um some kind of macro facility because you have to program it"
+  },
+  {
+   "end_ms": 1041906,
+   "speaker": -1,
+   "start_ms": 1039346,
+   "text": "You have to have a lot of response back or at least some kind"
+  },
+  {
+   "end_ms": 1052210,
+   "speaker": -1,
+   "start_ms": 1043330,
+   "text": "And we're going to maybe try and have to figure out what the user wants."
+  },
+  {
+   "end_ms": 1053730,
+   "speaker": -1,
+   "start_ms": 1052210,
+   "text": "What the user wants, yes."
+  },
+  {
+   "end_ms": 1054730,
+   "speaker": -1,
+   "start_ms": 1053730,
+   "text": "Okay."
+  },
+  {
+   "end_ms": 1055730,
+   "speaker": -1,
+   "start_ms": 1054730,
+   "text": "Right."
+  },
+  {
+   "end_ms": 1059170,
+   "speaker": -1,
+   "start_ms": 1055730,
+   "text": "Has anybody got anything they'd like to add at this stage?"
+  },
+  {
+   "end_ms": 1061370,
+   "speaker": -1,
+   "start_ms": 1059170,
+   "text": "Anything they think they might have been missed so far?"
+  },
+  {
+   "end_ms": 1067730,
+   "speaker": -1,
+   "start_ms": 1061370,
+   "text": "When you talk about game and stuff, do you think they should have some sort of stick on"
+  },
+  {
+   "end_ms": 1069730,
+   "speaker": -1,
+   "start_ms": 1067730,
+   "text": "it rather than weapons?"
+  },
+  {
+   "end_ms": 1070730,
+   "speaker": -1,
+   "start_ms": 1069730,
+   "text": "Oh, okay, that's it."
+  },
+  {
+   "end_ms": 1073130,
+   "speaker": -1,
+   "start_ms": 1070730,
+   "text": "control about the game sport."
+  },
+  {
+   "end_ms": 1075570,
+   "speaker": -1,
+   "start_ms": 1073570,
+   "text": "or is that the ridiculous?"
+  },
+  {
+   "end_ms": 1080870,
+   "speaker": -1,
+   "start_ms": 1075570,
+   "text": "I don't see why not almost everybody is probably used to a console by now and all of them"
+  },
+  {
+   "end_ms": 1083370,
+   "speaker": -1,
+   "start_ms": 1080870,
+   "text": "incorporate small, deep pads on them."
+  },
+  {
+   "end_ms": 1086370,
+   "speaker": -1,
+   "start_ms": 1083370,
+   "text": "In fact, even the mobile phones these days are beginning to use them as well."
+  },
+  {
+   "end_ms": 1090170,
+   "speaker": -1,
+   "start_ms": 1086370,
+   "text": "So it's probably an interface that most people are used to."
+  },
+  {
+   "end_ms": 1097730,
+   "speaker": -1,
+   "start_ms": 1090170,
+   "text": "And that could allow easy navigation users as a joystick as well."
+  },
+  {
+   "end_ms": 1115490,
+   "speaker": -1,
+   "start_ms": 1107490,
+   "text": "feature that would be a good idea of building it is to make something fairly ergonomic,"
+  },
+  {
+   "end_ms": 1122490,
+   "speaker": -1,
+   "start_ms": 1115490,
+   "text": "something fits as comfortably as possible into the hand, which of course also allows for,"
+  },
+  {
+   "end_ms": 1135490,
+   "speaker": -1,
+   "start_ms": 1122490,
+   "text": "or the possibility of a more sort of slightly unconventional attractive shape for it overall."
+  },
+  {
+   "end_ms": 1135990,
+   "speaker": -1,
+   "start_ms": 1135490,
+   "text": "So..."
+  },
+  {
+   "end_ms": 1142650,
+   "speaker": -1,
+   "start_ms": 1136930,
+   "text": "small stylish and something that's a little bit different slightly sort of biomorphic"
+  },
+  {
+   "end_ms": 1147690,
+   "speaker": -1,
+   "start_ms": 1142650,
+   "text": "and forms, would it need to be just a conform for the shape of the hand more efficiently anyway?"
+  },
+  {
+   "end_ms": 1154090,
+   "speaker": -1,
+   "start_ms": 1147690,
+   "text": "Okay, that's definitely something that we should be able to do quite easily. I would have hoped"
+  },
+  {
+   "end_ms": 1164890,
+   "speaker": -1,
+   "start_ms": 1154090,
+   "text": "so anyway. Right, I'd say we finish this one up, we'll get started, I'll write up what"
+  },
+  {
+   "end_ms": 1165530,
+   "speaker": -1,
+   "start_ms": 1164890,
+   "text": "with them."
+  },
+  {
+   "end_ms": 1169530,
+   "speaker": -1,
+   "start_ms": 1166530,
+   "text": "kind of quickly done and I'll get that out to everybody."
+  },
+  {
+   "end_ms": 1170530,
+   "speaker": -1,
+   "start_ms": 1169530,
+   "text": "Okay."
+  },
+  {
+   "end_ms": 1171530,
+   "speaker": -1,
+   "start_ms": 1170530,
+   "text": "Yeah? - Sure."
+  },
+  {
+   "end_ms": 1172530,
+   "speaker": -1,
+   "start_ms": 1171530,
+   "text": "Okay."
+  },
+  {
+   "end_ms": 1178530,
+   "speaker": -1,
+   "start_ms": 1176530,
+   "text": "Very good, Jeremy."
+  },
+  {
+   "end_ms": 1182530,
+   "speaker": -1,
+   "start_ms": 1178530,
+   "text": "As far as I'm aware, we leave the microphones here."
+  },
+  {
+   "end_ms": 1186530,
+   "speaker": -1,
+   "start_ms": 1182530,
+   "text": "Last week, I told otherwise and just take a laptop for us."
+  }
+ ],
+ "unsupported_language": false
+}
