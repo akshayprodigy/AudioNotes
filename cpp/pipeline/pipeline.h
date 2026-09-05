@@ -25,7 +25,10 @@ struct AlignedUtterance {
 struct PipelineConfig {
   std::string asr_model;       // required: the whisper weights file
   std::string qwen3_model_dir; // "" = Qwen3-ASR not installed; a DIRECTORY when it is
-  std::string asr_engine;      // "" = choose by language; "whisper"/"qwen3" forces one
+  // A sherpa-onnx export of Parakeet-TDT or Moonshine. Measurement-only today: neither is
+  // reachable unless asr_engine names it, because no language routes there yet.
+  std::string sherpa_model_dir;
+  std::string asr_engine;      // "" = choose by language; a name forces one (see asr_factory)
   std::string vad_model;       // "" = skip VAD, fall back to fixed 30 s windows
   std::string diar_seg_model;  // both diar paths "" = skip diarization
   std::string diar_emb_model;

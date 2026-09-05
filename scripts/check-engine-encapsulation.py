@@ -21,6 +21,7 @@ ALLOWED = {
     os.path.join("cpp", "asr", "asr_factory.cpp"),
     os.path.join("cpp", "asr", "whisper_asr.cpp"),
     os.path.join("cpp", "asr", "qwen3_asr.cpp"),
+    os.path.join("cpp", "asr", "sherpa_asr.cpp"),
 }
 
 # Tests name engines on purpose, to assert the contract each one declares — chunk budget, chunk
@@ -28,7 +29,7 @@ ALLOWED = {
 # production caller relies on rather than bypassing the choice between them.
 ALLOWED_PREFIXES = (os.path.join("cpp", "tests") + os.sep,)
 
-ENGINES = ("WhisperAsr", "Qwen3Asr")
+ENGINES = ("WhisperAsr", "Qwen3Asr", "SherpaAsr")
 # A constructor call or a declaration, not a mention in a comment or a type in a header.
 PATTERN = re.compile(r"^\s*(?:audionotes::)?(?:%s)\s+\w+\s*\(|new\s+(?:audionotes::)?(?:%s)\s*\("
                      % ("|".join(ENGINES), "|".join(ENGINES)))

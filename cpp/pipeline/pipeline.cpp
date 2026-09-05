@@ -123,6 +123,7 @@ bool Pipeline::run(const std::string& pcm_path, PipelineResult* out,
     acfg.language = cfg_.language;
     acfg.whisper_model = cfg_.asr_model;
     acfg.qwen3_model_dir = cfg_.qwen3_model_dir;
+    acfg.sherpa_model_dir = cfg_.sherpa_model_dir;
     std::unique_ptr<AsrEngine> asr = makeAsrEngine(acfg);
     if (!asr->ok()) {
       // Prefer the engine's own reason. Saying "failed to load ggml-base-q5_1.bin" when the real

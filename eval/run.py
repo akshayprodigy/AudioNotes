@@ -23,7 +23,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def run_cli(cli, models, fixture_dir, out_json, llm_model=None, asr="ggml-base-q5_1.bin",
-            asr_engine=None, qwen3_model=None, language=None):
+            asr_engine=None, qwen3_model=None, sherpa_model=None, language=None):
     """Invoke the shared core. Returns (document, peak_rss_bytes).
 
     Diarization models are passed when present, so DER is scored whenever the models exist and the
@@ -50,6 +50,8 @@ def run_cli(cli, models, fixture_dir, out_json, llm_model=None, asr="ggml-base-q
         cmd += ["--asr-engine", asr_engine]
     if qwen3_model:
         cmd += ["--qwen3-model", qwen3_model]
+    if sherpa_model:
+        cmd += ["--sherpa-model", sherpa_model]
     if language:
         cmd += ["--language", language]
     seg = os.path.join(models, "diar_segmentation.onnx")
@@ -224,8 +226,13 @@ def main():
     ap.add_argument("--only", help="run a single fixture id")
     ap.add_argument("--asr", default="ggml-base-q5_1.bin", metavar="FILE",
                     help="whisper weights inside --models (e.g. ggml-small-q5_1.bin)")
-    ap.add_argument("--asr-engine", metavar="NAME", choices=["whisper", "qwen3"],
+    ap.add_argument("--asr-engine", metavar="NAME",
+                    choices=["whisper", "qwen3", "parakeet", "moonshine"],
                     help="force an engine instead of letting the language policy choose")
+    ap.add_argument("--sherpa-model", metavar="DIR",
+                    help="a sherpa-onnx export of Parakeet-TDT or Moonshine, used with "
+                         "--asr-engine parakeet|moonshine (e.g. "
+                         "eval/models/parakeet-tdt-0.6b-v2-int8)")
     ap.add_argument("--qwen3-model", metavar="DIR",
                     help="directory holding conv_frontend.onnx, encoder.onnx, decoder.onnx, "
                          "tokenizer/ (e.g. eval/models/qwen3-asr)")
@@ -265,6 +272,7 @@ def main():
 
     results = {"run_id": run_id, "cli": args.cli, "asr": args.asr,
                "asr_engine": args.asr_engine, "qwen3_model": args.qwen3_model,
+               "sherpa_model": args.sherpa_model,
                "language": args.language,
                "judge": results_judge, "fixtures": []}
     for fid in ids:
@@ -277,6 +285,7 @@ def main():
                                 os.path.join(out_dir, f"{fid}.cli.json"),
                                 llm_model=args.llm, asr=args.asr,
                                 asr_engine=args.asr_engine, qwen3_model=args.qwen3_model,
+                                sherpa_model=args.sherpa_model,
                                 language=args.language)
         r = score(fixture_dir, doc, peak_rss, judge=judge)
         results["fixtures"].append(r)

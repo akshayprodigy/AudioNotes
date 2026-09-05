@@ -1,6 +1,7 @@
 #include "asr/asr_engine.h"
 
 #include "asr/qwen3_asr.h"
+#include "asr/sherpa_asr.h"
 #include "asr/whisper_asr.h"
 
 #include <cstdio>
@@ -49,8 +50,29 @@ bool prefersQwen(const std::string& language) {
 std::unique_ptr<AsrEngine> makeAsrEngine(const AsrConfig& cfg) {
   const bool force_whisper = cfg.engine == "whisper";
   const bool force_qwen = cfg.engine == "qwen3";
-  if (!cfg.engine.empty() && !force_whisper && !force_qwen) {
+  const bool force_parakeet = cfg.engine == "parakeet";
+  const bool force_moonshine = cfg.engine == "moonshine";
+  if (!cfg.engine.empty() && !force_whisper && !force_qwen && !force_parakeet &&
+      !force_moonshine) {
     return std::unique_ptr<AsrEngine>(new UnavailableAsr("unknown engine: " + cfg.engine));
+  }
+
+  // Parakeet and Moonshine are reachable ONLY when asked for by name — there is deliberately no
+  // row for them in prefersQwen()'s sibling policy above, because the rule this file follows is
+  // that a language routes to an engine once somebody has scored it. Scoring them is exactly what
+  // they are here for; the day one wins, it earns a row and this comment goes away.
+  if (force_parakeet || force_moonshine) {
+    const auto flavour = force_parakeet ? SherpaAsr::Flavour::kParakeet
+                                        : SherpaAsr::Flavour::kMoonshine;
+    if (cfg.sherpa_model_dir.empty()) {
+      return std::unique_ptr<AsrEngine>(
+          new UnavailableAsr(cfg.engine + " requested but no --sherpa-model directory given"));
+    }
+    std::unique_ptr<SherpaAsr> s(new SherpaAsr(flavour, cfg.sherpa_model_dir, cfg.language));
+    if (s->ok()) return std::unique_ptr<AsrEngine>(s.release());
+    // No fall-through to whisper. An explicitly requested engine does not silently degrade: a
+    // benchmark that quietly measured the other engine would be worse than one that failed.
+    return std::unique_ptr<AsrEngine>(new UnavailableAsr(s->unavailableReason()));
   }
 
   const bool want_qwen = force_qwen || (!force_whisper && prefersQwen(cfg.language));

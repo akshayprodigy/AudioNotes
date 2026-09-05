@@ -89,6 +89,9 @@ eval/fixtures/*/audio.wav
 eval/fixtures/*/*.pcm
 # your own recordings: audio, ground truth and minutes all stay on this machine
 eval/fixtures/real-*/
+# Gain-normalised copies built by the engine comparison. Derived from eval/fixtures, and the
+# recipe is in docs/superpowers/eval-english-engine-candidates.md.
+eval/fixtures-gain/
 eval/corpus/_cache/
 eval/results/
 eval/models/

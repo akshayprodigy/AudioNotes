@@ -92,6 +92,7 @@ add_executable(audionotes_cli
   ${CORE}/asr/asr_factory.cpp
   ${CORE}/asr/asr_languages.cpp
   ${CORE}/asr/qwen3_asr.cpp
+  ${CORE}/asr/sherpa_asr.cpp
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
@@ -173,6 +174,7 @@ audionotes_add_test(test_asr_factory
   ${CORE}/asr/asr_postprocess.cpp
   ${CORE}/asr/whisper_asr.cpp
   ${CORE}/asr/qwen3_asr.cpp
+  ${CORE}/asr/sherpa_asr.cpp
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp)
@@ -209,6 +211,7 @@ audionotes_add_test(test_pipeline_align
   ${CORE}/asr/asr_factory.cpp
   ${CORE}/asr/asr_languages.cpp
   ${CORE}/asr/qwen3_asr.cpp
+  ${CORE}/asr/sherpa_asr.cpp
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
@@ -240,6 +243,7 @@ audionotes_add_test(test_cancel
   ${CORE}/asr/asr_factory.cpp
   ${CORE}/asr/asr_languages.cpp
   ${CORE}/asr/qwen3_asr.cpp
+  ${CORE}/asr/sherpa_asr.cpp
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
@@ -271,6 +275,7 @@ audionotes_add_test(test_capi
   ${CORE}/asr/asr_factory.cpp
   ${CORE}/asr/asr_languages.cpp
   ${CORE}/asr/qwen3_asr.cpp
+  ${CORE}/asr/sherpa_asr.cpp
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp

@@ -91,6 +91,10 @@ struct AsrConfig {
   std::string language = "en";
   std::string whisper_model;    // a file
   std::string qwen3_model_dir;  // a directory; "" when not installed
+  // A directory holding a sherpa-onnx export of Parakeet-TDT or Moonshine. One field for both,
+  // because `engine` already says which is meant and only one of them is ever being measured at
+  // a time; two fields would let a caller name parakeet and point at moonshine's weights.
+  std::string sherpa_model_dir;
 };
 
 // The one place a language becomes a class. Never returns null: when nothing usable is available
