@@ -1,0 +1,15 @@
+{
+ "source": "edacc",
+ "conversation": "EDACC-C32_P2",
+ "split": "dev",
+ "speakers": [
+  "EDACC-C32-A",
+  "EDACC-C32-B"
+ ],
+ "accents": {
+  "EDACC-C32-A": "Southern London",
+  "EDACC-C32-B": "Southern London"
+ },
+ "licence": "CC BY-SA 4.0",
+ "notes": "Edinburgh International Accents of English Corpus (CC BY-SA 4.0). Dyadic conversations over video call, chosen for accent breadth, with self-reported linguistic background per speaker. Two-person and remote, so it is NOT a room full of people around one phone — but unlike AMI it says whose accents the number describes. No Australian or Singaporean speakers."
+}

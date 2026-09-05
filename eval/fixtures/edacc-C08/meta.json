@@ -1,0 +1,15 @@
+{
+ "source": "edacc",
+ "conversation": "EDACC-C08",
+ "split": "test",
+ "speakers": [
+  "EDACC-C08-A",
+  "EDACC-C08-B"
+ ],
+ "accents": {
+  "EDACC-C08-A": "Scottish (Fife)",
+  "EDACC-C08-B": "English with Scottish inflections"
+ },
+ "licence": "CC BY-SA 4.0",
+ "notes": "Edinburgh International Accents of English Corpus (CC BY-SA 4.0). Dyadic conversations over video call, chosen for accent breadth, with self-reported linguistic background per speaker. Two-person and remote, so it is NOT a room full of people around one phone — but unlike AMI it says whose accents the number describes. No Australian or Singaporean speakers."
+}

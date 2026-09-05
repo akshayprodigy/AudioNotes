@@ -109,10 +109,18 @@ def script_histogram(text):
 def _within(segments, lo, hi):
     """Segments whose midpoint falls in [lo, hi). Midpoint rather than overlap so a segment
     straddling the boundary lands on exactly one side, and on the same side for reference and
-    hypothesis alike."""
-    if lo is None:
+    hypothesis alike.
+
+    Either bound may be None, meaning unbounded on that side. This used to require both: a fixture
+    that set only `scored_from_ms` reached `lo <= mid < None` and died with a TypeError. Nothing
+    caught it because every fixture that had ever used the field set both ends — the EdAcc ones
+    are the first to need "everything after the read-aloud passage" with no upper limit.
+    """
+    if lo is None and hi is None:
         return segments
-    return [s for s in segments if lo <= (s["start_ms"] + s["end_ms"]) / 2 < hi]
+    low = float("-inf") if lo is None else lo
+    high = float("inf") if hi is None else hi
+    return [s for s in segments if low <= (s["start_ms"] + s["end_ms"]) / 2 < high]
 
 
 def score(fixture_dir, doc, peak_rss=0, judge=None):
@@ -279,6 +287,13 @@ def main():
         fixture_dir = os.path.join(args.fixtures, fid)
         if not os.path.exists(os.path.join(fixture_dir, "audio.wav")):
             print(f"skip {fid}: audio.wav missing (gitignored; rebuild the fixture)")
+            continue
+        # Symmetric with the audio check above, and it was not. A fixture whose reference has not
+        # been written yet took the whole run down with a FileNotFoundError AFTER every other
+        # fixture had been transcribed — so the report was never printed and an hour of inference
+        # was thrown away over a file nobody was scoring anyway.
+        if not os.path.exists(os.path.join(fixture_dir, "truth.json")):
+            print(f"skip {fid}: truth.json missing (no reference to score against yet)")
             continue
         print(f"running {fid} …")
         doc, peak_rss = run_cli(args.cli, args.models, fixture_dir,

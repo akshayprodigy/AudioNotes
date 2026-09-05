@@ -1,0 +1,15 @@
+{
+ "source": "edacc",
+ "conversation": "EDACC-C29_P1",
+ "split": "test",
+ "speakers": [
+  "EDACC-C29-A",
+  "EDACC-C29-B"
+ ],
+ "accents": {
+  "EDACC-C29-A": "Afrian",
+  "EDACC-C29-B": "Nigerian"
+ },
+ "licence": "CC BY-SA 4.0",
+ "notes": "Edinburgh International Accents of English Corpus (CC BY-SA 4.0). Dyadic conversations over video call, chosen for accent breadth, with self-reported linguistic background per speaker. Two-person and remote, so it is NOT a room full of people around one phone — but unlike AMI it says whose accents the number describes. No Australian or Singaporean speakers."
+}

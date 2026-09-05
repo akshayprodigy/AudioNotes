@@ -1,0 +1,1127 @@
+{
+ "audio_ms": 1449280,
+ "segments": [
+  {
+   "start_ms": 0,
+   "end_ms": 5090,
+   "speaker": "EDACC-C32-B",
+   "text": "HELLO"
+  },
+  {
+   "start_ms": 5010,
+   "end_ms": 9760,
+   "speaker": "EDACC-C32-A",
+   "text": "HELLO AGAIN SO WHERE WERE WE"
+  },
+  {
+   "start_ms": 11670,
+   "end_ms": 19180,
+   "speaker": "EDACC-C32-B",
+   "text": "WHERE WERE WE UM ARE YOU GOOD WITH GOOD AT COOKING"
+  },
+  {
+   "start_ms": 20850,
+   "end_ms": 26440,
+   "speaker": "EDACC-C32-A",
+   "text": "I WOULD LIKE TO CONSIDER MYSELF GOOD AT COOKING YEAH I LIKE TO COOK A RANGE OF STUFF"
+  },
+  {
+   "start_ms": 28860,
+   "end_ms": 31630,
+   "speaker": "EDACC-C32-B",
+   "text": "LIKE WHAT'S YOUR FAVORITE MEAL THAT YOU'VE COOKED"
+  },
+  {
+   "start_ms": 32990,
+   "end_ms": 42090,
+   "speaker": "EDACC-C32-B",
+   "text": "OH I'LL SAY JERK CHICKEN AND RICE I THINK IT'S MY FAVORITE THING THAT I'VE COOKED"
+  },
+  {
+   "start_ms": 43830,
+   "end_ms": 44110,
+   "speaker": "EDACC-C32-A",
+   "text": "DO YOU"
+  },
+  {
+   "start_ms": 44040,
+   "end_ms": 49960,
+   "speaker": "EDACC-C32-A",
+   "text": "WOULD YOU SORRY WOULD YOU CONSIDER LEARNING A NEW LANGUAGE ANYTIME SOON"
+  },
+  {
+   "start_ms": 52300,
+   "end_ms": 53810,
+   "speaker": "EDACC-C32-B",
+   "text": "MM MAYBE SPANISH"
+  },
+  {
+   "start_ms": 54850,
+   "end_ms": 62900,
+   "speaker": "EDACC-C32-A",
+   "text": "SPANISH OKAY IT'S NICE WHY DO YOU WANNA LEARN SPANISH IN PARTICULAR"
+  },
+  {
+   "start_ms": 64330,
+   "end_ms": 71150,
+   "speaker": "EDACC-C32-B",
+   "text": "WELL I GUESS IT'S JUST LIKE WELL WE DID AT SECONDARY AND I THINK"
+  },
+  {
+   "start_ms": 71050,
+   "end_ms": 72200,
+   "speaker": "EDACC-C32-A",
+   "text": "YOU WANNA CONTINUE FROM THAT"
+  },
+  {
+   "start_ms": 74080,
+   "end_ms": 75230,
+   "speaker": "EDACC-C32-B",
+   "text": "I GOT YEAH"
+  },
+  {
+   "start_ms": 76240,
+   "end_ms": 78410,
+   "speaker": "EDACC-C32-A",
+   "text": "WHAT DID YOU GET IN SPANISH FOR YOUR GCSE"
+  },
+  {
+   "start_ms": 78340,
+   "end_ms": 78470,
+   "speaker": "EDACC-C32-B",
+   "text": "UH"
+  },
+  {
+   "start_ms": 81100,
+   "end_ms": 87350,
+   "speaker": "EDACC-C32-A",
+   "text": "AND AGAIN A STAR B <DTMF> HAS IT BEEN A WHILE"
+  },
+  {
+   "start_ms": 87880,
+   "end_ms": 91130,
+   "speaker": "EDACC-C32-B",
+   "text": "UM I GOT AN A YEAH"
+  },
+  {
+   "start_ms": 92290,
+   "end_ms": 93380,
+   "speaker": "EDACC-C32-A",
+   "text": "OKAY THAT'S GOOD"
+  },
+  {
+   "start_ms": 96910,
+   "end_ms": 97700,
+   "speaker": "EDACC-C32-B",
+   "text": "WHAT ABOUT YOU"
+  },
+  {
+   "start_ms": 99560,
+   "end_ms": 107010,
+   "speaker": "EDACC-C32-A",
+   "text": "I DID GERMAN AND I GOT A C NOT VERY GOOD BUT I'M STILL LEARNING"
+  },
+  {
+   "start_ms": 111070,
+   "end_ms": 113660,
+   "speaker": "EDACC-C32-B",
+   "text": "WHAT APP DO YOU SPEND THE MOST TIME ON <DTMF>"
+  },
+  {
+   "start_ms": 115350,
+   "end_ms": 120250,
+   "speaker": "EDACC-C32-A",
+   "text": "OH DEFINITELY INSTAGRAM I'VE SPENT THE MOST ON INSTAGRAM YEAH"
+  },
+  {
+   "start_ms": 120240,
+   "end_ms": 120370,
+   "speaker": "EDACC-C32-B",
+   "text": "MM"
+  },
+  {
+   "start_ms": 121350,
+   "end_ms": 124450,
+   "speaker": "EDACC-C32-A",
+   "text": "LIKE ALSO <DTMF>"
+  },
+  {
+   "start_ms": 124920,
+   "end_ms": 133990,
+   "speaker": "EDACC-C32-B",
+   "text": "WHAT DO YOU THINK WOULD BE THE MOST USEFUL THING YOU WOULD DO WITH VIRTUAL REALITY"
+  },
+  {
+   "start_ms": 135460,
+   "end_ms": 138140,
+   "speaker": "EDACC-C32-A",
+   "text": "SORRY WHAT DO YOU MEAN BY VIRTUAL REAL REALITY"
+  },
+  {
+   "start_ms": 138700,
+   "end_ms": 139250,
+   "speaker": "EDACC-C32-B",
+   "text": "LIKE VR"
+  },
+  {
+   "start_ms": 140050,
+   "end_ms": 141410,
+   "speaker": "EDACC-C32-A",
+   "text": "THEY'RE HEADSETS OR"
+  },
+  {
+   "start_ms": 141490,
+   "end_ms": 141680,
+   "speaker": "EDACC-C32-B",
+   "text": "MM HMM"
+  },
+  {
+   "start_ms": 142570,
+   "end_ms": 145280,
+   "speaker": "EDACC-C32-A",
+   "text": "PLAY GAMES OF COURSE <LAUGH>"
+  },
+  {
+   "start_ms": 153200,
+   "end_ms": 158370,
+   "speaker": "EDACC-C32-B",
+   "text": "MM MM DID YOU ENJOY YOUR LIKE ENJOY WHERE YOU GREW UP"
+  },
+  {
+   "start_ms": 160130,
+   "end_ms": 163020,
+   "speaker": "EDACC-C32-A",
+   "text": "I DO ENJOY WHERE I GROW GREW UP YEAH"
+  },
+  {
+   "start_ms": 166120,
+   "end_ms": 167900,
+   "speaker": "EDACC-C32-B",
+   "text": "WHAT KINDS OF JOBS HAVE YOU WORKED AT"
+  },
+  {
+   "start_ms": 167830,
+   "end_ms": 190940,
+   "speaker": "EDACC-C32-A",
+   "text": "WHAT KIND OF JOBS I'VE WORKED IN RETAIL WORKED IN IT YEAH THAT'S SORT OF BASICALLY OH YEAH I HAVE BEEN A CASHIER FOR A FEW YEARS <NO-SPEECH>"
+  },
+  {
+   "start_ms": 195910,
+   "end_ms": 198290,
+   "speaker": "EDACC-C32-B",
+   "text": "WHAT AWARDS OR TROPHIES HAVE YOU WON"
+  },
+  {
+   "start_ms": 200950,
+   "end_ms": 209720,
+   "speaker": "EDACC-C32-A",
+   "text": "I'VE WON A TROPHY FOR SWIMMING WHEN I WAS YOUNGER YEAH A FEW TROPHIES HOW ABOUT YOU"
+  },
+  {
+   "start_ms": 211550,
+   "end_ms": 220710,
+   "speaker": "EDACC-C32-B",
+   "text": "I'VE ALREADY GOT THE ONLY AWARDS I'VE GOT IS SOMETHING LIKE MEDALS LET'S SAY I'VE GOT MEDALS DOING <DTMF>"
+  },
+  {
+   "start_ms": 220670,
+   "end_ms": 228660,
+   "speaker": "EDACC-C32-A",
+   "text": "MEDALS STILL GOOD DO YOU KNOW TEEN WOLF HAS CELEBRATED ITS YET ELEVEN YEARS RECENTLY"
+  },
+  {
+   "start_ms": 229380,
+   "end_ms": 229960,
+   "speaker": "EDACC-C32-B",
+   "text": "ELEVEN"
+  },
+  {
+   "start_ms": 231360,
+   "end_ms": 233410,
+   "speaker": "EDACC-C32-A",
+   "text": "ELEVEN YEAR ALREADY <OVERLAP>"
+  },
+  {
+   "start_ms": 239310,
+   "end_ms": 242950,
+   "speaker": "EDACC-C32-B",
+   "text": "MM HOW MANY CUPS OF CO COFFEE DO YOU USUALLY DRINK A DAY"
+  },
+  {
+   "start_ms": 244560,
+   "end_ms": 252190,
+   "speaker": "EDACC-C32-A",
+   "text": "CUPS OF I DON'T REALLY DRINK THAT MUCH I'LL SAY MAYBE ONE A DAY I THINK MY MORNING COFFEE <NO-SPEECH>"
+  },
+  {
+   "start_ms": 258660,
+   "end_ms": 260110,
+   "speaker": "EDACC-C32-B",
+   "text": "DO YOU RECORD TIKTOKS"
+  },
+  {
+   "start_ms": 261450,
+   "end_ms": 270310,
+   "speaker": "EDACC-C32-A",
+   "text": "NO NOT REALLY <NO-SPEECH>"
+  },
+  {
+   "start_ms": 273060,
+   "end_ms": 277540,
+   "speaker": "EDACC-C32-B",
+   "text": "MM WHAT WHAT SOCIAL MEDIA APP DO YOU REALLY HATE"
+  },
+  {
+   "start_ms": 279450,
+   "end_ms": 298210,
+   "speaker": "EDACC-C32-A",
+   "text": "IT'S GOT TO BE SNAPCHAT I JUST HATE IT LIKE IT'S BASICALLY WHATSAPP BUT THEY TRIED TO MAKE IT MORE FUN I THINK IT'S A FAIL REALLY THE ONLY THING I CAN SAY I CAN I CAN TOLERATE IS ITS FILTERS BUT OTHER THAN THAT NO I HATE IT"
+  },
+  {
+   "start_ms": 299230,
+   "end_ms": 299390,
+   "speaker": "EDACC-C32-B",
+   "text": "<LAUGH>"
+  },
+  {
+   "start_ms": 299530,
+   "end_ms": 302840,
+   "speaker": "EDACC-C32-A",
+   "text": "IF YOU CAN SEE WHEN YOU SCREENSHOT THEIR MESSAGES JUST NO"
+  },
+  {
+   "start_ms": 305690,
+   "end_ms": 314640,
+   "speaker": "EDACC-C32-B",
+   "text": "WHO ARE SOME OF YOUR FAVORITE ACTORS OR ACT NO SORRY WHO ARE SOME OF YOUR FAVORITE ACTRESSES"
+  },
+  {
+   "start_ms": 316710,
+   "end_ms": 329470,
+   "speaker": "EDACC-C32-A",
+   "text": "OH PROBABLY CRYSTAL REED EDEN SHER PHOEBE TONKIN YEAH"
+  },
+  {
+   "start_ms": 330600,
+   "end_ms": 339370,
+   "speaker": "EDACC-C32-B",
+   "text": "OH I AGREE WITH THAT MM DO YOU LIKE HORROR FILMS"
+  },
+  {
+   "start_ms": 340160,
+   "end_ms": 346560,
+   "speaker": "EDACC-C32-A",
+   "text": "I LOVE HORROR FILMS ACTUALLY IT'S LIKE THE BOOK I WAS READING TO YOU EARLIER IT HAVE YOU WATCHED THE MOVIE"
+  },
+  {
+   "start_ms": 346450,
+   "end_ms": 347090,
+   "speaker": "EDACC-C32-B",
+   "text": "OH THAT'S HORROR"
+  },
+  {
+   "start_ms": 347800,
+   "end_ms": 348320,
+   "speaker": "EDACC-C32-A",
+   "text": "YES"
+  },
+  {
+   "start_ms": 349000,
+   "end_ms": 349910,
+   "speaker": "EDACC-C32-B",
+   "text": "I'VE HEARD ABOUT IT"
+  },
+  {
+   "start_ms": 350920,
+   "end_ms": 360560,
+   "speaker": "EDACC-C32-A",
+   "text": "OKAY I LOVE HORROR <NO-SPEECH>"
+  },
+  {
+   "start_ms": 364390,
+   "end_ms": 368330,
+   "speaker": "EDACC-C32-B",
+   "text": "MM WHAT'S YOUR FAVORITE FAST FOOD RESTAURANT"
+  },
+  {
+   "start_ms": 370000,
+   "end_ms": 371480,
+   "speaker": "EDACC-C32-A",
+   "text": "MY FAVORITE FOOD RESTAURANT"
+  },
+  {
+   "start_ms": 372270,
+   "end_ms": 372400,
+   "speaker": "EDACC-C32-B",
+   "text": "MM"
+  },
+  {
+   "start_ms": 373380,
+   "end_ms": 380620,
+   "speaker": "EDACC-C32-A",
+   "text": "I LIKE A CHEEKY NANDO'S WHAT WHAT LEVEL OF SPICE DO YOU GET AT NANDO'S USUALLY"
+  },
+  {
+   "start_ms": 382200,
+   "end_ms": 385870,
+   "speaker": "EDACC-C32-B",
+   "text": "MM LIKE A MEDIUM SORT OF SPICE"
+  },
+  {
+   "start_ms": 385890,
+   "end_ms": 387970,
+   "speaker": "EDACC-C32-A",
+   "text": "OKAY I GET EXTRA HOT"
+  },
+  {
+   "start_ms": 390240,
+   "end_ms": 393040,
+   "speaker": "EDACC-C32-B",
+   "text": "UH UH I AM NOT GOOD WITH SPICE"
+  },
+  {
+   "start_ms": 394110,
+   "end_ms": 396940,
+   "speaker": "EDACC-C32-A",
+   "text": "DO YOU GET CHIPS OR MASH"
+  },
+  {
+   "start_ms": 398510,
+   "end_ms": 399240,
+   "speaker": "EDACC-C32-B",
+   "text": "CHIPS"
+  },
+  {
+   "start_ms": 399710,
+   "end_ms": 400410,
+   "speaker": "EDACC-C32-A",
+   "text": "YEAH IT'S OKAY <NO-SPEECH>"
+  },
+  {
+   "start_ms": 407000,
+   "end_ms": 408480,
+   "speaker": "EDACC-C32-B",
+   "text": "DO YOU TAKE A LOT OF PICTURES"
+  },
+  {
+   "start_ms": 409880,
+   "end_ms": 417690,
+   "speaker": "EDACC-C32-A",
+   "text": "YEAH I LIKE BEING IN THE MOMENT LIKE LOOKING BACK ON THEM SEEING WHAT AN AMAZING TIME I'VE HAD YEAH"
+  },
+  {
+   "start_ms": 418980,
+   "end_ms": 421240,
+   "speaker": "EDACC-C32-B",
+   "text": "WHAT THINGS ARE YOU ACTUALLY GOOD AT"
+  },
+  {
+   "start_ms": 423070,
+   "end_ms": 434780,
+   "speaker": "EDACC-C32-A",
+   "text": "I'M ACTUALLY GOOD AT DANCING I'M ACTUALLY GOOD AT CROCHETING AND THAT'S WHAT I CAN SAY I'M GOOD AT YEAH"
+  },
+  {
+   "start_ms": 438090,
+   "end_ms": 439630,
+   "speaker": "EDACC-C32-B",
+   "text": "WHAT DO YOU DO YOU LIKE SHOPPING"
+  },
+  {
+   "start_ms": 440970,
+   "end_ms": 446920,
+   "speaker": "EDACC-C32-A",
+   "text": "I DO LIKE SHOPPING I LIKE SPENDING MONEY CLOTHES BOOKS ANYTHING REALLY"
+  },
+  {
+   "start_ms": 450990,
+   "end_ms": 454810,
+   "speaker": "EDACC-C32-B",
+   "text": "WHAT THINGS WOULD YOU LIKE TO ACHIEVE BEFORE YOU DIE"
+  },
+  {
+   "start_ms": 457380,
+   "end_ms": 473050,
+   "speaker": "EDACC-C32-A",
+   "text": "I WANT TO ESTABLISH MY OWN BUSINESS AND POSSIBLY WRITE A UM A STORY ABOUT MYSELF REALLY I THINK"
+  },
+  {
+   "start_ms": 474610,
+   "end_ms": 475400,
+   "speaker": "EDACC-C32-B",
+   "text": "BIOLOGY"
+  },
+  {
+   "start_ms": 476950,
+   "end_ms": 477710,
+   "speaker": "EDACC-C32-A",
+   "text": "BIOLOGY"
+  },
+  {
+   "start_ms": 478570,
+   "end_ms": 479300,
+   "speaker": "EDACC-C32-B",
+   "text": "OF YOURSELF"
+  },
+  {
+   "start_ms": 480370,
+   "end_ms": 484910,
+   "speaker": "EDACC-C32-A",
+   "text": "YEAH AN AUTOBIOGRAPHY I THOUGHT YOU SAID BIOLOGY"
+  },
+  {
+   "start_ms": 486190,
+   "end_ms": 505760,
+   "speaker": "EDACC-C32-B",
+   "text": "MM BIOGRAPHY UM <NO-SPEECH> UM ARE YOU CREATIVE LIKE WITH ARTS"
+  },
+  {
+   "start_ms": 506960,
+   "end_ms": 510630,
+   "speaker": "EDACC-C32-A",
+   "text": "NO NOT REALLY I DIDN'T ENJOY IT THAT MUCH AT SCHOOL"
+  },
+  {
+   "start_ms": 517170,
+   "end_ms": 526660,
+   "speaker": "EDACC-C32-B",
+   "text": "MM <NO-SPEECH> WHAT DO YOU THINK LIFE WILL BE LIKE IN FIFTY YEARS"
+  },
+  {
+   "start_ms": 529860,
+   "end_ms": 539770,
+   "speaker": "EDACC-C32-A",
+   "text": "I THINK WE'RE GONNA ALL ADVANCE LIKE IN THE TECHNOLOGY ASPECT YES I FEEL LIKE THERE'S DEFINITELY GONNA BE LIKE SOME SORT OF FLYING CAR"
+  },
+  {
+   "start_ms": 540710,
+   "end_ms": 540900,
+   "speaker": "EDACC-C32-B",
+   "text": "OKAY"
+  },
+  {
+   "start_ms": 541160,
+   "end_ms": 571530,
+   "speaker": "EDACC-C32-A",
+   "text": "I THINK WE MIGHT NEED TO BE LIKE THERE ALL FORM OF PHYSICAL STUFF WILL BE REMOVED LIKE PAYING WITH CARDS I THINK WE'RE GONNA HAVE TO PROBABLY GET IMPLANTS OR CHIPS AND STUFF TO PAY HAVE YOU SEEN LIKE APPLE RINGS YOU CAN PAY FOR STUFF WITH YOUR RING NOW I KNOW THE WORLD IT'S GOING CRAZY YEAH I THINK IT'S A BIT SCARY IF YOU ASK ME"
+  },
+  {
+   "start_ms": 572700,
+   "end_ms": 574990,
+   "speaker": "EDACC-C32-B",
+   "text": "HOW LONG WOULD YOU LIKE TO LIVE"
+  },
+  {
+   "start_ms": 577470,
+   "end_ms": 587320,
+   "speaker": "EDACC-C32-A",
+   "text": "I THINK DEFINITELY NOT FOREVER BUT A GOOD HUNDRED YEARS OR PROBABLY YEAH HUNDRED WOULD BE MY MAX"
+  },
+  {
+   "start_ms": 589400,
+   "end_ms": 594060,
+   "speaker": "EDACC-C32-B",
+   "text": "MM HMM MY MAX WILL BE LIKE PROBABLY BE A HUNDRED AND TEN"
+  },
+  {
+   "start_ms": 595240,
+   "end_ms": 595430,
+   "speaker": "EDACC-C32-A",
+   "text": "OKAY"
+  },
+  {
+   "start_ms": 601570,
+   "end_ms": 605750,
+   "speaker": "EDACC-C32-B",
+   "text": "WOULD YOU WOULD YOU EVER GO TO SPACE IF YOU HAD THE CHANCE"
+  },
+  {
+   "start_ms": 606510,
+   "end_ms": 619540,
+   "speaker": "EDACC-C32-A",
+   "text": "YES I WOULD LOVE TO KNOW WHAT IT'S LIKE BECAUSE SPACE JUST FASCINATES ME <NO-SPEECH>"
+  },
+  {
+   "start_ms": 624430,
+   "end_ms": 634070,
+   "speaker": "EDACC-C32-B",
+   "text": "ASSUMING IT SEEMS AS IF YOU'RE GOOD AT DANCING IF YOU COULD MASTER ANY FORM OF DANCING WHAT FORM OF DANCING WOULD YOU DO"
+  },
+  {
+   "start_ms": 635290,
+   "end_ms": 646760,
+   "speaker": "EDACC-C32-A",
+   "text": "TAP TAP DEFINITELY BECAUSE LIKE THAT IS IS REALLY AMAZING THE WAY YOUR FEET MOVE SO FAST YEAH IT'S JUST REALLY ENTERTAINING TO WATCH"
+  },
+  {
+   "start_ms": 655420,
+   "end_ms": 665270,
+   "speaker": "EDACC-C32-B",
+   "text": "AND CAN YOU PLAY ANY MUSICAL INSTRUMENTS"
+  },
+  {
+   "start_ms": 666040,
+   "end_ms": 673640,
+   "speaker": "EDACC-C32-A",
+   "text": "NO I CANNOT UNFORTUNATELY I DIDN'T LEARN AS A CHILD CAN YOU"
+  },
+  {
+   "start_ms": 675500,
+   "end_ms": 676320,
+   "speaker": "EDACC-C32-B",
+   "text": "NOT REALLY"
+  },
+  {
+   "start_ms": 683150,
+   "end_ms": 683370,
+   "speaker": "EDACC-C32-A",
+   "text": "OH"
+  },
+  {
+   "start_ms": 688760,
+   "end_ms": 691890,
+   "speaker": "EDACC-C32-B",
+   "text": "WHAT WERE YOUR FAVORITE HOLIDAYS AS A CHILD"
+  },
+  {
+   "start_ms": 694010,
+   "end_ms": 699150,
+   "speaker": "EDACC-C32-A",
+   "text": "SUMMER HOLIDAYS DEFINITELY THE SIX WEEK BREAK DON'T GET ME STARTED I LOVE IT"
+  },
+  {
+   "start_ms": 705300,
+   "end_ms": 719530,
+   "speaker": "EDACC-C32-B",
+   "text": "GOOD GOOD OKAY WHAT'S YOUR FAVORITE COUNTRY THAT YOU THAT YOU'D GO OR WANNA GO TO APART FROM UNITED STATES"
+  },
+  {
+   "start_ms": 720530,
+   "end_ms": 725730,
+   "speaker": "EDACC-C32-A",
+   "text": "YOU KNOW I REALLY WANNA GO TO AUSTRALIA YOU KNOW"
+  },
+  {
+   "start_ms": 726380,
+   "end_ms": 726510,
+   "speaker": "EDACC-C32-B",
+   "text": "MM"
+  },
+  {
+   "start_ms": 727220,
+   "end_ms": 730770,
+   "speaker": "EDACC-C32-A",
+   "text": "SUNNY AUSTRALIA MY ACCENTS GIVE ME AWAY"
+  },
+  {
+   "start_ms": 732740,
+   "end_ms": 739080,
+   "speaker": "EDACC-C32-B",
+   "text": "UM I CAN BARELY READ IT IN ENGLISH I'M LEARNING SO"
+  },
+  {
+   "start_ms": 739250,
+   "end_ms": 740070,
+   "speaker": "EDACC-C32-A",
+   "text": "I'M AMERICAN"
+  },
+  {
+   "start_ms": 741830,
+   "end_ms": 742140,
+   "speaker": "EDACC-C32-B",
+   "text": "OKAY"
+  },
+  {
+   "start_ms": 744980,
+   "end_ms": 745500,
+   "speaker": "EDACC-C32-A",
+   "text": "TRY AN <NO-SPEECH>"
+  },
+  {
+   "start_ms": 746780,
+   "end_ms": 755670,
+   "speaker": "EDACC-C32-B",
+   "text": "UM UM HEY DUDE MY NAME IS ETHAN"
+  },
+  {
+   "start_ms": 758450,
+   "end_ms": 759360,
+   "speaker": "EDACC-C32-A",
+   "text": "HEY DUDE"
+  },
+  {
+   "start_ms": 761300,
+   "end_ms": 773640,
+   "speaker": "EDACC-C32-B",
+   "text": "YEAH I CAN'T DO ANY UH WHAT DO YOU BRING WITH YOU EVERYWHERE YOU GO"
+  },
+  {
+   "start_ms": 774550,
+   "end_ms": 780020,
+   "speaker": "EDACC-C32-A",
+   "text": "MY PHONE DEFINITELY I HAVE EVERYTHING ON IT I MEAN HOW COULD IT BE"
+  },
+  {
+   "start_ms": 782190,
+   "end_ms": 784990,
+   "speaker": "EDACC-C32-B",
+   "text": "WHAT BOOK HAS INFLUENCED YOU THE MOST"
+  },
+  {
+   "start_ms": 787070,
+   "end_ms": 792270,
+   "speaker": "EDACC-C32-A",
+   "text": "PROBABLY THE MICHELLE OBAMA BECOMING IT'S REALLY INSPIRATIONAL"
+  },
+  {
+   "start_ms": 792300,
+   "end_ms": 792520,
+   "speaker": "EDACC-C32-B",
+   "text": "SURE"
+  },
+  {
+   "start_ms": 797340,
+   "end_ms": 800500,
+   "speaker": "EDACC-C32-A",
+   "text": "OKAY MILLIE IT WAS LOVELY SPEAKING TO YOU"
+  },
+  {
+   "start_ms": 802110,
+   "end_ms": 806050,
+   "speaker": "EDACC-C32-B",
+   "text": "OH UH WELL AFTER LAST NIGHT"
+  },
+  {
+   "start_ms": 807060,
+   "end_ms": 809920,
+   "speaker": "EDACC-C32-A",
+   "text": "MM HMM IT'S GOOD TO CATCH UP SOMETIMES"
+  },
+  {
+   "start_ms": 811190,
+   "end_ms": 815310,
+   "speaker": "EDACC-C32-B",
+   "text": "YEAH I'LL SEE YOU SOON"
+  },
+  {
+   "start_ms": 816440,
+   "end_ms": 818400,
+   "speaker": "EDACC-C32-A",
+   "text": "NO NOT YET I MEAN WE HAVEN'T FINISHED TALKING"
+  },
+  {
+   "start_ms": 819350,
+   "end_ms": 829680,
+   "speaker": "EDACC-C32-B",
+   "text": "OH HAVE YOU EVER CAUGHT UP WITH YOUR CHILDHOOD FRIENDS"
+  },
+  {
+   "start_ms": 830930,
+   "end_ms": 846690,
+   "speaker": "EDACC-C32-A",
+   "text": "I HAVE ACTUALLY DURING THE LOCKDOWN AND WHEN LIKE WE WHEN WE COULD MEET UP WITH LIKE SIX PEOPLE I DID MEET UP WITH MY SECONDARY AND A AND SIXTH FORM FRIENDS IT'S BEEN A WHILE WE'RE NOT THAT CLOSE ANYMORE BUT IT WAS NICE"
+  },
+  {
+   "start_ms": 854020,
+   "end_ms": 870980,
+   "speaker": "EDACC-C32-B",
+   "text": "OKAY UM IF THAT'S ALL LET'S JUST SEE WHAT ARE YOU BEST AT APART FROM DANCING"
+  },
+  {
+   "start_ms": 873970,
+   "end_ms": 875690,
+   "speaker": "EDACC-C32-A",
+   "text": "YOU ALREADY ASKED ME THIS QUESTION"
+  },
+  {
+   "start_ms": 876610,
+   "end_ms": 876740,
+   "speaker": "EDACC-C32-B",
+   "text": "OH"
+  },
+  {
+   "start_ms": 876790,
+   "end_ms": 877610,
+   "speaker": "EDACC-C32-A",
+   "text": "UH STYLING"
+  },
+  {
+   "start_ms": 877840,
+   "end_ms": 887270,
+   "speaker": "EDACC-C32-B",
+   "text": "UM WHAT WHAT ARE YOU AFRAID OF IN PARTICULAR WHAT THING OR ANIMAL"
+  },
+  {
+   "start_ms": 889320,
+   "end_ms": 890050,
+   "speaker": "EDACC-C32-A",
+   "text": "I'M AFRAID OF"
+  },
+  {
+   "start_ms": 889950,
+   "end_ms": 890140,
+   "speaker": "EDACC-C32-B",
+   "text": "YES"
+  },
+  {
+   "start_ms": 890610,
+   "end_ms": 893140,
+   "speaker": "EDACC-C32-A",
+   "text": "DOGS COMMON DOGS I'M AFRAID OF"
+  },
+  {
+   "start_ms": 899840,
+   "end_ms": 914100,
+   "speaker": "EDACC-C32-B",
+   "text": "OKAY UH UM WOULD YOU BE WOULD YOU RATHER BE TWICE AS SMART OR TWICE AS HAPPY"
+  },
+  {
+   "start_ms": 917280,
+   "end_ms": 918460,
+   "speaker": "EDACC-C32-A",
+   "text": "TWICE AS HAPPY I THINK"
+  },
+  {
+   "start_ms": 929110,
+   "end_ms": 932000,
+   "speaker": "EDACC-C32-B",
+   "text": "OKAY UM WHAT HAS BEEN YOUR BIGGEST REGRET"
+  },
+  {
+   "start_ms": 934720,
+   "end_ms": 948200,
+   "speaker": "EDACC-C32-A",
+   "text": "UM MY BIGGEST REGRET OOH NOT SAVING MONEY PROBABLY YEAH NOT SAVING MONEY WISELY"
+  },
+  {
+   "start_ms": 949360,
+   "end_ms": 963260,
+   "speaker": "EDACC-C32-B",
+   "text": "ME TOO I NEED TO SAVE A BIT OF MONEY MM WHAT WERE YOU LIKE AS A CHILD"
+  },
+  {
+   "start_ms": 965040,
+   "end_ms": 966670,
+   "speaker": "EDACC-C32-A",
+   "text": "I WAS QUITE NOTORIOUS ACTUALLY"
+  },
+  {
+   "start_ms": 969240,
+   "end_ms": 973900,
+   "speaker": "EDACC-C32-B",
+   "text": "I IF YOU COULD EAT ONE THING FOR THE REST OF YOUR LIFE WHAT WOULD IT BE"
+  },
+  {
+   "start_ms": 979970,
+   "end_ms": 993720,
+   "speaker": "EDACC-C32-A",
+   "text": "I THINK OOH NOODLES IT'S LIKE IT CAN SOMETIMES BE LIGHT AND SOMETIMES BE FILLING YOU CAN HAVE IT WITH SOUP YOU CAN HAVE IT PLAIN YEAH I THINK I CAN EAT NOODLES YEAH"
+  },
+  {
+   "start_ms": 1001550,
+   "end_ms": 1021210,
+   "speaker": "EDACC-C32-B",
+   "text": "OKAY UM RIGHT <NO-SPEECH> UM WHAT SMELL DO YOU HATE"
+  },
+  {
+   "start_ms": 1027640,
+   "end_ms": 1030080,
+   "speaker": "EDACC-C32-A",
+   "text": "UH WELL THE SMELL OF PETROL IN CARS"
+  },
+  {
+   "start_ms": 1031970,
+   "end_ms": 1036420,
+   "speaker": "EDACC-C32-B",
+   "text": "AND DO YOU THINK THERE WILL EVER BE A WORLD WAR III"
+  },
+  {
+   "start_ms": 1038540,
+   "end_ms": 1040830,
+   "speaker": "EDACC-C32-A",
+   "text": "YEAH QUITE SOON I THINK ACTUALLY"
+  },
+  {
+   "start_ms": 1047570,
+   "end_ms": 1051420,
+   "speaker": "EDACC-C32-B",
+   "text": "OKAY UM WHAT LOCAL EVENTS ARE YOU LOOKING FORWARD TO"
+  },
+  {
+   "start_ms": 1054410,
+   "end_ms": 1061800,
+   "speaker": "EDACC-C32-A",
+   "text": "I THINK MAYBE THE CHASE ATLANTIC CONCERT NEXT YEAR IN JANUARY IN BRAXTON YEAH"
+  },
+  {
+   "start_ms": 1062820,
+   "end_ms": 1067660,
+   "speaker": "EDACC-C32-B",
+   "text": "ALL RIGHT WILL YOU WILL YOU BE GOING"
+  },
+  {
+   "start_ms": 1069410,
+   "end_ms": 1075600,
+   "speaker": "EDACC-C32-A",
+   "text": "NO I DON'T THINK SO BUT IT WILL BE COOL TO LIKE FIND OUT OTHER PEOPLE'S EXPERIENCE YEAH"
+  },
+  {
+   "start_ms": 1081410,
+   "end_ms": 1089430,
+   "speaker": "EDACC-C32-B",
+   "text": "UM WHAT WAS THE BEST INVENTION OF THE LAST FIFTY YEARS"
+  },
+  {
+   "start_ms": 1093620,
+   "end_ms": 1095070,
+   "speaker": "EDACC-C32-A",
+   "text": "LAST FIFTEEN YEARS"
+  },
+  {
+   "start_ms": 1095730,
+   "end_ms": 1096460,
+   "speaker": "EDACC-C32-B",
+   "text": "FIFTY"
+  },
+  {
+   "start_ms": 1096930,
+   "end_ms": 1103420,
+   "speaker": "EDACC-C32-A",
+   "text": "FIFTY OOH PROBABLY THE INTERNET <LAUGH> WE DO SO MUCH WITH IT"
+  },
+  {
+   "start_ms": 1106290,
+   "end_ms": 1109630,
+   "speaker": "EDACC-C32-B",
+   "text": "WHAT IS THE STRANGE THE STRANGEST DREAM YOU'VE EVER HAD"
+  },
+  {
+   "start_ms": 1113810,
+   "end_ms": 1140460,
+   "speaker": "EDACC-C32-A",
+   "text": "I DON'T RE REALLY REMEMBER MOST OF MY DREAMS BUT I THINK I WAS AT A PARTY AND SOMEBODY CAME UP TO ME AND GAVE ME THIS MOBILE PHONE WHERE I HAD TO LIKE COMPLETE THESE CHALLENGES FOR THEM FOR MONEY I DON'T REALLY REMEMBER SOMETHING LIKE THAT IT'S QUITE VAGUE I CAN'T REMEMBER REALLY"
+  },
+  {
+   "start_ms": 1144230,
+   "end_ms": 1153120,
+   "speaker": "EDACC-C32-B",
+   "text": "UM WHAT IS THE CRAZIEST THING THAT YOU'VE DONE WITHOUT ANYBODY NOTICING"
+  },
+  {
+   "start_ms": 1155420,
+   "end_ms": 1155850,
+   "speaker": "EDACC-C32-A",
+   "text": "PARDON"
+  },
+  {
+   "start_ms": 1156620,
+   "end_ms": 1160920,
+   "speaker": "EDACC-C32-B",
+   "text": "WHAT IS THE CRAZIEST THING YOU'VE DONE WITHOUT ANYBODY NOTICING"
+  },
+  {
+   "start_ms": 1164430,
+   "end_ms": 1177760,
+   "speaker": "EDACC-C32-A",
+   "text": "UM I THINK WHEN I <DTMF> I DON'T KNOW REALLY WHAT HAVE YOU DONE THAT WAS CRAZY"
+  },
+  {
+   "start_ms": 1182230,
+   "end_ms": 1189440,
+   "speaker": "EDACC-C32-B",
+   "text": "MM UH I CAN'T SAY THAT <LAUGH> TOO SECRETIVE"
+  },
+  {
+   "start_ms": 1193740,
+   "end_ms": 1194110,
+   "speaker": "EDACC-C32-A",
+   "text": "OH"
+  },
+  {
+   "start_ms": 1198450,
+   "end_ms": 1200590,
+   "speaker": "EDACC-C32-B",
+   "text": "WERE YOU EVER GOOD AT MAKING FRIENDS"
+  },
+  {
+   "start_ms": 1202290,
+   "end_ms": 1216700,
+   "speaker": "EDACC-C32-A",
+   "text": "NO NOT REALLY <DTMF> UM <RING>"
+  },
+  {
+   "start_ms": 1236930,
+   "end_ms": 1248430,
+   "speaker": "EDACC-C32-B",
+   "text": "DO YOU LIKE SPENDING TIME ALONE"
+  },
+  {
+   "start_ms": 1250280,
+   "end_ms": 1254850,
+   "speaker": "EDACC-C32-A",
+   "text": "YEAH I ACTUALLY ENJOY MY OWN COMPANY MOSTLY HOW ABOUT YOU"
+  },
+  {
+   "start_ms": 1254810,
+   "end_ms": 1255720,
+   "speaker": "EDACC-C32-B",
+   "text": "OR WITH FRIENDS"
+  },
+  {
+   "start_ms": 1256940,
+   "end_ms": 1261960,
+   "speaker": "EDACC-C32-A",
+   "text": "NO I'D RATHER BE ALONE THAN WITH FRIENDS HOW ABOUT YOU"
+  },
+  {
+   "start_ms": 1263060,
+   "end_ms": 1263970,
+   "speaker": "EDACC-C32-B",
+   "text": "WITH FRIENDS"
+  },
+  {
+   "start_ms": 1265040,
+   "end_ms": 1265860,
+   "speaker": "EDACC-C32-A",
+   "text": "OKAY WHY"
+  },
+  {
+   "start_ms": 1266600,
+   "end_ms": 1291870,
+   "speaker": "EDACC-C32-B",
+   "text": "BECAUSE LIKE THERE'S JUST SO MUCH MORE TO DO THAN WHEN YOU'RE BY YOURSELF IT'S GET YOU GET A BIT LONELY SOMETIMES DO YOU THINK DO YOU THINK GHOSTS ARE REAL"
+  },
+  {
+   "start_ms": 1293960,
+   "end_ms": 1294480,
+   "speaker": "EDACC-C32-A",
+   "text": "THAT WHAT"
+  },
+  {
+   "start_ms": 1294440,
+   "end_ms": 1297450,
+   "speaker": "EDACC-C32-B",
+   "text": "DO YOU THINK GHOSTS ARE REAL"
+  },
+  {
+   "start_ms": 1300230,
+   "end_ms": 1303390,
+   "speaker": "EDACC-C32-A",
+   "text": "NO I I I DON'T THINK SO HOW ABOUT YOU"
+  },
+  {
+   "start_ms": 1304790,
+   "end_ms": 1306180,
+   "speaker": "EDACC-C32-B",
+   "text": "MM DOUBT IT"
+  },
+  {
+   "start_ms": 1308570,
+   "end_ms": 1311940,
+   "speaker": "EDACC-C32-A",
+   "text": "MM HMM WHAT'S YOUR FAVORITE SWEET"
+  },
+  {
+   "start_ms": 1313650,
+   "end_ms": 1327520,
+   "speaker": "EDACC-C32-B",
+   "text": "PROBABLY UM HUH PROBABLY THIS UM SOUR UM SPAGHETTI <DTMF>"
+  },
+  {
+   "start_ms": 1327450,
+   "end_ms": 1348430,
+   "speaker": "EDACC-C32-A",
+   "text": "I THINK FOR ME IT'LL BE HARIBEE HARIBO STRAWBS THOSE ARE NICE ISN'T THERE A TIKTOK SENSATION OF THIS CHIP SHOP CALLED BINLEY MEGA CHIPPY"
+  },
+  {
+   "start_ms": 1349880,
+   "end_ms": 1350700,
+   "speaker": "EDACC-C32-B",
+   "text": "WHAT IS IT ABOUT"
+  },
+  {
+   "start_ms": 1351770,
+   "end_ms": 1360810,
+   "speaker": "EDACC-C32-A",
+   "text": "IT'S JUST THIS WEIRD CHIP SHOP THAT'S BEEN HYPED UP FOR NO REASON IT'S CALLED BINLEY MEGA CHIPPY I DON'T KNOW PRETTY WEIRD"
+  },
+  {
+   "start_ms": 1364040,
+   "end_ms": 1365520,
+   "speaker": "EDACC-C32-B",
+   "text": "WHAT DO YOU DO IN YOUR FREE TIME"
+  },
+  {
+   "start_ms": 1367340,
+   "end_ms": 1382200,
+   "speaker": "EDACC-C32-A",
+   "text": "NORMALLY I READ LISTEN TO MUSIC UM I DO WORK REALLY I DON'T GET MUCH FREE TIME BUT YEAH SOMETIMES I LIKE TO CROCHET YEP"
+  },
+  {
+   "start_ms": 1383870,
+   "end_ms": 1384660,
+   "speaker": "EDACC-C32-B",
+   "text": "OH NICE"
+  },
+  {
+   "start_ms": 1387200,
+   "end_ms": 1388830,
+   "speaker": "EDACC-C32-A",
+   "text": "DO YOU LIKE STRANGER THINGS"
+  },
+  {
+   "start_ms": 1391070,
+   "end_ms": 1392010,
+   "speaker": "EDACC-C32-B",
+   "text": "MM NO"
+  },
+  {
+   "start_ms": 1393200,
+   "end_ms": 1393990,
+   "speaker": "EDACC-C32-A",
+   "text": "RIGHT OKAY THAT'S ALL RIGHT"
+  },
+  {
+   "start_ms": 1394010,
+   "end_ms": 1406710,
+   "speaker": "EDACC-C32-B",
+   "text": "I'VE NEVER TRIED IT SO WHAT COUNTRIES HAVE YOU TRAVELED TO"
+  },
+  {
+   "start_ms": 1410560,
+   "end_ms": 1424280,
+   "speaker": "EDACC-C32-A",
+   "text": "UM I'VE BEEN TO KOREA I'VE BEEN TO CHINA JAPAN I'VE BEEN TO SWITZERLAND YEAH <BREATH>"
+  },
+  {
+   "start_ms": 1425110,
+   "end_ms": 1426950,
+   "speaker": "EDACC-C32-B",
+   "text": "WHAT DO YOU LOOK FORWARD TO IN THE FUTURE"
+  },
+  {
+   "start_ms": 1430150,
+   "end_ms": 1439820,
+   "speaker": "EDACC-C32-A",
+   "text": "I LOOK FORWARD TO HAVING A BUSINESS REALLY WELL THANK YOU FOR YOUR TIME IT WAS LOVELY TALKING TO YOU"
+  },
+  {
+   "start_ms": 1441540,
+   "end_ms": 1443740,
+   "speaker": "EDACC-C32-B",
+   "text": "THANK YOU THAT'S NICE"
+  },
+  {
+   "start_ms": 1444210,
+   "end_ms": 1444880,
+   "speaker": "EDACC-C32-A",
+   "text": "BYE"
+  },
+  {
+   "start_ms": 1446210,
+   "end_ms": 1449150,
+   "speaker": "EDACC-C32-B",
+   "text": "BYE"
+  }
+ ]
+}

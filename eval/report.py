@@ -32,9 +32,14 @@ def render(results, calibration=None):
         lines.append("")
         for r in partial:
             lo, hi = r["scored_span_ms"]
-            lines.append(f"\\* `{r['id']}` is scored over {lo / 1000:.0f}-{hi / 1000:.0f}s only "
-                         f"({(hi - lo) / 1000:.0f}s of {r['audio_ms'] / 1000:.0f}s), the span its "
-                         f"reference covers. Not comparable with a whole-meeting number.")
+            # Either end may be open. The EdAcc fixtures set only a lower bound — everything after
+            # the read-aloud passage — and formatting that as "{hi/1000}s" divided None by 1000.
+            start = 0 if lo is None else lo
+            end = r["audio_ms"] if hi is None else hi
+            span = f"{start / 1000:.0f}-{end / 1000:.0f}s"
+            lines.append(f"\\* `{r['id']}` is scored over {span} only "
+                         f"({(end - start) / 1000:.0f}s of {r['audio_ms'] / 1000:.0f}s), the span "
+                         f"its reference covers. Not comparable with a whole-meeting number.")
 
     total_err = sum(r["wer"]["errors"] for r in results["fixtures"])
     total_ref = sum(r["wer"]["ref_words"] for r in results["fixtures"])
