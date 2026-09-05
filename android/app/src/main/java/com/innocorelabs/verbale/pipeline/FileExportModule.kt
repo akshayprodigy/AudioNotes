@@ -53,7 +53,9 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
     val db = AudioDb.get(ctx)
     val meeting = JSONArray(
       db.rawQueryJson(
-        "SELECT title,created_at,duration_ms FROM meetings WHERE id=?", arrayOf(meetingId),
+        "SELECT title,created_at,duration_ms,transcribe_forced_at,forced_from_language " +
+          "FROM meetings WHERE id=?",
+        arrayOf(meetingId),
       ),
     ).optJSONObject(0)
     val minutes = JSONArray(
@@ -92,11 +94,25 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
 
     val title = meeting?.optString("title", "Meeting") ?: "Meeting"
     val createdAt = meeting?.optLong("created_at", 0L) ?: 0L
+    // Null unless somebody overruled the language refusal on this meeting. Read here, with the
+    // rest of the row, so every format below gets it for free rather than each remembering to ask.
+    val forcedAt =
+      meeting?.let { if (it.isNull("transcribe_forced_at")) null else it.optLong("transcribe_forced_at") }
+    val marker = forcedMarkerOrNull(forcedAt, meeting?.optString("forced_from_language", "") ?: "")
 
     if (format == "pdf") {
       // Blocks, not a string: a PDF is laid out rather than concatenated. The content still comes
       // from the same accessors as every other format, so a correction reaches it for free.
-      return Document(title, "pdf", "", pdfBlocks(title, createdAt, minutes, utterances, nameById, edits))
+      val blocks = pdfBlocks(title, createdAt, minutes, utterances, nameById, edits)
+      // After the title and date, before any content: a reader who stops at the first paragraph
+      // must still have seen it.
+      val withMarker = if (marker == null) blocks else buildList {
+        addAll(blocks.take(2))
+        add(PdfExport.Block(marker, 10f, bold = true,
+                            color = android.graphics.Color.rgb(0x8A, 0x5A, 0x00), spaceBefore = 14f))
+        addAll(blocks.drop(2))
+      }
+      return Document(title, "pdf", "", withMarker)
     }
 
     val ext = when (format) { "srt" -> "srt"; "txt", "transcript" -> "txt"; else -> "md" }
@@ -106,7 +122,15 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
       "transcript" -> renderTranscript(utterances, nameById, edits)
       else -> renderMarkdown(title, createdAt, minutes, utterances, nameById, edits)
     }
-    return Document(title, ext, body)
+    // SRT gets a real cue rather than a comment, because subtitle players drop comments — a
+    // warning nobody can see is not a warning.
+    val marked = when {
+      marker == null -> body
+      ext == "srt" -> "0\n00:00:00,000 --> 00:00:04,000\n" + marker + "\n\n" + body
+      ext == "md" -> "> " + marker + "\n\n" + body
+      else -> marker + "\n\n" + body
+    }
+    return Document(title, ext, marked)
   }
 
   @ReactMethod
@@ -389,5 +413,38 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
     val s = (ms % 60000) / 1000
     val milli = ms % 1000
     return String.format(Locale.US, "%02d:%02d:%02d,%03d", h, m, s, milli)
+  }
+
+  companion object {
+    /**
+     * The line that travels with a forced transcript wherever it goes.
+     *
+     * The in-app banner protects the person who forced it; this protects everybody they send it
+     * to. A PDF of invented minutes with no warning on it is the failure the refusal was built to
+     * prevent, merely relocated to somebody else's inbox.
+     */
+    @JvmStatic
+    fun forcedMarker(heardLanguage: String): String {
+      val name = languageDisplayName(heardLanguage)
+      return if (name != null) {
+        "Forced transcript — heard as $name, transcribed as English. " +
+          "If it was not English, the words below are invented."
+      } else {
+        "Forced transcript — this did not sound like English, and was transcribed as English " +
+          "anyway. If it was not English, the words below are invented."
+      }
+    }
+
+    /** Null when the meeting was never forced. */
+    @JvmStatic
+    fun forcedMarkerOrNull(transcribeForcedAt: Long?, heardLanguage: String?): String? =
+      if (transcribeForcedAt == null) null else forcedMarker(heardLanguage ?: "")
+
+    /** English name of a language code, or null when we cannot name it. */
+    private fun languageDisplayName(code: String): String? {
+      if (code.isBlank()) return null
+      val name = java.util.Locale.forLanguageTag(code).getDisplayLanguage(java.util.Locale.ENGLISH)
+      return if (name.isBlank() || name.equals(code, ignoreCase = true)) null else name
+    }
   }
 }

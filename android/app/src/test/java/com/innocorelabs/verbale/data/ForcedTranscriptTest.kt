@@ -47,6 +47,34 @@ class ForcedTranscriptTest {
       forcedBannerLanguage(transcribeForcedAt = 1_725_000_000_000L, forcedFromLanguage = null),
     )
   }
+
+  // ---- the marker that travels with the file ----
+  //
+  // The in-app banner protects whoever forced it. This protects everybody they send it to, which
+  // is where invented minutes actually do harm.
+
+  @Test
+  fun the_export_marker_names_the_language_that_was_heard() {
+    assertEquals(
+      "Forced transcript — heard as Turkish, transcribed as English. " +
+        "If it was not English, the words below are invented.",
+      com.innocorelabs.verbale.pipeline.FileExportModule.forcedMarker("tr"),
+    )
+  }
+
+  @Test
+  fun the_export_marker_still_warns_when_no_language_was_named() {
+    assertEquals(
+      "Forced transcript — this did not sound like English, and was transcribed as English " +
+        "anyway. If it was not English, the words below are invented.",
+      com.innocorelabs.verbale.pipeline.FileExportModule.forcedMarker(""),
+    )
+  }
+
+  @Test
+  fun an_unforced_meeting_gets_no_marker() {
+    assertNull(com.innocorelabs.verbale.pipeline.FileExportModule.forcedMarkerOrNull(null, "tr"))
+  }
 }
 
 /**
