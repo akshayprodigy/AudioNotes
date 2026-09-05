@@ -1,9 +1,35 @@
 # Verbale — everything left before launch
 
 **As of 1 September 2026.** Tick things off as they land.
+**Amended 5 September 2026: v1 ships English only** — see the decision below.
 
-Six workstreams. Stream 3 is the only one that decides whether the product works;
-everything else is secondary to it.
+Six workstreams. Stream 3 decided what the product *is*, and it is now decided; what remains
+of it is post-launch. Streams 5 and 6 are what stand between here and the store.
+
+## The decision: v1 is English only
+
+Taken 5 September 2026. **This is already the state of the code**, so it costs nothing to
+implement: `cpp/asr/asr_languages.cpp` carries one row, the picker carries one row, and `auto`
+is gone on purpose. Hindi and Qwen3-ASR stay built, measured and unreachable until a language
+has a WER number behind it.
+
+**What it removes from this list** — the corrected Hinglish ground truth, the 972 MB model
+hosting decision, making Qwen downloadable, and scoring every model against that truth. All four
+move to post-launch. Pro's first-run download drops from ~2.2 GB to ~1.1 GB, which roughly halves
+Pro egress and makes the Hostinger question easier, not harder.
+
+**What it makes more important, and this is the trade being accepted:**
+
+1. **English quality is now the entire product.** 29.7% WER is no longer one language among
+   several; it is the thing being sold. Measuring Parakeet-TDT and Moonshine before launch is an
+   afternoon and could halve that number. See `docs/PRODUCT_RESEARCH_2026-09.md` §2.1.
+2. **More users will meet the refusal.** Anyone recording Hindi now gets "NOT ENGLISH" instead of
+   nonsense, which is correct, but it must be expected rather than discovered. The Play listing has
+   to say English only in the first line, and the refused-meeting state needs its next step
+   (research §2.4 #15) or it reads as a bug and earns one-star reviews.
+3. **India is narrowed, not lost.** The 0.60 detection threshold was set so code-switched Indian
+   English stays on the transcribing side. English-medium meetings in India still work, which is
+   what the ₹249 / ₹1,799 tier rests on.
 
 **State right now**
 
@@ -12,7 +38,7 @@ everything else is secondary to it.
 | Branch | `main`, and only `main` — nine branches merged and deleted |
 | Commits | 27 ahead of `origin/main` |
 | Tests | 9/9 native, 155/155 JS, `assembleDebug` green |
-| Transcription | English default; Qwen3-ASR running and measured — 69.8% Devanagari against whisper's 4.1% |
+| Transcription | **English only, and refuses rather than fabricates.** Qwen3-ASR built and measured (69.8% Devanagari against whisper's 4.1%) but unreachable in v1 |
 | Website | **not deployed** (live site is still the old page) |
 | App | not on Play |
 
@@ -29,35 +55,37 @@ hardware: the Sentry Gradle plugin, `nativeTranscribe` moving onto the engine fa
 Qwen3-ASR engine. Ten native tests and 155 JS tests pass and `assembleDebug` is green — but
 compiling is not running, and the JNI is the fragile part and is exactly what changed.
 
-**2. Spend the hour on the transcript — *you, 1 hr***
+**2. Let me measure the English engines — *you 1 min, me half a day***
 
-`eval/fixtures/real-neosym-2026-08-19/truth.draft.txt`, still the machine's own output with
-instructions at the top. This is now the **single highest-value task in this document**. Every
-other piece of the Hindi work is built, running and measured; this is the one input nobody else
-can supply. Without it I can tell you what script Qwen answered in but not whether it is right.
+Replaces "correct the Hinglish transcript", which the English-only decision moved to post-launch.
+English is now the whole product, so its error rate is the product's error rate:
 
-When it lands, the whole comparison is one command:
+| Engine | WER on AMI | Status |
+|---|---|---|
+| whisper-base (ships today) | 29.7% | measured here |
+| whisper-small (Pro) | 26.6% | measured here |
+| Parakeet-TDT 0.6B v3 | ~16% | published, not yet run here |
+| Moonshine v2 | large-v3 parity claimed | published, not yet run here |
 
-```bash
-python3 -m eval.run --cli cpp/cli/build/audionotes_cli --models eval/models \
-  --only real-neosym-2026-08-19 --asr-engine qwen3 --qwen3-model eval/models/qwen3-asr --language hi
-```
+Both candidates sit behind the `AsrEngine` factory that already exists and run on the sherpa-onnx
+runtime already vendored. If Parakeet holds up, one model swap roughly halves the error rate of
+everything Verbale sells. Worth knowing before the listing goes live, not after.
 
 **3. Say yes to the deploy — *me, 15 min***
 
 Fifteen minutes, and it is what finally makes the new landing page live. You have never seen the
 redesign on a real URL. Outward-facing, so it waits for your word.
 
-**4. Answer the four numbers — *you***
+**4. Answer the three numbers — *you***
 
-Each one has finished work queued behind it, and none of them need a computer:
+Each one has finished work queued behind it, and none of them need a computer. The Qwen hosting
+question is gone: English-only means it does not ship in v1.
 
 | Decision | What it releases |
 |---|---|
 | Final prices, and two tiers or three | The plans screen and per-plan model access — ~2 days, built the moment this is settled |
-| Where the 972 MB Qwen model lives | Making it downloadable — it runs today only if side-loaded |
 | Sentry DSN (free account, 15 min) | Crash reporting is built and ships OFF. Without it you launch blind |
-| Hostinger bandwidth limit | The last number needed to say where the server breaks |
+| Hostinger bandwidth limit | The last number needed to say where the server breaks. Easier now: Pro is ~1.1 GB, not ~2.2 GB |
 
 ---
 
@@ -111,7 +139,13 @@ running, and neither is evidence that it works.*
 
 ## Stream 3 — Hindi and English transcription
 
-*The one that matters. Today's tests found the cause and a model that fixes it.*
+*The one that mattered, and it is answered. Everything ticked below stays; **every unticked item
+in this stream is now POST-LAUNCH** by the English-only decision at the top of this file. Do not
+let them block the store.*
+
+*What replaces them before launch: measure Parakeet-TDT and Moonshine against whisper-base on AMI
+(item 2 of "Start here tomorrow"), and give the refused-meeting state a next step so "NOT ENGLISH"
+reads as a decision rather than a failure.*
 
 - [x] Found the cause — *done today*
       Auto-detect was the bug. Whisper re-decides the language every chunk, which is why one
