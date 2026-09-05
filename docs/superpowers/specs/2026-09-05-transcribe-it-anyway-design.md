@@ -114,13 +114,14 @@ Non-dismissible because its whole purpose is to outlive the moment of decision. 
 forced it knew; the person reading it three weeks later, or the colleague they forwarded it to,
 did not.
 
-Composed at render time from `language`/`detected_language`, never stored in `summary_line` — the
-mistake `2026-09-04`'s design already records, where a status message parked in a content field
-outlived its status.
+Composed at render time from `forced_from_language`, never stored in `summary_line` — the mistake
+`2026-09-04`'s design already records, where a status message parked in a content field outlived
+its status.
 
 ### Exports
 
-`FileExportModule.buildDocument` selects `transcribe_forced_at` with the rest of the meeting row
+`FileExportModule.buildDocument` selects `transcribe_forced_at` and `forced_from_language` with
+the rest of the meeting row
 and prepends the marker to every format: Markdown, plain text, PDF (as a block, since a PDF is
 laid out rather than concatenated) and SRT (as a leading cue).
 
