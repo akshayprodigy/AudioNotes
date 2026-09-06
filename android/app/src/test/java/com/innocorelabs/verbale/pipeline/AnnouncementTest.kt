@@ -42,4 +42,13 @@ class AnnouncementTest {
     assertTrue("each failure needs its own wording", messages.toSet().size == messages.size)
     assertTrue("no failure may be silent", messages.none { it.isBlank() })
   }
+
+  @Test
+  fun the_announced_column_is_declared_in_the_migration_list() {
+    val added = com.innocorelabs.verbale.data.AudioDb.addedColumnsForTest()
+    org.junit.Assert.assertEquals(
+      "INTEGER",
+      added.firstOrNull { it.first == "meetings" && it.second == "announced_at" }?.third,
+    )
+  }
 }

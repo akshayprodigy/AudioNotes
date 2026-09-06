@@ -19,7 +19,8 @@ export const SCHEMA = [
      archived_at INTEGER,          -- NULL = in the library; set = hidden, restorable
      summary_line TEXT,            -- one-line description written by the LLM; NULL until narrated
      transcribe_forced_at INTEGER, -- set when a person overruled the "not English" refusal
-     forced_from_language TEXT     -- what was heard before they did; the banner's claim
+     forced_from_language TEXT,    -- what was heard before they did; the banner's claim
+     announced_at INTEGER          -- when the spoken disclosure finished, while the mic was live
    );`,
   `CREATE TABLE IF NOT EXISTS utterances (
      id TEXT PRIMARY KEY,
