@@ -44,17 +44,66 @@ export function orderLanguages(all: LanguageChoice[]): LanguageChoice[] {
  * Wrapped because Intl.DisplayNames is not guaranteed on every Hermes build, and a missing
  * formatter must not take down the screen that reports a refusal.
  */
+/**
+ * Whisper's detectable languages, by the code it emits.
+ *
+ * Written out rather than asked of `Intl.DisplayNames`, which is what this used to do. Node has
+ * full ICU so every test passed; Hermes on the device does not, so `languageName` returned null
+ * for everything and four pieces of safety copy quietly fell back to their generic form. Observed
+ * on a Pixel 7 Pro: logcat recorded `heard 'de'` while the screen said "this recording does not
+ * sound like English". The forced-transcript banner — the entire safety mechanism of the override
+ * — lost its claim the same way.
+ *
+ * This is the set `detected_language` can contain, so it is the set that needs naming. A code
+ * outside it still yields null and the copy falls back, which is correct: better to say nothing
+ * than to guess at what somebody was speaking.
+ */
+const LANGUAGE_NAMES: Record<string, string> = {
+  af: 'Afrikaans', am: 'Amharic', ar: 'Arabic', as: 'Assamese', az: 'Azerbaijani',
+  ba: 'Bashkir', be: 'Belarusian', bg: 'Bulgarian', bn: 'Bengali', bo: 'Tibetan',
+  br: 'Breton', bs: 'Bosnian', ca: 'Catalan', cs: 'Czech', cy: 'Welsh',
+  da: 'Danish', de: 'German', el: 'Greek', en: 'English', es: 'Spanish',
+  et: 'Estonian', eu: 'Basque', fa: 'Persian', fi: 'Finnish', fo: 'Faroese',
+  fr: 'French', gl: 'Galician', gu: 'Gujarati', ha: 'Hausa', haw: 'Hawaiian',
+  he: 'Hebrew', hi: 'Hindi', hr: 'Croatian', ht: 'Haitian Creole', hu: 'Hungarian',
+  hy: 'Armenian', id: 'Indonesian', is: 'Icelandic', it: 'Italian', ja: 'Japanese',
+  jw: 'Javanese', ka: 'Georgian', kk: 'Kazakh', km: 'Khmer', kn: 'Kannada',
+  ko: 'Korean', la: 'Latin', lb: 'Luxembourgish', ln: 'Lingala', lo: 'Lao',
+  lt: 'Lithuanian', lv: 'Latvian', mg: 'Malagasy', mi: 'Maori', mk: 'Macedonian',
+  ml: 'Malayalam', mn: 'Mongolian', mr: 'Marathi', ms: 'Malay', mt: 'Maltese',
+  my: 'Burmese', ne: 'Nepali', nl: 'Dutch', nn: 'Norwegian Nynorsk', no: 'Norwegian',
+  oc: 'Occitan', pa: 'Punjabi', pl: 'Polish', ps: 'Pashto', pt: 'Portuguese',
+  ro: 'Romanian', ru: 'Russian', sa: 'Sanskrit', sd: 'Sindhi', si: 'Sinhala',
+  sk: 'Slovak', sl: 'Slovenian', sn: 'Shona', so: 'Somali', sq: 'Albanian',
+  sr: 'Serbian', su: 'Sundanese', sv: 'Swedish', sw: 'Swahili', ta: 'Tamil',
+  te: 'Telugu', tg: 'Tajik', th: 'Thai', tk: 'Turkmen', tl: 'Tagalog',
+  tr: 'Turkish', tt: 'Tatar', uk: 'Ukrainian', ur: 'Urdu', uz: 'Uzbek',
+  vi: 'Vietnamese', yi: 'Yiddish', yo: 'Yoruba', zh: 'Chinese',
+};
+
+/**
+ * The English name of a language code, or null when we cannot name it.
+ *
+ * Never asks Intl first: see LANGUAGE_NAMES above for why. Intl is consulted only as a fallback
+ * for a code outside the table, on a runtime that happens to have it.
+ */
 export function languageName(code: string | null | undefined): string | null {
   if (!code) return null;
+  // Detectors are not consistent about case or region suffixes: "de", "DE" and "de-DE" all occur.
+  const base = code.trim().toLowerCase().split(/[-_]/)[0];
+  if (!base) return null;
+  const known = LANGUAGE_NAMES[base];
+  if (known) return known;
   try {
     const dn = new Intl.DisplayNames(['en'], { type: 'language' });
-    const name = dn.of(code);
+    const name = dn.of(base);
     // Intl returns the input unchanged for codes it does not know.
-    return name && name.toLowerCase() !== code.toLowerCase() ? name : null;
+    return name && name.toLowerCase() !== base.toLowerCase() ? name : null;
   } catch {
     return null;
   }
 }
+
 
 /**
  * What to tell somebody whose recording was not transcribed.

@@ -46,7 +46,7 @@ std::vector<Span> padAndMerge(const std::vector<Span>& spans, int64_t pad_ms, in
  * segmentation wants and less of the memory saving. Swept against AMI with eval/run.py — the
  * value here is the one that recovered ES2003a without giving the win back.
  */
-constexpr int64_t kDiarPadMs = 500;
+constexpr int64_t kDiarPadMs = 1000;  // SWEEP EXPERIMENT — revert if not better
 
 /** Where each span begins once the spans are laid end to end. */
 std::vector<int64_t> concatOffsets(const std::vector<Span>& spans);
