@@ -97,6 +97,7 @@ add_executable(audionotes_cli
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
   ${CORE}/diar/diarizer.cpp
+  ${CORE}/diar/span_map.cpp
   ${CORE}/llm/llama_engine.cpp
   ${CORE}/pipeline/pipeline.cpp
   ${CORE}/pipeline/result_json.cpp
@@ -157,6 +158,12 @@ audionotes_add_test(test_asr_chunker
   ${CORE}/tests/test_asr_chunker.cpp
   ${CORE}/asr/asr_chunker.cpp)
 
+# The arithmetic that puts diarization results back on the real timeline after the silence has
+# been cut out of them. Deliberately free of sherpa and ONNX so it builds and runs anywhere.
+audionotes_add_test(test_span_map
+  ${CORE}/tests/test_span_map.cpp
+  ${CORE}/diar/span_map.cpp)
+
 audionotes_add_test(test_asr_postprocess
   ${CORE}/tests/test_asr_postprocess.cpp
   ${CORE}/asr/asr_postprocess.cpp
@@ -216,6 +223,7 @@ audionotes_add_test(test_pipeline_align
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
   ${CORE}/diar/diarizer.cpp
+  ${CORE}/diar/span_map.cpp
   ${CORE}/llm/llama_engine.cpp)
 target_include_directories(test_pipeline_align PRIVATE
   ${TP}/onnxruntime/include ${TP}/whisper.cpp/include ${TP}/whisper.cpp/ggml/include
@@ -248,6 +256,7 @@ audionotes_add_test(test_cancel
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
   ${CORE}/diar/diarizer.cpp
+  ${CORE}/diar/span_map.cpp
   ${CORE}/llm/llama_engine.cpp)
 target_include_directories(test_cancel PRIVATE
   ${TP} ${TP}/onnxruntime/include ${TP}/whisper.cpp/include ${TP}/whisper.cpp/ggml/include
@@ -280,6 +289,7 @@ audionotes_add_test(test_capi
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
   ${CORE}/diar/diarizer.cpp
+  ${CORE}/diar/span_map.cpp
   ${CORE}/llm/llama_engine.cpp)
 target_include_directories(test_capi PRIVATE
   ${TP}/onnxruntime/include ${TP}/whisper.cpp/include ${TP}/whisper.cpp/ggml/include

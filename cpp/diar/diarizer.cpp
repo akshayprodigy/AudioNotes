@@ -1,5 +1,9 @@
 #include "diar/diarizer.h"
 
+#include <algorithm>
+
+#include "diar/span_map.h"
+
 #include "util/cpu_topology.h"
 #include "util/ort_init.h"
 
@@ -19,7 +23,46 @@ namespace audionotes {
 
 namespace {
 
-// Read an entire PCM16 mono file as float samples in [-1, 1].
+// Read only the given speech spans, laid end to end, as float samples in [-1, 1].
+//
+// The whole-file version this replaces was the reason diarization could not finish a long
+// meeting: 90 minutes at 16 kHz is a 346 MB float vector before sherpa copies it, and every
+// silent second in it was segmented and embedded for nothing. Seeking per span costs one fseek
+// each and reads only what somebody actually said.
+std::vector<float> readSpans(const std::string& pcm_path, const std::vector<Span>& spans,
+                             int sample_rate) {
+  std::vector<float> out;
+  FILE* f = std::fopen(pcm_path.c_str(), "rb");
+  if (!f) return out;
+  std::fseek(f, 0, SEEK_END);
+  const long bytes = std::ftell(f);
+  if (bytes <= 0) {
+    std::fclose(f);
+    return out;
+  }
+  const int64_t total_samples = static_cast<int64_t>(bytes) / 2;
+  out.reserve(static_cast<size_t>(totalSpeechMs(spans)) * sample_rate / 1000);
+
+  std::vector<int16_t> raw;
+  for (const auto& sp : spans) {
+    int64_t from = sp.start_ms * sample_rate / 1000;
+    int64_t to = sp.end_ms * sample_rate / 1000;
+    // A span past the end of the file is not an error worth failing the meeting for: VAD ran on
+    // this same audio, but a truncated write or a resumed capture can leave the two disagreeing.
+    from = std::max<int64_t>(0, std::min(from, total_samples));
+    to = std::max<int64_t>(from, std::min(to, total_samples));
+    const size_t n = static_cast<size_t>(to - from);
+    if (n == 0) continue;
+    if (std::fseek(f, static_cast<long>(from * 2), SEEK_SET) != 0) break;
+    raw.resize(n);
+    const size_t got = std::fread(raw.data(), sizeof(int16_t), n, f);
+    for (size_t i = 0; i < got; ++i) out.push_back(static_cast<float>(raw[i]) / 32768.0f);
+  }
+  std::fclose(f);
+  return out;
+}
+
+// Read an entire PCM16 mono file as float samples in [-1, 1]. Kept for the no-spans path.
 std::vector<float> readAll(const std::string& pcm_path) {
   std::vector<float> out;
   FILE* f = std::fopen(pcm_path.c_str(), "rb");
@@ -116,10 +159,20 @@ Diarizer::~Diarizer() { delete impl_; }
 bool Diarizer::ok() const { return impl_->ok; }
 
 std::vector<DiarSegment> Diarizer::process(const std::string& pcm_path) {
+  return process(pcm_path, {});
+}
+
+std::vector<DiarSegment> Diarizer::process(const std::string& pcm_path,
+                                           const std::vector<Span>& spans) {
   std::vector<DiarSegment> out;
 #ifdef HAVE_SHERPA
   if (!impl_->ok) throw std::runtime_error("diarization models not loaded");
-  std::vector<float> samples = readAll(pcm_path);
+  // With spans, only speech is read and the results come back on a timeline that has the silence
+  // removed — so they have to be put back. Without them (a caller that has not run VAD) the old
+  // whole-file behaviour still applies and no translation is needed.
+  const bool use_spans = !spans.empty();
+  std::vector<float> samples =
+      use_spans ? readSpans(pcm_path, spans, impl_->sample_rate) : readAll(pcm_path);
   if (samples.empty()) return out;
 
   const SherpaOnnxOfflineSpeakerDiarizationResult* result =
@@ -139,8 +192,10 @@ std::vector<DiarSegment> Diarizer::process(const std::string& pcm_path) {
   }
   SherpaOnnxOfflineSpeakerDiarizationDestroySegment(segs);
   SherpaOnnxOfflineSpeakerDiarizationDestroyResult(result);
+  if (use_spans) out = toOriginalTimeline(out, spans);
 #else
   (void)pcm_path;
+  (void)spans;
   throw std::runtime_error("sherpa-onnx not compiled in (vendor cpp/third_party/sherpa-onnx)");
 #endif
   return out;

@@ -83,6 +83,15 @@ object NativeBridge {
     embModelPath: String,
     sampleRate: Int,
     numSpeakers: Int,
+    /**
+     * VAD speech spans as flat [startMs, endMs, ...] — the same shape nativeVad returns, so the
+     * result can be handed straight back.
+     *
+     * Only these are read and diarized; the returned segments are already translated back to the
+     * recording's own timeline. Pass an empty array to diarize the whole file, which is what this
+     * did before and is 346 MB of float samples for a 90-minute meeting.
+     */
+    speechSpansMs: LongArray,
   ): LongArray
 
   // ---- LLM (llama.cpp). Handle-based: load once, generate many, then free. ----

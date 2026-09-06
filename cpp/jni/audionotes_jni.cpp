@@ -28,6 +28,7 @@
 #include "whisper.h"
 #endif
 #include "diar/diarizer.h"
+#include "diar/span_map.h"
 #include "llm/llama_engine.h"
 #include "minutes/llm_minutes.h"
 #include "minutes/minutes_extractor.h"
@@ -248,15 +249,30 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmFree(
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeDiarize(
     JNIEnv* env, jobject /*thiz*/, jstring jPcmPath, jstring jSegModel, jstring jEmbModel,
-    jint sampleRate, jint numSpeakers) {
+    jint sampleRate, jint numSpeakers, jlongArray jSpans) {
   const std::string pcm = jstr(env, jPcmPath);
   const std::string seg = jstr(env, jSegModel);
   const std::string emb = jstr(env, jEmbModel);
 
+  // Flat [start_ms, end_ms, ...], the same shape nativeVad returns, so the caller can hand the
+  // VAD result straight back without reshaping it. Empty means "diarize the whole recording",
+  // which is the old behaviour and is what a caller with no VAD result still gets.
+  std::vector<audionotes::Span> spans;
+  if (jSpans != nullptr) {
+    const jsize n = env->GetArrayLength(jSpans);
+    std::vector<jlong> raw(static_cast<size_t>(n));
+    if (n > 0) env->GetLongArrayRegion(jSpans, 0, n, raw.data());
+    spans.reserve(static_cast<size_t>(n) / 2);
+    for (jsize i = 0; i + 1 < n; i += 2) {
+      spans.push_back(audionotes::Span{static_cast<int64_t>(raw[i]),
+                                       static_cast<int64_t>(raw[i + 1])});
+    }
+  }
+
   std::vector<jlong> flat;  // [start_ms, end_ms, speaker, ...]
   try {
     audionotes::Diarizer diar(seg, emb, static_cast<int>(sampleRate), static_cast<int>(numSpeakers));
-    auto segments = diar.process(pcm);
+    auto segments = diar.process(pcm, spans);
     flat.reserve(segments.size() * 3);
     for (const auto& s : segments) {
       flat.push_back(static_cast<jlong>(s.start_ms));

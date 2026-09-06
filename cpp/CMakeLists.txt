@@ -22,6 +22,7 @@ add_library(audionotes SHARED
   asr/qwen3_asr.cpp
   asr/sherpa_asr.cpp
   diar/diarizer.cpp
+  diar/span_map.cpp
   llm/llama_engine.cpp
   # Rule-based minutes, shared with the CLI and minutes.ts (see jni nativeMinutes). The rest of
   # the core's upper layers (pipeline/, capi/) are NOT built here: Android drives the stages from

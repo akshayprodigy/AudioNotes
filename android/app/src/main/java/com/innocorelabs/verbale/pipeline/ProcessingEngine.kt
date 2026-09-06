@@ -192,8 +192,12 @@ class ProcessingEngine(
         if (transcribed && segModel != null && segModel.exists() && embModel != null && embModel.exists()) {
           listener.onStage("diarize", 0, 1)
           val t0 = System.currentTimeMillis()
+          // Hand VAD's spans over rather than the whole recording. Diarizing the silence too is
+          // what made a 90-minute meeting impossible on a phone — 2.55 GB and still going after
+          // 47 minutes. `spans` is the same flat array ASR already works from.
           val tri = NativeBridge.nativeDiarize(
             audioPath, segModel.absolutePath, embModel.absolutePath, RecordingService.SAMPLE_RATE, 0,
+            spans,
           )
           stageDone("diarize", t0)
           val m = tri.size / 3

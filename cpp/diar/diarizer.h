@@ -29,7 +29,16 @@ class Diarizer {
   bool ok() const;  // false if sherpa-onnx is not compiled in or models failed to load
 
   // pcm_path: 16 kHz mono PCM16. Returns segments sorted by start time.
+  //
+  // The whole-file overload reads every second of the recording, silence included. That is what
+  // made a 90-minute meeting undiarizable on a phone: 346 MB of float samples before sherpa's own
+  // copies, still running after 47 minutes at 2.55 GB. Prefer the span overload wherever VAD has
+  // already run, which in this app is everywhere.
   std::vector<DiarSegment> process(const std::string& pcm_path);
+
+  // Diarize only the given speech spans, joined end to end, and return segments on the
+  // recording's own timeline. Segments straddling a join are split — see diar/span_map.h.
+  std::vector<DiarSegment> process(const std::string& pcm_path, const std::vector<struct Span>& spans);
 
  private:
   struct Impl;
