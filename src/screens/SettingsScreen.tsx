@@ -732,6 +732,67 @@ export default function SettingsScreen({ navigation }: Props) {
           </Raised>
         </View>
 
+        {/* Its own section rather than a row buried inside PRIVACY under the four-option
+            retention card, where it was effectively unfindable. These two are what the people
+            in the ROOM get — everything under PRIVACY is about what happens to the file
+            afterwards, which is a different question and a later one. */}
+        <View style={st.ruleWrap}>
+          <SectionRule label="BEFORE YOU RECORD" />
+        </View>
+        <View style={st.list}>
+          {announceOn === null ? null : (
+            <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={5}>
+              <View style={st.rowPad}>
+                <View style={st.row}>
+                  <Icon name="mic" size={s(18)} color={colors.inkSoft} strokeWidth={2.4} />
+                  <View style={st.flex}>
+                    <Txt variant="bodyStrong">Announce out loud</Txt>
+                    <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
+                      When you start recording, the phone says "this meeting is being recorded"
+                      into the room. The microphone is already live, so the recording keeps a copy
+                      of it being said and the file itself shows the room was told.
+                    </Txt>
+                    <Txt variant="chipSoft" color={colors.inkSoft} style={st.tiny}>
+                      On by default, everywhere. Turn it off and nothing is announced — tell the
+                      room yourself.
+                    </Txt>
+                  </View>
+                  <Switch
+                    on={announceOn}
+                    onToggle={() => {
+                      const next = !announceOn;
+                      setAnnounceOn(next);
+                      db.setSetting('announceRecording', next ? '1' : '0').catch(() => {});
+                    }}
+                  />
+                </View>
+              </View>
+            </Raised>
+          )}
+
+          {/* Reachable from here as well as the record screen: somebody checking what the app
+              will say wants to see the card without starting a recording to find it. */}
+          <Raised
+            edge={colors.line}
+            fill={colors.card}
+            rad={radius.xl}
+            depth={5}
+            onPress={() => navigation.navigate('ConsentCard')}>
+            <View style={st.rowPad}>
+              <View style={st.row}>
+                <Icon name="users" size={s(18)} color={colors.inkSoft} strokeWidth={2.4} />
+                <View style={st.flex}>
+                  <Txt variant="bodyStrong">Show the room a card</Txt>
+                  <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
+                    The same disclosure in large type, to hold up instead of talking over people
+                  </Txt>
+                </View>
+                <Icon name="chevronRight" size={s(18)} color={colors.inkFaint} strokeWidth={2.4} />
+              </View>
+            </View>
+          </Raised>
+        </View>
+
         <View style={st.ruleWrap}>
           <SectionRule label="PRIVACY" />
         </View>
@@ -780,32 +841,6 @@ export default function SettingsScreen({ navigation }: Props) {
               )}
             </View>
           </Raised>
-
-          {announceOn === null ? null : (
-            <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={5}>
-              <View style={st.rowPad}>
-                <View style={st.row}>
-                  <Icon name="mic" size={s(18)} color={colors.inkSoft} strokeWidth={2.4} />
-                  <View style={st.flex}>
-                    <Txt variant="bodyStrong">Announce out loud</Txt>
-                    <Txt variant="meta" color={colors.inkDim}>
-                      Says "this meeting is being recorded" into the room when you start, and the
-                      recording keeps a copy of it being said, so the file itself shows the room
-                      was told. Defaults on everywhere.
-                    </Txt>
-                  </View>
-                  <Switch
-                    on={announceOn}
-                    onToggle={() => {
-                      const next = !announceOn;
-                      setAnnounceOn(next);
-                      db.setSetting('announceRecording', next ? '1' : '0').catch(() => {});
-                    }}
-                  />
-                </View>
-              </View>
-            </Raised>
-          )}
 
           <View style={st.assure}>
             <Icon name="shield" size={s(20)} color={colors.success} strokeWidth={2.4} />
