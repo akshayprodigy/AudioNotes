@@ -10,8 +10,11 @@ import { darkColors, lightColors, type Colors } from './palette';
  * looked wrong beside it. What comes back is the palette (see darkColors), not a switch bolted
  * over an inversion — the provider here only chooses between two designed sets.
  *
- * 'system' is the default and follows the OS live, because a note-taker gets opened at both ends
- * of the day and a phone-wide setting is the answer most people already gave.
+ * LIGHT is the default, not 'system'. The palette this product is designed in is the light one —
+ * it is what the store listing, the screenshots and every design decision were made against — and
+ * a first launch that lands in dark on a phone set to dark shows a new user a version of the app
+ * nobody chose to present. 'system' remains one tap away in Settings for people who want the
+ * phone-wide answer, and once chosen it follows the OS live.
  */
 export type ThemeMode = 'light' | 'dark' | 'system';
 
@@ -34,7 +37,7 @@ function isMode(v: string | null): v is ThemeMode {
 const fallback: ThemeValue = {
   colors: lightColors,
   isDark: false,
-  mode: 'system',
+  mode: 'light',
   scheme: 'light',
   setMode: () => {},
 };
@@ -42,13 +45,15 @@ const fallback: ThemeValue = {
 const ThemeContext = createContext<ThemeValue>(fallback);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [mode, setModeState] = useState<ThemeMode>('system');
+  const [mode, setModeState] = useState<ThemeMode>('light');
   const [system, setSystem] = useState<ColorSchemeName>(() => Appearance.getColorScheme() ?? 'light');
 
-  // The stored choice is read once, after the database opens. Until it arrives the app follows
-  // the system scheme, which is both the default and the least jarring thing to show for the
-  // frame or two it takes — the alternative, holding the whole UI back on a settings read, makes
-  // every cold start slower to serve a preference most people never change.
+  // The stored choice is read once, after the database opens. Until it arrives the app shows
+  // light, which is both the default and the least jarring thing to show for the frame or two it
+  // takes — the alternative, holding the whole UI back on a settings read, makes every cold start
+  // slower to serve a preference most people never change. Somebody who HAS chosen dark sees one
+  // brief light frame; that is the cost of not blocking launch on a database read, and it is paid
+  // by the smaller group.
   useEffect(() => {
     let alive = true;
     db.getSetting(SETTING_KEY)

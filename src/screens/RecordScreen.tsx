@@ -6,6 +6,7 @@ import {
   PermissionsAndroid,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   View,
 } from 'react-native';
@@ -56,6 +57,11 @@ export default function RecordScreen({ navigation }: Props) {
   const { isRecording, silenced, paused, startedAt, start, stop, togglePause, sync } =
     useRecordingStore();
   const [consented, setConsented] = useState<boolean | null>(null);
+  // The gate below tells people the phone will announce the recording out loud. That is only true
+  // while the setting is on, and it can be turned off in Settings before a first recording ever
+  // happens — so the promise is read, not assumed. A consent screen that overstates what the app
+  // does is the one kind of copy this feature cannot ship.
+  const [announceOn, setAnnounceOn] = useState(true);
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const levelRef = useRef(0);
@@ -66,6 +72,9 @@ export default function RecordScreen({ navigation }: Props) {
     db.getSetting('consentAck')
       .then(v => setConsented(v === '1'))
       .catch(() => setConsented(false));
+    db.getSetting('announceRecording')
+      .then(v => setAnnounceOn(v !== '0'))
+      .catch(() => setAnnounceOn(true));
   }, []);
 
   useEffect(() => {
@@ -149,6 +158,15 @@ export default function RecordScreen({ navigation }: Props) {
         <View style={st.consentPad}>
           <IconButton icon="chevronLeft" label="Back" onPress={() => navigation.goBack()} />
 
+          {/* Scrolls. The hero used to take flex:1 of a fixed-height column, so every sentence
+              added to the card below stole height from the mascot until the back button clipped
+              it — which is exactly what adding the announcement paragraph did. Content shorter
+              than the screen still centres; anything taller scrolls instead of being cut off,
+              which is also what saves this screen on a short phone. */}
+          <ScrollView
+            style={st.flex}
+            contentContainerStyle={st.consentScroll}
+            showsVerticalScrollIndicator={false}>
           <View style={st.consentHero}>
             <Mascot mood="happy" size={sv(150)} />
             <View style={st.onDevice}>
@@ -173,8 +191,18 @@ export default function RecordScreen({ navigation }: Props) {
                 </View>
                 <Txt variant="display">Before you record</Txt>
                 <Txt variant="body" color={colors.inkSoft} style={st.consentBody}>
-                  Audio and text never leave this phone. Just make sure everyone in the room is okay
-                  with being recorded.
+                  Audio and text never leave this phone.
+                </Txt>
+                {/* Stated here because it is what the ROOM experiences, and because somebody who
+                    does not expect their phone to speak will be startled by it in a meeting.
+                    Reads the real setting rather than assuming the default — see announceOn. */}
+                <Txt variant="body" color={colors.inkSoft} style={st.consentBody}>
+                  {announceOn
+                    ? 'When you tap record, the phone says "this meeting is being recorded" out ' +
+                      'loud, and the recording keeps a copy of it being said — so the file itself ' +
+                      'shows the room was told. You can turn that off in Settings.'
+                    : 'The spoken announcement is switched off, so nothing is said out loud. ' +
+                      'Tell the room yourself, and make sure everyone is okay with being recorded.'}
                 </Txt>
                 {/* The background-use disclosure, stated before the first recording rather than
                     buried in Settings. Play's Permissions policy requires continuous background
@@ -188,14 +216,23 @@ export default function RecordScreen({ navigation }: Props) {
                 </Txt>
                 {/* For a room where talking over people is not practical, or where somebody
                     would rather see it than hear it. */}
+                {/* A bordered row rather than a line of blue text: it is a second way through
+                    this screen, and as text it read as a footnote to the paragraph above it. */}
                 <Pressable
                   onPress={() => navigation.navigate('ConsentCard')}
                   accessibilityRole="button"
-                  accessibilityLabel="Show the room a card"
-                  style={st.consentBody}>
-                  <Txt variant="sub" color={colors.primaryDeep}>
+                  accessibilityLabel="Show the room a card instead"
+                  style={st.consentLink}>
+                  <Icon name="users" size={s(18)} color={colors.primaryDeep} strokeWidth={2.4} />
+                  <Txt variant="sub" color={colors.primaryDeep} style={st.flex}>
                     Show the room a card instead
                   </Txt>
+                  <Icon
+                    name="chevronRight"
+                    size={s(16)}
+                    color={colors.primaryDeep}
+                    strokeWidth={2.4}
+                  />
                 </Pressable>
                 <View style={st.consentCta}>
                   <Button
@@ -210,6 +247,7 @@ export default function RecordScreen({ navigation }: Props) {
               </View>
             </Raised>
           </Pop>
+          </ScrollView>
         </View>
       </View>
     );
@@ -340,7 +378,13 @@ function makeStyles(c: Colors) {
     footer: { flexDirection: 'row', gap: s(10), minHeight: s(52) },
     privacy: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: s(6) },
 
-    consentHero: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: s(8) },
+    consentScroll: { flexGrow: 1, justifyContent: 'center', paddingBottom: s(8) },
+    consentHero: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: s(8),
+      paddingVertical: sv(18),
+    },
     onDevice: {
       backgroundColor: c.primarySoft,
       paddingHorizontal: s(14),
@@ -357,7 +401,20 @@ function makeStyles(c: Colors) {
       backgroundColor: c.cardAlt,
     },
     promiseLabel: { marginTop: s(5) },
+    flex: { flex: 1 },
     consentBody: { marginTop: s(8) },
-    consentCta: { marginTop: s(20) },
+    consentLink: {
+      marginTop: s(16),
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: s(10),
+      paddingVertical: s(12),
+      paddingHorizontal: s(14),
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: c.primary,
+      backgroundColor: c.primarySoft,
+    },
+    consentCta: { marginTop: s(12) },
   });
 }
