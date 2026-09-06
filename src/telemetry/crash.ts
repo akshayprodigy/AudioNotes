@@ -23,6 +23,7 @@ import * as Sentry from '@sentry/react-native';
 
 import { db } from '../db/queries';
 import { SENTRY_DSN } from './dsn';
+import { hostOf, record } from '../privacy/ledger';
 
 /** Settings key holding 'on' | 'off'. Absent means never asked. */
 export const CRASH_CONSENT_KEY = 'crash_reports';
@@ -141,6 +142,15 @@ function start(): void {
       // a captureMessage string is free text and there is no way to be sure what got put in it.
       delete event.message;
       delete event.logentry;
+      // Sentry decides when to flush, so this is the last point at which we know an event is on
+      // its way out. Size is the serialised event, which is what will be sent, not a guess.
+      void record({
+        kind: 'crash',
+        host: hostOf(SENTRY_DSN),
+        sent: JSON.stringify(event).length,
+        received: 0,
+        detail: 'crash report',
+      });
       return event;
     },
   });
