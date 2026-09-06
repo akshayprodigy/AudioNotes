@@ -5,6 +5,7 @@ import {
   NativeModules,
   PermissionsAndroid,
   Platform,
+  Pressable,
   StyleSheet,
   View,
 } from 'react-native';
@@ -185,6 +186,17 @@ export default function RecordScreen({ navigation }: Props) {
                   can show a small floating control on top of them. You can stop it at any time
                   from that control or from the notification.
                 </Txt>
+                {/* For a room where talking over people is not practical, or where somebody
+                    would rather see it than hear it. */}
+                <Pressable
+                  onPress={() => navigation.navigate('ConsentCard')}
+                  accessibilityRole="button"
+                  accessibilityLabel="Show the room a card"
+                  style={st.consentBody}>
+                  <Txt variant="sub" color={colors.primaryDeep}>
+                    Show the room a card instead
+                  </Txt>
+                </Pressable>
                 <View style={st.consentCta}>
                   <Button
                     label="Everyone's in — let's go"
@@ -289,12 +301,21 @@ export default function RecordScreen({ navigation }: Props) {
               />
             </>
           ) : (
-            <View style={st.privacy}>
+            <Pressable
+              onPress={() => navigation.navigate('ConsentCard')}
+              accessibilityRole="button"
+              accessibilityLabel="Show the room a card"
+              style={st.privacy}>
               <Icon name="shield" size={s(15)} color={colors.inkFaint} strokeWidth={2.4} />
               <Txt variant="chip" color={colors.inkFaint}>
-                Stays on this device. Make sure everyone consents.
+                Stays on this device.
               </Txt>
-            </View>
+              {/* The consent gate above says this once, before the first recording ever. This is
+                  the only way back to the card for every meeting after that. */}
+              <Txt variant="chip" color={colors.primaryDeep}>
+                Show the room
+              </Txt>
+            </Pressable>
           )}
         </View>
       </View>

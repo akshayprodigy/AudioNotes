@@ -273,6 +273,9 @@ export default function SettingsScreen({ navigation }: Props) {
   // Same reason as `retention` above: null until read, so the switch never animates itself from a
   // guess to the truth. Consent is the last thing that should appear to change on its own.
   const [crashOn, setCrashOn] = useState<boolean | null>(null);
+  // Same again for the spoken announcement. Defaults ON everywhere, so an unread value reads
+  // as on rather than as off.
+  const [announceOn, setAnnounceOn] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (!crashReportingAvailable()) return;
@@ -325,6 +328,9 @@ export default function SettingsScreen({ navigation }: Props) {
     db.getSetting('asrLanguage')
       .then(v => setLanguage(v ?? 'en'))
       .catch(() => {});
+    db.getSetting('announceRecording')
+      .then(v => setAnnounceOn(v !== '0'))
+      .catch(() => setAnnounceOn(true));
     // The engine's own list. On failure the three-item fallback stays, which is worse than the
     // real list but still a working picker.
     AudioPipeline.supportedLanguages()
@@ -774,6 +780,32 @@ export default function SettingsScreen({ navigation }: Props) {
               )}
             </View>
           </Raised>
+
+          {announceOn === null ? null : (
+            <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={5}>
+              <View style={st.rowPad}>
+                <View style={st.row}>
+                  <Icon name="mic" size={s(18)} color={colors.inkSoft} strokeWidth={2.4} />
+                  <View style={st.flex}>
+                    <Txt variant="bodyStrong">Announce out loud</Txt>
+                    <Txt variant="meta" color={colors.inkDim}>
+                      Says "this meeting is being recorded" into the room when you start, and the
+                      recording keeps a copy of it being said, so the file itself shows the room
+                      was told. Defaults on everywhere.
+                    </Txt>
+                  </View>
+                  <Switch
+                    on={announceOn}
+                    onToggle={() => {
+                      const next = !announceOn;
+                      setAnnounceOn(next);
+                      db.setSetting('announceRecording', next ? '1' : '0').catch(() => {});
+                    }}
+                  />
+                </View>
+              </View>
+            </Raised>
+          )}
 
           <View style={st.assure}>
             <Icon name="shield" size={s(20)} color={colors.success} strokeWidth={2.4} />
