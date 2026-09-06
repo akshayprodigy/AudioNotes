@@ -4,6 +4,33 @@
 
 namespace audionotes {
 
+std::vector<Span> padAndMerge(const std::vector<Span>& spans, int64_t pad_ms, int64_t total_ms) {
+  std::vector<Span> grown;
+  grown.reserve(spans.size());
+  for (const auto& s : spans) {
+    if (s.end_ms <= s.start_ms) continue;
+    int64_t from = s.start_ms - pad_ms;
+    int64_t to = s.end_ms + pad_ms;
+    if (from < 0) from = 0;
+    if (total_ms > 0 && to > total_ms) to = total_ms;
+    if (to > from) grown.push_back(Span{from, to});
+  }
+  std::sort(grown.begin(), grown.end(),
+            [](const Span& a, const Span& b) { return a.start_ms < b.start_ms; });
+
+  std::vector<Span> merged;
+  for (const auto& s : grown) {
+    // Touching counts as overlapping: two spans meeting exactly would otherwise emit a boundary
+    // the audio does not have, which is the very thing the padding exists to avoid.
+    if (!merged.empty() && s.start_ms <= merged.back().end_ms) {
+      merged.back().end_ms = std::max(merged.back().end_ms, s.end_ms);
+    } else {
+      merged.push_back(s);
+    }
+  }
+  return merged;
+}
+
 std::vector<int64_t> concatOffsets(const std::vector<Span>& spans) {
   std::vector<int64_t> offsets;
   offsets.reserve(spans.size());

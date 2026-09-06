@@ -1,5 +1,7 @@
 #include "pipeline/pipeline.h"
 
+#include "diar/span_map.h"
+
 #include "asr/asr_engine.h"
 
 #include <memory>
@@ -173,7 +175,14 @@ bool Pipeline::run(const std::string& pcm_path, PipelineResult* out,
     try {
       Diarizer d(cfg_.diar_seg_model, cfg_.diar_emb_model, cfg_.sample_rate,
                  cfg_.num_speakers, cfg_.diar_threshold);
-      if (d.ok()) diar = d.process(pcm_path);
+      // Diarize the speech, not the silence — the same spans ASR just worked from, so desktop and
+      // Android agree. Whole-file diarization read a 90-minute meeting into a 346 MB float vector
+      // and needed 2.55 GB on a phone. An empty list (no VAD model configured) falls back to the
+      // whole file, which is the only sensible answer when nothing has told us where speech is.
+      std::vector<Span> spans;
+      spans.reserve(out->segments.size());
+      for (const auto& seg : out->segments) spans.push_back(Span{seg.start_ms, seg.end_ms});
+      if (d.ok()) diar = d.process(pcm_path, spans);
     } catch (const std::exception&) {
       // Best-effort: a diarization failure never sinks a good transcript.
     }

@@ -171,8 +171,23 @@ std::vector<DiarSegment> Diarizer::process(const std::string& pcm_path,
   // removed — so they have to be put back. Without them (a caller that has not run VAD) the old
   // whole-file behaviour still applies and no translation is needed.
   const bool use_spans = !spans.empty();
+  // Pad before reading. Bare VAD spans butt one speaker's turn straight against the next, which
+  // segmentation reads as a speaker change that never happened — measured on AMI ES2003a as DER
+  // 16.4% -> 24.1%. The padding puts the real silence back at the boundaries; the long gaps in
+  // between are still skipped, which is where the memory was going.
+  std::vector<Span> padded;
+  if (use_spans) {
+    int64_t total_ms = 0;
+    if (FILE* f = std::fopen(pcm_path.c_str(), "rb")) {
+      std::fseek(f, 0, SEEK_END);
+      const long bytes = std::ftell(f);
+      std::fclose(f);
+      if (bytes > 0) total_ms = (static_cast<int64_t>(bytes) / 2) * 1000 / impl_->sample_rate;
+    }
+    padded = padAndMerge(spans, kDiarPadMs, total_ms);
+  }
   std::vector<float> samples =
-      use_spans ? readSpans(pcm_path, spans, impl_->sample_rate) : readAll(pcm_path);
+      use_spans ? readSpans(pcm_path, padded, impl_->sample_rate) : readAll(pcm_path);
   if (samples.empty()) return out;
 
   const SherpaOnnxOfflineSpeakerDiarizationResult* result =
@@ -192,7 +207,8 @@ std::vector<DiarSegment> Diarizer::process(const std::string& pcm_path,
   }
   SherpaOnnxOfflineSpeakerDiarizationDestroySegment(segs);
   SherpaOnnxOfflineSpeakerDiarizationDestroyResult(result);
-  if (use_spans) out = toOriginalTimeline(out, spans);
+  // Mapped against the PADDED spans, because those are what was actually concatenated.
+  if (use_spans) out = toOriginalTimeline(out, padded);
 #else
   (void)pcm_path;
   (void)spans;
