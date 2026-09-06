@@ -114,6 +114,28 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
     }
   }
 
+  /**
+   * The two-letter region for wording the consent card, resolved OFFLINE.
+   *
+   * The SIM's network country first, because it says where the phone actually is; the device
+   * locale second, because a phone with no SIM still has an owner. Never a network call and never
+   * a location permission — this app claims one network call a month and intends to keep saying so.
+   */
+  @ReactMethod
+  fun regionCode(promise: Promise) {
+    try {
+      val tm = ctx.getSystemService(android.content.Context.TELEPHONY_SERVICE)
+        as? android.telephony.TelephonyManager
+      val fromSim = tm?.networkCountryIso?.takeIf { it.isNotBlank() }
+      val region = fromSim ?: java.util.Locale.getDefault().country
+      promise.resolve(region.uppercase())
+    } catch (e: Exception) {
+      // An unknown region gets the plain card, which is safe everywhere because it says less.
+      Log.w("AudioPipeline", "regionCode failed; falling back to the plain card", e)
+      promise.resolve("")
+    }
+  }
+
   @ReactMethod
   fun start(config: ReadableMap, promise: Promise) {
     if (!CaptureController.hasMicPermission(ctx)) {
