@@ -69,8 +69,18 @@ Small, high-value, and each one answers a complaint the whole category gets.
   Until diarization improves, this screen is the mitigation, and India is a named market.
 - **Provenance.** Tap a decision, land on the transcript turn, play from there. This is what
   "minutes you would forward without editing" actually means. Research §2.3 #10.
-- **An honest ETA while processing.** Measured realtime factor times remaining speech. The stages
-  already report progress; the number that reassures is minutes left.
+- **An honest ETA while processing — and the right stage.** **Measured 6 Sep on a 90-minute
+  import, and this may belong in §1 rather than here.** Two defects, both only visible on a long
+  meeting. (1) The screen showed the spinner on stage 1, "Audio cleaned up", for twenty-four
+  minutes after VAD had actually finished — so the longest stage, ASR, renders as if nothing has
+  started. (2) The ETA is not measured at all: `MeetingScreen.tsx:70-79` holds hard-coded
+  ×realtime constants, and "236 min left" is exactly `2.618 × 5400 s` falling out of them. The ASR
+  constant is 1.47× realtime, from whisper-base at 0.68×; this same phone measured **0.30×** the
+  same day, so the estimate is roughly five times pessimistic on top of being anchored to the
+  wrong stage. A first-time user watching a 90-minute meeting claim four hours closes the app.
+  **This also disguises the fast paths:** a silent recording already skips ASR and diarization
+  entirely (`ProcessingEngine.kt:180`, "no speech detected") and finishes in about a minute — but
+  the screen spends that minute insisting on four hours, so the early exit reads as a hang.
 - **Meeting types.** Stand-up, one-to-one, client call, interview, lecture, site walk. On device
   these are prompt and section variants. Research §2.4 #13.
 - **Share sheet and DOCX export.** Exports are Markdown, text, SRT and PDF. DOCX is what a
