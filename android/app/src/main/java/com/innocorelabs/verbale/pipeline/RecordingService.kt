@@ -43,6 +43,18 @@ class RecordingService : Service(), CaptureListener {
     private const val NOTIF_ID = 42
     private const val TAG = "RecordingService"
 
+    /** Twelve seconds of 16 kHz mono PCM16 — long enough to hold the clip and some room after. */
+    private const val ANNOUNCE_PREFIX_BYTES = 12 * SAMPLE_RATE * 2
+
+    /** Generous: the prefix fills in real time, so this only bites when a meeting is cut short. */
+    private const val ANNOUNCE_PREFIX_WAIT_MS = 25_000L
+
+    /** Little-endian PCM16 bytes to samples, for the announcement check. */
+    private fun toPcm(bytes: ByteArray, len: Int): ShortArray =
+      ShortArray(len / 2) { i ->
+        ((bytes[i * 2].toInt() and 0xFF) or (bytes[i * 2 + 1].toInt() shl 8)).toShort()
+      }
+
     /**
      * Stop capture rather than fill the device. Capture costs ~32 KB/s (~115 MB/hour), so this
      * is a couple of minutes of headroom — enough to close the file cleanly and keep everything
@@ -219,6 +231,16 @@ class RecordingService : Service(), CaptureListener {
     // announced properly at its start, and re-stamp a row that is already true.
     val resumed = File(path).length() > 0L
 
+    // The opening seconds of the capture, kept in memory for the announcement check.
+    //
+    // From the capture loop rather than by re-reading the file, because the file goes through a
+    // 64 KB BufferedOutputStream — two seconds of audio that has not reached disk yet — so a
+    // reader would be racing the flush for exactly the window it needs. This costs 384 KB for
+    // twelve seconds and is released the moment the check is done.
+    val prefix = if (resumed) null else ByteArray(ANNOUNCE_PREFIX_BYTES)
+    var prefixLen = 0
+    val prefixReady = java.util.concurrent.CountDownLatch(1)
+
     worker = thread(name = "audionotes-capture") {
       val buf = ByteArray(4096)
       // APPEND, not truncate: after a START_REDELIVER_INTENT restart the file already holds
@@ -233,15 +255,41 @@ class RecordingService : Service(), CaptureListener {
         // Off this thread so the read loop starts immediately — a blocking announce here would
         // drop the first seconds of the room. The outcome still gates the stamp: nothing is
         // claimed until playback has actually finished.
-        if (!resumed) {
+        if (!resumed && prefix != null) {
           thread(name = "audionotes-announce") {
             val db = AudioDb.get(applicationContext)
             val enabled = db.getSetting("announceRecording") != "0"
-            val outcome = AnnouncementPlayer.announce(applicationContext, enabled)
+            val playback = AnnouncementPlayer.announce(applicationContext, enabled)
+
+            // Playback finishing is not the room being told. Ask the recording: it either carries
+            // the clip loudly enough to be evidence, or the meeting goes unstamped. Only PLAYED
+            // is worth waiting for the audio to decide.
+            val outcome = if (playback != AnnouncementPlayer.Outcome.PLAYED) {
+              playback
+            } else {
+              val ready = prefixReady.await(
+                ANNOUNCE_PREFIX_WAIT_MS,
+                java.util.concurrent.TimeUnit.MILLISECONDS,
+              )
+              val clip = AnnouncementPlayer.bundledClipPcm(applicationContext)
+              if (!ready || clip == null) {
+                // A meeting stopped before the check could run claims nothing, which is the safe
+                // direction: the recording is short enough that nobody is relying on it as proof.
+                Log.w(TAG, "announcement unverified (ready=$ready clip=${clip != null})")
+                AnnouncementPlayer.verified(playback, heardInRecording = false)
+              } else {
+                val verdict = AnnouncementVerifier.describe(toPcm(prefix, prefixLen), clip)
+                // Logged every run, pass or fail: the thresholds were set from six recordings on
+                // one phone, and this line is how the next phone tells us they were wrong.
+                Log.i(TAG, "announcement check: $verdict")
+                AnnouncementPlayer.verified(playback, verdict.heard)
+              }
+            }
+
             if (outcome.wasHeard()) {
               meetingId?.let { db.markAnnounced(it, System.currentTimeMillis()) }
             } else if (outcome != AnnouncementPlayer.Outcome.DISABLED) {
-              Log.w(TAG, "announcement not heard: $outcome")
+              Log.w(TAG, "announcement not heard: $outcome — ${outcome.userMessage()}")
             }
           }
         }
@@ -260,6 +308,12 @@ class RecordingService : Service(), CaptureListener {
                 } else {
                   out.write(buf, 0, n)
                   CaptureController.level = computeLevel(buf, n, CaptureController.level)
+                  if (prefix != null && prefixLen < prefix.size) {
+                    val take = minOf(n, prefix.size - prefixLen)
+                    System.arraycopy(buf, 0, prefix, prefixLen, take)
+                    prefixLen += take
+                    if (prefixLen >= prefix.size) prefixReady.countDown()
+                  }
                 }
               }
               // A dead/invalid AudioRecord never recovers by itself: stop cleanly so the audio

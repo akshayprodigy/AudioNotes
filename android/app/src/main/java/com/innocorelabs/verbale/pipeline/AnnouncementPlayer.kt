@@ -27,31 +27,24 @@ object AnnouncementPlayer {
   /** Whether the room actually heard it, and if not, what to tell the person holding the phone. */
   enum class Outcome {
     /**
-     * Played to completion while the microphone was live. The only outcome that stamps a meeting.
+     * Playback finished. NOT on its own proof that the room was told — see [verified].
      *
-     * KNOWN GAP, measured on a Pixel 7 Pro 6 Sep 2026. This means playback finished, NOT that the
-     * room heard it. Six recordings on one device with one build: two captured the clip clearly
-     * (loudness in the announcement window 2.5x and 1.8x the rest of the meeting, and the
-     * transcript's first line was the disclosure), four captured nothing measurable (1.0-1.1x) —
-     * while AudioTrack reported all 72076 frames delivered every time, routing stayed
-     * AUDIO_DEVICE_OUT_SPEAKER, onCompletion fired, and logcat was clean. The variable is
-     * physical: how the phone is lying, what is over the speaker. Nothing in the audio stack
-     * reports it.
-     *
-     * So on those four runs the app would have stamped the meeting as announced when the room was
-     * told nothing — the exact failure the design says is worse than having no announcement at
-     * all, because the person stops checking.
-     *
-     * The fix is to stop trusting the player and ask the recording: cross-correlate the captured
-     * PCM's first seconds against res/raw/consent_announcement.wav (the same measurement that
-     * found this) and stamp only on a match. We own both signals, so this is cheap. Until then
-     * `announced_at` means "we played it", and no user-facing copy may claim more.
+     * Six recordings on a Pixel 7 Pro produced this outcome identically while the room heard the
+     * disclosure in only two of them. Whether the clip arrives loudly enough to be evidence turns
+     * on physical things Android never reports, so this value must be passed through [verified]
+     * with the recording's own answer before anything is stamped.
      */
     PLAYED,
     /** The user turned it off. Not a failure; simply no evidence. */
     DISABLED,
     /** The device is muted or in Do Not Disturb, so nobody heard it. */
     SILENCED,
+    /**
+     * It played, and the recording says the room did not get it: either absent from the capture
+     * or so far under the room that no transcript will carry it. Not a crash, not a mistake by
+     * anybody — and not evidence, which is the only thing that matters here.
+     */
+    NOT_HEARD,
     /** No clip is bundled in this build. */
     NO_CLIP,
     /** Playback started and did not finish: audio focus lost, decoder error, speaker fault. */
@@ -66,8 +59,60 @@ object AnnouncementPlayer {
       SILENCED -> "Your phone is on silent, so the announcement was not heard. Tell the room yourself."
       NO_CLIP -> "The announcement is unavailable in this build. Tell the room yourself."
       FAILED -> "The announcement did not finish playing. Tell the room yourself."
+      NOT_HEARD ->
+        "The announcement played but the recording did not pick it up, so it is not proof of " +
+          "anything. Tell the room yourself, and try moving the phone off the surface it is on."
     }
   }
+
+  /**
+   * The only way a meeting becomes announced: playback finished AND the recording carries it.
+   *
+   * One function because the rule was previously spread between the player and its caller, and
+   * that is how an app ends up claiming the room was told on the strength of a MediaPlayer
+   * callback. Anything that is not PLAYED passes through unchanged — a switched-off announcement
+   * was not a failure, and a silenced one already has its own message.
+   */
+  @JvmStatic
+  fun verified(playback: Outcome, heardInRecording: Boolean): Outcome =
+    if (playback == Outcome.PLAYED && !heardInRecording) Outcome.NOT_HEARD else playback
+
+  /**
+   * The bundled clip as 16 kHz mono PCM16, for comparing against what the microphone recorded.
+   *
+   * Walks the RIFF chunks to find `data` rather than assuming a 44-byte header, because the header
+   * is only 44 bytes when nothing else is in the file, and afconvert does not promise that.
+   */
+  fun bundledClipPcm(ctx: Context): ShortArray? = try {
+    ctx.resources.openRawResource(R.raw.consent_announcement).use { input ->
+      val bytes = input.readBytes()
+      var pos = 12 // past "RIFF" <size> "WAVE"
+      var dataAt = -1
+      var dataLen = 0
+      while (pos + 8 <= bytes.size) {
+        val id = String(bytes, pos, 4, Charsets.US_ASCII)
+        val size = le32(bytes, pos + 4)
+        if (id == "data") {
+          dataAt = pos + 8
+          dataLen = minOf(size, bytes.size - dataAt)
+          break
+        }
+        pos += 8 + size + (size and 1)
+      }
+      if (dataAt < 0 || dataLen <= 0) return null
+      ShortArray(dataLen / 2) { i ->
+        val b = dataAt + i * 2
+        ((bytes[b].toInt() and 0xFF) or (bytes[b + 1].toInt() shl 8)).toShort()
+      }
+    }
+  } catch (e: Exception) {
+    Log.w(TAG, "could not read the bundled clip", e)
+    null
+  }
+
+  private fun le32(b: ByteArray, at: Int): Int =
+    (b[at].toInt() and 0xFF) or ((b[at + 1].toInt() and 0xFF) shl 8) or
+      ((b[at + 2].toInt() and 0xFF) shl 16) or ((b[at + 3].toInt() and 0xFF) shl 24)
 
   /**
    * Play the clip and block until it finishes or fails.
