@@ -186,6 +186,11 @@ class RecordingService : Service(), CaptureListener {
       AudioFormat.ENCODING_PCM_16BIT,
     )
     val bufferSize = maxOf(minBuf, SAMPLE_RATE) // ~0.5s headroom
+    // UNPROCESSED and VOICE_RECOGNITION were chosen for ASR quality, and a second feature now
+    // depends on them: neither applies the acoustic echo cancellation that VOICE_COMMUNICATION
+    // does, which is the only reason the spoken consent announcement below is captured by this
+    // microphone instead of being filtered back out. Change this source and the consent kit
+    // silently stops producing evidence while continuing to look like it works.
     val source =
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) MediaRecorder.AudioSource.UNPROCESSED
       else MediaRecorder.AudioSource.VOICE_RECOGNITION
@@ -209,12 +214,37 @@ class RecordingService : Service(), CaptureListener {
     audioRecord = record
     registerAudioWatchers(record)
 
+    // A restart under START_REDELIVER_INTENT re-enters startCapture with the meeting's audio
+    // already on disk. Announcing again would speak over the middle of a meeting that was
+    // announced properly at its start, and re-stamp a row that is already true.
+    val resumed = File(path).length() > 0L
+
     worker = thread(name = "audionotes-capture") {
       val buf = ByteArray(4096)
       // APPEND, not truncate: after a START_REDELIVER_INTENT restart the file already holds
       // everything captured before the kill. Opening without append would silently delete it.
       BufferedOutputStream(FileOutputStream(File(path), true), 1 shl 16).use { out ->
         record.startRecording()
+        // AFTER startRecording(), deliberately: the clip has to land IN the audio. Announcing
+        // before the recorder is live would produce a polite app and a recording that proves
+        // nothing. This is the first line after capture opens, not the setup path above, because
+        // that runs while AudioRecord is still stopped.
+        //
+        // Off this thread so the read loop starts immediately — a blocking announce here would
+        // drop the first seconds of the room. The outcome still gates the stamp: nothing is
+        // claimed until playback has actually finished.
+        if (!resumed) {
+          thread(name = "audionotes-announce") {
+            val db = AudioDb.get(applicationContext)
+            val enabled = db.getSetting("announceRecording") != "0"
+            val outcome = AnnouncementPlayer.announce(applicationContext, enabled)
+            if (outcome.wasHeard()) {
+              meetingId?.let { db.markAnnounced(it, System.currentTimeMillis()) }
+            } else if (outcome != AnnouncementPlayer.Outcome.DISABLED) {
+              Log.w(TAG, "announcement not heard: $outcome")
+            }
+          }
+        }
         var reads = 0
         try {
           while (recording) {
