@@ -348,6 +348,32 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     }
   }
 
+  /**
+   * Record one egress event from the native side. Never throws.
+   *
+   * Mirrors src/privacy/ledger.ts `record`. The download loop must not die because the ledger is
+   * busy — but a silent drop makes the privacy screen read low, so a failure is counted in the
+   * same settings key the TypeScript side uses and surfaced on the screen.
+   */
+  fun recordNetworkEvent(kind: String, host: String, sent: Long, received: Long, detail: String?) {
+    try {
+      db.execSQL(
+        "INSERT INTO network_events(at, kind, host, sent, received, detail) VALUES(?,?,?,?,?,?)",
+        arrayOf<Any?>(System.currentTimeMillis(), kind, host, sent, received, detail),
+      )
+    } catch (e: Exception) {
+      try {
+        val current = getSetting("network_ledger_drops")?.toLongOrNull() ?: 0L
+        db.execSQL(
+          "INSERT OR REPLACE INTO settings(key, value) VALUES(?, ?)",
+          arrayOf<Any?>("network_ledger_drops", (current + 1).toString()),
+        )
+      } catch (inner: Exception) {
+        // Both paths gone. Losing a download to bookkeeping would be the worse outcome.
+      }
+    }
+  }
+
   fun setStatus(id: String, status: String) {
     db.execSQL("UPDATE meetings SET status=? WHERE id=?", arrayOf<Any?>(status, id))
   }
@@ -883,6 +909,19 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
            item_key TEXT NOT NULL, done_at INTEGER NOT NULL,
            PRIMARY KEY (meeting_id, item_key));""",
       "CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT);",
+      // Every byte this app sends, and where it went. The privacy screen reads nothing else.
+      //
+      // Not pruned. A model download writes about nine rows once and everything after it is
+      // roughly one row a month, so the whole table stays smaller than a single transcript — and
+      // a ledger that forgets is not evidence of anything.
+      """CREATE TABLE IF NOT EXISTS network_events(
+           id INTEGER PRIMARY KEY AUTOINCREMENT,
+           at INTEGER NOT NULL,
+           kind TEXT NOT NULL,
+           host TEXT NOT NULL,
+           sent INTEGER NOT NULL DEFAULT 0,
+           received INTEGER NOT NULL DEFAULT 0,
+           detail TEXT);""",
       // Labels a person puts on a meeting: "client", "1:1", "standup".
       //
       // Tags rather than folders, and many-to-many rather than one parent. A meeting is routinely
@@ -962,6 +1001,10 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       // stamp, because the room did not hear it and the recording is not evidence of anything.
       Triple("meetings", "announced_at", "INTEGER"),
     )
+
+    /** The schema, for a unit test that must not open an encrypted database. */
+    @JvmStatic
+    fun schemaForTest(): List<String> = SCHEMA.toList()
 
     /** The migration list, for a unit test that must not open an encrypted database. */
     @JvmStatic

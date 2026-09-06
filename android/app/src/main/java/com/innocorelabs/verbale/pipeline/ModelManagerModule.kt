@@ -204,6 +204,8 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
     if (existing > 0 && code != HttpURLConnection.HTTP_PARTIAL) existing = 0L
     val total = existing + conn.contentLengthLong.coerceAtLeast(0L)
 
+    // What THIS call pulled down, not what a resumed part file already held.
+    var fetched = 0L
     conn.inputStream.use { input ->
       java.io.FileOutputStream(part, existing > 0).use { out ->
         val buf = ByteArray(1 shl 16)
@@ -214,6 +216,7 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
           if (n < 0) break
           out.write(buf, 0, n)
           downloaded += n
+          fetched += n
           if (downloaded - lastEmit > 512 * 1024) {
             emitProgress(id, downloaded, total)
             lastEmit = downloaded
@@ -222,6 +225,17 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
       }
     }
     conn.disconnect()
+
+    // One row per file actually fetched, with the host it came from. These are the largest
+    // numbers the privacy screen shows, and they are the argument rather than an embarrassment:
+    // this much came down so that nothing has to go up.
+    AudioDb.get(ctx).recordNetworkEvent(
+      kind = "models",
+      host = try { URL(source).host } catch (e: Exception) { source },
+      sent = 0L, // a GET sends headers, not a body; the screen says headers are excluded
+      received = fetched,
+      detail = id,
+    )
   }
 
   @ReactMethod

@@ -272,6 +272,15 @@ export const db = {
   setSetting: (key: string, value: string) =>
     run('INSERT OR REPLACE INTO settings(key, value) VALUES(?, ?)', [key, value]),
 
+  /**
+   * Raw query, for the network ledger only.
+   *
+   * Everything else on this object is a named, typed helper and should stay that way. The ledger
+   * is the exception because its table is written from four unrelated places and read by one
+   * screen — a dozen bespoke helpers would be worse than one seam that says what it is for.
+   */
+  query: <T>(sql: string, params: unknown[] = []) => run<T>(sql, params),
+
   // VAD speech spans — used to show "silence stripped" after milestone-1 processing.
   segments: (meetingId: string) =>
     run<{ start_ms: number; end_ms: number }>(

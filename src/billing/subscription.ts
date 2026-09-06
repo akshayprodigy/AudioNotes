@@ -1,5 +1,6 @@
 import Billing from '../native/NativeBilling';
 import Licence, { type LicenceStatus } from '../native/NativeLicence';
+import { hostOf, record } from '../privacy/ledger';
 
 /**
  * Talking to the licence server.
@@ -14,12 +15,23 @@ import Licence, { type LicenceStatus } from '../native/NativeLicence';
 const RENEW_WINDOW_SECONDS = 5 * 24 * 60 * 60;
 
 async function post<T>(base: string, path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${base.replace(/\/+$/, '')}${path}`, {
+  const url = `${base.replace(/\/+$/, '')}${path}`;
+  const payload = JSON.stringify(body);
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
+    body: payload,
   });
   const text = await res.text();
+  // Recorded whatever the server said, including a refusal: the bytes left the phone either way,
+  // and a ledger that only counts successes is not a count of what left.
+  await record({
+    kind: 'licence',
+    host: hostOf(url),
+    sent: payload.length,
+    received: text.length,
+    detail: path,
+  });
   let parsed: unknown;
   try {
     parsed = text ? JSON.parse(text) : {};
