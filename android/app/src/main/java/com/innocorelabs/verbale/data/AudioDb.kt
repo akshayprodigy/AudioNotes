@@ -883,6 +883,19 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
            item_key TEXT NOT NULL, done_at INTEGER NOT NULL,
            PRIMARY KEY (meeting_id, item_key));""",
       "CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT);",
+      // Every byte this app sends, and where it went. The privacy screen reads nothing else.
+      //
+      // Not pruned. A model download writes about nine rows once and everything after it is
+      // roughly one row a month, so the whole table stays smaller than a single transcript — and
+      // a ledger that forgets is not evidence of anything.
+      """CREATE TABLE IF NOT EXISTS network_events(
+           id INTEGER PRIMARY KEY AUTOINCREMENT,
+           at INTEGER NOT NULL,
+           kind TEXT NOT NULL,
+           host TEXT NOT NULL,
+           sent INTEGER NOT NULL DEFAULT 0,
+           received INTEGER NOT NULL DEFAULT 0,
+           detail TEXT);""",
       // Labels a person puts on a meeting: "client", "1:1", "standup".
       //
       // Tags rather than folders, and many-to-many rather than one parent. A meeting is routinely
@@ -962,6 +975,10 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       // stamp, because the room did not hear it and the recording is not evidence of anything.
       Triple("meetings", "announced_at", "INTEGER"),
     )
+
+    /** The schema, for a unit test that must not open an encrypted database. */
+    @JvmStatic
+    fun schemaForTest(): List<String> = SCHEMA.toList()
 
     /** The migration list, for a unit test that must not open an encrypted database. */
     @JvmStatic

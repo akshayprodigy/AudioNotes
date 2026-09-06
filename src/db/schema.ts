@@ -73,6 +73,15 @@ export const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS settings (
      key TEXT PRIMARY KEY,
      value TEXT
+   );`,
+  `CREATE TABLE IF NOT EXISTS network_events (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     at INTEGER NOT NULL,          -- epoch ms
+     kind TEXT NOT NULL,           -- 'licence' | 'models' | 'crash'
+     host TEXT NOT NULL,           -- 'huggingface.co'
+     sent INTEGER NOT NULL DEFAULT 0,     -- request BODY bytes; headers are excluded
+     received INTEGER NOT NULL DEFAULT 0,
+     detail TEXT                   -- 'token refresh', 'ggml-base-q5_1.bin'
    );`, // onboarding flag + simple prefs
   `CREATE VIRTUAL TABLE IF NOT EXISTS meetings_fts
      USING fts5(meeting_id UNINDEXED, text);`,
