@@ -17,6 +17,7 @@ import ArchiveScreen from '../screens/ArchiveScreen';
 import NoticesScreen from '../screens/NoticesScreen';
 import ActionsScreen from '../screens/ActionsScreen';
 import PaywallScreen from '../screens/PaywallScreen';
+import ConsentCardScreen from '../screens/ConsentCardScreen';
 
 export type RootStackParamList = {
   Onboarding: undefined;
@@ -32,6 +33,8 @@ export type RootStackParamList = {
   Settings: undefined;
   Archive: undefined;
   Notices: undefined;
+  /** The card held up to the room. No params: it says the same thing for every meeting. */
+  ConsentCard: undefined;
   Actions: undefined;
   /** `meetingId` is the meeting that prompted the sell, so the screen can name it. */
   Paywall: { meetingId?: string } | undefined;
@@ -143,6 +146,11 @@ export default function RootNavigator() {
           <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Archive" component={ArchiveScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Notices" component={NoticesScreen} options={{ headerShown: false }} />
+          <Stack.Screen
+            name="ConsentCard"
+            component={ConsentCardScreen}
+            options={{ headerShown: false }}
+          />
           <Stack.Screen name="Actions" component={ActionsScreen} options={{ headerShown: false }} />
           <Stack.Screen
             name="Paywall"

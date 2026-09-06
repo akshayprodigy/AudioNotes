@@ -335,6 +335,19 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     }
   }
 
+  /** Stamp the moment the room was told. Only ever called for Outcome.PLAYED. */
+  fun markAnnounced(id: String, atMs: Long) {
+    db.execSQL("UPDATE meetings SET announced_at=? WHERE id=?", arrayOf<Any?>(atMs, id))
+  }
+
+  /** Null when this meeting carries no announcement. */
+  fun announcedAt(id: String): Long? {
+    db.rawQuery("SELECT announced_at FROM meetings WHERE id=?", arrayOf(id)).use { c ->
+      if (!c.moveToFirst() || c.isNull(0)) return null
+      return c.getLong(0)
+    }
+  }
+
   fun setStatus(id: String, status: String) {
     db.execSQL("UPDATE meetings SET status=? WHERE id=?", arrayOf<Any?>(status, id))
   }
@@ -944,6 +957,10 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       // refusal path writes the heard code into `language`, the success path overwrites it with
       // the requested one. Without this the banner cannot say "heard as Turkish" an hour later.
       Triple("meetings", "forced_from_language", "TEXT"),
+      // The moment the spoken disclosure finished playing while the microphone was live. Set only
+      // on confirmed completion — a meeting where playback was silenced or failed carries no
+      // stamp, because the room did not hear it and the recording is not evidence of anything.
+      Triple("meetings", "announced_at", "INTEGER"),
     )
 
     /** The migration list, for a unit test that must not open an encrypted database. */
