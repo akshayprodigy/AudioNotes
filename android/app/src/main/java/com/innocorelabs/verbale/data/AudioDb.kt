@@ -348,6 +348,32 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     }
   }
 
+  /**
+   * Record one egress event from the native side. Never throws.
+   *
+   * Mirrors src/privacy/ledger.ts `record`. The download loop must not die because the ledger is
+   * busy — but a silent drop makes the privacy screen read low, so a failure is counted in the
+   * same settings key the TypeScript side uses and surfaced on the screen.
+   */
+  fun recordNetworkEvent(kind: String, host: String, sent: Long, received: Long, detail: String?) {
+    try {
+      db.execSQL(
+        "INSERT INTO network_events(at, kind, host, sent, received, detail) VALUES(?,?,?,?,?,?)",
+        arrayOf<Any?>(System.currentTimeMillis(), kind, host, sent, received, detail),
+      )
+    } catch (e: Exception) {
+      try {
+        val current = getSetting("network_ledger_drops")?.toLongOrNull() ?: 0L
+        db.execSQL(
+          "INSERT OR REPLACE INTO settings(key, value) VALUES(?, ?)",
+          arrayOf<Any?>("network_ledger_drops", (current + 1).toString()),
+        )
+      } catch (inner: Exception) {
+        // Both paths gone. Losing a download to bookkeeping would be the worse outcome.
+      }
+    }
+  }
+
   fun setStatus(id: String, status: String) {
     db.execSQL("UPDATE meetings SET status=? WHERE id=?", arrayOf<Any?>(status, id))
   }
