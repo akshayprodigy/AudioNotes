@@ -1,7 +1,6 @@
 package com.innocorelabs.verbale.pipeline
 
 import android.content.Context
-import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.util.Log
@@ -27,7 +26,27 @@ object AnnouncementPlayer {
 
   /** Whether the room actually heard it, and if not, what to tell the person holding the phone. */
   enum class Outcome {
-    /** Played to completion while the microphone was live. The only outcome that is evidence. */
+    /**
+     * Played to completion while the microphone was live. The only outcome that stamps a meeting.
+     *
+     * KNOWN GAP, measured on a Pixel 7 Pro 6 Sep 2026. This means playback finished, NOT that the
+     * room heard it. Six recordings on one device with one build: two captured the clip clearly
+     * (loudness in the announcement window 2.5x and 1.8x the rest of the meeting, and the
+     * transcript's first line was the disclosure), four captured nothing measurable (1.0-1.1x) —
+     * while AudioTrack reported all 72076 frames delivered every time, routing stayed
+     * AUDIO_DEVICE_OUT_SPEAKER, onCompletion fired, and logcat was clean. The variable is
+     * physical: how the phone is lying, what is over the speaker. Nothing in the audio stack
+     * reports it.
+     *
+     * So on those four runs the app would have stamped the meeting as announced when the room was
+     * told nothing — the exact failure the design says is worse than having no announcement at
+     * all, because the person stops checking.
+     *
+     * The fix is to stop trusting the player and ask the recording: cross-correlate the captured
+     * PCM's first seconds against res/raw/consent_announcement.wav (the same measurement that
+     * found this) and stamp only on a match. We own both signals, so this is cheap. Until then
+     * `announced_at` means "we played it", and no user-facing copy may claim more.
+     */
     PLAYED,
     /** The user turned it off. Not a failure; simply no evidence. */
     DISABLED,
@@ -67,14 +86,18 @@ object AnnouncementPlayer {
 
     var player: MediaPlayer? = null
     return try {
+      // The two-argument create(), with its default STREAM_MUSIC attributes.
+      //
+      // The four-argument form (AudioAttributes + generateAudioSessionId) was tried and reverted.
+      // setAudioAttributes() AFTER create() is worse still — create() returns an already PREPARED
+      // player and the call is rejected in that state ("trying to set audio attributes called in
+      // state 8" on a Pixel 7 Pro), so it silently does nothing. This form is the one measured to
+      // put the clip into the capture, so it is the one that stays until something better is
+      // MEASURED, not reasoned about.
+      //
+      // What playback completing does NOT prove: see announce()'s note on Outcome.PLAYED.
       player = MediaPlayer.create(ctx, R.raw.consent_announcement)
         ?: return Outcome.NO_CLIP
-      player.setAudioAttributes(
-        AudioAttributes.Builder()
-          .setUsage(AudioAttributes.USAGE_MEDIA)
-          .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-          .build(),
-      )
       val done = java.util.concurrent.CountDownLatch(1)
       var ok = false
       player.setOnCompletionListener { ok = true; done.countDown() }
