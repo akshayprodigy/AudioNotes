@@ -112,8 +112,26 @@ Small, high-value, and each one answers a complaint the whole category gets.
 
 ## 4. Later, in this order
 
-1. **Live transcript, two-pass.** Streaming model during capture, offline model after. Halves the
-   perceived wait and is the largest perceived-quality lever left. Research §2.2 #8.
+1. **Live transcript, two-pass — i.e. transcribe DURING the recording.** Streaming model during
+   capture, offline model after. Halves the perceived wait and is the largest perceived-quality
+   lever left. Research §2.2 #8.
+
+   **Already investigated 10 Aug; the two native blockers were re-verified 6 Sep and both still
+   hold.** Do not re-investigate from scratch — the shape of the work is known:
+   - **Whisper reloads the model on every call.** `audionotes_jni.cpp:138` constructs a fresh
+     engine per `nativeTranscribe`, and `whisper_asr.cpp:65` initialises the context in that
+     object's constructor. Streaming needs a handle-based API — `nativeAsrOpen/Feed/Close` —
+     mirroring the LLM, which already does exactly this (`nativeLlmLoad/Generate/Free`,
+     `audionotes_jni.cpp:212-242`).
+   - **There is no live VAD during capture.** `CaptureController.level` is an RMS meter and
+     `silenced` only reports system mute. Silero is internally frame-streaming but is exposed
+     whole-file only, so a streaming VAD handle is needed alongside.
+
+   **New evidence, 6 Sep:** the 90-minute import spent over half an hour in ASR alone while the
+   screen showed a four-hour estimate. Post-hoc transcription means the wait scales with meeting
+   length at exactly the moment the user wants their notes; transcribing during capture means a
+   90-minute meeting is nearly done when they press stop. That argues for promoting this above
+   the other §4 items once the launch list is clear.
 2. **Languages beyond English, one at a time, each with a number.** Hindi first, since Qwen3-ASR is
    already built, measured and one routing-table row away. Then IndicConformer for the languages
    Qwen3 does not cover.
