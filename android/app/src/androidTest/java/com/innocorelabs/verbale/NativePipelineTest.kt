@@ -220,11 +220,14 @@ class NativePipelineTest {
     val totalMs = pcm.length() / 32
 
     // Touch the dlopen/manual-init path first, then hand ORT to sherpa.
-    NativeBridge.nativeVad(pcm.absolutePath, vad!!.absolutePath, 16000)
+    val spans = NativeBridge.nativeVad(pcm.absolutePath, vad!!.absolutePath, 16000)
 
     val started = System.currentTimeMillis()
+    // The spans go in, and what comes back is already on the RECORDING's timeline, not the
+    // concatenated-speech one sherpa sees. Passing them is the whole point: whole-file
+    // diarization read a 90-minute meeting into a 346 MB float vector and needed 2.55 GB.
     val tri = NativeBridge.nativeDiarize(
-      pcm.absolutePath, seg!!.absolutePath, emb!!.absolutePath, 16000, /*numSpeakers=*/0,
+      pcm.absolutePath, seg!!.absolutePath, emb!!.absolutePath, 16000, /*numSpeakers=*/0, spans,
     )
     val elapsed = System.currentTimeMillis() - started
 
@@ -233,6 +236,17 @@ class NativePipelineTest {
     println("DIAR: $n segment(s), ${speakers.size} speaker(s), ${elapsed}ms for ${totalMs}ms audio")
 
     assertTrue("diarization returned no segments for audio containing speech", n > 0)
+    // Guards the concatenated-speech -> real-timeline translation across the JNI boundary, which
+    // no desktop unit test can reach. A translation that forgot to add the span offset still
+    // produces plausible-looking segments — they are just all near zero, and every attribution
+    // in the meeting is silently wrong.
+    for (i in 0 until n) {
+      val startMs = tri[i * 3]
+      val endMs = tri[i * 3 + 1]
+      assertTrue("segment $i starts before the recording: $startMs", startMs >= 0)
+      assertTrue("segment $i ends after the recording: $endMs > $totalMs", endMs <= totalMs + 1000)
+      assertTrue("segment $i is inverted: $startMs..$endMs", endMs > startMs)
+    }
     // One person speaking must not come back as a crowd. Generous by design — the gate is
     // "fragmentation", not an exact count, because segmentation may legitimately split a pause.
     assertTrue(

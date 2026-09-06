@@ -91,7 +91,7 @@ class DiarEmbeddingBench {
       if (local.length() != m.length()) m.copyTo(local, overwrite = true)
 
       val segs = NativeBridge.nativeDiarize(
-        pcm.absolutePath, seg!!.absolutePath, local.absolutePath, 16000, 0,
+        pcm.absolutePath, seg!!.absolutePath, local.absolutePath, 16000, 0, LongArray(0),
       )
       val n = segs.size / 3
       val speakers = (0 until n).map { segs[it * 3 + 2] }.distinct()
@@ -159,7 +159,7 @@ class DiarEmbeddingBench {
 
       val t = System.currentTimeMillis()
       val segs = NativeBridge.nativeDiarize(
-        pcm.absolutePath, seg!!.absolutePath, local.absolutePath, 16000, 0,
+        pcm.absolutePath, seg!!.absolutePath, local.absolutePath, 16000, 0, LongArray(0),
       )
       val ms = System.currentTimeMillis() - t
       val n = segs.size / 3

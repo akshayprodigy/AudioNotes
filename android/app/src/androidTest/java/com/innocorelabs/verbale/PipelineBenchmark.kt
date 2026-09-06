@@ -144,9 +144,14 @@ class PipelineBenchmark {
     var diarMs = 0L
     if (seg != null && emb != null) {
       t = System.currentTimeMillis()
-      NativeBridge.nativeDiarize(pcm.absolutePath, seg.absolutePath, emb.absolutePath, 16000, 0)
+      // Empty spans keeps this measuring the WHOLE file, which is what the line below reports
+      // and what makes it comparable with every earlier run of this benchmark. The app itself
+      // now passes VAD spans; see ProcessingEngine.
+      NativeBridge.nativeDiarize(
+        pcm.absolutePath, seg.absolutePath, emb.absolutePath, 16000, 0, LongArray(0),
+      )
       diarMs = System.currentTimeMillis() - t
-      println("\nDiarization   ${fmt(diarMs, audioMs)}   (runs on the FULL file, not the VAD spans)")
+      println("\nDiarization   ${fmt(diarMs, audioMs)}   (whole file; the app now uses VAD spans)")
     }
 
     // ---- Extrapolation to the acceptance criterion ----
