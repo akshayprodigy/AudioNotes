@@ -1,5 +1,6 @@
 package com.innocorelabs.verbale.pipeline
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -30,6 +31,44 @@ class AnnouncementTest {
     // Somebody who turned it off and announced it themselves has not failed at anything. The
     // meeting still carries no evidence, so it must not be stamped either.
     assertFalse(AnnouncementPlayer.Outcome.DISABLED.wasHeard())
+  }
+
+  // ---- playback finishing is not the room being told ----
+
+  @Test
+  fun a_finished_playback_the_recording_did_not_carry_is_not_an_announcement() {
+    // The defect this rule exists to remove. Six recordings on a Pixel 7 Pro returned PLAYED
+    // identically; the room got the disclosure in two of them.
+    assertEquals(
+      AnnouncementPlayer.Outcome.NOT_HEARD,
+      AnnouncementPlayer.verified(AnnouncementPlayer.Outcome.PLAYED, heardInRecording = false),
+    )
+    assertFalse(
+      AnnouncementPlayer.verified(AnnouncementPlayer.Outcome.PLAYED, false).wasHeard(),
+    )
+  }
+
+  @Test
+  fun a_finished_playback_the_recording_carries_is_the_only_thing_that_stamps() {
+    assertTrue(
+      AnnouncementPlayer.verified(AnnouncementPlayer.Outcome.PLAYED, heardInRecording = true)
+        .wasHeard(),
+    )
+  }
+
+  @Test
+  fun verification_cannot_turn_a_failure_into_a_success() {
+    // Whatever the recording happens to contain, a switched-off or silenced announcement stays
+    // what it was. Only PLAYED is ever downgraded.
+    for (o in listOf(
+      AnnouncementPlayer.Outcome.DISABLED,
+      AnnouncementPlayer.Outcome.SILENCED,
+      AnnouncementPlayer.Outcome.NO_CLIP,
+      AnnouncementPlayer.Outcome.FAILED,
+    )) {
+      assertEquals(o, AnnouncementPlayer.verified(o, heardInRecording = true))
+      assertFalse(AnnouncementPlayer.verified(o, true).wasHeard())
+    }
   }
 
   @Test
