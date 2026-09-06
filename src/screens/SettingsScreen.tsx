@@ -842,6 +842,26 @@ export default function SettingsScreen({ navigation }: Props) {
             </View>
           </Raised>
 
+          <Raised
+            edge={colors.line}
+            fill={colors.card}
+            rad={radius.xl}
+            depth={5}
+            onPress={() => navigation.navigate('Privacy')}>
+            <View style={st.rowPad}>
+              <View style={st.row}>
+                <Icon name="shield" size={s(18)} color={colors.inkSoft} strokeWidth={2.4} />
+                <View style={st.flex}>
+                  <Txt variant="bodyStrong">What left this phone</Txt>
+                  <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
+                    Every network call this app has made, counted and dated
+                  </Txt>
+                </View>
+                <Icon name="chevronRight" size={s(18)} color={colors.inkFaint} strokeWidth={2.4} />
+              </View>
+            </View>
+          </Raised>
+
           <View style={st.assure}>
             <Icon name="shield" size={s(20)} color={colors.success} strokeWidth={2.4} />
             <Txt variant="chip" color={colors.ink} style={st.flex}>
