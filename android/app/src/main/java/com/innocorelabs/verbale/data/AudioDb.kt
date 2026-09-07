@@ -748,6 +748,49 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     db.execSQL("DELETE FROM llm_notes WHERE meeting_id=?", arrayOf<Any?>(meetingId))
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // The live capture pass's decoded windows. See LiveTranscriber and the live-transcript design
+  // doc: this is a CACHE, and the only table that pass is allowed to write.
+  // ---------------------------------------------------------------------------------------------
+
+  /** One decoded window. Replaces on conflict: a retried window is not a duplicate. */
+  fun putCachedWindow(meetingId: String, startMs: Long, endMs: Long, model: String, segments: String) {
+    db.execSQL(
+      "INSERT OR REPLACE INTO asr_cache(meeting_id,start_ms,end_ms,model,segments) VALUES(?,?,?,?,?)",
+      arrayOf<Any?>(meetingId, startMs, endMs, model, segments),
+    )
+  }
+
+  /** True when this exact window is already decoded, so the live loop can skip it cheaply. */
+  fun hasCachedWindow(meetingId: String, startMs: Long, endMs: Long, model: String): Boolean =
+    db.rawQuery(
+      "SELECT 1 FROM asr_cache WHERE meeting_id=? AND start_ms=? AND end_ms=? AND model=? LIMIT 1",
+      arrayOf(meetingId, startMs.toString(), endMs.toString(), model),
+    ).use { it.moveToFirst() }
+
+  /**
+   * Every cached window for a meeting, as the parallel arrays nativeTranscribe wants: ranges flat
+   * as [start0, end0, ...] and one JSON string per window, in start order and index-aligned.
+   */
+  fun cachedWindows(meetingId: String, model: String): Pair<LongArray, Array<String>> {
+    val ranges = ArrayList<Long>()
+    val json = ArrayList<String>()
+    db.rawQuery(
+      "SELECT start_ms,end_ms,segments FROM asr_cache WHERE meeting_id=? AND model=? ORDER BY start_ms",
+      arrayOf(meetingId, model),
+    ).use { c ->
+      while (c.moveToNext()) {
+        ranges.add(c.getLong(0)); ranges.add(c.getLong(1)); json.add(c.getString(2))
+      }
+    }
+    return Pair(ranges.toLongArray(), json.toTypedArray())
+  }
+
+  /** Scaffolding, not a record: dropped once the transcript exists. */
+  fun clearCachedWindows(meetingId: String) {
+    db.execSQL("DELETE FROM asr_cache WHERE meeting_id=?", arrayOf<Any?>(meetingId))
+  }
+
   /** Drops the one-liner, for a meeting whose summary no longer describes it. */
   fun clearSummaryLine(meetingId: String) {
     db.execSQL("UPDATE meetings SET summary_line=NULL WHERE id=?", arrayOf<Any?>(meetingId))
@@ -912,6 +955,23 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
            meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
            chunk_index INTEGER NOT NULL, note TEXT NOT NULL,
            PRIMARY KEY (meeting_id, chunk_index));""",
+      // Windows the live capture pass decoded while the meeting was still being recorded, so the
+      // post-hoc ASR stage does not decode them again. Keyed on the EXACT window, because a
+      // window whose boundaries differ is a different window and serving it would put one
+      // stretch of audio's words on another's timestamps.
+      //
+      // `segments` is JSON — [{"t0":ms,"t1":ms,"text":"..."}] with CHUNK-RELATIVE timestamps —
+      // because whisper returns several timestamped segments per window, not one string.
+      //
+      // `model` is in the key so changing the weights invalidates every row rather than mixing
+      // two models' output into one transcript. Dropped when ASR completes: it is scaffolding,
+      // not a record, and a second copy of transcript text is a second thing to honour in
+      // retention, in exports and in the privacy summary.
+      """CREATE TABLE IF NOT EXISTS asr_cache(
+           meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+           start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL,
+           model TEXT NOT NULL, segments TEXT NOT NULL,
+           PRIMARY KEY (meeting_id, start_ms, end_ms, model));""",
       // Ticked-off actions, keyed by a hash of the item text rather than the minutes row id.
       // Minutes rows are deleted and re-inserted whenever a meeting is reprocessed, so a row-id
       // key would silently uncheck everything the user had worked through.
