@@ -172,6 +172,12 @@ audionotes_add_test(test_live_chunker
   ${CORE}/asr/live_chunker.cpp
   ${CORE}/asr/asr_chunker.cpp)
 
+# The VAD span state machine, driven by synthetic probabilities so no model is needed. The live
+# path and the file path share this code; a slip here shifts every chunk boundary at once.
+audionotes_add_test(test_vad_span_builder
+  ${CORE}/tests/test_vad_span_builder.cpp
+  ${CORE}/vad/vad_span_builder.cpp)
+
 # The arithmetic that puts diarization results back on the real timeline after the silence has
 # been cut out of them. Deliberately free of sherpa and ONNX so it builds and runs anywhere.
 audionotes_add_test(test_span_map
