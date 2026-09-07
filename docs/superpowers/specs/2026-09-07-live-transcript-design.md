@@ -86,7 +86,7 @@ native object that outlives one call.
 ```
 nativeVadOpen(modelPath, sampleRate) -> handle
 nativeVadFeed(handle, pcmPath, fromByte, byteCount) -> LongArray   // spans CLOSED by this feed
-nativeVadOpenSpanStartMs(handle) -> Long    // start of the span in progress, or -1
+nativeVadPendingSpanStartMs(handle) -> Long  // earliest span not yet released, or -1
 nativeVadClose(handle)
 
 nativeAsrOpen(modelPath, language) -> handle
@@ -94,10 +94,11 @@ nativeAsrDecodeRange(handle, pcmPath, startMs, endMs, threads) -> String
 nativeAsrClose(handle)
 ```
 
-`nativeVadOpenSpanStartMs` exists because chunk finality needs it, and §5 explains why: a span
-that VAD is still inside has not been emitted, but its start is already known, and whether it can
-still join the previous chunk depends on exactly that. Without it the live pass caches chunks the
-post-hoc pass never asks for.
+`nativeVadPendingSpanStartMs` exists because chunk finality needs it, and §5 explains why. It
+reports the earliest span the VAD knows about but has not handed over — either one it is still
+inside, or one it has closed but is holding back to see whether the next span merges into it under
+`speech_pad_ms`. Both are spans that can still join the previous chunk, and neither is visible in
+the emitted list. Without this the live pass caches chunks the post-hoc pass never asks for.
 
 `nativeVadFeed` reads a byte range from the file rather than accepting a buffer: the file is the
 source of truth, the capture thread is the only writer, and passing ranges keeps the JNI surface
@@ -122,10 +123,16 @@ CREATE TABLE IF NOT EXISTS asr_cache(
   start_ms   INTEGER NOT NULL,
   end_ms     INTEGER NOT NULL,
   model      TEXT NOT NULL,
-  text       TEXT NOT NULL,
+  segments   TEXT NOT NULL,   -- JSON: [{"t0":ms,"t1":ms,"text":"..."}], chunk-RELATIVE
   PRIMARY KEY(meeting_id, start_ms, end_ms, model)
 );
 ```
+
+`segments` holds a list, not a string, because `whisper_full` returns several timestamped
+segments per chunk (`cpp/asr/whisper_asr.cpp:252-262`) and the transcript needs those timestamps.
+They are stored chunk-relative, which is what makes the cached value a pure function of the
+chunk's audio and nothing else. The text is stored **after** `normalizeSegmentText`, so a cache
+hit yields the identical string the decode path would have pushed.
 
 **In the database, not in loose files**, because chunk text is transcript content and everything
 this app knows about a meeting is encrypted at rest. A cache of plaintext transcript fragments in
@@ -151,8 +158,8 @@ value under a key the post-hoc pass never asks for.
 adding the next span would exceed the 30 s budget (`kChunkMs`) or when the gap to it exceeds
 `kMaxMergeGapMs` (12 s). Both closing conditions depend only on spans already seen plus the *next*
 span. A chunk is final once no future span could be packed into it, which is decidable from three
-things: the closed spans, the span VAD is currently inside (if any), and how much audio has been
-captured.
+things: the released spans, the earliest span the VAD is still holding (if any), and how much audio has
+been captured.
 
 The budget cannot establish finality — it depends on where the next span *ends*, which is unknown
 — so the gap is the only rule that certifies. That is fine: it is sufficient, and being
@@ -185,11 +192,12 @@ final(C, spans, capturedMs):
     // A closed span already exists past this chunk, so makeChunks closed C knowing about it.
     if any closed span S in spans with S.start_ms > C.end_ms:  return true
 
-    // VAD is mid-span. Not yet emitted, but its start is known, and that is what the gap needs.
+    // A span the VAD knows about but has not released: still mid-speech, or closed and held
+    // back pending a merge. Its start is known, and that is exactly what the gap rule needs.
     // Someone still talking 12 s after the chunk ended would otherwise look like silence.
-    openStart = nativeVadOpenSpanStartMs(vad)
-    if openStart >= 0 and openStart > C.end_ms:
-        return (openStart - C.end_ms) > kMaxMergeGapMs
+    pending = nativeVadPendingSpanStartMs(vad)
+    if pending >= 0 and pending > C.end_ms:
+        return (pending - C.end_ms) > kMaxMergeGapMs
 
     // Nothing open and nothing since: any future span must start after the capture frontier.
     return (capturedMs - C.end_ms) >= kMaxMergeGapMs
