@@ -69,10 +69,41 @@ install_apk() {
   return 0
 }
 
+# A build failure inside `attempt` used to be invisible. `set -e` is suspended for a function
+# called as an `if` condition, so a broken androidTest compile carried straight on to the install,
+# which happily pushed WHATEVER APK was still on disk from the last successful build. The tests
+# then ran against stale code and failed against the old JNI signature — which reads exactly like
+# a product bug and cost two full device cycles before anybody suspected the script.
+#
+# So the build is checked on its own and is fatal. The retry below exists for a signature
+# mismatch on INSTALL, and re-running the compiler with a different signing flag cannot fix code
+# that does not compile.
+build_or_die() {
+  echo "==> building${1:+ (signed with the upload key)}"
+  if ! (cd android && ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -q $1); then
+    echo ""
+    echo "BUILD FAILED — nothing was installed, so the phone still has the previous build." >&2
+    echo "Fix the compile error above and re-run. Do NOT read the test results from a previous" >&2
+    echo "run as if they described this code." >&2
+    if [ -n "${1:-}" ]; then
+      echo "(Built with $1. If the failure is about the keystore rather than the code, unset" >&2
+      echo " AUDIONOTES_STORE_FILE in ~/.gradle/gradle.properties and try again.)" >&2
+    fi
+    exit 1
+  fi
+  # Belt and braces: a build that "succeeded" without producing the test APK would put us straight
+  # back into installing something stale.
+  for apk in "$APK" "$TEST_APK"; do
+    if [ ! -f "$apk" ]; then
+      echo "BUILD reported success but $apk does not exist." >&2
+      exit 1
+    fi
+  done
+}
+
 attempt() {
   INSTALL_ERR=""
-  echo "==> building${1:+ (signed with the upload key)}"
-  (cd android && ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -q $1)
+  build_or_die "${1:-}"
   echo "==> installing (-r keeps app data, and with it the downloaded models)"
   install_apk "$APK" && install_apk "$TEST_APK"
 }
