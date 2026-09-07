@@ -45,6 +45,10 @@ struct PipelineConfig {
   // How close two windows' speakers must be to be called one person. Only consulted for a meeting
   // long enough to need more than one window. 0 = the shipped default (kSpeakerMergeThreshold).
   float diar_speaker_threshold = 0.0f;
+  // Windows already decoded elsewhere. On Android this is the live capture pass; in the CLI it is
+  // --live-cache, which exists so a warm run and a cold run can be proved to produce the SAME
+  // transcript rather than merely a similar one.
+  std::vector<AsrCachedWindow> chunk_cache;
   int sample_rate = 16000;
   int asr_threads = 0;         // 0 = engine default
   int llm_threads = 4;

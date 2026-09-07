@@ -202,7 +202,11 @@ std::vector<Utterance> WhisperAsr::decodeWindow(const std::string& pcm_path, int
   wparams.print_special = false;
   wparams.translate = false;
   wparams.language = impl_->language.c_str();
-  wparams.n_threads = threads;
+  // Resolved HERE, not left to the caller. transcribe() has always resolved <= 0 to the
+  // big.LITTLE-aware default before its loop; extracting this body moved the decode out from
+  // behind that and quietly made every direct caller responsible for it. Passing 0 through
+  // reaches whisper as n_threads = 0 and dies in an allocation, a long way from the cause.
+  wparams.n_threads = threads > 0 ? threads : inferenceThreadCount();
   // Every window is decoded with no carried state. That is what makes a window's decode a pure
   // function of its audio — and therefore what makes caching it sound.
   wparams.no_context = true;

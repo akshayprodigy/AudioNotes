@@ -4,6 +4,8 @@
 // LLM-enhanced) via the core's Pipeline orchestrator — the same brain every platform shell
 // drives. --json writes the machine-readable result document (the eval harness input format).
 // Without --vad we fall back to fixed 30 s windows over the whole file.
+#include "asr/asr_chunker.h"
+#include "asr/asr_engine.h"
 #include "pipeline/pipeline.h"
 #include "pipeline/result_json.h"
 
@@ -85,6 +87,7 @@ int main(int argc, char** argv) {
                  "          [--diar-speaker-threshold F]  cross-window speaker merge distance\n"
                  "          [--asr-engine whisper|qwen3|parakeet|moonshine]\n"
                  "          [--qwen3-model DIR] [--sherpa-model DIR] [--force-language]\n"
+                 "          [--live-cache]         pre-decode every window, then run from cache\n"
                  "          [--llm model.gguf] [--json out.json]\n",
                  argv[0]);
     return 2;
@@ -105,6 +108,10 @@ int main(int argc, char** argv) {
   std::string language = "en";
   std::string asr_engine, qwen3_model, sherpa_model;
   bool force_language = false;
+  // Simulates the Android live capture pass: decode every window up front, then run the pipeline
+  // from that cache. A warm transcript that differs from a cold one means the cache is not the
+  // pure function the whole design rests on.
+  bool live_cache = false;
   for (int i = 3; i < argc; ++i) {
     if (std::strcmp(argv[i], "--vad") == 0 && i + 1 < argc) vad_model = argv[++i];
     else if (std::strcmp(argv[i], "--diar-seg") == 0 && i + 1 < argc) diar_seg = argv[++i];
@@ -118,6 +125,7 @@ int main(int argc, char** argv) {
     else if (std::strcmp(argv[i], "--qwen3-model") == 0 && i + 1 < argc) qwen3_model = argv[++i];
     else if (std::strcmp(argv[i], "--sherpa-model") == 0 && i + 1 < argc) sherpa_model = argv[++i];
     else if (std::strcmp(argv[i], "--force-language") == 0) force_language = true;
+    else if (std::strcmp(argv[i], "--live-cache") == 0) live_cache = true;
     else if (std::strcmp(argv[i], "--llm") == 0 && i + 1 < argc) llm_model = argv[++i];
     else if (std::strcmp(argv[i], "--json") == 0 && i + 1 < argc) json_out = argv[++i];
   }
@@ -152,6 +160,44 @@ int main(int argc, char** argv) {
   // The desktop mirror of "Transcribe it anyway". Present so the override can be exercised
   // against a real recording without a phone in the loop.
   cfg.skip_language_refusal = force_language;
+
+  // Pre-decode every window through the SAME decodeWindow the pipeline uses, then hand the
+  // results back as a cache. This is the desktop stand-in for the live capture pass, and it is
+  // what makes the parity claim checkable without a phone.
+  if (live_cache) {
+    if (vad_model.empty()) {
+      std::fprintf(stderr, "--live-cache needs --vad: the cache is keyed on VAD chunk boundaries\n");
+      return 2;
+    }
+    audionotes::SileroVad warm_vad(vad_model, cfg.sample_rate);
+    const std::vector<audionotes::Segment> spans = warm_vad.process(pcm);
+    // Through the factory, exactly as the Android live pass does: the language picks the engine,
+    // and decodeWindow is on the interface so this needs no concrete type.
+    audionotes::AsrConfig warm_cfg;
+    warm_cfg.engine = cfg.asr_engine;
+    warm_cfg.language = cfg.language;
+    warm_cfg.whisper_model = cfg.asr_model;
+    warm_cfg.qwen3_model_dir = cfg.qwen3_model_dir;
+    warm_cfg.sherpa_model_dir = cfg.sherpa_model_dir;
+    warm_cfg.skip_language_refusal = cfg.skip_language_refusal;
+    std::unique_ptr<audionotes::AsrEngine> warm = audionotes::makeAsrEngine(warm_cfg);
+    if (!warm->ok()) {
+      std::fprintf(stderr, "--live-cache: ASR unavailable: %s\n",
+                   warm->unavailableReason().c_str());
+      return 1;
+    }
+    for (const audionotes::Chunk& c :
+         audionotes::makeChunks(spans, warm->maxChunkMs(), warm->chunkMode())) {
+      audionotes::AsrCachedWindow w;
+      w.start_ms = c.start_ms;
+      w.end_ms = c.end_ms;
+      bool failed = false;
+      w.utterances = warm->decodeWindow(pcm, cfg.sample_rate, c.start_ms, c.end_ms,
+                                        cfg.asr_threads, &failed);
+      if (!failed) cfg.chunk_cache.push_back(std::move(w));
+    }
+    std::fprintf(stderr, "--live-cache: pre-decoded %zu window(s)\n", cfg.chunk_cache.size());
+  }
 
   audionotes::Pipeline pipeline(cfg);
   audionotes::PipelineResult res;

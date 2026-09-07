@@ -50,6 +50,7 @@ class WhisperAsr : public AsrEngine {
   // Public because the live capture path decodes the same windows ahead of time and must produce
   // byte-identical results; sharing this body is what guarantees that, rather than two call sites
   // that merely look alike. Returns empty on a decode failure or an unreadable range.
+  // `threads` <= 0 selects the big.LITTLE-aware default, the same contract transcribe() has.
   // `failed` (optional) distinguishes the three ways this returns nothing: the window held no
   // audio, the decode FAILED, or the decode succeeded and every segment scrubbed to empty. Only
   // the middle one is a failure, and conflating them is what once let a silent room and a broken

@@ -24,7 +24,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def run_cli(cli, models, fixture_dir, out_json, llm_model=None, asr="ggml-base-q5_1.bin",
             asr_engine=None, qwen3_model=None, sherpa_model=None, language=None,
-            diar_window_min=None, diar_speaker_threshold=None):
+            diar_window_min=None, diar_speaker_threshold=None, live_cache=False):
     """Invoke the shared core. Returns (document, peak_rss_bytes).
 
     Diarization models are passed when present, so DER is scored whenever the models exist and the
@@ -58,6 +58,11 @@ def run_cli(cli, models, fixture_dir, out_json, llm_model=None, asr="ggml-base-q
     # How much speech diarization holds at once, which is what stops a long meeting needing memory
     # in proportion to its length. Passed explicitly — including the negative value that turns
     # windowing off — so the before-and-after is a flag rather than a rebuild.
+    # Decode every window up front and run the pipeline from that cache, the way the Android live
+    # capture pass does. The transcript must come out IDENTICAL to a cold run, not merely close:
+    # if it does not, the cache is not the pure function the whole design rests on.
+    if live_cache:
+        cmd += ["--live-cache"]
     if diar_window_min is not None:
         cmd += ["--diar-window-min", str(diar_window_min)]
     # The cross-window speaker merge distance. Separate from --diar-threshold and separately swept:
@@ -255,6 +260,9 @@ def main():
     ap.add_argument("--qwen3-model", metavar="DIR",
                     help="directory holding conv_frontend.onnx, encoder.onnx, decoder.onnx, "
                          "tokenizer/ (e.g. eval/models/qwen3-asr)")
+    ap.add_argument("--live-cache", action="store_true",
+                    help="pre-decode every window and run from that cache, as the Android live "
+                         "capture pass does; the transcript must be identical to a cold run")
     ap.add_argument("--language", metavar="CODE",
                     help="language to pin the transcriber to (default: the core's own, 'en')")
     ap.add_argument("--llm", metavar="GGUF",
@@ -300,6 +308,7 @@ def main():
                "asr_engine": args.asr_engine, "qwen3_model": args.qwen3_model,
                "sherpa_model": args.sherpa_model,
                "language": args.language,
+               "live_cache": args.live_cache,
                "diar_window_min": args.diar_window_min,
                "diar_speaker_threshold": args.diar_speaker_threshold,
                "judge": results_judge, "fixtures": []}
@@ -322,6 +331,7 @@ def main():
                                 asr_engine=args.asr_engine, qwen3_model=args.qwen3_model,
                                 sherpa_model=args.sherpa_model,
                                 language=args.language,
+                                live_cache=args.live_cache,
                                 diar_window_min=args.diar_window_min,
                                 diar_speaker_threshold=args.diar_speaker_threshold)
         r = score(fixture_dir, doc, peak_rss, judge=judge)

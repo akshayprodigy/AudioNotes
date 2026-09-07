@@ -92,6 +92,7 @@ class AsrEngine {
   // makeAsrEngine and be routed BY LANGUAGE like everything else. Naming a concrete engine at the
   // call site is how Qwen3-ASR once shipped compiled in and unreachable.
   //
+  // `threads` <= 0 selects the engine's default, the same contract transcribe() has.
   // `failed` (optional) separates the three ways this returns nothing: the window held no audio,
   // the decode FAILED, or it succeeded and every segment scrubbed to empty. Only the middle one
   // is a failure — see AsrRun::allChunksFailed.
