@@ -86,6 +86,26 @@ class AsrEngine {
 
   // pcm_path: 16 kHz mono PCM16. segments: VAD speech spans (ms).
   // `threads` <= 0 selects the big.LITTLE-aware default (see util/cpu_topology.h).
+  // Decode ONE window and return its segments with CHUNK-RELATIVE timestamps.
+  //
+  // On the interface rather than on whisper alone so the live capture pass can reach it through
+  // makeAsrEngine and be routed BY LANGUAGE like everything else. Naming a concrete engine at the
+  // call site is how Qwen3-ASR once shipped compiled in and unreachable.
+  //
+  // `failed` (optional) separates the three ways this returns nothing: the window held no audio,
+  // the decode FAILED, or it succeeded and every segment scrubbed to empty. Only the middle one
+  // is a failure — see AsrRun::allChunksFailed.
+  //
+  // The default decodes nothing, which is the honest answer for an engine that cannot decode a
+  // window in isolation: the live pass caches nothing and the pipeline behaves as it always did.
+  virtual std::vector<Utterance> decodeWindow(const std::string& pcm_path, int sample_rate,
+                                              int64_t start_ms, int64_t end_ms, int threads,
+                                              bool* failed) {
+    (void)pcm_path; (void)sample_rate; (void)start_ms; (void)end_ms; (void)threads;
+    if (failed) *failed = false;
+    return {};
+  }
+
   virtual AsrRun transcribe(const std::string& pcm_path,
                             const std::vector<Segment>& segments,
                             int sample_rate,

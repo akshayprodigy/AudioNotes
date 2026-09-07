@@ -101,7 +101,12 @@ class LiveTranscriber(
 
     try {
       vad = NativeBridge.nativeVadOpen(vadModel, RecordingService.SAMPLE_RATE)
-      asr = NativeBridge.nativeAsrOpen(asrModel, "en")
+      // Same inputs the pipeline gives the factory, so the live pass and the post-hoc pass
+      // resolve to the same engine. Today that is always whisper, since v1 is English only.
+      val qwen3Dir = ModelCatalog.qwen3DirFor(ctx)
+      asr = NativeBridge.nativeAsrOpen(
+        asrModel, "en", if (qwen3Dir.isDirectory) qwen3Dir.absolutePath else "",
+      )
       if (vad == 0L || asr == 0L) {
         Log.w(TAG, "native handles unavailable (vad=$vad asr=$asr)")
         return
@@ -156,7 +161,7 @@ class LiveTranscriber(
     modelKey: String, threads: Int, stopping: Boolean, limit: Int = Int.MAX_VALUE,
   ): Int {
     val pending = NativeBridge.nativeVadPendingSpanStartMs(vad)
-    val chunks = NativeBridge.nativeLiveChunks(spans.toLongArray(), pending, capturedMs)
+    val chunks = NativeBridge.nativeLiveChunks(asr, spans.toLongArray(), pending, capturedMs)
     var n = 0
     var i = 0
     while (i + 1 < chunks.size) {

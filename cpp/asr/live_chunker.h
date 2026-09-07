@@ -24,6 +24,7 @@ std::vector<Chunk> finalChunks(const std::vector<Segment>& spans,
                                int64_t pending_span_start_ms,
                                int64_t captured_ms,
                                int64_t max_chunk_ms,
+                               ChunkMode mode = ChunkMode::kPack,
                                int64_t max_gap_ms = kMaxMergeGapMs);
 
 }  // namespace audionotes

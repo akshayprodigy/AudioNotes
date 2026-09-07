@@ -71,8 +71,12 @@ object NativeBridge {
    * [nativeAsrDecodeWindow] returns `[{"t0":ms,"t1":ms,"text":"..."}]` with timestamps RELATIVE
    * to the window, which is what makes the result cacheable: it depends on the window's audio and
    * nothing about where the window sits in the meeting.
+   *
+   * The handle comes from the FACTORY, so the language picks the engine here exactly as it does
+   * for [nativeTranscribe]. An engine that cannot decode a window in isolation returns nothing
+   * and the live pass simply caches nothing for it.
    */
-  external fun nativeAsrOpen(modelPath: String, language: String): Long
+  external fun nativeAsrOpen(modelPath: String, language: String, qwen3ModelDir: String): Long
   external fun nativeAsrDecodeWindow(
     handle: Long, pcmPath: String, sampleRate: Int, startMs: Long, endMs: Long, threads: Int,
   ): String
@@ -82,11 +86,12 @@ object NativeBridge {
    * Which decode windows can no longer change, given the spans released so far, the earliest
    * span still pending (or -1) and how much audio exists. Flat [start0, end0, ...].
    *
-   * The chunking rule lives in C++ with the post-hoc pass and is deliberately not reimplemented
-   * here: two copies that drift would cost every cache hit and nothing would fail.
+   * Takes the ASR handle so it uses THAT engine's window budget and packing mode. The chunking
+   * rule lives in C++ with the post-hoc pass and is deliberately not reimplemented here: two
+   * copies that drift would cost every cache hit and nothing would fail.
    */
   external fun nativeLiveChunks(
-    spansMs: LongArray, pendingSpanStartMs: Long, capturedMs: Long,
+    asrHandle: Long, spansMs: LongArray, pendingSpanStartMs: Long, capturedMs: Long,
   ): LongArray
 
   /**

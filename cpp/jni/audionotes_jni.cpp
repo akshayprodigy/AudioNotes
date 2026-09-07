@@ -226,13 +226,17 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeVadClose(
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeAsrOpen(
-    JNIEnv* env, jobject /*thiz*/, jstring jModelPath, jstring jLanguage) {
-  auto* asr = new audionotes::WhisperAsr(jstr(env, jModelPath), jstr(env, jLanguage), false);
-  if (!asr->ok()) {
-    delete asr;
-    return 0;
-  }
-  return reinterpret_cast<jlong>(asr);
+    JNIEnv* env, jobject /*thiz*/, jstring jModelPath, jstring jLanguage, jstring jQwen3Dir) {
+  // Through the factory, never by class name: the language picks the engine, and a live pass
+  // hard-wired to whisper would be unreachable for every language whisper does not serve — the
+  // exact shape of the bug scripts/check-engine-encapsulation.py exists to prevent.
+  audionotes::AsrConfig cfg;
+  cfg.language = jstr(env, jLanguage);
+  cfg.whisper_model = jstr(env, jModelPath);
+  cfg.qwen3_model_dir = jstr(env, jQwen3Dir);
+  std::unique_ptr<audionotes::AsrEngine> asr = audionotes::makeAsrEngine(cfg);
+  if (!asr->ok()) return 0;
+  return reinterpret_cast<jlong>(asr.release());
 }
 
 // Decode ONE window. Same JSON shape nativeTranscribe returns, but with CHUNK-RELATIVE
@@ -242,7 +246,7 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeAsrDecodeWindow(
     JNIEnv* env, jobject /*thiz*/, jlong handle, jstring jPcmPath, jint sampleRate,
     jlong startMs, jlong endMs, jint threads) {
-  auto* asr = reinterpret_cast<audionotes::WhisperAsr*>(handle);
+  auto* asr = reinterpret_cast<audionotes::AsrEngine*>(handle);
   if (!asr) return env->NewStringUTF("[]");
   std::vector<audionotes::Utterance> utts;
   try {
@@ -270,16 +274,23 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeAsrDecodeWindow(
 extern "C" JNIEXPORT void JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeAsrClose(
     JNIEnv* /*env*/, jobject /*thiz*/, jlong handle) {
-  delete reinterpret_cast<audionotes::WhisperAsr*>(handle);
+  delete reinterpret_cast<audionotes::AsrEngine*>(handle);
 }
 
 // Which windows can no longer change. Kotlin drives the live loop but must not own the chunking
 // rule — it exists once, in asr_chunker.cpp, and the post-hoc pass uses the same one.
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLiveChunks(
-    JNIEnv* env, jobject /*thiz*/, jlongArray jSpans, jlong pendingSpanStartMs, jlong capturedMs) {
-  const std::vector<audionotes::Chunk> chunks = audionotes::finalChunks(
-      spansFromJava(env, jSpans), pendingSpanStartMs, capturedMs, 30000);
+    JNIEnv* env, jobject /*thiz*/, jlong handle, jlongArray jSpans, jlong pendingSpanStartMs,
+    jlong capturedMs) {
+  auto* asr = reinterpret_cast<audionotes::AsrEngine*>(handle);
+  if (!asr) return env->NewLongArray(0);
+  // The engine's OWN budget and packing mode, not whisper's constants: an engine that wants one
+  // span per window would otherwise be handed 30-second packed windows it never asks for, and
+  // every cached window would miss.
+  const std::vector<audionotes::Chunk> chunks =
+      audionotes::finalChunks(spansFromJava(env, jSpans), pendingSpanStartMs, capturedMs,
+                              asr->maxChunkMs(), asr->chunkMode());
   std::vector<jlong> out;
   out.reserve(chunks.size() * 2);
   for (const audionotes::Chunk& c : chunks) {

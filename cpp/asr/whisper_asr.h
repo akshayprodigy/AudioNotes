@@ -56,7 +56,7 @@ class WhisperAsr : public AsrEngine {
   // decoder report the same thing — see AsrRun::allChunksFailed.
   std::vector<Utterance> decodeWindow(const std::string& pcm_path, int sample_rate,
                                       int64_t start_ms, int64_t end_ms, int threads,
-                                      bool* failed);
+                                      bool* failed) override;
 
   // Hand this run the windows the live capture pass already decoded. See AsrConfig::chunk_cache.
   void setChunkCache(std::vector<AsrCachedWindow> cache);
