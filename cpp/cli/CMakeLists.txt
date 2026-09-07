@@ -165,6 +165,13 @@ audionotes_add_test(test_asr_chunker
   ${CORE}/tests/test_asr_chunker.cpp
   ${CORE}/asr/asr_chunker.cpp)
 
+# Chunk finality during a live capture. Model-free on purpose: emitting a chunk one span too
+# early is invisible in any transcript — it only shows up as the feature being mysteriously slow.
+audionotes_add_test(test_live_chunker
+  ${CORE}/tests/test_live_chunker.cpp
+  ${CORE}/asr/live_chunker.cpp
+  ${CORE}/asr/asr_chunker.cpp)
+
 # The arithmetic that puts diarization results back on the real timeline after the silence has
 # been cut out of them. Deliberately free of sherpa and ONNX so it builds and runs anywhere.
 audionotes_add_test(test_span_map
