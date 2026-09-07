@@ -1,7 +1,8 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
-apply plugin: "io.sentry.android.gradle"
+apply plugin: "com.google.gms.google-services"
+apply plugin: "com.google.firebase.crashlytics"
 
 /**
  * Crash-report symbolication.
@@ -11,31 +12,13 @@ apply plugin: "io.sentry.android.gradle"
  * debug symbols, a production crash arrives as hex addresses against obfuscated frames, which is
  * indistinguishable from having no crash reporting at all.
  *
- * Everything auto-* is gated on SENTRY_AUTH_TOKEN being present in the environment. With no token
- * the plugin does its local work and uploads nothing, so a clone with no Sentry account builds
- * exactly as it did before this plugin existed — the same shape as the release signing config
- * below, which falls back rather than failing.
+ * Collection itself is OFF at the manifest level and is switched on from JS only after the person
+ * has said yes — see AndroidManifest.xml and src/telemetry/crash.ts. Uploading symbols at build
+ * time is unrelated to that and safe either way: symbols describe our binary, not anyone's data.
  */
-def sentryToken = System.getenv("SENTRY_AUTH_TOKEN")
-
-sentry {
-    // Source context would upload our own source files to Sentry. This is a private codebase and
-    // the stack trace is enough; off deliberately, not by omission.
-    includeSourceContext = false
-
-    autoUploadProguardMapping = sentryToken != null
-    uploadNativeSymbols = sentryToken != null
-    autoUploadNativeSymbols = sentryToken != null
-
-    // The SDK is started from JS, only after consent — see src/telemetry/crash.ts. Letting the
-    // plugin add its own auto-installation would start it before anyone had been asked.
-    autoInstallation { enabled = false }
-
-    // No bytecode rewriting for tracing: the JS side sets tracesSampleRate to 0, and an app that
-    // tells people it does not use the network should not ship instrumentation that phones home.
-    tracingInstrumentation { enabled = false }
-
-    ignoredBuildTypes = ["debug"]
+android.buildTypes.each { type ->
+    type.ext.set("nativeSymbolUploadEnabled", type.name == "release")
+    type.ext.set("unstrippedNativeLibsDir", "build/intermediates/merged_native_libs/${type.name}/out/lib")
 }
 
 /**

@@ -19,4 +19,4 @@ COMPANY_NAME = os.environ.get("COMPANY_NAME", "InnoCore Labs")
 CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "admin@innocorelabs.com")
 
 #: Bumped when either legal document changes materially. Shown on both pages.
-LEGAL_UPDATED = "29 August 2026"
+LEGAL_UPDATED = "7 September 2026"

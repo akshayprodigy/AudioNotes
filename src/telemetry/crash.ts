@@ -1,39 +1,53 @@
 /**
- * Crash reporting, for an app whose entire promise is that nothing leaves the phone.
+ * Crash reporting, for an app whose promise is that the user's meeting never leaves the phone.
  *
- * That promise is about the meeting: the audio, the transcript, who spoke, the minutes. None of
- * that is ever uploaded and none of it can reach here — see the scrubbing below, which is written
- * to be provably content-free rather than merely careful. What this sends is a stack trace and
- * the model of phone it happened on, and only after somebody has said yes.
+ * That promise is about the meeting: the audio, the transcript, who spoke, the minutes. None of it
+ * can reach here. What Crashlytics sends is a stack trace, the app version, and the model of phone
+ * it happened on — after somebody has said yes.
  *
- * Why it exists at all: the risky half of this app is native — whisper.cpp, llama.cpp,
- * sherpa-onnx and the JNI layer between them, minified by R8. When that segfaults on a phone we
- * do not own, there is no logcat to read and no reproduction to run. The alternative to crash
- * reporting is not privacy, it is debugging from one-star reviews.
+ * Why it exists at all: the risky half of this app is native — whisper.cpp, llama.cpp, sherpa-onnx
+ * and the JNI layer between them, minified by R8. When that segfaults on a phone we do not own
+ * there is no logcat to read and no reproduction to run. The alternative to crash reporting is not
+ * privacy, it is debugging from one-star reviews.
  *
  * Three rules this file exists to keep:
  *
- *   1. Off unless asked for. Consent is stored, checked before start(), and revocable.
- *   2. No content, ever. Screenshots and view hierarchies are explicitly disabled — Sentry can
- *      attach both, and on this app a screenshot IS the transcript. Breadcrumbs that could carry
- *      text are dropped.
- *   3. No DSN, no SDK. An empty dsn.ts makes every function here a no-op.
+ *   1. Off unless asked for. Collection is disabled in AndroidManifest.xml, which is the only
+ *      switch that works before any JavaScript runs, and enabled here only once consent is stored.
+ *   2. No content, ever. Nothing in this file passes app data to Crashlytics — no user id, no
+ *      custom keys, no logs. `recordError` is deliberately not re-exported, because the moment a
+ *      caller can hand it an Error it can hand it an Error containing a transcript line.
+ *   3. Revocable, and revoked means stopped — not merely un-sent.
+ *
+ * WHAT CHANGED WHEN THIS MOVED OFF SENTRY, and it is a real loss worth stating rather than
+ * discovering: Sentry exposed a `beforeSend` hook, so the previous version stripped the user,
+ * request, server name and message off every event, and recorded the exact serialised byte count
+ * in the privacy ledger. Crashlytics has no such hook. Reports are assembled and uploaded by
+ * native Play Services code that this app cannot inspect, intercept or measure.
+ *
+ * Two consequences follow, and both are handled rather than hoped about:
+ *   - Scrubbing is now a matter of never GIVING Crashlytics anything to leak, instead of removing
+ *     it afterwards. Hence rule 2 being about what this file refuses to call.
+ *   - The privacy screen can no longer count these bytes, so it names Crashlytics as a source it
+ *     cannot count — the same treatment it already gives Google Play's own connection. An
+ *     uncounted source that is disclosed is honest; an uncounted source that is not is the exact
+ *     overclaim that screen was built to prevent.
  */
-import * as Sentry from '@sentry/react-native';
+import {
+  getCrashlytics,
+  setCrashlyticsCollectionEnabled,
+} from '@react-native-firebase/crashlytics';
 
 import { db } from '../db/queries';
-import { SENTRY_DSN } from './dsn';
-import { hostOf, record } from '../privacy/ledger';
+import { CRASH_REPORTING_BUILD } from './enabled';
 
 /** Settings key holding 'on' | 'off'. Absent means never asked. */
 export const CRASH_CONSENT_KEY = 'crash_reports';
 
-/** Whether the build can report crashes at all. False with no DSN, which is the default. */
+/** Whether the build can report crashes at all. False in development. */
 export function crashReportingAvailable(): boolean {
-  return SENTRY_DSN.length > 0;
+  return CRASH_REPORTING_BUILD;
 }
-
-let started = false;
 
 /**
  * 'on' | 'off' | null, where null means the question has not been put to them yet.
@@ -52,106 +66,35 @@ export async function crashConsent(): Promise<'on' | 'off' | null> {
   }
 }
 
-/** Record the answer and start or stop the SDK to match it. */
+/** Record the answer and start or stop collection to match it. */
 export async function setCrashConsent(on: boolean): Promise<void> {
   if (!crashReportingAvailable()) return;
   try {
     await db.setSetting(CRASH_CONSENT_KEY, on ? 'on' : 'off');
   } catch {
-    // Nothing useful to do — but never start the SDK off the back of a write we could not make.
+    // Nothing useful to do — but never start collecting off the back of a write we could not make.
     return;
   }
-  if (on) start();
-  else stop();
+  await apply(on);
 }
 
 /**
- * Start the SDK if, and only if, it is available and consented.
+ * Match collection to the stored answer. Called on launch after the store opens.
  *
- * Called on launch after the store opens. Native crash handling installs when this runs, which
- * means the first moments of a cold start are not covered — an acceptable trade for keeping one
- * settings store, given the code that actually crashes is the pipeline, minutes into a session.
+ * Called with `false` as well as `true`, deliberately. Crashlytics persists this flag across
+ * launches, so a build that only ever enabled it would leave collection on for somebody who had
+ * withdrawn consent in a previous session and never opened Settings again.
  */
 export async function initCrashReporting(): Promise<void> {
-  if ((await crashConsent()) === 'on') start();
+  if (!crashReportingAvailable()) return;
+  await apply((await crashConsent()) === 'on');
 }
 
-function stop(): void {
-  if (!started) return;
-  // close() ends the client; a later start() builds a fresh one.
-  Sentry.close();
-  started = false;
-}
-
-function start(): void {
-  if (started || !crashReportingAvailable()) return;
-  started = true;
-
-  Sentry.init({
-    dsn: SENTRY_DSN,
-
-    // Native crashes are the reason this is here. Without it, a segfault inside the C++ core —
-    // the most likely and least debuggable failure this app has — reports nothing.
-    enableNative: true,
-
-    // A screenshot of this app is a transcript of somebody's meeting. The view hierarchy is the
-    // same content with the pixels removed. Both are opt-in features of the SDK and both stay off
-    // permanently; there is no diagnostic worth uploading a customer's minutes for.
-    attachScreenshot: false,
-    attachViewHierarchy: false,
-
-    // No IP address, no device name, no username. sendDefaultPii false is the switch that stops
-    // Sentry inferring a user from the request; the scrubbing in beforeSend is the belt to its
-    // braces, because a default can change in a minor version and a delete cannot.
-    sendDefaultPii: false,
-
-    // Performance tracing records URLs, route names and timings on every interaction. It is a
-    // continuous telemetry stream, which is a different bargain from "tell us when it broke", and
-    // not one this app asked for.
-    tracesSampleRate: 0,
-    enableAutoPerformanceTracing: false,
-
-    // Sessions report app foreground/background as a heartbeat. Harmless in content and still a
-    // steady trickle of traffic from an app that tells people it does not use the network.
-    enableAutoSessionTracking: false,
-
-    // Enough to see the last few screens, not enough to reconstruct a session.
-    maxBreadcrumbs: 20,
-
-    beforeBreadcrumb(crumb) {
-      // Console and network breadcrumbs are the two that carry free text — a console.log of a
-      // transcript line, or a URL with a meeting id in it. Navigation is a screen name, which is
-      // what makes a stack trace readable, so that one stays.
-      if (crumb.category === 'navigation') return crumb;
-      return null;
-    },
-
-    beforeSend(event) {
-      // Everything that could identify a person or a machine, removed after the SDK has built the
-      // event and before it is queued. Deleting is deliberate: an allow-list of fields would
-      // silently start passing anything a future SDK version adds.
-      delete event.user;
-      delete event.request;
-      delete event.server_name;
-      delete event.extra;
-      if (event.contexts?.device) {
-        delete event.contexts.device.name;
-        delete event.contexts.device.device_unique_identifier;
-      }
-      // Strip the message body. Exceptions carry their type and stack, which is the whole point;
-      // a captureMessage string is free text and there is no way to be sure what got put in it.
-      delete event.message;
-      delete event.logentry;
-      // Sentry decides when to flush, so this is the last point at which we know an event is on
-      // its way out. Size is the serialised event, which is what will be sent, not a guess.
-      void record({
-        kind: 'crash',
-        host: hostOf(SENTRY_DSN),
-        sent: JSON.stringify(event).length,
-        received: 0,
-        detail: 'crash report',
-      });
-      return event;
-    },
-  });
+async function apply(on: boolean): Promise<void> {
+  try {
+    await setCrashlyticsCollectionEnabled(getCrashlytics(), on);
+  } catch {
+    // A failure here must not take the app down on launch. The manifest default is off, so the
+    // safe state is also the default state: worst case, crashes go unreported.
+  }
 }

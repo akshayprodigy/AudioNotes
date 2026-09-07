@@ -139,14 +139,20 @@ jest.mock('react-native/Libraries/EventEmitter/NativeEventEmitter', () => ({
   },
 }));
 
-// Sentry ships ESM, which this project's transformIgnorePatterns deliberately does not transform.
-// Mocking is the right answer anyway rather than adding it to that list: no test wants a real
-// crash SDK initialised, and transforming the package on every run would cost seconds for
-// something whose behaviour under test should be "was init called", not "did it network".
-jest.mock('@sentry/react-native', () => ({
-  init: jest.fn(),
-  close: jest.fn(),
-  captureException: jest.fn(),
+// Crashlytics is a native module with no JS fallback, so it throws the moment it is touched under
+// Jest. Mocking is the right answer regardless: no test wants a real crash SDK, and what these
+// tests assert is "was collection enabled, and only after a yes" — not that Google received
+// anything. One shared mock so a test can read the calls back.
+// Prefixed `mock` because Jest forbids a mock factory from closing over anything else.
+const mockCrashlytics = {
+  setCrashlyticsCollectionEnabled: jest.fn(() => Promise.resolve()),
+};
+jest.mock('@react-native-firebase/crashlytics', () => ({
+  __esModule: true,
+  getCrashlytics: () => ({}),
+  setCrashlyticsCollectionEnabled: (_app, enabled) =>
+    mockCrashlytics.setCrashlyticsCollectionEnabled(enabled),
 }));
+global.__TEST_CRASHLYTICS__ = mockCrashlytics;
 
 global.__TEST_NATIVE_MODULES__ = mockNativeModules;

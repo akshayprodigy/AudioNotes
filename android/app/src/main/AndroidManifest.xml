@@ -18,6 +18,28 @@
       android:theme="@style/AppTheme"
       android:usesCleartextTraffic="${usesCleartextTraffic}"
       android:supportsRtl="true">
+
+      <!--
+        Crashlytics collects NOTHING until somebody says yes.
+
+        This meta-data is the only switch that works before any JavaScript runs. Without it the SDK
+        starts collecting the moment the process does — which would mean the first launch, the one
+        where the person has not yet been asked, is the launch that reports. src/telemetry/crash.ts
+        flips it on at runtime once consent is recorded, and back off when it is withdrawn.
+      -->
+      <meta-data
+        android:name="firebase_crashlytics_collection_enabled"
+        android:value="false" />
+      <!--
+        Analytics is not a dependency of this app and must not become one by transitive addition.
+        Off explicitly, so adding a Firebase library later cannot quietly switch it on.
+      -->
+      <meta-data
+        android:name="firebase_analytics_collection_enabled"
+        android:value="false" />
+      <meta-data
+        android:name="google_analytics_adid_collection_enabled"
+        android:value="false" />
       <!-- Portrait only (android:screenOrientation below). Every screen is a single vertical
            column built around one large control — the record button, the meeting list — and
            landscape stretches those to unreadable line lengths while pushing the primary action

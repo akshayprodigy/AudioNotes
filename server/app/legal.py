@@ -61,8 +61,21 @@ def _privacy() -> str:
 <p>No recording. No transcript. No summary. No minutes. No meeting title. No participant name. Not
    a count of how many meetings you have made, or when, or how long they were. There is no column
    for any of it, which is a stronger statement than a promise not to look.</p>
-<p>We use no analytics, no crash reporting, no advertising and no third-party trackers of any
-   kind. There is no SDK in this app reporting to anyone.</p>
+<p>We use no analytics, no advertising and no third-party trackers of any kind.</p>
+
+<h2>Crash reports, if you turn them on</h2>
+<p>The app can send a crash report when it fails. It is <strong>off until you switch it on</strong>,
+   you are asked before it is ever enabled, and you can withdraw at any time in Settings.</p>
+<p>When it is on, reports are processed by <strong>Google Crashlytics</strong> (Google LLC and its
+   affiliates, processing in the United States and elsewhere). A report carries the stack trace of
+   the failure, the app version, the model of phone and the version of Android, and an identifier
+   Crashlytics generates for the installation.</p>
+<p>It carries none of your meeting. No audio, no transcript, no summary, no minutes, no title, no
+   participant name. The app passes nothing of its own to Crashlytics — no account, no user
+   identifier, no custom data — so there is no route by which your content could reach a report.</p>
+<p>We cannot count these reports the way the app counts its own network calls, because Crashlytics
+   sends them itself rather than through the app. The privacy screen inside the app says so, on the
+   same screen and in the same place it names Google Play&rsquo;s own connection.</p>
 
 <h2>When the app contacts us</h2>
 <ul>

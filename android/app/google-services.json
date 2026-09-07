@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "497828001474",
+    "project_id": "verbale-60cdb",
+    "storage_bucket": "verbale-60cdb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:497828001474:android:077c5c40cb138381946d5b",
+        "android_client_info": {
+          "package_name": "com.innocorelabs.verbale"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDlo2s-k6_KBX4N4cDPwp-G3gn3djEBUPw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
