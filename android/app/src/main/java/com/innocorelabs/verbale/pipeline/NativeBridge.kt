@@ -41,6 +41,55 @@ object NativeBridge {
   external fun nativeVad(pcmPath: String, modelPath: String, sampleRate: Int): LongArray
 
   /**
+   * Streaming VAD, for running while a recording is still being written.
+   *
+   * [nativeVadFeed] consumes a byte range of the PCM file and returns the spans that range
+   * RELEASED, flat as [start0, end0, ...] — usually none. Bytes that do not complete a
+   * 512-sample frame are retained, so feeding a file in pieces gives exactly what feeding it
+   * whole gives; that is verified against real audio down to a 1023-byte bite.
+   *
+   * [nativeVadPendingSpanStartMs] reports the earliest span the VAD knows about but has not
+   * handed back — one it is still inside, or one it is holding to see whether padding merges it
+   * into the next. Chunk finality needs it: both kinds can still join the previous decode window
+   * and neither is visible in what feed() returned. -1 when there is none.
+   *
+   * A handle of 0 means the model would not open. That is not fatal: the live pass is an
+   * optimisation and the meeting is transcribed afterwards exactly as it always was.
+   */
+  external fun nativeVadOpen(modelPath: String, sampleRate: Int): Long
+  external fun nativeVadFeed(handle: Long, pcmPath: String, fromByte: Long, byteCount: Long): LongArray
+  external fun nativeVadFinish(handle: Long): LongArray
+  external fun nativeVadPendingSpanStartMs(handle: Long): Long
+  external fun nativeVadClose(handle: Long)
+
+  /**
+   * A whisper context that stays loaded across windows.
+   *
+   * [nativeTranscribe] builds a fresh engine per call, so it re-reads the weights from disk every
+   * time — fine once per meeting, impossible once per 30-second window.
+   *
+   * [nativeAsrDecodeWindow] returns `[{"t0":ms,"t1":ms,"text":"..."}]` with timestamps RELATIVE
+   * to the window, which is what makes the result cacheable: it depends on the window's audio and
+   * nothing about where the window sits in the meeting.
+   */
+  external fun nativeAsrOpen(modelPath: String, language: String): Long
+  external fun nativeAsrDecodeWindow(
+    handle: Long, pcmPath: String, sampleRate: Int, startMs: Long, endMs: Long, threads: Int,
+  ): String
+  external fun nativeAsrClose(handle: Long)
+
+  /**
+   * Which decode windows can no longer change, given the spans released so far, the earliest
+   * span still pending (or -1) and how much audio exists. Flat [start0, end0, ...].
+   *
+   * The chunking rule lives in C++ with the post-hoc pass and is deliberately not reimplemented
+   * here: two copies that drift would cost every cache hit and nothing would fail.
+   */
+  external fun nativeLiveChunks(
+    spansMs: LongArray, pendingSpanStartMs: Long, capturedMs: Long,
+  ): LongArray
+
+  /**
    * Transcribe the given VAD speech spans of a PCM16 mono file with whisper.cpp.
    * segStarts/segEnds are parallel arrays (ms). Returns a JSON array string of
    * {start_ms, end_ms, text} utterances with timestamps re-anchored to the meeting timeline.
@@ -71,6 +120,11 @@ object NativeBridge {
     language: String = "en",
     qwen3ModelDir: String = "",
     forceLanguage: Boolean = false,
+    // Windows the live capture pass already decoded: ranges flat as [start0, end0, ...] and one
+    // JSON string per window. Whisper uses one only when the boundaries match EXACTLY, so a cache
+    // built against different VAD spans costs a decode and never a wrong word.
+    cachedRangesMs: LongArray = LongArray(0),
+    cachedWindowsJson: Array<String> = emptyArray(),
   ): String
 
   /**

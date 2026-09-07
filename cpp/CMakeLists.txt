@@ -17,6 +17,7 @@ add_library(audionotes SHARED
   vad/vad_span_builder.cpp
   asr/whisper_asr.cpp
   asr/asr_chunker.cpp
+  asr/live_chunker.cpp
   asr/asr_postprocess.cpp
   asr/asr_factory.cpp
   asr/asr_languages.cpp
