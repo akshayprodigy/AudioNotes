@@ -100,6 +100,14 @@ class LiveTranscriber(
     var cached = 0
 
     try {
+      // Before ANY native call. NativeBridge.ensureLoaded System.load()s the downloaded
+      // libonnxruntime.so by absolute path and then libaudionotes.so, and this pass is the first
+      // thing in the process to touch native code: it runs as the recording STARTS, long before
+      // ProcessingEngine would have loaded it. Without this the handles fail with
+      // UnsatisfiedLinkError on every meeting, silently, because the live pass swallows its own
+      // failures by design. It throws if the runtime has not been downloaded yet, which the
+      // catch below turns into "no live pass" rather than a lost recording.
+      NativeBridge.ensureLoaded(ctx)
       vad = NativeBridge.nativeVadOpen(vadModel, RecordingService.SAMPLE_RATE)
       // Same inputs the pipeline gives the factory, so the live pass and the post-hoc pass
       // resolve to the same engine. Today that is always whisper, since v1 is English only.

@@ -52,6 +52,19 @@ def main() -> int:
         print("FAIL: LiveTranscriber never calls putCachedWindow", file=sys.stderr)
         return 1
 
+    # It must load the native core before calling into it. This pass runs as the recording STARTS,
+    # which makes it the first thing in the process to touch native code -- ProcessingEngine has
+    # not run yet, so nothing else has called ensureLoaded. Leaving it out cost a whole device run:
+    # every handle failed with UnsatisfiedLinkError, and because the live pass swallows its own
+    # failures by design, the only symptom was "0 from the live pass" with no error anywhere.
+    if not re.search(r"NativeBridge\.ensureLoaded\s*\(", src):
+        print(
+            "FAIL: LiveTranscriber calls native code without NativeBridge.ensureLoaded first.\n"
+            "It runs before ProcessingEngine, so nothing else has loaded libaudionotes.so yet.",
+            file=sys.stderr,
+        )
+        return 1
+
     print("live transcript: cache-only invariant holds")
     return 0
 
