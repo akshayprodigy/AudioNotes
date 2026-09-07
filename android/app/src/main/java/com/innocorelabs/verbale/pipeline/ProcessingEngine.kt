@@ -126,9 +126,18 @@ class ProcessingEngine(
           // rather than held, so a reprocess of a forced meeting stays forced.
           val forced = db.transcribeForcedAt(meetingId) != null
           val qwen3Dir = ModelCatalog.qwen3DirFor(ctx)
+          // Windows the live pass decoded while this meeting was still being recorded. Whisper
+          // uses one only when the boundaries match EXACTLY, so a cache built against different
+          // VAD spans costs a decode and never a wrong word. Read ONCE, here: a window cached
+          // after this line is not looked at, which is why LiveTranscriber bounds its drain.
+          val (cachedRanges, cachedJson) = db.cachedWindows(meetingId, asrFile.name)
+          if (cachedJson.isNotEmpty()) {
+            Log.i(TAG, "live pass offers ${cachedJson.size} window(s) for $meetingId")
+          }
           val json = NativeBridge.nativeTranscribe(
             audioPath, asrFile.absolutePath, RecordingService.SAMPLE_RATE, starts, ends, 0, language,
             if (qwen3Dir.isDirectory) qwen3Dir.absolutePath else "", forced,
+            cachedRanges, cachedJson,
           )
           stageDone("asr", t0)
 
@@ -172,6 +181,11 @@ class ProcessingEngine(
           db.setLanguage(meetingId, language)
           val count = db.replaceUtterancesJson(meetingId, asr.getJSONArray("utterances").toString())
           db.setStatus(meetingId, "asr")
+          // Scaffolding, not a record. Once utterances exist the cache's only remaining use is
+          // making a Redo faster, and a Redo is explicitly a request to recompute. Keeping it
+          // would leave a second copy of transcript text to honour in retention sweeps, in
+          // exports and in the privacy summary; deleting it is the smaller promise.
+          db.clearCachedWindows(meetingId)
           listener.onStage("asr", 1, 1)
           transcribed = count > 0
           Log.i(TAG, "ASR produced $count utterances for $meetingId")
