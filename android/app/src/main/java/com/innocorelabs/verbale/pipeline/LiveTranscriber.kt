@@ -40,6 +40,20 @@ class LiveTranscriber(
 
     /** Sentinel for "capture is over": every remaining window is final. */
     private const val CAPTURE_ENDED_MS = Long.MAX_VALUE / 2
+
+    /**
+     * How many windows the drain after capture may decode.
+     *
+     * ProcessingService starts the pipeline the moment capture ends, and ProcessingEngine reads
+     * the cache ONCE when ASR begins — so a window cached after that read is ignored. On a phone
+     * that kept up, the drain is the one or two windows the VAD only released at finish(), and
+     * this bound never bites. On a phone that fell behind it is a large backlog, and decoding it
+     * would race the pipeline through the same audio with a second whisper context resident: the
+     * memory and CPU contention DiarBudget exists to prevent, in exchange for rows nothing reads.
+     *
+     * Two windows is a minute of audio, which covers the genuine tail and nothing more.
+     */
+    private const val MAX_DRAIN_WINDOWS = 2
   }
 
   @Volatile private var running = false
@@ -115,7 +129,7 @@ class LiveTranscriber(
       }
       for (v in NativeBridge.nativeVadFinish(vad)) spans.add(v)
       cached += decodeReadyWindows(db, asr, vad, spans, CAPTURE_ENDED_MS, modelKey, threads,
-                                   stopping = true)
+                                   stopping = true, limit = MAX_DRAIN_WINDOWS)
       Log.i(TAG, "cached $cached window(s) for $meetingId")
     } catch (e: InterruptedException) {
       Thread.currentThread().interrupt()
@@ -133,12 +147,13 @@ class LiveTranscriber(
   /**
    * Decode every window that can no longer change and is not already stored. Returns how many.
    *
-   * [stopping] is the drain after capture ended: it must finish the work rather than checking
-   * `running`, which is already false by then.
+   * [stopping] is the drain after capture ended: it must do its work rather than checking the
+   * running flag, which is already false by then. [limit] bounds that drain — see
+   * MAX_DRAIN_WINDOWS for why finishing a large backlog there is worse than dropping it.
    */
   private fun decodeReadyWindows(
     db: AudioDb, asr: Long, vad: Long, spans: ArrayList<Long>, capturedMs: Long,
-    modelKey: String, threads: Int, stopping: Boolean,
+    modelKey: String, threads: Int, stopping: Boolean, limit: Int = Int.MAX_VALUE,
   ): Int {
     val pending = NativeBridge.nativeVadPendingSpanStartMs(vad)
     val chunks = NativeBridge.nativeLiveChunks(spans.toLongArray(), pending, capturedMs)
@@ -150,6 +165,10 @@ class LiveTranscriber(
       val endMs = chunks[i + 1]
       i += 2
       if (db.hasCachedWindow(meetingId, startMs, endMs, modelKey)) continue
+      if (n >= limit) {
+        Log.i(TAG, "drain stopped at $limit window(s); the pipeline decodes the rest")
+        break
+      }
       if (backOff()) break
       val json = NativeBridge.nativeAsrDecodeWindow(
         asr, audioPath, RecordingService.SAMPLE_RATE, startMs, endMs, threads,

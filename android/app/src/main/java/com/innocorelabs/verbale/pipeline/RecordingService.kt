@@ -86,6 +86,13 @@ class RecordingService : Service(), CaptureListener {
   /** True while the system has muted our capture (phone call, or another app took the mic). */
   @Volatile private var silenced = false
 
+  /**
+   * Transcribes while we record, so the wait after "stop" is roughly halved. It only ever READS
+   * the PCM file this service writes, so it cannot interfere with the capture loop above it, and
+   * its own budget check decides whether it runs at all.
+   */
+  private var live: LiveTranscriber? = null
+
   private var audioRecord: AudioRecord? = null
   private var notifTicker: java.util.Timer? = null
   private var audioManager: AudioManager? = null
@@ -342,6 +349,13 @@ class RecordingService : Service(), CaptureListener {
       // Disk-full / mic-loss end the loop from inside; the service still has to tear itself down.
       if (endReason != END_NORMAL) stopSelf()
     }
+
+    // AFTER the capture thread exists, deliberately: this reads the file that thread writes, and
+    // starting it first would only spin on an empty file. A refusal inside start() is silent by
+    // design — nothing about the recording changes either way.
+    meetingId?.let { id ->
+      live = LiveTranscriber(applicationContext, id, path).also { it.start() }
+    }
   }
 
   /**
@@ -436,6 +450,11 @@ class RecordingService : Service(), CaptureListener {
   }
 
   override fun onDestroy() {
+    // Before the capture teardown below. This only sets a flag; the live pass then drains the
+    // tail of the file on its own thread and commits whatever it finishes, so stopping it early
+    // costs nothing and leaves it nothing to race.
+    live?.stop()
+    live = null
     // FIRST, before anything else can call back into us. Registering in onCreate without ever
     // unregistering leaked a dead Service per meeting: each one stayed subscribed to the shared
     // CaptureController and would still respond to a later pause by re-posting its notification —
