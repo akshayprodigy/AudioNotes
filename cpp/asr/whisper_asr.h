@@ -45,6 +45,22 @@ class WhisperAsr : public AsrEngine {
   //
   // No default arguments: they are resolved by STATIC type on a virtual, so the same call would
   // mean different things through AsrEngine& than through WhisperAsr&. Callers pass all six.
+  // Decode ONE window and return its segments with CHUNK-RELATIVE timestamps.
+  //
+  // Public because the live capture path decodes the same windows ahead of time and must produce
+  // byte-identical results; sharing this body is what guarantees that, rather than two call sites
+  // that merely look alike. Returns empty on a decode failure or an unreadable range.
+  // `failed` (optional) distinguishes the three ways this returns nothing: the window held no
+  // audio, the decode FAILED, or the decode succeeded and every segment scrubbed to empty. Only
+  // the middle one is a failure, and conflating them is what once let a silent room and a broken
+  // decoder report the same thing — see AsrRun::allChunksFailed.
+  std::vector<Utterance> decodeWindow(const std::string& pcm_path, int sample_rate,
+                                      int64_t start_ms, int64_t end_ms, int threads,
+                                      bool* failed);
+
+  // Hand this run the windows the live capture pass already decoded. See AsrConfig::chunk_cache.
+  void setChunkCache(std::vector<AsrCachedWindow> cache);
+
   AsrRun transcribe(const std::string& pcm_path,
                     const std::vector<Segment>& segments,
                     int sample_rate,

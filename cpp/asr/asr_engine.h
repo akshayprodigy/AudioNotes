@@ -28,6 +28,14 @@ using AsrProgressFn = std::function<void(int, int)>;
 // would leave a cancel unanswered for minutes.
 using AsrCancelFn = std::function<bool()>;
 
+// A window somebody already decoded — in practice the live pass that ran during the capture.
+// `utterances` carry CHUNK-RELATIVE timestamps, exactly as WhisperAsr::decodeWindow returns them.
+struct AsrCachedWindow {
+  int64_t start_ms;
+  int64_t end_ms;
+  std::vector<Utterance> utterances;
+};
+
 // What a run produced AND what happened during it. The second half is not bookkeeping: a
 // transcribe() that returned a bare vector could not distinguish "the room was silent" from
 // "every chunk failed to decode", and the pipeline reported both as "no speech detected".
@@ -35,6 +43,9 @@ struct AsrRun {
   std::vector<Utterance> utterances;
   int chunks_total = 0;
   int chunks_failed = 0;
+  // Windows served from the cache rather than decoded. Provenance, and the only way to tell
+  // whether the live pass actually helped on a given phone.
+  int chunks_cached = 0;
   bool cancelled = false;
 
   // Provenance. Recorded so a user reporting a garbled meeting can be answered with what actually
@@ -104,6 +115,14 @@ struct AsrConfig {
   // the guarantee at all. This is per-run recovery from a detector that was wrong, which the
   // Galaxy A07 recording proved is possible — English heard as Turkish at p=0.88.
   bool skip_language_refusal = false;
+
+  // Pre-computed windows for THIS recording. Not configuration in spirit, but it travels the same
+  // path, and adding a parameter to AsrEngine::transcribe would change a five-engine interface
+  // for something only whisper consults. Empty for every run that had no live pass.
+  //
+  // A window is used only if its boundaries match EXACTLY, so a cache built against different VAD
+  // spans is inert rather than wrong.
+  std::vector<AsrCachedWindow> chunk_cache;
 };
 
 // The one place a language becomes a class. Never returns null: when nothing usable is available

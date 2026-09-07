@@ -58,6 +58,18 @@ struct WhisperAsr::Impl {
   //: A person overruled the refusal for this meeting. Never a default, never global.
   bool skip_refusal = false;
 
+  //: Windows the live capture pass already decoded. Consulted by EXACT boundaries only: a window
+  //: whose start or end differs is a different window, and serving it would put one stretch of
+  //: audio's words on another's timestamps.
+  std::vector<AsrCachedWindow> cache;
+
+  const std::vector<Utterance>* cachedWindow(int64_t start_ms, int64_t end_ms) const {
+    for (const AsrCachedWindow& w : cache) {
+      if (w.start_ms == start_ms && w.end_ms == end_ms) return &w.utterances;
+    }
+    return nullptr;
+  }
+
   Impl(const std::string& path, const std::string& lang, bool skip)
       : language(lang), model_path(path), skip_refusal(skip) {
 #ifdef HAVE_WHISPER
@@ -170,6 +182,53 @@ std::vector<LanguageHeard> listenForLanguage(whisper_context* ctx, const std::st
 }  // namespace
 #endif
 
+void WhisperAsr::setChunkCache(std::vector<AsrCachedWindow> cache) {
+  impl_->cache = std::move(cache);
+}
+
+std::vector<Utterance> WhisperAsr::decodeWindow(const std::string& pcm_path, int sample_rate,
+                                                int64_t start_ms, int64_t end_ms, int threads,
+                                                bool* failed) {
+  std::vector<Utterance> out;
+  if (failed) *failed = false;
+#ifdef HAVE_WHISPER
+  if (!impl_->ok) return out;
+  std::vector<float> samples = readWindow(pcm_path, sample_rate, start_ms, end_ms);
+  if (samples.empty()) return out;
+
+  whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+  wparams.print_progress = false;
+  wparams.print_realtime = false;
+  wparams.print_special = false;
+  wparams.translate = false;
+  wparams.language = impl_->language.c_str();
+  wparams.n_threads = threads;
+  // Every window is decoded with no carried state. That is what makes a window's decode a pure
+  // function of its audio — and therefore what makes caching it sound.
+  wparams.no_context = true;
+
+  if (whisper_full(impl_->ctx, wparams, samples.data(), static_cast<int>(samples.size())) != 0) {
+    if (failed) *failed = true;
+    return out;
+  }
+
+  const int n = whisper_full_n_segments(impl_->ctx);
+  for (int i = 0; i < n; ++i) {
+    const char* text = whisper_full_get_segment_text(impl_->ctx, i);
+    // whisper t0/t1 are in centiseconds (1/100 s). Kept RELATIVE to the window here; the caller
+    // anchors them. See asr_postprocess.h for the two crashes that scrubbing here prevents, and
+    // why an engine must not leave raw decoded token bytes to a downstream consumer.
+    const int64_t t0 = whisper_full_get_segment_t0(impl_->ctx, i) * 10;
+    const int64_t t1 = whisper_full_get_segment_t1(impl_->ctx, i) * 10;
+    const std::string str = normalizeSegmentText(text ? text : "");
+    if (!str.empty()) out.push_back(Utterance{t0, t1, str});
+  }
+#else
+  (void)pcm_path; (void)sample_rate; (void)start_ms; (void)end_ms; (void)threads;
+#endif
+  return out;
+}
+
 AsrRun WhisperAsr::transcribe(
     const std::string& pcm_path,
     const std::vector<Segment>& segments,
@@ -221,6 +280,9 @@ AsrRun WhisperAsr::transcribe(
   }
 
   ASRLOGI("transcribing %d chunk(s) with %d threads", total, threads);
+  if (!impl_->cache.empty()) {
+    ASRLOGI("%zu window(s) offered by the live pass", impl_->cache.size());
+  }
 
   for (int ci = 0; ci < total; ++ci) {
     // Between chunks is the finest cancellation granularity whisper_full() allows us without an
@@ -231,45 +293,25 @@ AsrRun WhisperAsr::transcribe(
       break;
     }
     const auto& ch = chunks[ci];
-    std::vector<float> samples = readWindow(pcm_path, sample_rate, ch.start_ms, ch.end_ms);
-    if (samples.empty()) {
-      if (progress) progress(ci + 1, total);
-      continue;
-    }
-
-    whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
-    wparams.print_progress = false;
-    wparams.print_realtime = false;
-    wparams.print_special = false;
-    wparams.translate = false;
-    wparams.language = impl_->language.c_str();
-    wparams.n_threads = threads;
-    wparams.no_context = true;
-
-    if (whisper_full(impl_->ctx, wparams, samples.data(), static_cast<int>(samples.size())) != 0) {
-      // Counted, not swallowed. A run where every chunk lands here used to be indistinguishable
-      // from a silent room, and the pipeline called both "no speech detected".
+    // A decode this run does not have to do, because the live capture pass already did it. The
+    // value is the same value, not a similar one: see decodeWindow's no_context note.
+    bool failed = false;
+    const std::vector<Utterance>* cached = impl_->cachedWindow(ch.start_ms, ch.end_ms);
+    const std::vector<Utterance> decoded =
+        cached ? *cached
+               : decodeWindow(pcm_path, sample_rate, ch.start_ms, ch.end_ms, threads, &failed);
+    if (cached) ++run.chunks_cached;
+    if (failed) {
+      // Counted, not swallowed — and counted ONLY here. A window that held no audio, or that
+      // decoded successfully to nothing, is silence and not a failure. A run where every chunk
+      // lands here used to be indistinguishable from a silent room.
       ++run.chunks_failed;
       if (progress) progress(ci + 1, total);
       continue;
     }
-
-    const int n = whisper_full_n_segments(impl_->ctx);
-    for (int i = 0; i < n; ++i) {
-      const char* text = whisper_full_get_segment_text(impl_->ctx, i);
-      // whisper t0/t1 are in centiseconds (1/100 s); re-anchor to the chunk's global start.
-      const int64_t t0 = whisper_full_get_segment_t0(impl_->ctx, i) * 10;
-      const int64_t t1 = whisper_full_get_segment_t1(impl_->ctx, i) * 10;
-      // whisper returns raw decoded token bytes. A character split across a chunk boundary
-      // arrives as a fragment, and that fragment terminates every consumer downstream (JSON
-      // dump throws, JNI NewStringUTF aborts the VM) — found on a Hindi/English meeting, after
-      // the whole recording had already been processed. Scrub once, here at the source.
-      // Every engine's output goes through the same door — see asr_postprocess.h for the two
-      // crashes that door exists to stop, and why an engine must not do this itself. The minutes
-      // are extracted from this text and an action's item hash is computed over it, so cleaning
-      // it downstream would leave two strings both claiming to be the same utterance.
-      const std::string s = normalizeSegmentText(text ? text : "");
-      if (!s.empty()) run.utterances.push_back(Utterance{ch.start_ms + t0, ch.start_ms + t1, s});
+    for (const Utterance& u : decoded) {
+      run.utterances.push_back(
+          Utterance{ch.start_ms + u.start_ms, ch.start_ms + u.end_ms, u.text});
     }
     if (progress) progress(ci + 1, total);
   }
