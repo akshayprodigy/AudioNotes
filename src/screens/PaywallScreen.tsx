@@ -1,5 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, NativeEventEmitter, NativeModules, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  Alert,
+  NativeEventEmitter,
+  NativeModules,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -16,7 +24,14 @@ import {
   type Entitlement,
 } from '../billing/trial';
 import SignInForm from '../billing/SignInForm';
-import { buyWithPlay, playAvailable, playPrice } from '../billing/subscription';
+import {
+  buyWithPlay,
+  playAvailable,
+  playPlans,
+  playPrice,
+  referencePrice,
+} from '../billing/subscription';
+import type { PlayPlan } from '../native/NativeBilling';
 import { radius, s, sv, useTheme, type Colors } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Paywall'>;
@@ -75,6 +90,11 @@ export default function PaywallScreen({ navigation }: Props) {
   const [ent, setEnt] = useState<Entitlement | null>(null);
   const [playCan, setPlayCan] = useState(false);
   const [playCost, setPlayCost] = useState<string | null>(null);
+  // Every base plan Play offers, and which one is selected. Annual is preselected when it exists:
+  // it is the better deal for the buyer as well as for us, and the saving is stated rather than
+  // implied. Selection is by basePlanId — never by position, since ordering is Play's to choose.
+  const [plans, setPlans] = useState<PlayPlan[]>([]);
+  const [chosenPlan, setChosenPlan] = useState<string | null>(null);
   // Whether the price simply has not arrived yet. Distinct from "Play answered and had none":
   // a spinner-shaped silence and a genuine failure deserve different sentences.
   const [priceAsked, setPriceAsked] = useState(false);
@@ -103,7 +123,18 @@ export default function PaywallScreen({ navigation }: Props) {
     playAvailable()
       .then(async can => {
         setPlayCan(can);
-        if (can) setPlayCost(await playPrice());
+        if (!can) return;
+        const list = await playPlans();
+        setPlans(list);
+        if (list.length > 0) {
+          const annual = list.find(pl => pl.period === 'P1Y');
+          const pick = annual ?? list[0];
+          setChosenPlan(pick.basePlanId);
+          setPlayCost(pick.price);
+        } else {
+          // Older builds, or a Play answer we could not read as a plan list.
+          setPlayCost(await playPrice());
+        }
       })
       .finally(() => setPriceAsked(true));
   }, []);
@@ -167,7 +198,7 @@ export default function PaywallScreen({ navigation }: Props) {
   const onBuy = useCallback(async () => {
     setBusy('buy');
     try {
-      const result = await buyWithPlay();
+      const result = await buyWithPlay(chosenPlan);
       if (result.paid) {
         await load();
         Alert.alert('You are on Pro', 'The written summary and the narrated minutes are on.');
@@ -179,7 +210,7 @@ export default function PaywallScreen({ navigation }: Props) {
     } finally {
       setBusy(null);
     }
-  }, [load]);
+  }, [chosenPlan, load]);
 
   const trial = ent?.trial;
   const bought = Boolean(ent?.licence?.paid);
@@ -292,6 +323,47 @@ export default function PaywallScreen({ navigation }: Props) {
 
               {playCan ? (
                 <>
+                  {plans.length > 1 ? (
+                    <View style={st.plans}>
+                      {plans.map(pl => {
+                        const ref = referencePrice(pl, plans);
+                        const on = pl.basePlanId === chosenPlan;
+                        return (
+                          <Pressable
+                            key={pl.basePlanId}
+                            accessibilityRole="radio"
+                            accessibilityState={{ selected: on }}
+                            accessibilityLabel={
+                              `${pl.period === 'P1Y' ? 'Yearly' : 'Monthly'}, ${pl.price ?? ''}` +
+                              (ref ? `, was ${ref.was}, saving ${ref.savedPercent} percent` : '')
+                            }
+                            onPress={() => {
+                              setChosenPlan(pl.basePlanId);
+                              setPlayCost(pl.price);
+                            }}
+                            style={[st.plan, on && st.planOn]}>
+                            <Txt variant="chip" color={on ? colors.ink : colors.inkFaint}>
+                              {pl.period === 'P1Y' ? 'Yearly' : 'Monthly'}
+                            </Txt>
+                            <Txt variant="body" color={colors.ink}>
+                              {pl.price ?? '—'}
+                            </Txt>
+                            {/* Struck through ONLY from referencePrice, which draws on Play's own
+                                full price or on twelve times the monthly rate. Never a constant:
+                                a "was" nobody was charged is a fabricated anchor. */}
+                            {ref ? (
+                              <Txt variant="chip" color={colors.inkFaint}>
+                                <Txt variant="chip" color={colors.inkFaint} style={st.wasPrice}>
+                                  {ref.was}
+                                </Txt>
+                                {ref.savedPercent > 0 ? `  save ${ref.savedPercent}%` : ''}
+                              </Txt>
+                            ) : null}
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  ) : null}
                   <View style={trial?.status === 'unstarted' ? st.secondary : undefined}>
                     {trial?.status === 'unstarted' ? (
                       <SoftButton
@@ -395,7 +467,29 @@ function makeStyles(c: Colors) {
     },
     dl: { marginTop: s(16), gap: s(8) },
     cta: { marginTop: s(20), gap: s(10) },
-    secondary: { flexDirection: 'row' },
+    plans: {
+    flexDirection: 'row',
+    gap: s(8),
+    marginBottom: s(12),
+  },
+  plan: {
+    flex: 1,
+    alignItems: 'center',
+    gap: s(2),
+    paddingVertical: s(10),
+    paddingHorizontal: s(8),
+    borderRadius: s(12),
+    borderWidth: 1,
+    borderColor: c.line,
+  },
+  planOn: {
+    borderColor: c.ink,
+    borderWidth: 2,
+  },
+  wasPrice: {
+    textDecorationLine: 'line-through',
+  },
+  secondary: { flexDirection: 'row' },
     note: { marginTop: s(2) },
     signIn: { marginTop: s(18) },
   });
