@@ -179,6 +179,9 @@ audionotes_add_test(test_vad_span_builder
   ${CORE}/tests/test_vad_span_builder.cpp
   ${CORE}/vad/vad_span_builder.cpp)
 
+# The chunk-cache lookup rule: exact boundaries only, and an empty result is still a result.
+audionotes_add_test(test_asr_cache ${CORE}/tests/test_asr_cache.cpp)
+
 # The arithmetic that puts diarization results back on the real timeline after the silence has
 # been cut out of them. Deliberately free of sherpa and ONNX so it builds and runs anywhere.
 audionotes_add_test(test_span_map
