@@ -32,9 +32,15 @@ class LiveBudgetTest {
   fun backs_off_when_hot() {
     assertFalse(LiveBudget.shouldBackOff(PowerManager.THERMAL_STATUS_NONE, 80, charging = false))
     assertFalse(LiveBudget.shouldBackOff(PowerManager.THERMAL_STATUS_LIGHT, 80, charging = false))
-    // MODERATE is the first status at which Android is actively throttling.
-    assertTrue(LiveBudget.shouldBackOff(PowerManager.THERMAL_STATUS_MODERATE, 80, charging = false))
+    // MODERATE must NOT back off, and this assertion is the whole finding. A Pixel 7 Pro on a
+    // desk, plugged in at 100% and 39.9 C after half an hour of transcribing, reads MODERATE —
+    // an ordinary state. Backing off there switched the feature off for a whole recording, and
+    // for exactly the case it exists to serve, since people plug in for long meetings.
+    assertFalse(LiveBudget.shouldBackOff(PowerManager.THERMAL_STATUS_MODERATE, 80, charging = false))
+    // SEVERE is where Android says the user experience is largely impacted. A background
+    // optimisation yields there.
     assertTrue(LiveBudget.shouldBackOff(PowerManager.THERMAL_STATUS_SEVERE, 80, charging = false))
+    assertTrue(LiveBudget.shouldBackOff(PowerManager.THERMAL_STATUS_CRITICAL, 80, charging = false))
   }
 
   @Test

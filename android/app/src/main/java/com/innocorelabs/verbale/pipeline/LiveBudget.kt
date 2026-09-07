@@ -35,14 +35,27 @@ object LiveBudget {
     availableBytes > 0 && WHISPER_RESIDENT_BYTES <= availableBytes / CLAIM_DENOMINATOR
 
   /**
-   * MODERATE is the first status at which Android is actively throttling, and a phone in someone's
-   * pocket recording a ninety-minute meeting is exactly where that matters.
+   * SEVERE, not MODERATE, and the difference was measured rather than reasoned.
+   *
+   * The first version backed off at MODERATE, which Android defines as "moderate throttling, UX
+   * not largely impacted". On a Pixel 7 Pro sitting on a desk at 39.9 C, plugged in and at 100%
+   * after half an hour of transcribing, the status reads MODERATE — an entirely ordinary state.
+   * The live pass backed off for a whole five-minute recording and cached nothing. People plug in
+   * for long meetings, which is exactly when this feature is worth having, so a threshold that
+   * trips there is a threshold that switches the feature off for the case it was built for.
+   *
+   * SEVERE is where Android says the user experience is "largely impacted", and that is the right
+   * place for a background optimisation to yield. This work already runs at MIN_PRIORITY on one
+   * fewer thread than the pipeline uses.
+   *
+   * ONE phone, ONE condition. The backoff is logged every run so the next phone can contradict
+   * this the way this one contradicted MODERATE.
    *
    * A low battery stops the pass unless the phone is charging, because on a charger the number is
    * going up. Heat stops it either way — charging is part of why it is hot.
    */
   fun shouldBackOff(thermalStatus: Int, batteryPercent: Int, charging: Boolean): Boolean {
-    if (thermalStatus >= PowerManager.THERMAL_STATUS_MODERATE) return true
+    if (thermalStatus >= PowerManager.THERMAL_STATUS_SEVERE) return true
     if (!charging && batteryPercent in 0 until LOW_BATTERY_PERCENT) return true
     return false
   }

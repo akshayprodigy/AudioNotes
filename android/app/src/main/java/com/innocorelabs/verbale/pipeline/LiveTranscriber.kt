@@ -121,8 +121,27 @@ class LiveTranscriber(
       }
       Log.i(TAG, "live pass started for $meetingId with $threads thread(s)")
 
+      var backedOff = false
       while (running) {
-        if (backOff()) { Thread.sleep(BACKOFF_SLEEP_MS); continue }
+        if (backOff()) {
+          // Logged on the TRANSITION, not every poll. Without this a run that cached nothing
+          // said only "cached 0 window(s)", and finding out why meant dumpsys on a phone that
+          // had already cooled down. The thresholds come from one device; this line is how the
+          // next one argues with them.
+          if (!backedOff) {
+            backedOff = true
+            Log.i(TAG, "backing off: ${LiveBudget.describe(
+              LiveBudget.availableBytes(ctx), LiveBudget.thermalStatus(ctx),
+              LiveBudget.batteryPercent(ctx), LiveBudget.isCharging(ctx),
+            )}")
+          }
+          Thread.sleep(BACKOFF_SLEEP_MS)
+          continue
+        }
+        if (backedOff) {
+          backedOff = false
+          Log.i(TAG, "resuming: thermal=${LiveBudget.thermalStatus(ctx)}")
+        }
 
         val grown = File(audioPath).length() - tailBytes
         if (grown < FEED_MS * RecordingService.BYTES_PER_MS) { Thread.sleep(IDLE_SLEEP_MS); continue }
