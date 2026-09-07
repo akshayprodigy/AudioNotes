@@ -155,7 +155,56 @@ class BillingModule(private val ctx: ReactApplicationContext) :
     }
   }
 
-  /** The subscription's price, already localised by Google. Null when it cannot be read. */
+  /**
+   * Every base plan Play offers for this subscription, already localised by Google.
+   *
+   * Returns a LIST, not a price. The subscription now has two base plans — monthly and annual —
+   * and the old shape could only describe one, which meant the caller could not tell the user
+   * what the choice was, let alone what the annual one saved.
+   *
+   * Each entry carries:
+   *   basePlanId    the id set in Play Console; how purchase() is told which one was chosen
+   *   price         the formatted price of the phase the user will actually be charged
+   *   priceMicros   the same number, for arithmetic the UI must not do on a formatted string
+   *   period        ISO-8601 ("P1M", "P1Y")
+   *   fullPrice     the price BEFORE an introductory or promotional phase, when Play reports
+   *                 more than one phase — otherwise null
+   *
+   * `fullPrice` is the only honest source for a struck-through price. It exists when Play itself
+   * says the user is being charged less than the standing rate, and it is null the rest of the
+   * time. A reference price the seller never charged is a fabricated anchor, which the EU
+   * Omnibus Directive and India's dark-pattern rules both forbid and Play rejects apps for — so
+   * it is not something this layer can be asked to invent.
+   */
+  @ReactMethod
+  fun plans(promise: Promise) {
+    productDetails({ promise.resolve(Arguments.createArray()) }) { details ->
+      val out = Arguments.createArray()
+      for (offer in details.subscriptionOfferDetails.orEmpty()) {
+        val phases = offer.pricingPhases.pricingPhaseList
+        if (phases.isEmpty()) continue
+        // The LAST phase is what the user keeps paying; an introductory phase comes first and
+        // ends. Charging is what the price must describe, so read the phase they land on and
+        // treat anything before it as the discount, not the price.
+        val charged = phases.last()
+        val intro = if (phases.size > 1) phases.first() else null
+        out.pushMap(
+          Arguments.createMap().apply {
+            putString("basePlanId", offer.basePlanId)
+            // An introductory phase IS the price for now, so show it and strike the standing one.
+            putString("price", (intro ?: charged).formattedPrice)
+            putDouble("priceMicros", ((intro ?: charged).priceAmountMicros).toDouble())
+            putString("period", charged.billingPeriod)
+            putString("fullPrice", if (intro != null) charged.formattedPrice else null)
+            putString("title", details.title)
+          },
+        )
+      }
+      promise.resolve(out)
+    }
+  }
+
+  /** The first base plan's price, kept so an older JS bundle does not break. Prefer [plans]. */
   @ReactMethod
   fun price(promise: Promise) {
     productDetails({ promise.resolve(null) }) { details ->
@@ -181,18 +230,36 @@ class BillingModule(private val ctx: ReactApplicationContext) :
    * that can turn it into entitlement.
    */
   @ReactMethod
-  fun purchase(promise: Promise) {
+  fun purchase(basePlanId: String?, promise: Promise) {
     val activity = ctx.currentActivity
     if (activity == null) {
       promise.reject("no_activity", "The app is not in the foreground.")
       return
     }
     productDetails({ promise.reject("billing_unavailable", it) }) { details ->
-      val offerToken = details.subscriptionOfferDetails?.firstOrNull()?.offerToken
-      if (offerToken == null) {
-        promise.reject("no_offer", "That subscription has no offer configured in Play Console.")
+      val offers = details.subscriptionOfferDetails.orEmpty()
+      // Named, not positional. With one base plan firstOrNull() was harmless; with monthly AND
+      // annual it silently sells whichever Play happened to list first, so a tap on "monthly"
+      // could charge a year up front. A caller that does not say which plan it means is refused
+      // rather than guessed at.
+      val offer = when {
+        basePlanId != null -> offers.firstOrNull { it.basePlanId == basePlanId }
+        offers.size == 1 -> offers.first()
+        else -> null
+      }
+      if (offer == null) {
+        promise.reject(
+          "no_offer",
+          if (basePlanId == null && offers.size > 1) {
+            "This subscription has ${offers.size} base plans; say which one to buy."
+          } else {
+            "No base plan '" + (basePlanId ?: "") + "' is configured in Play Console. " +
+              "Available: " + offers.joinToString(", ") { it.basePlanId }
+          },
+        )
         return@productDetails
       }
+      val offerToken = offer.offerToken
       val flow = BillingFlowParams.newBuilder()
         .setProductDetailsParamsList(
           listOf(
