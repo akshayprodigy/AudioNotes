@@ -81,6 +81,8 @@ int main(int argc, char** argv) {
                  "usage: %s <whisper-model.bin> <input-16k-mono.wav> [--vad silero_vad.onnx]\n"
                  "          [--diar-seg segmentation.onnx --diar-emb embedding.onnx] "
                  "[--speakers N] [--diar-threshold F] [--language en|hi|auto]\n"
+                 "          [--diar-window-min M]   0 = default, negative = no windowing\n"
+                 "          [--diar-speaker-threshold F]  cross-window speaker merge distance\n"
                  "          [--asr-engine whisper|qwen3|parakeet|moonshine]\n"
                  "          [--qwen3-model DIR] [--sherpa-model DIR] [--force-language]\n"
                  "          [--llm model.gguf] [--json out.json]\n",
@@ -93,6 +95,13 @@ int main(int argc, char** argv) {
   std::string vad_model, diar_seg, diar_emb, llm_model, json_out;
   int num_speakers = 0;  // 0 = auto (threshold clustering), matching the Android pipeline
   float diar_threshold = 1.0f;
+  // Minutes of speech to diarize at once. The A/B against un-windowed diarization is this flag
+  // and not a rebuild, because a comparison you have to recompile for is one nobody re-runs.
+  double diar_window_min = 0.0;
+  // The cross-window speaker merge distance, which is a different quantity from --diar-threshold
+  // and has to be swept separately: sherpa clusters per-segment embeddings inside a window, while
+  // this compares per-speaker averages, and averaging shortens every distance it takes part in.
+  double diar_speaker_threshold = 0.0;
   std::string language = "en";
   std::string asr_engine, qwen3_model, sherpa_model;
   bool force_language = false;
@@ -102,6 +111,8 @@ int main(int argc, char** argv) {
     else if (std::strcmp(argv[i], "--diar-emb") == 0 && i + 1 < argc) diar_emb = argv[++i];
     else if (std::strcmp(argv[i], "--speakers") == 0 && i + 1 < argc) num_speakers = std::atoi(argv[++i]);
     else if (std::strcmp(argv[i], "--diar-threshold") == 0 && i + 1 < argc) diar_threshold = std::atof(argv[++i]);
+    else if (std::strcmp(argv[i], "--diar-window-min") == 0 && i + 1 < argc) diar_window_min = std::atof(argv[++i]);
+    else if (std::strcmp(argv[i], "--diar-speaker-threshold") == 0 && i + 1 < argc) diar_speaker_threshold = std::atof(argv[++i]);
     else if (std::strcmp(argv[i], "--language") == 0 && i + 1 < argc) language = argv[++i];
     else if (std::strcmp(argv[i], "--asr-engine") == 0 && i + 1 < argc) asr_engine = argv[++i];
     else if (std::strcmp(argv[i], "--qwen3-model") == 0 && i + 1 < argc) qwen3_model = argv[++i];
@@ -132,6 +143,8 @@ int main(int argc, char** argv) {
   cfg.llm_model = llm_model;
   cfg.num_speakers = num_speakers;
   cfg.diar_threshold = diar_threshold;
+  cfg.diar_window_ms = static_cast<int64_t>(diar_window_min * 60000.0);
+  cfg.diar_speaker_threshold = static_cast<float>(diar_speaker_threshold);
   cfg.language = language;
   cfg.asr_engine = asr_engine;
   cfg.qwen3_model_dir = qwen3_model;

@@ -45,6 +45,15 @@ export interface Meeting {
   transcribeForcedAt?: number | null;
   /** What was heard before they overruled it. Null when detection never named a language. */
   forcedFromLanguage?: string | null;
+  /**
+   * Why this meeting has no speaker labels, when the reason was the phone and not the recording.
+   *
+   * Written by the pipeline at the moment it decided, because the decision was made against the
+   * memory free at the time: re-deriving it when the screen opens would answer a different
+   * question on a phone that has since been rebooted. Null is the ordinary case — it covers both
+   * "diarization ran" and "there was nobody to separate".
+   */
+  diarSkippedReason?: string | null;
 }
 
 export interface Utterance {

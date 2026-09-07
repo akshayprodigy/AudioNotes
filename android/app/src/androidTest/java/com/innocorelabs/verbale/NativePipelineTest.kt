@@ -227,7 +227,10 @@ class NativePipelineTest {
     // concatenated-speech one sherpa sees. Passing them is the whole point: whole-file
     // diarization read a 90-minute meeting into a 346 MB float vector and needed 2.55 GB.
     val tri = NativeBridge.nativeDiarize(
-      pcm.absolutePath, seg!!.absolutePath, emb!!.absolutePath, 16000, /*numSpeakers=*/0, spans,
+      // The shipped window (0 = kDiarWindowMs), because this test gates what the app does. The
+      // fixture is far shorter than one window, so this exercises the single-window path — which
+      // is the one most meetings take.
+      pcm.absolutePath, seg!!.absolutePath, emb!!.absolutePath, 16000, /*numSpeakers=*/0, spans, 0L,
     )
     val elapsed = System.currentTimeMillis() - started
 

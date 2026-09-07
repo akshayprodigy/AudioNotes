@@ -249,7 +249,7 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmFree(
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeDiarize(
     JNIEnv* env, jobject /*thiz*/, jstring jPcmPath, jstring jSegModel, jstring jEmbModel,
-    jint sampleRate, jint numSpeakers, jlongArray jSpans) {
+    jint sampleRate, jint numSpeakers, jlongArray jSpans, jlong windowMs) {
   const std::string pcm = jstr(env, jPcmPath);
   const std::string seg = jstr(env, jSegModel);
   const std::string emb = jstr(env, jEmbModel);
@@ -272,7 +272,10 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeDiarize(
   std::vector<jlong> flat;  // [start_ms, end_ms, speaker, ...]
   try {
     audionotes::Diarizer diar(seg, emb, static_cast<int>(sampleRate), static_cast<int>(numSpeakers));
-    auto segments = diar.process(pcm, spans);
+    // The window is the caller's, not ours: only Kotlin can see how much memory this phone has
+    // free right now, and that is what decides whether a long meeting is diarized in pieces,
+    // diarized in one go, or skipped entirely. See DiarBudget.
+    auto segments = diar.process(pcm, spans, static_cast<int64_t>(windowMs));
     flat.reserve(segments.size() * 3);
     for (const auto& s : segments) {
       flat.push_back(static_cast<jlong>(s.start_ms));

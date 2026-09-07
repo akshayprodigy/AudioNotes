@@ -340,6 +340,17 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     db.execSQL("UPDATE meetings SET announced_at=? WHERE id=?", arrayOf<Any?>(atMs, id))
   }
 
+  /**
+   * Record that diarization was skipped, and why, or clear it when a later run succeeds.
+   *
+   * Cleared on every attempt rather than only on success: a meeting reprocessed on a phone with
+   * memory free must not keep telling the user it ran out, and a stale explanation is worse than
+   * none because it is specific.
+   */
+  fun setDiarSkippedReason(id: String, reason: String?) {
+    db.execSQL("UPDATE meetings SET diar_skipped_reason=? WHERE id=?", arrayOf<Any?>(reason, id))
+  }
+
   /** Null when this meeting carries no announcement. */
   fun announcedAt(id: String): Long? {
     db.rawQuery("SELECT announced_at FROM meetings WHERE id=?", arrayOf(id)).use { c ->
@@ -1000,6 +1011,11 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       // on confirmed completion — a meeting where playback was silenced or failed carries no
       // stamp, because the room did not hear it and the recording is not evidence of anything.
       Triple("meetings", "announced_at", "INTEGER"),
+      // Why this meeting has no speaker labels, when the reason was the phone rather than the
+      // recording. Stored rather than re-derived: the decision was made against the memory free
+      // at the time, and asking again a day later would answer a different question. Null is the
+      // normal case and covers both "diarization ran" and "there was nothing to separate".
+      Triple("meetings", "diar_skipped_reason", "TEXT"),
     )
 
     /** The schema, for a unit test that must not open an encrypted database. */

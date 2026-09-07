@@ -1,10 +1,11 @@
-// Mapping diarization results back from concatenated-speech time to the real recording.
+// Mapping diarization results back from concatenated-speech time to the real recording, and
+// cutting that recording into windows small enough to diarize at all.
 //
-// Diarization used to read the WHOLE recording — silence included — into one float vector:
-// 346 MB of input for a 90-minute meeting, before sherpa's own copies. Measured on a Pixel 7 Pro
-// it was still running after 47 minutes at 2.55 GB and had to be killed. ASR has always been
-// restricted to the VAD spans; this is diarization catching up, and this file is the arithmetic
-// that makes it safe.
+// Two separate jobs, and the reason they are separate is worth writing down. Diarizing the VAD
+// spans instead of the whole file was built as the memory fix and is not one: padded speech covers
+// 62-87% of a real meeting (eval/speech_fraction.py), so it saves 13-38% — a constant factor on a
+// cost that still grows with the length of the meeting. What bounds the memory is windowSpans(),
+// which caps how much speech is in flight at once no matter how long the recording runs.
 //
 // Every timestamp the app shows, every utterance attribution, and every export depends on this
 // translation being exact. An off-by-one here silently misattributes speech, which is the one
@@ -150,6 +151,91 @@ int main() {
     // Unsorted input must not produce a broken buffer: the whole mapping assumes sorted spans.
     const auto out = padAndMerge({{60000, 62000}, {10000, 12000}}, 100, 70000);
     CHECK(out.size() == 2 && out[0].start_ms < out[1].start_ms, "sorted on the way out");
+  }
+
+  // ---- windowing, which is what actually bounds the memory ----
+  //
+  // Whole-recording diarization of a 90-minute meeting was still running after 47 minutes at
+  // 2.55 GB on a Pixel 7 Pro. Windowing makes the peak depend on the window and not on the
+  // meeting, so the same code path serves a ten-minute standup and a three-hour board meeting.
+  {
+    using audionotes::windowSpans;
+    // Three 4-second spans into a 10-second window: two fit, the third starts a new one. Nothing
+    // is cut, because nothing needed to be.
+    const auto w = windowSpans({{0, 4000}, {10000, 14000}, {20000, 24000}}, 10000);
+    CHECK(w.size() == 2, "expected 2 windows, got %zu", w.size());
+    if (w.size() == 2) {
+      CHECK(w[0].size() == 2, "first window holds 2 spans, got %zu", w[0].size());
+      CHECK(w[1].size() == 1, "second window holds 1 span, got %zu", w[1].size());
+      CHECK(w[0][0].start_ms == 0 && w[0][1].start_ms == 10000, "spans kept in order");
+      CHECK(w[1][0].start_ms == 20000 && w[1][0].end_ms == 24000, "third span whole and unmoved");
+    }
+  }
+  {
+    using audionotes::windowSpans;
+    // A span that fits in a window but not in what is LEFT of this one goes to the next window
+    // whole. Topping the window up by cutting it would buy 2 seconds of buffer and cost
+    // segmentation a boundary, which is the trade this whole file exists to avoid.
+    const auto w = windowSpans({{0, 8000}, {10000, 19000}}, 10000);
+    CHECK(w.size() == 2, "expected 2 windows, got %zu", w.size());
+    if (w.size() == 2) {
+      CHECK(w[0].size() == 1 && w[0][0].end_ms == 8000, "first window keeps its 8s alone");
+      CHECK(w[1].size() == 1 && w[1][0].start_ms == 10000 && w[1][0].end_ms == 19000,
+            "9s span moved whole rather than cut");
+    }
+  }
+  {
+    using audionotes::windowSpans;
+    // A span longer than any window HAS to be cut, or the bound is not a bound. An hour of
+    // continuous speech with no VAD gap — a lecture, or a room too noisy to drop out — is the
+    // case that would otherwise put the 2.55 GB straight back.
+    const auto w = windowSpans({{0, 25000}}, 10000);
+    CHECK(w.size() == 3, "expected 3 windows, got %zu", w.size());
+    if (w.size() == 3) {
+      CHECK(w[0][0].start_ms == 0 && w[0][0].end_ms == 10000, "first cut at the window");
+      CHECK(w[1][0].start_ms == 10000 && w[1][0].end_ms == 20000, "second cut abuts the first");
+      CHECK(w[2][0].start_ms == 20000 && w[2][0].end_ms == 25000, "remainder, uncut");
+    }
+  }
+  {
+    using audionotes::windowSpans;
+    // No window is ever empty, and no piece is ever zero-length: an empty window would make
+    // sherpa segment nothing and a zero-length piece would seek and read nothing, both of which
+    // are silent wastes rather than errors and so would never be noticed.
+    for (const auto& w : windowSpans({{0, 10000}, {20000, 30000}}, 10000)) {
+      CHECK(!w.empty(), "no empty windows");
+      for (const auto& s : w) CHECK(s.end_ms > s.start_ms, "no zero-length pieces");
+    }
+    CHECK(windowSpans({}, 10000).empty(), "no spans in, no windows out");
+  }
+  {
+    using audionotes::windowSpans;
+    // Windowing off is one window holding everything — the un-windowed path, kept reachable so
+    // the A/B against it is a flag and not a branch.
+    const std::vector<Span> all = {{0, 4000}, {10000, 99000}};
+    const auto w = windowSpans(all, 0);
+    CHECK(w.size() == 1 && w[0].size() == 2, "window_ms <= 0 means one window");
+  }
+  {
+    using audionotes::windowSpans;
+    // The invariant that matters: no window holds more speech than the budget, and no audio is
+    // lost or duplicated on the way through. Checked over a shape that exercises both the
+    // move-whole and the cut branch.
+    const std::vector<Span> in = {{0, 3000}, {5000, 30000}, {40000, 41000}, {50000, 58000}};
+    const auto w = windowSpans(in, 10000);
+    int64_t seen = 0;
+    int64_t previous_end = -1;
+    for (const auto& win : w) {
+      CHECK(audionotes::totalSpeechMs(win) <= 10000, "window over budget: %lld ms",
+            (long long)audionotes::totalSpeechMs(win));
+      seen += audionotes::totalSpeechMs(win);
+      for (const auto& s : win) {
+        CHECK(s.start_ms >= previous_end, "windows must stay in order and never overlap");
+        previous_end = s.end_ms;
+      }
+    }
+    CHECK(seen == audionotes::totalSpeechMs(in), "windowing lost or duplicated speech: %lld vs %lld",
+          (long long)seen, (long long)audionotes::totalSpeechMs(in));
   }
 
   if (failures == 0) std::printf("test_span_map: all checks passed\n");

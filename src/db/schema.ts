@@ -20,7 +20,8 @@ export const SCHEMA = [
      summary_line TEXT,            -- one-line description written by the LLM; NULL until narrated
      transcribe_forced_at INTEGER, -- set when a person overruled the "not English" refusal
      forced_from_language TEXT,    -- what was heard before they did; the banner's claim
-     announced_at INTEGER          -- when the spoken disclosure finished, while the mic was live
+     announced_at INTEGER,         -- when the spoken disclosure finished, while the mic was live
+     diar_skipped_reason TEXT      -- why this meeting has no speakers, when the cause was memory
    );`,
   `CREATE TABLE IF NOT EXISTS utterances (
      id TEXT PRIMARY KEY,

@@ -190,26 +190,57 @@ class ProcessingEngine(
         val segModel = ModelCatalog.fileFor(ctx, "diar-seg")
         val embModel = ModelCatalog.fileFor(ctx, "diar-emb")
         if (transcribed && segModel != null && segModel.exists() && embModel != null && embModel.exists()) {
-          listener.onStage("diarize", 0, 1)
-          val t0 = System.currentTimeMillis()
-          // Hand VAD's spans over rather than the whole recording. Diarizing the silence too is
-          // what made a 90-minute meeting impossible on a phone — 2.55 GB and still going after
-          // 47 minutes. `spans` is the same flat array ASR already works from.
-          val tri = NativeBridge.nativeDiarize(
-            audioPath, segModel.absolutePath, embModel.absolutePath, RecordingService.SAMPLE_RATE, 0,
-            spans,
+          // Can this phone afford to work out who spoke? This is the only stage whose working set
+          // follows the LENGTH of the meeting, and an hour to ninety minutes is ordinary here —
+          // rooms full of people run over in a way calls do not. Measured on a 12 GB Pixel, a
+          // 90-minute recording reached 2.55 GB; a 4 GB phone would not have survived it.
+          //
+          // The answer is whole-meeting or nothing. Diarizing in windows was built and measured
+          // and costs 6 DER points, because each window has to guess which of its speakers were in
+          // the last one — and speaker labels that are confidently wrong are worse than none.
+          val freeBytes = DiarBudget.availableBytes(ctx)
+          val speechMs = DiarBudget.paddedSpeechUpperBoundMs(
+            spans, File(audioPath).length() / 2 * 1000 / RecordingService.SAMPLE_RATE,
           )
-          stageDone("diarize", t0)
-          val m = tri.size / 3
-          if (m > 0) {
-            val ds = LongArray(m) { tri[it * 3] }
-            val de = LongArray(m) { tri[it * 3 + 1] }
-            val sp = IntArray(m) { tri[it * 3 + 2].toInt() }
-            db.assignSpeakers(meetingId, ds, de, sp)
-            db.setStatus(meetingId, "diarized")
+          val windowMs = DiarBudget.windowMsFor(freeBytes, speechMs)
+          if (windowMs == DiarBudget.SKIP) {
+            // Best-effort, and this is what that means when it is not free. Losing speaker labels
+            // costs the user a Redo on a less busy phone; being killed mid-diarization costs them
+            // the meeting, because minutes and narration both come after this.
+            db.setDiarSkippedReason(meetingId, DiarBudget.SKIPPED_FOR_MEMORY)
+            // The stage is over, so say so. Without this the progress screen sits on "Speakers
+            // separated" for the whole of minutes and narration, counting down an estimate for
+            // work that will never run. The meeting's status stays where it is on purpose — it
+            // records what happened, and diarization did not.
+            listener.onStage("diarize", 1, 1)
+            // The two numbers that decide this are the phone's, not ours, so a field report is
+            // only diagnosable if they are in the log next to the decision.
+            Log.w(TAG, "Diarization skipped for $meetingId: ${DiarBudget.describe(freeBytes, speechMs)}")
+          } else {
+            listener.onStage("diarize", 0, 1)
+            val t0 = System.currentTimeMillis()
+            // Hand VAD's spans over rather than the whole recording: worth 13-38% of the audio on
+            // a real meeting and measurably better for attribution (mean DER 20.4 -> 20.0). It is
+            // NOT a bound — most of a meeting is speech — which is what the check above is for.
+            // `spans` is the same flat array ASR already works from.
+            val tri = NativeBridge.nativeDiarize(
+              audioPath, segModel.absolutePath, embModel.absolutePath, RecordingService.SAMPLE_RATE, 0,
+              spans, windowMs,
+            )
+            stageDone("diarize", t0)
+            val m = tri.size / 3
+            if (m > 0) {
+              val ds = LongArray(m) { tri[it * 3] }
+              val de = LongArray(m) { tri[it * 3 + 1] }
+              val sp = IntArray(m) { tri[it * 3 + 2].toInt() }
+              db.assignSpeakers(meetingId, ds, de, sp)
+              db.setStatus(meetingId, "diarized")
+            }
+            // A meeting reprocessed on a phone with room must stop saying it ran out of it.
+            db.setDiarSkippedReason(meetingId, null)
+            listener.onStage("diarize", 1, 1)
+            Log.i(TAG, "Diarization produced $m segments for $meetingId")
           }
-          listener.onStage("diarize", 1, 1)
-          Log.i(TAG, "Diarization produced $m segments for $meetingId")
         } else if (transcribed) {
           Log.i(TAG, "Diarization skipped for $meetingId (no diar models installed yet)")
         }

@@ -794,6 +794,17 @@ export default function MeetingScreen({ route, navigation }: Props) {
               </Txt>
             </View>
           ) : null}
+          {/* Diarization is best-effort and this is what that costs when the phone cannot afford
+              it. Read from the meeting rather than composed here: the sentence has to describe the
+              run that made the decision, not the memory the phone happens to have now. Not a
+              warning colour — nothing went wrong, a stage was declined so the meeting survived. */}
+          {meeting?.diarSkippedReason ? (
+            <View style={st.forcedBanner}>
+              <Txt variant="sub" color={colors.inkSoft}>
+                {meeting.diarSkippedReason}
+              </Txt>
+            </View>
+          ) : null}
           <Segmented items={TABS} value={tab} onChange={setTab} style={st.tabs} />
           {/* Each tab owns its own scroll. Hosting them in one page scroll is what the split was
               for: the transcript can be a virtualised list only if it is the thing scrolling. */}

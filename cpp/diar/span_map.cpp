@@ -48,6 +48,55 @@ int64_t totalSpeechMs(const std::vector<Span>& spans) {
   return total;
 }
 
+std::vector<std::vector<Span>> windowSpans(const std::vector<Span>& spans, int64_t window_ms) {
+  std::vector<std::vector<Span>> windows;
+  if (spans.empty()) return windows;
+  if (window_ms <= 0) {
+    windows.push_back(spans);
+    return windows;
+  }
+
+  std::vector<Span> current;
+  int64_t filled = 0;
+  for (const auto& s : spans) {
+    int64_t from = s.start_ms;
+    const int64_t to = s.end_ms;
+    if (to <= from) continue;
+    while (from < to) {
+      const int64_t room = window_ms - filled;
+      // The window is full. Close it and carry on with a fresh one rather than emitting a
+      // zero-room window below.
+      if (room <= 0) {
+        windows.push_back(current);
+        current.clear();
+        filled = 0;
+        continue;
+      }
+      const int64_t remaining = to - from;
+      // Fits whole: never cut a span that a window can hold. If it does not fit here but would
+      // fit in an empty window, close this one — the boundary the cut would create costs more
+      // than the unused room does.
+      if (remaining <= room) {
+        current.push_back(Span{from, to});
+        filled += remaining;
+        from = to;
+      } else if (remaining <= window_ms && !current.empty()) {
+        windows.push_back(current);
+        current.clear();
+        filled = 0;
+      } else {
+        // Longer than any window can hold, so it has to be cut. See the header: the boundary is
+        // real and is repaired later by matching voices across it.
+        current.push_back(Span{from, from + room});
+        filled += room;
+        from += room;
+      }
+    }
+  }
+  if (!current.empty()) windows.push_back(current);
+  return windows;
+}
+
 std::vector<DiarSegment> toOriginalTimeline(const std::vector<DiarSegment>& concat,
                                             const std::vector<Span>& spans) {
   std::vector<DiarSegment> out;

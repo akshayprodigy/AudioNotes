@@ -92,6 +92,16 @@ object NativeBridge {
      * did before and is 346 MB of float samples for a 90-minute meeting.
      */
     speechSpansMs: LongArray,
+    /**
+     * How much speech to diarize at once, in milliseconds. Negative reads all the speech into one
+     * buffer; 0 takes the native default, which is itself "all of it" (kDiarWindowMs is 0).
+     *
+     * The app always passes [DiarBudget.WHOLE_MEETING]. Windowing was built and measured and costs
+     * 6 DER points, because each window is clustered on its own and the windows then have to work
+     * out which of their speakers were the same people — see cpp/diar/span_map.h. Nothing here
+     * ever passes [DiarBudget.SKIP]: that means "do not call this at all".
+     */
+    windowMs: Long,
   ): LongArray
 
   // ---- LLM (llama.cpp). Handle-based: load once, generate many, then free. ----

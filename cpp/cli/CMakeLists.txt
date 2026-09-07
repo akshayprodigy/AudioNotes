@@ -98,6 +98,7 @@ add_executable(audionotes_cli
   ${CORE}/vad/silero_vad.cpp
   ${CORE}/diar/diarizer.cpp
   ${CORE}/diar/span_map.cpp
+  ${CORE}/diar/speaker_match.cpp
   ${CORE}/llm/llama_engine.cpp
   ${CORE}/pipeline/pipeline.cpp
   ${CORE}/pipeline/result_json.cpp
@@ -154,6 +155,12 @@ get_filename_component(REPO_ROOT ${CORE}/.. ABSOLUTE)
 add_test(NAME engine_encapsulation
          COMMAND python3 ${REPO_ROOT}/scripts/check-engine-encapsulation.py)
 
+# The diarization window and sample rate are written down in both C++ and Kotlin, on either side of
+# a JNI call where 0 means "use the native default". If the two defaults drift, every phone
+# diarizes in a shape nothing was measured in — and nothing fails, it just quietly stops matching.
+add_test(NAME diar_constants
+         COMMAND python3 ${REPO_ROOT}/scripts/check-diar-constants.py)
+
 audionotes_add_test(test_asr_chunker
   ${CORE}/tests/test_asr_chunker.cpp
   ${CORE}/asr/asr_chunker.cpp)
@@ -163,6 +170,13 @@ audionotes_add_test(test_asr_chunker
 audionotes_add_test(test_span_map
   ${CORE}/tests/test_span_map.cpp
   ${CORE}/diar/span_map.cpp)
+
+# Reconciling the speaker numbering across diarization windows. Also sherpa-free and ONNX-free:
+# the clustering is arithmetic, and the failure it guards against — one person's words attributed
+# to another — is invisible in a transcript, so it gets tested without a model in the way.
+audionotes_add_test(test_speaker_match
+  ${CORE}/tests/test_speaker_match.cpp
+  ${CORE}/diar/speaker_match.cpp)
 
 audionotes_add_test(test_asr_postprocess
   ${CORE}/tests/test_asr_postprocess.cpp
@@ -224,6 +238,7 @@ audionotes_add_test(test_pipeline_align
   ${CORE}/vad/silero_vad.cpp
   ${CORE}/diar/diarizer.cpp
   ${CORE}/diar/span_map.cpp
+  ${CORE}/diar/speaker_match.cpp
   ${CORE}/llm/llama_engine.cpp)
 target_include_directories(test_pipeline_align PRIVATE
   ${TP}/onnxruntime/include ${TP}/whisper.cpp/include ${TP}/whisper.cpp/ggml/include
@@ -257,6 +272,7 @@ audionotes_add_test(test_cancel
   ${CORE}/vad/silero_vad.cpp
   ${CORE}/diar/diarizer.cpp
   ${CORE}/diar/span_map.cpp
+  ${CORE}/diar/speaker_match.cpp
   ${CORE}/llm/llama_engine.cpp)
 target_include_directories(test_cancel PRIVATE
   ${TP} ${TP}/onnxruntime/include ${TP}/whisper.cpp/include ${TP}/whisper.cpp/ggml/include
@@ -290,6 +306,7 @@ audionotes_add_test(test_capi
   ${CORE}/vad/silero_vad.cpp
   ${CORE}/diar/diarizer.cpp
   ${CORE}/diar/span_map.cpp
+  ${CORE}/diar/speaker_match.cpp
   ${CORE}/llm/llama_engine.cpp)
 target_include_directories(test_capi PRIVATE
   ${TP}/onnxruntime/include ${TP}/whisper.cpp/include ${TP}/whisper.cpp/ggml/include
