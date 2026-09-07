@@ -162,6 +162,12 @@ add_test(NAME engine_encapsulation
 add_test(NAME diar_constants
          COMMAND python3 ${REPO_ROOT}/scripts/check-diar-constants.py)
 
+# The live capture pass must only ever write its cache. If it writes utterances instead, a pass
+# that covered 80% of a meeting looks COMPLETE to ResumePlan, Stage.ASR is skipped, and the last
+# eighteen minutes vanish with nothing failing.
+add_test(NAME live_transcript_cache_only
+         COMMAND python3 ${REPO_ROOT}/scripts/check-live-transcript.py)
+
 audionotes_add_test(test_asr_chunker
   ${CORE}/tests/test_asr_chunker.cpp
   ${CORE}/asr/asr_chunker.cpp)
