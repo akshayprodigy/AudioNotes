@@ -96,6 +96,7 @@ add_executable(audionotes_cli
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
+  ${CORE}/vad/vad_span_builder.cpp
   ${CORE}/diar/diarizer.cpp
   ${CORE}/diar/span_map.cpp
   ${CORE}/diar/speaker_match.cpp
@@ -211,7 +212,8 @@ audionotes_add_test(test_asr_factory
   ${CORE}/asr/sherpa_asr.cpp
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
-  ${CORE}/vad/silero_vad.cpp)
+  ${CORE}/vad/silero_vad.cpp
+  ${CORE}/vad/vad_span_builder.cpp)
 target_include_directories(test_asr_factory PRIVATE
   ${TP}/onnxruntime/include ${TP}/whisper.cpp/include ${TP}/whisper.cpp/ggml/include)
 target_compile_definitions(test_asr_factory PRIVATE HAVE_WHISPER)
@@ -249,6 +251,7 @@ audionotes_add_test(test_pipeline_align
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
+  ${CORE}/vad/vad_span_builder.cpp
   ${CORE}/diar/diarizer.cpp
   ${CORE}/diar/span_map.cpp
   ${CORE}/diar/speaker_match.cpp
@@ -283,6 +286,7 @@ audionotes_add_test(test_cancel
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
+  ${CORE}/vad/vad_span_builder.cpp
   ${CORE}/diar/diarizer.cpp
   ${CORE}/diar/span_map.cpp
   ${CORE}/diar/speaker_match.cpp
@@ -317,6 +321,7 @@ audionotes_add_test(test_capi
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
+  ${CORE}/vad/vad_span_builder.cpp
   ${CORE}/diar/diarizer.cpp
   ${CORE}/diar/span_map.cpp
   ${CORE}/diar/speaker_match.cpp

@@ -14,6 +14,7 @@ add_library(audionotes SHARED
   util/utf8.cpp
   util/ort_init.cpp
   vad/silero_vad.cpp
+  vad/vad_span_builder.cpp
   asr/whisper_asr.cpp
   asr/asr_chunker.cpp
   asr/asr_postprocess.cpp
