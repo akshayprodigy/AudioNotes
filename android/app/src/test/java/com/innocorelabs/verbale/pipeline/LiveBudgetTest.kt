@@ -59,6 +59,23 @@ class LiveBudgetTest {
   }
 
   @Test
+  fun yields_while_the_pipeline_is_working() {
+    // One heavy job at a time. Measured on a Pixel 7 Pro: a live pass running against a previous
+    // meeting still in ASR cached 6 windows of the 11 its recording held, while the pipeline's
+    // own ASR fell from 0.35x to 0.85x realtime. Both halves lost.
+    assertTrue(LiveBudget.shouldBackOff(
+      PowerManager.THERMAL_STATUS_NONE, 100, charging = true, pipelineBusy = true,
+    ))
+    assertFalse(LiveBudget.shouldBackOff(
+      PowerManager.THERMAL_STATUS_NONE, 100, charging = true, pipelineBusy = false,
+    ))
+    // It outranks nothing else — a hot phone still stops for heat, busy or not.
+    assertTrue(LiveBudget.shouldBackOff(
+      PowerManager.THERMAL_STATUS_SEVERE, 100, charging = true, pipelineBusy = false,
+    ))
+  }
+
+  @Test
   fun thread_count_leaves_the_capture_headroom() {
     assertEquals(1, LiveBudget.threadsFor(1))
     assertEquals(1, LiveBudget.threadsFor(2))

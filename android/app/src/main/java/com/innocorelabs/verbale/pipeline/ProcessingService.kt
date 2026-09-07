@@ -248,6 +248,17 @@ class ProcessingService : Service() {
      *  cleared in onDestroy() — a static registry rather than binding, since callers (the RN
      *  module) just need to fire a cancel, not hold a service connection. */
     @Volatile private var instance: ProcessingService? = null
+
+    /**
+     * True while the pipeline is working on a meeting.
+     *
+     * The live capture pass consults this and yields. Measured on a Pixel 7 Pro: with a previous
+     * meeting still in ASR, a new recording's live pass cached 6 windows instead of the 11 the
+     * meeting held, and the pipeline's own ASR fell from 0.35x to 0.85x realtime. Both halves
+     * lose. Since the live pass is only a cache, yielding costs it speed it was not achieving
+     * anyway, and hands the phone to the meeting a user is actually waiting on.
+     */
+    val isProcessing: Boolean get() = instance?.running == true
     /** Start/queue processing for a meeting. MUST be called while the app is in the foreground
      *  (Android forbids starting a background FGS) — callers do so right after Stop / on app open. */
     fun enqueue(ctx: Context, meetingId: String, force: Boolean = false) {

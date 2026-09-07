@@ -133,6 +133,7 @@ class LiveTranscriber(
             Log.i(TAG, "backing off: ${LiveBudget.describe(
               LiveBudget.availableBytes(ctx), LiveBudget.thermalStatus(ctx),
               LiveBudget.batteryPercent(ctx), LiveBudget.isCharging(ctx),
+              ProcessingService.isProcessing,
             )}")
           }
           Thread.sleep(BACKOFF_SLEEP_MS)
@@ -140,7 +141,8 @@ class LiveTranscriber(
         }
         if (backedOff) {
           backedOff = false
-          Log.i(TAG, "resuming: thermal=${LiveBudget.thermalStatus(ctx)}")
+          Log.i(TAG, "resuming: thermal=${LiveBudget.thermalStatus(ctx)} " +
+            "pipelineBusy=${ProcessingService.isProcessing}")
         }
 
         val grown = File(audioPath).length() - tailBytes
@@ -215,5 +217,6 @@ class LiveTranscriber(
 
   private fun backOff(): Boolean = LiveBudget.shouldBackOff(
     LiveBudget.thermalStatus(ctx), LiveBudget.batteryPercent(ctx), LiveBudget.isCharging(ctx),
+    ProcessingService.isProcessing,
   )
 }

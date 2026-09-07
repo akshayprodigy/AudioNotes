@@ -54,7 +54,15 @@ object LiveBudget {
    * A low battery stops the pass unless the phone is charging, because on a charger the number is
    * going up. Heat stops it either way — charging is part of why it is hot.
    */
-  fun shouldBackOff(thermalStatus: Int, batteryPercent: Int, charging: Boolean): Boolean {
+  fun shouldBackOff(
+    thermalStatus: Int,
+    batteryPercent: Int,
+    charging: Boolean,
+    pipelineBusy: Boolean = false,
+  ): Boolean {
+    // One heavy job at a time. Two whisper contexts on one phone make both slower and neither
+    // finishes sooner — and the meeting already being processed is the one somebody is waiting on.
+    if (pipelineBusy) return true
     if (thermalStatus >= PowerManager.THERMAL_STATUS_SEVERE) return true
     if (!charging && batteryPercent in 0 until LOW_BATTERY_PERCENT) return true
     return false
@@ -98,6 +106,9 @@ object LiveBudget {
   }
 
   /** Logged every run: these thresholds come from one phone, and this line is how the next one argues. */
-  fun describe(availableBytes: Long, thermal: Int, battery: Int, charging: Boolean): String =
-    "free=${availableBytes / 1024 / 1024}MB thermal=$thermal battery=$battery% charging=$charging"
+  fun describe(
+    availableBytes: Long, thermal: Int, battery: Int, charging: Boolean, pipelineBusy: Boolean,
+  ): String =
+    "free=${availableBytes / 1024 / 1024}MB thermal=$thermal battery=$battery% " +
+      "charging=$charging pipelineBusy=$pipelineBusy"
 }
