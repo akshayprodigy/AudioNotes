@@ -112,7 +112,7 @@ test('write golden files for the C++ parity tests', () => {
 
   const priority = extractMinutes(PRIORITY as any, SPEAKERS as any);
   write('minutes_priority', { input: { utterances: PRIORITY, speakers: SPEAKERS }, output: priority });
-  expect(priority.filter(m => m.kind === 'action').length).toBe(0); // both classified away from action
+  expect(priority.filter(m => m.kind === 'action').length).toBe(0); // all three classified away from action
 
   const rules = extractMinutes(RULES as any, SPEAKERS as any);
   write('minutes_rules', { input: { utterances: RULES, speakers: SPEAKERS }, output: rules });
@@ -231,9 +231,11 @@ function capBusting(): { text: string; speakerId: string }[] {
 function writeEvidenceGolden(
   name: string,
   rows: { text: string; speakerId: string | null }[],
-  // Defaults to the two-speaker roster; evidence_empty passes [] explicitly so at least one
-  // golden pins the empty-container marshalling shape (distinct from a populated one) that
-  // Task 4's TimedUtt/ItemSource JNI boundary also has to cross.
+  // Defaults to the two-speaker roster; evidence_empty passes [] instead. That is dead data
+  // removed, not a new constraint: with zero utterances, extractItems builds nameById from
+  // `speakers` but never reads it, so no mutant can be caught by that golden either way.
+  // minutes_unassigned.json is the one that actually pins an empty speakers array against real
+  // utterances (speakerId: null on two real rows), which is strictly stronger.
   speakers = SPEAKERS.map(s => ({ ...s, meetingId: 'm', clusterLabel: s.id })),
 ): DraftItem[] {
   const utterances = timed(rows);
@@ -309,9 +311,13 @@ it('writes the evidence goldens', () => {
   // treated the non-breaking space as whitespace.
   const finalized = decisions.find(d => d.text === 'We finalized the report early.')!;
   expect(finalized.sources).toHaveLength(1);
-  // The turn is one sentence, so its span must cover the ORIGINAL text end to end - non-breaking
-  // space included, not collapsed away. Compared against SPANS[4].text itself, not retyped, so a
-  // stray keystroke here can't quietly turn this into a same-as-item.text tautology.
+  // This does NOT pin the span: the turn is one sentence starting at 0, so sentenceSpan's
+  // give-up fallback ([0, text.length]) satisfies this equality just as well as a correctly
+  // found span would. Row 5's job is the text half above; the span half - proving the offset
+  // is actually FOUND, not defaulted - is row 4's (its three-way byte/code-point/UTF-16 split
+  // rules out a fallback by construction). Kept here only as a basic sanity check, and compared
+  // against SPANS[4].text itself, not retyped, so a stray keystroke can't turn it into a
+  // same-as-item.text tautology on top of that.
   expect(SPANS[4].text.slice(finalized.sources[0].charStart, finalized.sources[0].charEnd)).toBe(
     SPANS[4].text,
   );
@@ -341,8 +347,9 @@ it('writes the evidence goldens', () => {
   const unassigned = writeEvidenceGolden('evidence_unassigned.json', UNASSIGNED);
   expect(unassigned.map(i => i.kind)).toEqual(['decision', 'action']);
 
-  // Passes [] rather than the default two-speaker roster: zero utterances and zero output means
-  // this is the only golden where the empty-container marshalling shape is actually exercised.
+  // Passes [] rather than the default two-speaker roster - dead data removed, not a new
+  // constraint: with zero utterances there is nothing here to read `speakers` at all. The golden
+  // that actually pins an empty speakers array against real content is minutes_unassigned.json.
   const empty = writeEvidenceGolden('evidence_empty.json', [], []);
   expect(empty).toEqual([]);
 
