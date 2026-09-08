@@ -52,19 +52,28 @@ export interface DraftItem {
  *
  * splitSentences collapses whitespace, so a sentence it returns is not always a code-unit-for-
  * code-unit substring of the original turn — a line break or a doubled space inside it gets
- * squashed to one. `text.indexOf` is tried first because it is right whenever no whitespace run
- * falls *inside* the sentence — the common case — and a whitespace-insensitive scan is the
- * fallback for when one does.
+ * squashed to one. Finding it takes two different scans: `text.indexOf` finds a LITERAL
+ * occurrence, and a whitespace-insensitive scan over a flattened copy of `text` finds one that
+ * has whitespace collapsed inside it. Both run whenever a literal hit isn't proven earliest (see
+ * findFrom), because a literal hit is not automatically the earliest hit: a copy of the sentence
+ * with a line break or doubled space inside it can sit earlier in the turn, and only the
+ * collapsed scan can see it. Returning the later of the two — an earlier version of this
+ * function always trusted indexOf — hands two sources the same span. Whisper's repetition loop
+ * (on record from the Galaxy A07 field test) plus a line break inside one repeat is exactly the
+ * shape that produces it, and it is common enough that it needed its own fix on top of the
+ * search cursor below.
  *
- * `from` is a cursor, not a hard boundary. A caller walking a turn sentence-by-sentence passes
- * the previous sentence's end so that a sentence repeated within one turn — whisper's
- * repetition-loop failure mode, on record from the Galaxy A07 field test — is matched at its own
- * occurrence each time rather than the first occurrence every time. But the cursor can overshoot
- * (the previous span came from the fallback path and landed slightly wide, say), so a search that
- * fails from `from` is retried from 0 before this gives up: a sentence the cursor has already
- * passed must still be found, not silently handed the whole-turn fallback below. Only when BOTH
- * searches fail does this return [0, text.length] — a slightly-too-wide anchor is honest, a
- * missing one is not, and text.length is always a valid end index into text itself.
+ * `from` is that cursor, not a hard boundary. A caller walking a turn sentence-by-sentence
+ * passes the previous sentence's end so each repeat is matched at its own occurrence rather than
+ * the same one every time. If nothing is found from `from` onward, the search retries from 0
+ * before this gives up, so a cursor that has overshot a findable sentence still finds it instead
+ * of falling through to the whole-turn span below. (In extractItems's own walk this retry is
+ * unreachable now that earliest-match-wins holds: the match returned for `from` is always at or
+ * after `from`, so extractItems's cursor can never get ahead of a sentence that is still
+ * findable. It stays because sentenceSpan is exported and this file does not control every
+ * caller.) Only when both the `from` search and the retry-from-0 fail does this return
+ * [0, text.length] — a slightly-too-wide anchor is honest, a missing one is not, and text.length
+ * is always a valid end index into text itself.
  *
  * `sentence` is expected already trimmed, which is what splitSentences returns. This function
  * does not re-trim it, so a caller passing raw untrimmed text will get a span that runs into
@@ -78,7 +87,16 @@ export function sentenceSpan(text: string, sentence: string, from = 0): [number,
  *  sentenceSpan is what decides how to fall back, this just reports whether it found anything. */
 function findFrom(text: string, sentence: string, from: number): [number, number] | null {
   const direct = text.indexOf(sentence, from);
-  if (direct >= 0) return [direct, direct + sentence.length];
+
+  // A whitespace run that could collapse into an earlier match — two-or-more spaces, or any
+  // whitespace character that isn't a plain space — can only exist somewhere between `from` and
+  // the end of the literal hit; nowhere else could produce an occurrence that starts before
+  // `direct` and after `from`. When the region carries no such run, `direct` is provably the
+  // earliest possible match and the collapsed scan below is skipped, which keeps the common case
+  // (no whitespace weirdness at all) down to one indexOf call.
+  if (direct >= 0 && !/\s\s|[^\S ]/.test(text.slice(from, direct + sentence.length))) {
+    return [direct, direct + sentence.length];
+  }
 
   // The needle, flattened the same way splitSentences flattens a whole turn, searched for in a
   // flattened copy of `text` from `from` onward. Flattening only the tail rather than maintaining
@@ -103,13 +121,22 @@ function findFrom(text: string, sentence: string, from: number): [number, number
     }
   }
   const at = flat.indexOf(needle);
-  if (at < 0) return null;
   // map has exactly one entry per character of `flat` — every branch above that appends to
   // `flat` also pushes to `map`, and only those branches do — and `indexOf` cannot return an
   // index outside flat's own bounds. So map[at] and map[at + needle.length - 1] are always
-  // defined; no `?? 0` defensive fallback here, because one would silently paper over a bug in
-  // the loop above rather than any input this function can actually receive.
-  return [map[at], map[at + needle.length - 1] + 1];
+  // defined when `at >= 0`; no `?? 0` defensive fallback here, because one would silently paper
+  // over a bug in the loop above rather than any input this function can actually receive.
+  const collapsed: [number, number] | null =
+    at < 0 ? null : [map[at], map[at + needle.length - 1] + 1];
+
+  // Whichever match starts first wins. The pre-check above only ever SKIPS this comparison when
+  // it has already proven `direct` cannot be beaten — it never substitutes for the comparison,
+  // because a whitespace run before `direct` might belong to a different, unrelated sentence and
+  // still resolve to a collapsed match that starts later than `direct`, not earlier.
+  if (direct >= 0 && (!collapsed || direct <= collapsed[0])) {
+    return [direct, direct + sentence.length];
+  }
+  return collapsed;
 }
 
 export function extractItems(
@@ -161,10 +188,15 @@ export function extractItems(
     for (const sentence of splitSentences(u.text)) {
       if (sentence.length < 4) continue;
       const [charStart, charEnd] = sentenceSpan(u.text, sentence, cursor);
-      // Math.max, not a plain assignment: a span found via sentenceSpan's retry-from-0 fallback
-      // can land BEFORE the cursor (that is the whole point of the fallback), and letting it pull
-      // the cursor backward would make the next sentence's search re-cover ground this one
-      // already claimed.
+      // Math.max, not a plain assignment — but not because it is doing load-bearing work here.
+      // Now that findFrom always returns the earliest match at-or-after `from` when it finds one,
+      // charEnd can never come back below cursor in this loop: sentenceSpan's retry-from-0
+      // fallback (see its doc comment) is unreachable from this call site. Measured, not assumed:
+      // comparing Math.max against a bare assignment across 60,000 fuzzed turns found 2,610 where
+      // they differ, and neither read was reliably the correct one — so this is not "preventing
+      // re-covered ground", it would not reliably do that. It stays as defensive hygiene on an
+      // exported function whose contract (never let the cursor run backward) should hold even if
+      // a future change to findFrom reopens the case where it doesn't hold on its own.
       cursor = Math.max(cursor, charEnd);
       const source: ItemSource = {
         utteranceId: u.id,

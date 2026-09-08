@@ -61,6 +61,36 @@ describe('extractItems', () => {
     expect(text.slice(19, 37)).toBe('We agreed to ship.');
   });
 
+  // The previous fix (a search cursor) is not enough on its own: text.indexOf(sentence, from) is
+  // not guaranteed to find the EARLIEST occurrence at-or-after `from`. A copy of the sentence
+  // carrying an internal whitespace run (a doubled space here) sits before the literal copy, and
+  // only the whitespace-collapsing scan can see it — indexOf walks straight past it to the later,
+  // literal one. Two sources still ended up pointing at the same span until this was fixed too.
+  it('anchors each repeat separately when one copy has an internal whitespace run', () => {
+    const text = 'We agreed  to ship. We agreed to ship.';
+    const items = extractItems([utt('u1', 0, 5000, text)], spk);
+    const decision = items.find(i => i.kind === 'decision')!;
+    expect(decision.sources.map(s => [s.charStart, s.charEnd])).toEqual([
+      [0, 19],
+      [20, 38],
+    ]);
+  });
+
+  // Three repeats, whitespace run in the MIDDLE one — the shape that most directly breaks a
+  // fix which only compares the direct hit against the cursor: the middle occurrence sits between
+  // two literal ones, so a naive earliest-vs-cursor comparison can walk past it entirely and never
+  // anchor it at all.
+  it('anchors three repeats separately when the middle one has a line break inside it', () => {
+    const text = 'We agreed to ship. We agreed\nto ship. We agreed to ship.';
+    const items = extractItems([utt('u1', 0, 5000, text)], spk);
+    const decision = items.find(i => i.kind === 'decision')!;
+    expect(decision.sources.map(s => [s.charStart, s.charEnd])).toEqual([
+      [0, 18],
+      [19, 37],
+      [38, 56],
+    ]);
+  });
+
   it('produces the same texts, in the same order, as extractMinutes', () => {
     const utts = [
       utt('u1', 0, 2000, 'We agreed to ship on Monday.'),
