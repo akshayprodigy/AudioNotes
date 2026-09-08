@@ -464,7 +464,18 @@ struct DraftItem {
 // Offset of `sentence` within `text`, in UTF-16 code units. Falls back to a whitespace-insensitive
 // scan, and to the whole turn when even that fails — a slightly wide anchor is honest, a missing
 // one is not.
-std::pair<int32_t, int32_t> sentenceSpan(const std::string& text, const std::string& sentence);
+//
+// `from` is a BYTE cursor into `text`; `*next_from` receives the byte offset just past the match.
+// A cursor is what stops the same sentence repeated inside one turn reporting the FIRST
+// occurrence's span for every repeat - whisper's repetition-loop failure mode, which this project
+// has on record from the Galaxy A07. The TypeScript keeps its cursor in UTF-16 units and this one
+// in bytes; both advance past the same match, so both find the same next occurrence, and the
+// goldens hold that equivalence.
+//
+// A cursored search that fails is retried from 0 before the whole-turn fallback, so a sentence the
+// cursor has already passed does not silently acquire the entire turn as its span.
+std::pair<int32_t, int32_t> sentenceSpan(const std::string& text, const std::string& sentence,
+                                         size_t from = 0, size_t* next_from = nullptr);
 
 std::vector<DraftItem> extractItems(const std::vector<TimedUtt>& utterances,
                                     const std::vector<MinuteSpk>& speakers = {});
@@ -664,10 +675,18 @@ std::string squash(const std::string& s) {
 
 }  // namespace
 
-std::pair<int32_t, int32_t> sentenceSpan(const std::string& text, const std::string& sentence) {
-  const size_t direct = text.find(sentence);
-  if (direct != std::string::npos)
-    return {utf16Units(text, direct), utf16Units(text, direct + sentence.size())};
+std::pair<int32_t, int32_t> sentenceSpan(const std::string& text, const std::string& sentence,
+                                         size_t from, size_t* next_from) {
+  auto finish = [&](size_t byte_start, size_t byte_end) {
+    if (next_from) *next_from = byte_end;
+    return std::make_pair(utf16Units(text, byte_start), utf16Units(text, byte_end));
+  };
+
+  size_t direct = text.find(sentence, from);
+  // Retried from 0 rather than falling through: a sentence the cursor has already passed must not
+  // silently acquire the whole turn as its span.
+  if (direct == std::string::npos && from > 0) direct = text.find(sentence);
+  if (direct != std::string::npos) return finish(direct, direct + sentence.size());
 
   // Whitespace-insensitive: build the collapsed form alongside a map back to byte offsets.
   std::vector<size_t> map;
@@ -683,13 +702,24 @@ std::pair<int32_t, int32_t> sentenceSpan(const std::string& text, const std::str
       flat += text[i];
     }
   }
+  // The cursor is a byte offset into `text`; translate it into an offset into `flat` by counting
+  // how many mapped positions precede it.
+  size_t flat_from = 0;
+  while (flat_from < map.size() && map[flat_from] < from) ++flat_from;
+
   const std::string needle = squash(sentence);
-  const size_t at = flat.find(needle);
-  if (at == std::string::npos) return {0, utf16Units(text, text.size())};
+  size_t at = flat.find(needle, flat_from);
+  if (at == std::string::npos && flat_from > 0) at = flat.find(needle);
+  if (at == std::string::npos) {
+    // Found nowhere at all. A slightly wide anchor is honest; a missing one is not. The cursor is
+    // deliberately NOT advanced here - there is no match to advance past.
+    if (next_from) *next_from = from;
+    return {0, utf16Units(text, text.size())};
+  }
   const size_t end = at + needle.size();
   const size_t byte_start = at < map.size() ? map[at] : 0;
   const size_t byte_end = (end - 1) < map.size() ? map[end - 1] + 1 : text.size();
-  return {utf16Units(text, byte_start), utf16Units(text, byte_end)};
+  return finish(byte_start, byte_end);
 }
 
 std::vector<DraftItem> extractItems(const std::vector<TimedUtt>& utterances,
@@ -724,9 +754,10 @@ std::vector<DraftItem> extractItems(const std::vector<TimedUtt>& utterances,
       if (it != name_by_id.end()) speaker_name = it->second;
     }
     const std::string normalized = rules::normalizeApostrophes(u.text);
+    size_t cursor = 0;  // per turn, reset here; see the note on sentenceSpan
     for (const auto& sentence : rules::splitSentences(normalized)) {
       if (sentence.size() < 4) continue;
-      const auto span = sentenceSpan(normalized, sentence);
+      const auto span = sentenceSpan(normalized, sentence, cursor, &cursor);
       const ItemSource src{u.id, u.start_ms, u.end_ms, span.first, span.second};
 
       if (rules::isQuestion(sentence)) { add(2, "question", sentence, src); continue; }
