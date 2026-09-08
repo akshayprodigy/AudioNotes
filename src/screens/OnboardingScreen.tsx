@@ -9,6 +9,7 @@ import Licence from '../native/NativeLicence';
 import Icon, { type IconName } from '../components/Icon';
 import Mascot from '../components/Mascot';
 import { Button, Pop, ProgressBar, Raised, SoftButton, Switch, Txt } from '../components/ui';
+import { downloadLabel, downloadPct } from './downloadLabel';
 import { db } from '../db/queries';
 import SignInForm from '../billing/SignInForm';
 import { TRIAL_DAYS, startTrial } from '../billing/trial';
@@ -71,7 +72,9 @@ export default function OnboardingScreen({ navigation }: Props) {
   const st = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const [status, setStatus] = useState<'intro' | 'downloading' | 'done' | 'failed'>('intro');
-  const [pct, setPct] = useState(0);
+  // Bytes rather than a percentage: the first-run download is 114 MB and the writer, if it is
+  // switched on, adds 1.1 GB. See downloadLabel for why the megabytes carry the reassurance.
+  const [bytes, setBytes] = useState({ downloaded: 0, total: 0 });
   const [step, setStep] = useState(0);
   const [current, setCurrent] = useState('');
   const [essentials, setEssentials] = useState<Essential[]>([]);
@@ -134,7 +137,7 @@ export default function OnboardingScreen({ navigation }: Props) {
   useEffect(() => {
     const emitter = new NativeEventEmitter(NativeModules.ModelManager);
     const sub = emitter.addListener('onModelProgress', (e: { total: number; downloaded: number }) => {
-      if (e.total > 0) setPct(Math.round((e.downloaded / e.total) * 100));
+      if (e.total > 0) setBytes({ downloaded: e.downloaded, total: e.total });
     });
     return () => sub.remove();
   }, []);
@@ -202,7 +205,7 @@ export default function OnboardingScreen({ navigation }: Props) {
     for (let i = 0; i < queue.length; i++) {
       setStep(i);
       setCurrent(queue[i].purpose);
-      setPct(0);
+      setBytes({ downloaded: 0, total: 0 });
       try {
         await ModelManager.download(queue[i].id);
       } catch {
@@ -243,7 +246,14 @@ export default function OnboardingScreen({ navigation }: Props) {
               {step + 1} of {plan.length}
             </Txt>
           </View>
-          <ProgressBar pct={pct} color={colors.primary} track={colors.cardAlt} />
+          <ProgressBar
+            pct={downloadPct(bytes.downloaded, bytes.total)}
+            color={colors.primary}
+            track={colors.cardAlt}
+          />
+          <Txt variant="chip" color={colors.inkFaint}>
+            {downloadLabel(bytes.downloaded, bytes.total)}
+          </Txt>
         </View>
       </View>
     );

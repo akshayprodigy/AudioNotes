@@ -35,6 +35,7 @@ import {
   Switch,
   Txt,
 } from '../components/ui';
+import { downloadLabel, downloadPct } from './downloadLabel';
 import Backup from '../native/NativeBackup';
 import Licence, { type LicenceStatus } from '../native/NativeLicence';
 import {
@@ -260,7 +261,8 @@ export default function SettingsScreen({ navigation }: Props) {
   const st = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const [models, setModels] = useState<Model[]>([]);
-  const [progress, setProgress] = useState<Record<string, number>>({});
+  // Per model, the bytes so far and the expected total — not a percentage. See downloadLabel.
+  const [progress, setProgress] = useState<Record<string, { downloaded: number; total: number }>>({});
   // null until the stored value has been read. Rendering a picker with a guessed selection and
   // then moving it under the user's finger a frame later is worse than rendering nothing.
   const [retention, setRetention] = useState<number | null>(null);
@@ -375,7 +377,7 @@ export default function SettingsScreen({ navigation }: Props) {
     const sub = emitter.addListener(
       'onModelProgress',
       (e: { id: string; downloaded: number; total: number }) => {
-        setProgress(p => ({ ...p, [e.id]: e.total > 0 ? Math.round((e.downloaded / e.total) * 100) : 0 }));
+        setProgress(p => ({ ...p, [e.id]: { downloaded: e.downloaded, total: e.total } }));
       },
     );
     return () => sub.remove();
@@ -425,7 +427,7 @@ export default function SettingsScreen({ navigation }: Props) {
       );
       return;
     }
-    setProgress(p => ({ ...p, [m.id]: 0 }));
+    setProgress(p => ({ ...p, [m.id]: { downloaded: 0, total: m.sizeBytes } }));
     try {
       await ModelManager.download(m.id);
     } catch (e: any) {
@@ -468,8 +470,10 @@ export default function SettingsScreen({ navigation }: Props) {
 
         <View style={st.list}>
           {models.map((m, i) => {
-            const pct = progress[m.id];
-            const busy = pct !== undefined && !m.installed;
+            // Bytes for this model, present only while it is downloading. `prog` and `busy` are
+            // read together, so the fallback keeps the render total-free rather than undefined.
+            const prog = progress[m.id] ?? { downloaded: 0, total: 0 };
+            const busy = progress[m.id] !== undefined && !m.installed;
             return (
               <Pop key={m.id} index={i}>
                 <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={5}>
@@ -528,13 +532,18 @@ export default function SettingsScreen({ navigation }: Props) {
                         </Txt>
                       </View>
                       <Txt variant="chipSoft" color={colors.inkFaint}>
-                        {m.name} · {busy ? `downloading ${pct}%` : mb(m.sizeBytes)}
+                        {m.name} ·{' '}
+                        {busy ? downloadLabel(prog.downloaded, prog.total) : mb(m.sizeBytes)}
                       </Txt>
                     </View>
 
                     {busy ? (
                       <View style={st.tiny}>
-                        <ProgressBar pct={pct} color={colors.primary} track={colors.cardAlt} />
+                        <ProgressBar
+                          pct={downloadPct(prog.downloaded, prog.total)}
+                          color={colors.primary}
+                          track={colors.cardAlt}
+                        />
                       </View>
                     ) : null}
                   </View>

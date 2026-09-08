@@ -15,6 +15,7 @@ import ModelManager from '../native/NativeModelManager';
 import Icon, { type IconName } from '../components/Icon';
 import Mascot from '../components/Mascot';
 import { Button, IconButton, Pop, ProgressBar, Raised, SoftButton, Txt } from '../components/ui';
+import { downloadLabel, downloadPct } from './downloadLabel';
 import {
   TRIAL_DAYS,
   TRIAL_SUMMARIES,
@@ -105,7 +106,9 @@ export default function PaywallScreen({ navigation }: Props) {
   // entitlement to run a model the phone does not have is a trial of nothing.
   const [writerMb, setWriterMb] = useState(0);
   const [writerInstalled, setWriterInstalled] = useState(false);
-  const [dlPct, setDlPct] = useState<number | null>(null);
+  // Bytes, not a percentage. See downloadLabel: on a 1.1 GB model the percentage barely
+  // moves, and a still number reads as a stalled download.
+  const [dl, setDl] = useState<{ downloaded: number; total: number } | null>(null);
 
   const load = useCallback(async () => {
     setEnt(await entitlement());
@@ -154,7 +157,7 @@ export default function PaywallScreen({ navigation }: Props) {
   useEffect(() => {
     const emitter = new NativeEventEmitter(NativeModules.ModelManager);
     const sub = emitter.addListener('onModelProgress', (e: { total: number; downloaded: number }) => {
-      if (e.total > 0) setDlPct(Math.round((e.downloaded / e.total) * 100));
+      if (e.total > 0) setDl({ downloaded: e.downloaded, total: e.total });
     });
     return () => sub.remove();
   }, []);
@@ -177,7 +180,7 @@ export default function PaywallScreen({ navigation }: Props) {
       );
       const missing = list.filter(m => m.kind === 'llm' && !m.installed);
       for (const m of missing) {
-        setDlPct(0);
+        setDl({ downloaded: 0, total: 0 });
         await ModelManager.download(m.id);
       }
       setWriterInstalled(true);
@@ -190,7 +193,7 @@ export default function PaywallScreen({ navigation }: Props) {
           'fetch the model from Settings once you are on a better connection.',
       );
     } finally {
-      setDlPct(null);
+      setDl(null);
       setBusy(null);
     }
   }, [load]);
@@ -287,12 +290,12 @@ export default function PaywallScreen({ navigation }: Props) {
           </View>
         </Pop>
 
-        {dlPct !== null ? (
+        {dl !== null ? (
           <View style={st.dl}>
             <Txt variant="chip" color={colors.inkSoft}>
-              Downloading the writer — {dlPct}%
+              Downloading the writer — {downloadLabel(dl.downloaded, dl.total)}
             </Txt>
-            <ProgressBar pct={dlPct} color={colors.primary} track={colors.cardAlt} />
+            <ProgressBar pct={downloadPct(dl.downloaded, dl.total)} color={colors.primary} track={colors.cardAlt} />
           </View>
         ) : null}
 
