@@ -993,6 +993,24 @@ passes; only `test_evidence` notices. Having written "fixture first, then fix" t
 above, letting this one through because a different task's golden happened to force it is applying
 the rule to whichever bug is inconvenient.
 
+### What Task 3's fixtures still do not cover, on the record
+
+Stated by the closing review rather than assumed away, because every round of this task found
+something in the space the fixtures did not reach.
+
+- **Twenty-two of the twenty-five `/\s/` members are unpinned.** Only U+0020, U+000A and U+00A0
+  appear in any evidence fixture. One row using a three-byte member closes it and is being added;
+  the code is exhaustively correct today, so this is regression protection rather than a defect.
+- **`DraftItem::text != turn.substr(char_start, char_end - char_start)`** in C++ wherever the turn
+  holds a curly apostrophe or non-ASCII whitespace, because the text comes from a normalised copy
+  while the offsets index the recorded turn. The TypeScript asserts that equality and it holds
+  there. Documented in `evidence.h`, pinned by no test. **Task 4 must not assume it**, and Task 10's
+  provenance UI must not rely on it either.
+- **The three `extractMinutes` parity bugs below remain live in shipped export output**, with no
+  fixture pinning any of them.
+- **`rules::norm`'s byte-wise `tolower`** diverges from JavaScript's `toLowerCase` for non-ASCII
+  uppercase that lowercases into ASCII, which changes a dedup key. Pre-existing and unpinned.
+
 ### The follow-up task these three make together
 
 One task, after Phase A: **teach the shared rules to count what the TypeScript counts.** All three
@@ -1003,8 +1021,8 @@ output is a free user's exported document.
 | Site | Now | Should be |
 |---|---|---|
 | `collapseWhitespace` / `trim` | `isspace`, bytes | JavaScript `/\s/` |
-| `sentence.size() < 4`, line 386 | bytes | UTF-16 units |
-| `t.size() < 160` in `isQuestion`, line 199 | bytes | UTF-16 units |
+| `sentence.size() < 4` in `extractMinutes` | bytes | UTF-16 units |
+| `t.size() < 160` in `rules::isQuestion` | bytes | UTF-16 units |
 
 The third is the worst and was under-recorded here at first: it changes an item's **kind**, not
 just whether it appears. `"What " + 84 em dashes + " should we do"` is a question in TypeScript and
