@@ -457,6 +457,16 @@ agree with either ordering, which is how the bug stayed invisible."
 
 ## Task 3: The C++ parity port
 
+> **SHIPPED 8 September 2026** — commits `bdae27e`, `ebc72d1`, `0e2efab`. Eight goldens replayed,
+> 19/19 ctest, ASan+UBSan clean, and matching the real TypeScript across 76,000 differential cases.
+>
+> Two quality passes found: a heap out-of-bounds read in the exported `sentenceSpan` (caused by a
+> comment in THIS plan telling the port to delete bounds guards — the fuzz that justified it
+> covered `extractItems`'s call pattern, not the exported surface, and JS answers the violation
+> with a wrong number where C++ reads out of bounds); an unforced change to shipped `extractMinutes`
+> behaviour, since reverted; and four non-equivalent surviving mutants, the worst of them wrong on
+> 78% of repetition-heavy input. Ten mutants are now killed or proven equivalent.
+
 **Files:**
 - Create: `cpp/minutes/evidence.h`, `cpp/minutes/evidence.cpp`
 - Create: `cpp/tests/test_evidence.cpp`
