@@ -963,6 +963,27 @@ dangles every pointer. That is silent UB no golden can catch."
 
 ---
 
+## Discovered during Task 4: an illegal JNI pattern at twelve sites
+
+`cpp/jni/audionotes_jni.cpp` catches, calls `throwRuntime(env, ...)`, and then calls
+`env->NewStringUTF(...)` to produce a return value. Only a small set of JNI functions may be called
+while an exception is pending - `ExceptionOccurred`/`Describe`/`Clear`/`Check`, the `Release*`
+family, `DeleteLocalRef`, `Push`/`PopLocalFrame` - and `NewStringUTF` is not one of them.
+
+Under CheckJNI, which is **on by default on emulators**, ART aborts the process with
+`JNI NewStringUTF called with pending exception`. Without CheckJNI it happens to work and the
+return value is discarded anyway, which is why it has survived.
+
+Eleven sites besides the one Task 4 added: lines 155, 374, 382, 411, 468, 518, 602, 611, 733, 762,
+858. Task 4 fixes only its own. **The sweep is its own task**, because every one of those is an
+error path that no current test exercises, and changing twelve error paths at once with nothing
+watching is how a fix becomes an outage.
+
+The fix is `return nullptr;` in each case. A caller already has to handle the thrown exception, so
+the returned value was never read.
+
+---
+
 ## Discovered during Task 3: two pre-existing parity bugs in the shipped C++ rules
 
 Neither was introduced by this work and neither is in Phase A's scope. Recorded here because they
