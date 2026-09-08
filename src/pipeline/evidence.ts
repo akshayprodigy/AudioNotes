@@ -83,18 +83,28 @@ export function sentenceSpan(text: string, sentence: string, from = 0): [number,
   return findFrom(text, sentence, from) ?? findFrom(text, sentence, 0) ?? [0, text.length];
 }
 
+/**
+ * Whitespace inside a candidate match that splitSentences would have collapsed: two-or-more
+ * spaces, or any whitespace character that isn't a plain space (tab, newline, ...). Its absence
+ * between `from` and a literal hit is the entire proof that the literal hit is the earliest
+ * possible match — see the comment in findFrom below. Named and exported, rather than inlined,
+ * so evidence.test.ts's property test measures this exact object: a copy of the pattern in the
+ * test would drift the moment this one changes, and would then be proving nothing about the code
+ * that actually runs.
+ */
+export const COLLAPSIBLE_WHITESPACE = /\s\s|[^\S ]/;
+
 /** One search attempt, starting no earlier than `from`. Null, not a sentinel span, on failure —
  *  sentenceSpan is what decides how to fall back, this just reports whether it found anything. */
 function findFrom(text: string, sentence: string, from: number): [number, number] | null {
   const direct = text.indexOf(sentence, from);
 
-  // A whitespace run that could collapse into an earlier match — two-or-more spaces, or any
-  // whitespace character that isn't a plain space — can only exist somewhere between `from` and
-  // the end of the literal hit; nowhere else could produce an occurrence that starts before
-  // `direct` and after `from`. When the region carries no such run, `direct` is provably the
-  // earliest possible match and the collapsed scan below is skipped, which keeps the common case
-  // (no whitespace weirdness at all) down to one indexOf call.
-  if (direct >= 0 && !/\s\s|[^\S ]/.test(text.slice(from, direct + sentence.length))) {
+  // A whitespace run that could collapse into an earlier match can only exist somewhere between
+  // `from` and the end of the literal hit; nowhere else could produce an occurrence that starts
+  // before `direct` and after `from`. When the region carries no such run, `direct` is provably
+  // the earliest possible match and the collapsed scan below is skipped, which keeps the common
+  // case (no whitespace weirdness at all) down to one indexOf call.
+  if (direct >= 0 && !COLLAPSIBLE_WHITESPACE.test(text.slice(from, direct + sentence.length))) {
     return [direct, direct + sentence.length];
   }
 

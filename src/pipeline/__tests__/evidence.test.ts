@@ -1,4 +1,4 @@
-import { extractItems, sentenceSpan } from '../evidence';
+import { extractItems, sentenceSpan, COLLAPSIBLE_WHITESPACE } from '../evidence';
 import { extractMinutes, splitSentences } from '../minutes';
 import type { Utterance, Speaker } from '../types';
 
@@ -157,5 +157,152 @@ describe('sentenceSpan', () => {
     const text = 'We agreed to ship. We agreed to ship.';
     const [a, b] = sentenceSpan(text, 'We agreed to ship.', 30);
     expect(text.slice(a, b)).toBe('We agreed to ship.');
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Property test: the COLLAPSIBLE_WHITESPACE pre-check never changes the answer.
+// ---------------------------------------------------------------------------------------------
+//
+// findFrom's pre-check exists purely to skip the collapsed-whitespace scan when it can prove the
+// literal hit is already the earliest possible match. It is a pure optimisation over a slower,
+// obviously-correct implementation that always runs both scans and keeps whichever starts first
+// — which means the only thing that makes it safe is that it never, for any input, changes the
+// result that slower implementation would have given. The two regression tests above (repeats
+// getting distinct spans) pin the SYMPTOM of getting this wrong, not the optimisation itself: a
+// future edit that made the pre-check too permissive could pass both of those specific inputs by
+// coincidence and still be wrong in general.
+//
+// So this builds the slower implementation as a reference — findFrom with the pre-check deleted
+// — and checks sentenceSpan agrees with it on every (text, sentence, from) triple over a small,
+// whitespace-dense alphabet, exhaustively. 'a'/'b' give two interchangeable non-whitespace
+// tokens (enough to build sentences that occur more than once); ' ' is the whitespace that never
+// collapses away and '\n' is one that always does. Text up to length 5 and sentence up to length
+// 3 is the largest that stays comfortably fast (well under a second) — length 6 pushes this past
+// a second on this machine, per the reviewer's own note that it's the case-count that doesn't
+// matter, not this exact bound.
+describe('sentenceSpan property: the pre-check never changes the answer', () => {
+  // findFrom, with the pre-check removed: both scans always run, and the candidate that starts
+  // first always wins. This is the ground truth sentenceSpan's fast path must never disagree
+  // with — deliberately a fork, not a refactor of the real findFrom, because the whole point is
+  // to have a second, independently-obviously-correct implementation to compare against.
+  function referenceFindFrom(
+    text: string,
+    sentence: string,
+    from: number,
+  ): [number, number] | null {
+    const direct = text.indexOf(sentence, from);
+
+    const needle = sentence.replace(/\s+/g, ' ');
+    const map: number[] = [];
+    let flat = '';
+    let wasSpace = false;
+    for (let i = from; i < text.length; i++) {
+      const isSpace = /\s/.test(text[i]);
+      if (isSpace) {
+        if (!wasSpace && flat.length > 0) {
+          map.push(i);
+          flat += ' ';
+        }
+        wasSpace = true;
+      } else {
+        wasSpace = false;
+        map.push(i);
+        flat += text[i];
+      }
+    }
+    const at = flat.indexOf(needle);
+    const collapsed: [number, number] | null =
+      at < 0 ? null : [map[at], map[at + needle.length - 1] + 1];
+
+    if (direct >= 0 && (!collapsed || direct <= collapsed[0])) {
+      return [direct, direct + sentence.length];
+    }
+    return collapsed;
+  }
+
+  function referenceSentenceSpan(text: string, sentence: string, from = 0): [number, number] {
+    return (
+      referenceFindFrom(text, sentence, from) ??
+      referenceFindFrom(text, sentence, 0) ?? [0, text.length]
+    );
+  }
+
+  // Every string over `alphabet` of length 0..maxLen, shortest first.
+  function allStrings(alphabet: string[], maxLen: number): string[] {
+    let frontier = [''];
+    const out = [...frontier];
+    for (let len = 1; len <= maxLen; len++) {
+      const next: string[] = [];
+      for (const s of frontier) for (const c of alphabet) next.push(s + c);
+      out.push(...next);
+      frontier = next;
+    }
+    return out;
+  }
+
+  it('agrees with a from-scratch reference on every short whitespace-dense triple', () => {
+    const ALPHABET = ['a', 'b', ' ', '\n'];
+    const texts = allStrings(ALPHABET, 5);
+    const sentences = allStrings(ALPHABET, 3).filter(s => s.length > 0);
+
+    // Plain loop with plain comparisons, not a per-case `expect`: at ~600K triples, Jest's
+    // matcher machinery would dominate the runtime. One assertion at the end keeps this the
+    // "well under a second" property test it needs to be to run on every `npx jest`.
+    let cases = 0;
+    // findFrom's gate is `direct >= 0 && !COLLAPSIBLE_WHITESPACE.test(...)` — the `&&`
+    // short-circuits, so the regex is only ever REACHED when there is a literal hit to weigh in
+    // the first place. Most (text, sentence, from) triples in an exhaustive enumeration like this
+    // one have no literal hit at all (`from` overshoots every occurrence, or there is none): that
+    // is a real thing to test — it exercises the "both scans come up empty" path — but it says
+    // nothing about the pre-check, so it must not be allowed to dilute the fraction below. Only
+    // triples with a literal hit are candidates for the fraction that matters.
+    let candidates = 0;
+    let preCheckFires = 0;
+    const mismatches: Array<{
+      text: string;
+      sentence: string;
+      from: number;
+      got: [number, number];
+      want: [number, number];
+    }> = [];
+
+    for (const text of texts) {
+      for (const sentence of sentences) {
+        for (let from = 0; from <= text.length; from++) {
+          cases++;
+
+          // Mirrors findFrom's own gate exactly (same regex object, same slice) so this tallies
+          // how often the REAL optimisation is actually deciding something, not how often some
+          // unrelated whitespace happens to appear in the input.
+          const direct = text.indexOf(sentence, from);
+          if (direct >= 0) {
+            candidates++;
+            if (COLLAPSIBLE_WHITESPACE.test(text.slice(from, direct + sentence.length))) {
+              preCheckFires++;
+            }
+          }
+
+          const got = sentenceSpan(text, sentence, from);
+          const want = referenceSentenceSpan(text, sentence, from);
+          if (got[0] !== want[0] || got[1] !== want[1]) {
+            if (mismatches.length < 5) mismatches.push({ text, sentence, from, got, want });
+          }
+        }
+      }
+    }
+
+    expect(mismatches).toEqual([]);
+
+    // The real point of this test. If COLLAPSIBLE_WHITESPACE were ever loosened to something
+    // that stopped matching real whitespace runs (or the corpus above stopped containing any),
+    // the loop above would keep passing — every candidate would just quietly take the fast path
+    // — and this test would still read as coverage of the pre-check while checking nothing about
+    // it. 20% is a low bar on purpose: measured on this corpus, of the triples where a literal
+    // hit exists to weigh at all, the pre-check actually fires on ~57% of them — so anything
+    // shrinking that toward zero is the failure this guards against, not noise.
+    expect(cases).toBeGreaterThan(0);
+    expect(candidates).toBeGreaterThan(0);
+    expect(preCheckFires / candidates).toBeGreaterThan(0.2);
   });
 });
