@@ -919,6 +919,49 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     return out.toLongArray()
   }
 
+  /**
+   * One stored piece of evidence. Mirrors [com.innocorelabs.verbale.pipeline.Minutes.Source] field
+   * for field, except that [utteranceId] is nullable here because the column is: it is a
+   * convenience re-resolved on every run, not an identity. The anchor and the character span are
+   * what survive a re-ASR.
+   */
+  data class StoredSource(
+    val startMs: Long,
+    val endMs: Long,
+    val charStart: Int,
+    val charEnd: Int,
+    val utteranceId: String?,
+  )
+
+  /**
+   * A row of `items` as it stands on disk, with its evidence and the two facts the reconciler
+   * cannot see any other way.
+   *
+   * [createdAt] and [done] are carried deliberately, and neither has a default:
+   *
+   *  - [createdAt] because `Reconciler` has to hand it back for a matched row. Stamping `now` on
+   *    every reconciled row would make an item a person confirmed in March show today's date after
+   *    any reprocess, and the original is then unrecoverable from anywhere.
+   *  - [done] because ticking an item writes `item_done` and never touches `review`. An item can
+   *    be finished and still `suggested`, so "review == suggested" does NOT mean "nobody has
+   *    touched this" — and treating it that way deletes the tick when the item stops being
+   *    extracted. Read it with a LEFT JOIN on `item_done`; a default of `false` here would let a
+   *    caller that forgot the join silently throw ticks away, which is the exact class of bug this
+   *    whole area exists to end.
+   */
+  data class StoredItem(
+    val id: String,
+    val kind: String,
+    val text: String,
+    val review: String,
+    val genVersion: String,
+    val anchorStartMs: Long,
+    val anchorEndMs: Long,
+    val sources: List<StoredSource>,
+    val createdAt: Long,
+    val done: Boolean,
+  )
+
   companion object {
     @Volatile private var instance: AudioDb? = null
 
