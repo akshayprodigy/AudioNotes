@@ -4,6 +4,16 @@
 detailed checklist for the store paperwork. Sourced from `docs/PRODUCT_RESEARCH_2026-09.md`; only
 the items worth doing are here, in the order to do them.
 
+> **Paused 8 September 2026, 15:37 IST.** The improvement report of 7 September was decomposed
+> into six sub-projects and the founder chose to do that work before this launch list. The order,
+> the gap analysis (about a third of the report is already built or already ruled out here), and
+> the four decisions taken that day are in
+> `docs/superpowers/specs/2026-09-08-improvement-report-decomposition.md`.
+> Sub-project 1 is in progress: `docs/superpowers/specs/2026-09-08-evidence-spine-design.md`.
+>
+> The items below that are yours — prices, Sentry DSN, Play listing, bandwidth ceiling, staged
+> rollout — are not blocked by any of it and can proceed in parallel.
+
 **Two decisions this list is built on:**
 
 1. **v1 is English only.** Already the state of the code. Hindi and Qwen3-ASR stay built and
