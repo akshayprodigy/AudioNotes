@@ -965,22 +965,37 @@ dangles every pointer. That is silent UB no golden can catch."
 
 ## Discovered during Task 4: an illegal JNI pattern at twelve sites
 
-`cpp/jni/audionotes_jni.cpp` catches, calls `throwRuntime(env, ...)`, and then calls
-`env->NewStringUTF(...)` to produce a return value. Only a small set of JNI functions may be called
-while an exception is pending - `ExceptionOccurred`/`Describe`/`Clear`/`Check`, the `Release*`
-family, `DeleteLocalRef`, `Push`/`PopLocalFrame` - and `NewStringUTF` is not one of them.
+`cpp/jni/audionotes_jni.cpp` catches, calls `throwRuntime(env, ...)`, and then calls a JNI
+constructor to produce a return value. Only a small set of JNI functions may be called while an
+exception is pending - `ExceptionOccurred`/`Describe`/`Clear`/`Check`, the `Release*` family,
+`DeleteLocalRef`, `Push`/`PopLocalFrame` - and none of the constructors is among them.
 
-Under CheckJNI, which is **on by default on emulators**, ART aborts the process with
-`JNI NewStringUTF called with pending exception`. Without CheckJNI it happens to work and the
-return value is discarded anyway, which is why it has survived.
+Under CheckJNI, which is **on by default on emulators**, ART aborts the process. Without CheckJNI
+it happens to work and the return value is discarded anyway, which is why eleven of these have
+survived unnoticed.
 
-Eleven sites besides the one Task 4 added: lines 155, 374, 382, 411, 468, 518, 602, 611, 733, 762,
-858. Task 4 fixes only its own. **The sweep is its own task**, because every one of those is an
-error path that no current test exercises, and changing twelve error paths at once with nothing
-watching is how a fix becomes an outage.
+Find them, rather than trusting line numbers - an earlier version of this note cited some and they
+were stale two commits later:
 
-The fix is `return nullptr;` in each case. A caller already has to handle the thrown exception, so
-the returned value was never read.
+```bash
+grep -n -A1 'throwRuntime(env' cpp/jni/audionotes_jni.cpp | grep -B1 'return env->New'
+```
+
+Eleven remain besides the one Task 4 fixed. They are **not** all `NewStringUTF`: five are, and the
+rest are `NewLongArray`, `NewObjectArray` and `NewIntArray`. Same illegality.
+
+**`return nullptr;` is necessary and NOT sufficient.** `throwRuntime` itself calls `FindClass` and
+`ThrowNew`, both illegal with an exception already pending - reachable when a JNI call inside the
+`try` has already left one, such as a `GetStringUTFChars` OOM inside `jstrArray`, which then keeps
+looping on `GetObjectArrayElement` regardless. `throwRuntime` needs an `ExceptionCheck` /
+`ExceptionClear` before it throws its own. A sweep planned without this fixes the symptom at twelve
+sites and leaves the mechanism.
+
+**Sequencing, and this is the part that matters:** the sweep should land **before or alongside the
+first device run**, not after. Any of those eleven error paths aborts the process under CheckJNI,
+so `connectedDebugAndroidTest` can die on an unrelated error path before it ever reaches
+`EvidenceParityTest`. The one run that would clear Task 4's residual risk is the run these can
+break.
 
 ---
 
