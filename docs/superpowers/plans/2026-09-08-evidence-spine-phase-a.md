@@ -1047,6 +1047,32 @@ construction in TypeScript - a divergence worth a characterisation test rather t
 
 ## Task 4: The JNI signature gains timings
 
+> **The listing below carries five defects, found while implementing it. Read this before porting
+> from it.** Two would have shipped.
+>
+> 1. **No `DeleteLocalRef`.** The listing reads the string arrays with inline
+>    `GetObjectArrayElement` and never releases them, against a 512-entry local reference table. A
+>    long meeting aborts the native process. **Nothing available on a development machine can
+>    catch this** — it needs a device and a long transcript. Use the file's existing `jstrArray`
+>    helper, which already does it correctly.
+> 2. **`nlohmann::json` inside `audionotes_jni.cpp`.** That reverses a decision documented in two
+>    places: nlohmann is deliberately kept out of `libaudionotes`, and `llm_prompts.cpp` was split
+>    out of `llm_minutes.cpp` for exactly that reason. Hand-roll the serialisation, in
+>    `evidence.cpp` where the host tests can reach it.
+> 3. **Out-of-bounds read.** It indexes `starts[i]`/`ends[i]` using `n = GetArrayLength(texts)`. If
+>    the arrays ever disagree that is a bad read, not a wrong answer. Read each at its own length.
+> 4. **No `try`/`catch`.** Every other array-taking entry point in that file wraps and calls
+>    `throwRuntime`.
+> 5. **Step 6's skip diagnosis is wrong.** A skip does not mean the native library failed to
+>    rebuild; it comes from `assumeTrue("libonnxruntime.so not downloaded yet")` and means the
+>    model download has not run on that device.
+>
+> **Serialisation and parsing must be factored out of the boundary**, not written inline as the
+> listing has them: `itemsToJson` in `evidence.cpp` asserted against all eight goldens by
+> `test_evidence`, and `Minutes.parseItems(json)` driven by a JVM unit test. That leaves only the
+> marshalling glue needing hardware. Note `org.json` is stubbed in Android unit tests and throws
+> "not mocked" — the real dependency has to be added or no JVM test can touch the parse at all.
+
 `nativeMinutes` takes texts and speaker IDs and no timestamps, so it cannot produce an anchor. This is the change that must cross the JNI boundary, and the boundary is where this project has broken before — the "transcribe it anyway" work needed a device run to prove a changed signature survived it.
 
 **Files:**
