@@ -61,7 +61,9 @@ def _privacy() -> str:
 <p>No recording. No transcript. No summary. No minutes. No meeting title. No participant name. Not
    a count of how many meetings you have made, or when, or how long they were. There is no column
    for any of it, which is a stronger statement than a promise not to look.</p>
-<p>We use no analytics, no advertising and no third-party trackers of any kind.</p>
+<p>We use no analytics, no advertising and no third-party trackers. There is one third-party
+   component in the app &mdash; the crash reporter described below &mdash; and it stays switched
+   off until you turn it on.</p>
 
 <h2>Crash reports, if you turn them on</h2>
 <p>The app can send a crash report when it fails. It is <strong>off until you switch it on</strong>,
