@@ -1,0 +1,182 @@
+{
+  "input": {
+    "utterances": [
+      {
+        "id": "u0",
+        "meetingId": "m",
+        "startMs": 0,
+        "endMs": 4000,
+        "speakerId": "S0",
+        "text": "Alright team, let's kick off the design review. We have three items on the agenda today."
+      },
+      {
+        "id": "u1",
+        "meetingId": "m",
+        "startMs": 4000,
+        "endMs": 8000,
+        "speakerId": "S1",
+        "text": "Thanks. First, the rollout plan. I think we should ship version 2.1 this Friday."
+      },
+      {
+        "id": "u2",
+        "meetingId": "m",
+        "startMs": 8000,
+        "endMs": 12000,
+        "speakerId": "S0",
+        "text": "Agreed. We decided to go with the phased rollout. Can you also update the project roadmap by Thursday?"
+      },
+      {
+        "id": "u3",
+        "meetingId": "m",
+        "startMs": 12000,
+        "endMs": 16000,
+        "speakerId": "S1",
+        "text": "Sure, I'll update the roadmap by Thursday. Maya will send the summary to everyone tomorrow."
+      },
+      {
+        "id": "u4",
+        "meetingId": "m",
+        "startMs": 16000,
+        "endMs": 20000,
+        "speakerId": "S0",
+        "text": "What about the pricing question? Should we revisit it next week?"
+      }
+    ],
+    "speakers": [
+      {
+        "id": "S0",
+        "displayName": "Speaker 1",
+        "meetingId": "m",
+        "clusterLabel": "S0"
+      },
+      {
+        "id": "S1",
+        "displayName": "Speaker 2",
+        "meetingId": "m",
+        "clusterLabel": "S1"
+      }
+    ]
+  },
+  "output": [
+    {
+      "kind": "decision",
+      "text": "We decided to go with the phased rollout.",
+      "sources": [
+        {
+          "utteranceId": "u2",
+          "startMs": 8000,
+          "endMs": 12000,
+          "charStart": 8,
+          "charEnd": 49
+        }
+      ],
+      "anchorStartMs": 8000,
+      "anchorEndMs": 12000
+    },
+    {
+      "kind": "action",
+      "text": "Alright team, let's kick off the design review. — Speaker 1",
+      "sources": [
+        {
+          "utteranceId": "u0",
+          "startMs": 0,
+          "endMs": 4000,
+          "charStart": 0,
+          "charEnd": 47
+        }
+      ],
+      "anchorStartMs": 0,
+      "anchorEndMs": 4000
+    },
+    {
+      "kind": "action",
+      "text": "I think we should ship version 2.1 this Friday. — Unassigned",
+      "sources": [
+        {
+          "utteranceId": "u1",
+          "startMs": 4000,
+          "endMs": 8000,
+          "charStart": 33,
+          "charEnd": 80
+        }
+      ],
+      "anchorStartMs": 4000,
+      "anchorEndMs": 8000
+    },
+    {
+      "kind": "action",
+      "text": "Sure, I'll update the roadmap by Thursday. — Speaker 2 (due by Thursday)",
+      "sources": [
+        {
+          "utteranceId": "u3",
+          "startMs": 12000,
+          "endMs": 16000,
+          "charStart": 0,
+          "charEnd": 42
+        }
+      ],
+      "anchorStartMs": 12000,
+      "anchorEndMs": 16000
+    },
+    {
+      "kind": "action",
+      "text": "Maya will send the summary to everyone tomorrow. — Maya (due tomorrow)",
+      "sources": [
+        {
+          "utteranceId": "u3",
+          "startMs": 12000,
+          "endMs": 16000,
+          "charStart": 43,
+          "charEnd": 91
+        }
+      ],
+      "anchorStartMs": 12000,
+      "anchorEndMs": 16000
+    },
+    {
+      "kind": "question",
+      "text": "Can you also update the project roadmap by Thursday?",
+      "sources": [
+        {
+          "utteranceId": "u2",
+          "startMs": 8000,
+          "endMs": 12000,
+          "charStart": 50,
+          "charEnd": 102
+        }
+      ],
+      "anchorStartMs": 8000,
+      "anchorEndMs": 12000
+    },
+    {
+      "kind": "question",
+      "text": "What about the pricing question?",
+      "sources": [
+        {
+          "utteranceId": "u4",
+          "startMs": 16000,
+          "endMs": 20000,
+          "charStart": 0,
+          "charEnd": 32
+        }
+      ],
+      "anchorStartMs": 16000,
+      "anchorEndMs": 20000
+    },
+    {
+      "kind": "question",
+      "text": "Should we revisit it next week?",
+      "sources": [
+        {
+          "utteranceId": "u4",
+          "startMs": 16000,
+          "endMs": 20000,
+          "charStart": 33,
+          "charEnd": 64
+        }
+      ],
+      "anchorStartMs": 16000,
+      "anchorEndMs": 20000
+    }
+  ]
+}

@@ -1,0 +1,105 @@
+{
+  "input": {
+    "utterances": [
+      {
+        "id": "u0",
+        "meetingId": "m",
+        "startMs": 0,
+        "endMs": 4000,
+        "speakerId": "S0",
+        "text": "Good morning. We agreed  to ship on\nMonday."
+      },
+      {
+        "id": "u1",
+        "meetingId": "m",
+        "startMs": 4000,
+        "endMs": 8000,
+        "speakerId": "S1",
+        "text": "Right. I'll send the report by Friday. I'll send the report by Friday."
+      },
+      {
+        "id": "u2",
+        "meetingId": "m",
+        "startMs": 8000,
+        "endMs": 12000,
+        "speakerId": "S0",
+        "text": "We agreed  to ship. We agreed to ship."
+      }
+    ],
+    "speakers": [
+      {
+        "id": "S0",
+        "displayName": "Speaker 1",
+        "meetingId": "m",
+        "clusterLabel": "S0"
+      },
+      {
+        "id": "S1",
+        "displayName": "Speaker 2",
+        "meetingId": "m",
+        "clusterLabel": "S1"
+      }
+    ]
+  },
+  "output": [
+    {
+      "kind": "decision",
+      "text": "We agreed to ship on Monday.",
+      "sources": [
+        {
+          "utteranceId": "u0",
+          "startMs": 0,
+          "endMs": 4000,
+          "charStart": 14,
+          "charEnd": 43
+        }
+      ],
+      "anchorStartMs": 0,
+      "anchorEndMs": 4000
+    },
+    {
+      "kind": "decision",
+      "text": "We agreed to ship.",
+      "sources": [
+        {
+          "utteranceId": "u2",
+          "startMs": 8000,
+          "endMs": 12000,
+          "charStart": 0,
+          "charEnd": 19
+        },
+        {
+          "utteranceId": "u2",
+          "startMs": 8000,
+          "endMs": 12000,
+          "charStart": 20,
+          "charEnd": 38
+        }
+      ],
+      "anchorStartMs": 8000,
+      "anchorEndMs": 12000
+    },
+    {
+      "kind": "action",
+      "text": "I'll send the report by Friday. — Speaker 2 (due by Friday)",
+      "sources": [
+        {
+          "utteranceId": "u1",
+          "startMs": 4000,
+          "endMs": 8000,
+          "charStart": 7,
+          "charEnd": 38
+        },
+        {
+          "utteranceId": "u1",
+          "startMs": 4000,
+          "endMs": 8000,
+          "charStart": 39,
+          "charEnd": 70
+        }
+      ],
+      "anchorStartMs": 4000,
+      "anchorEndMs": 8000
+    }
+  ]
+}

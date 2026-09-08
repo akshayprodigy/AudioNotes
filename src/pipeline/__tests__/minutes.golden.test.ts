@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { extractMinutes } from '../minutes';
 import { parseMinutesJson } from '../summarize';
+import { extractItems } from '../evidence';
 
 const GOLDEN_DIR = path.join(__dirname, '../../../cpp/tests/golden');
 
@@ -143,4 +144,52 @@ test('write golden files for the C++ parity tests', () => {
   }
   expect(parseMinutesJson(PARSE_CASES.parse_template_echo)).toBeNull();
   expect(parseMinutesJson(PARSE_CASES.parse_broken)).toBeNull();
+});
+
+// Timed variants of the existing fixtures. The rule fixtures carry no timings because
+// extractMinutes never needed any; extractItems does, so each turn gets four seconds.
+function timed(rows: { text: string; speakerId: string }[]) {
+  return rows.map((r, i) => ({
+    id: `u${i}`,
+    meetingId: 'm',
+    startMs: i * 4000,
+    endMs: i * 4000 + 4000,
+    speakerId: r.speakerId,
+    text: r.text,
+  }));
+}
+
+const SPANS = [
+  // The whitespace runs are INSIDE the sentences, not between them. A run between two sentences
+  // is not in either of them, so text.indexOf still finds each one intact and the fallback is
+  // never entered - which is exactly the mistake the first version of this fixture made.
+  { text: 'Good morning. We agreed  to ship on\nMonday.', speakerId: 'S0' },
+  // The same sentence twice in ONE turn: each source must carry its OWN span, not the first
+  // occurrence's. This is whisper's repetition-loop failure mode, which this project has on
+  // record from the Galaxy A07.
+  { text: "Right. I'll send the report by Friday. I'll send the report by Friday.", speakerId: 'S1' },
+  // The ordering case, and the one no ordinary fixture shows: the FIRST copy carries the internal
+  // run, so a naive text.indexOf returns the SECOND copy and both sources end up sharing its span.
+  // Any port that tries the direct match before the collapsed one fails on exactly this row.
+  { text: 'We agreed  to ship. We agreed to ship.', speakerId: 'S0' },
+];
+
+function writeEvidenceGolden(name: string, rows: { text: string; speakerId: string }[]) {
+  const utterances = timed(rows);
+  const speakers = SPEAKERS.map(s => ({ ...s, meetingId: 'm', clusterLabel: s.id }));
+  fs.writeFileSync(
+    path.join(GOLDEN_DIR, name),
+    JSON.stringify(
+      { input: { utterances, speakers }, output: extractItems(utterances as any, speakers as any) },
+      null,
+      2,
+    ) + '\n',
+  );
+}
+
+it('writes the evidence goldens', () => {
+  writeEvidenceGolden('evidence_meeting.json', MEETING);
+  writeEvidenceGolden('evidence_dedup.json', DEDUP);
+  writeEvidenceGolden('evidence_spans.json', SPANS);
+  expect(fs.existsSync(path.join(GOLDEN_DIR, 'evidence_meeting.json'))).toBe(true);
 });
