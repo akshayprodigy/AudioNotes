@@ -43,6 +43,25 @@
 
 ## Task 1: `extractItems` — the rule pass keeps its sources
 
+> **SHIPPED 8 September 2026** — commits `7e22e8f`, `83b7c00`, `d5d5082`. 229 tests green.
+>
+> **The `sentenceSpan` listing below is superseded and must not be ported from.** Three review
+> passes changed it substantially, and the version written here carries two bugs that the shipped
+> file does not:
+>
+> 1. **No search cursor.** A sentence repeated inside one turn gave every source the FIRST
+>    occurrence's span — byte-identical `item_sources` rows claiming two pieces of evidence that
+>    point at one place. Whisper's repetition loop produces exactly this.
+> 2. **`text.indexOf` treated as authoritative.** A direct hit is not necessarily the EARLIEST
+>    hit: a copy of the sentence carrying an internal whitespace run sits earlier and only the
+>    collapsed scan can see it, so both sources land on the later copy.
+>
+> The shipped version resolves both scans and keeps whichever starts first, behind a
+> `/\s\s|[^\S ]/` pre-check that keeps ordinary text at one `indexOf`. The pre-check was verified
+> not to change any result across 2,050,963 exhaustive cases and an independent brute-force
+> oracle. **`src/pipeline/evidence.ts` is the authority; Task 3's C++ mirrors that file, not this
+> listing.**
+
 **Files:**
 - Create: `src/pipeline/evidence.ts`
 - Create: `src/pipeline/__tests__/evidence.test.ts`
@@ -162,42 +181,8 @@ export interface DraftItem {
   anchorEndMs: number;
 }
 
-/**
- * The offset of `sentence` within `text`.
- *
- * splitSentences collapses whitespace, so a sentence it returns is not always a byte-for-byte
- * substring of the original turn. indexOf is tried first because it is right whenever the turn
- * had no runs of whitespace — the overwhelming majority — and a whitespace-insensitive scan is
- * the fallback. Returning [0, text.length] rather than [-1, -1] on failure keeps the anchor
- * pointing at the right turn: a slightly wide span is honest, a missing one is not.
- */
-export function sentenceSpan(text: string, sentence: string): [number, number] {
-  const direct = text.indexOf(sentence);
-  if (direct >= 0) return [direct, direct + sentence.length];
-
-  const squash = (s: string) => s.replace(/\s+/g, ' ');
-  const map: number[] = [];
-  let flat = '';
-  let wasSpace = false;
-  for (let i = 0; i < text.length; i++) {
-    const isSpace = /\s/.test(text[i]);
-    if (isSpace) {
-      if (!wasSpace && flat.length > 0) {
-        map.push(i);
-        flat += ' ';
-      }
-      wasSpace = true;
-    } else {
-      wasSpace = false;
-      map.push(i);
-      flat += text[i];
-    }
-  }
-  const at = flat.indexOf(squash(sentence));
-  if (at < 0) return [0, text.length];
-  const end = at + squash(sentence).length;
-  return [map[at] ?? 0, (map[end - 1] ?? text.length - 1) + 1];
-}
+// SUPERSEDED - see the note under this listing. The shipped implementation of sentenceSpan and
+// findFrom lives in src/pipeline/evidence.ts. Do not port from this file; port from that one.
 
 export function extractItems(
   utterances: Utterance[],
@@ -241,9 +226,11 @@ export function extractItems(
 
   for (const u of utterances) {
     const speakerName = u.speakerId ? nameById.get(u.speakerId) ?? null : null;
+    let cursor = 0;  // per turn; see sentenceSpan in the shipped file
     for (const sentence of splitSentences(u.text)) {
       if (sentence.length < 4) continue;
-      const [charStart, charEnd] = sentenceSpan(u.text, sentence);
+      const [charStart, charEnd] = sentenceSpan(u.text, sentence, cursor);
+      cursor = Math.max(cursor, charEnd);
       const source: ItemSource = {
         utteranceId: u.id,
         startMs: u.startMs,
@@ -736,6 +723,10 @@ std::optional<std::pair<size_t, size_t>> findFrom(const std::string& text,
     }
   }
 
+  // squash() trims and the TypeScript's `sentence.replace(/\s+/g, ' ')` does not. Unreachable
+  // while splitSentences supplies the needle - it trims - but the two DO diverge on untrimmed
+  // input (measured: 8 cases in 90,460), so the trimmed-sentence precondition in the header is
+  // load-bearing here in a way it is not in the TypeScript. Do not relax it on one side only.
   const std::string needle = squash(sentence);
   const size_t at = flat.find(needle);
 
