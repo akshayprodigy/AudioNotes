@@ -20,6 +20,12 @@ import org.junit.Test
  * A plain JVM test, no database and no device, because [Reconciler] is pure. If a change to it
  * ever needs a `System.currentTimeMillis()` or a DB read, the boundary has moved to the wrong
  * place — persistence belongs in `AudioDb.replaceItems`, policy belongs here.
+ *
+ * These tests are themselves checked by measurement, not by inspection: `npm run mutate:reconciler`
+ * deletes one rule from Reconciler.kt at a time and fails if nothing here notices. Five assertions
+ * in this sub-project have already read as coverage while being incapable of failing. Run it after
+ * changing either file — and if it reports PATCH DID NOT APPLY, re-point the patch rather than
+ * dropping it, because a mutation that no longer applies proves nothing while looking like it did.
  */
 class ReconcilerTest {
 
@@ -36,10 +42,11 @@ class ReconcilerTest {
     genVersion: String = "rules@1",
     createdAt: Long = LONG_AGO,
     done: Boolean = false,
+    edited: Boolean = false,
   ) = AudioDb.StoredItem(
     id, kind, text, review, genVersion, start, end,
     listOf(AudioDb.StoredSource(start, end, 0, text.length, "u-old")),
-    createdAt, done,
+    createdAt, done, edited,
   )
 
   private fun incoming(text: String, start: Long, end: Long, kind: String = "action") =
@@ -197,6 +204,34 @@ class ReconcilerTest {
   }
 
   /**
+   * "will not" and "won't" are one negation spelled two ways, not a change of sign.
+   *
+   * Lost: the guard's credibility. ASR flips between contracted and expanded forms between runs as
+   * a matter of course, so comparing surface tokens would flag a large share of every meeting's
+   * negative items on every reprocess — and a queue that flags everything says nothing, which is
+   * the argument the guard is built on. A false positive here costs the same thing a missing guard
+   * costs: nobody reads the flags.
+   */
+  @Test fun aContractionIsNotAChangeOfSign() {
+    val plan = Reconciler.reconcile(
+      listOf(stored("id-1", "We will not ship on Friday — Unassigned", 5000, 9000, "confirmed")),
+      listOf(incoming("We won't ship on Friday — Unassigned", 5000, 9000)),
+    )
+    assertEquals(1, plan.rows.size)
+    assertEquals("id-1", plan.rows[0].id)
+    assertEquals("confirmed", plan.rows[0].review)
+  }
+
+  /** The same for `cannot` against `can't`, the other form the extractor sees both ways. */
+  @Test fun cannotAndCantAreTheSameNegation() {
+    val plan = Reconciler.reconcile(
+      listOf(stored("id-1", "We cannot ship on Friday — Unassigned", 5000, 9000, "confirmed")),
+      listOf(incoming("We can't ship on Friday — Unassigned", 5000, 9000)),
+    )
+    assertEquals("confirmed", plan.rows[0].review)
+  }
+
+  /**
    * The guard downgrades and does nothing else: a differing negation on an already-ambiguous pair
    * still produces one matched, flagged row — not a drop, not a duplicate, not a new id.
    *
@@ -289,6 +324,29 @@ class ReconcilerTest {
   }
 
   /**
+   * A hand-edited item is touched, even though nothing in its own row says so.
+   *
+   * The fixture is deliberately the invisible state: `review = "suggested"`, `done = false`,
+   * `edited = true`. A person rewrote the text by hand; that writes `edits` and touches neither
+   * `review` nor `item_done`, so the row looks exactly like one nobody ever cared about.
+   *
+   * Lost: the person's own words. The third form of the tick bug, in the code written to end that
+   * bug class — and the one with no compile error behind it, because `edits` has no foreign key to
+   * `items` and no orphan cleanup: the edit row survives on disk keyed to an id that will never be
+   * re-minted, so the text is neither shown nor recoverable.
+   */
+  @Test fun aVanishedButHandEditedItemIsRetainedEvenThoughItWasNeverReviewedOrTicked() {
+    val plan = Reconciler.reconcile(
+      listOf(stored("id-1", "Book the venue — Unassigned", 5000, 9000, "suggested", edited = true)),
+      listOf(incoming("Send the report — Unassigned", 3_600_000, 3_604_000)),
+    )
+    assertEquals(2, plan.rows.size)
+    val kept = plan.rows.first { it.id == "id-1" }
+    assertEquals("needs_review", kept.review)
+    assertEquals("Book the venue — Unassigned", kept.item.text)
+  }
+
+  /**
    * A person rejected it and then it stopped being extracted. Both agree it does not belong.
    *
    * Lost: the rejection. Flipping it to needs_review asks the person the question they already
@@ -319,7 +377,7 @@ class ReconcilerTest {
   @Test fun aUserWrittenItemIsNeverMatchedReplacedOrFlagged() {
     val user = AudioDb.StoredItem(
       "u-1", "action", "Send the report — Unassigned", "confirmed", "user", 5000, 9000,
-      emptyList(), LONG_AGO, false,
+      emptyList(), LONG_AGO, false, false,
     )
     val plan = Reconciler.reconcile(
       listOf(user),
@@ -401,5 +459,126 @@ class ReconcilerTest {
     assertEquals("id-1", exact.id)
     assertEquals("confirmed", exact.review)
     assertNotEquals("id-1", plan.rows.first { it.item.text == "Send the report — Unassigned" }.id)
+  }
+
+  /**
+   * An exact tie is decided by emission order, so it is flagged rather than settled quietly.
+   *
+   * Two candidate re-extractions of one confirmed action, scoring identically because each
+   * replaces the owner with a different name. Something has to win and position picks it, which is
+   * reproducible but not order-independent: a different extraction order hands the confirmation to
+   * the other item.
+   *
+   * Lost: the meaning of "confirmed". A tie is the definition of the ambiguity this class says it
+   * never resolves by guessing, so the winner keeps the state and says a person should look.
+   */
+  @Test fun anExactTieIsFlaggedRatherThanSettledByEmissionOrder() {
+    val plan = Reconciler.reconcile(
+      listOf(stored("id-1", "Send the report to finance — Priya", 5000, 9000, "confirmed")),
+      listOf(
+        incoming("Send the report to finance — Raj", 5000, 9000),
+        incoming("Send the report to finance — Anil", 5000, 9000),
+      ),
+    )
+    assertEquals(2, plan.rows.size)
+    assertEquals("needs_review", plan.rows.first { it.id == "id-1" }.review)
+  }
+
+  /**
+   * Anchors that merely touch do not overlap, and one millisecond of overlap is enough.
+   *
+   * Both edges of MIN_OVERLAP_MS, which is otherwise the constant with the longest comment and the
+   * least evidence in the file — before this, a value of -100000 passed the whole suite.
+   *
+   * Lost: the boundary the whole "different moment, different item" rule stands on. Loosened, an
+   * item's tick migrates to the adjacent item that starts where it ended; tightened, an item whose
+   * anchor moved by a millisecond becomes a new row and splits from its own history.
+   */
+  @Test fun anchorsThatOnlyTouchAreNotTheSameMoment() {
+    val plan = Reconciler.reconcile(
+      listOf(stored("id-1", "Send the report — Unassigned", 5000, 9000, "confirmed")),
+      listOf(incoming("Send the report — Unassigned", 9000, 12000)),
+    )
+    assertEquals(2, plan.rows.size)
+    assertNotEquals("id-1", plan.rows.first { it.item.anchorStartMs == 9000L }.id)
+  }
+
+  @Test fun oneMillisecondOfOverlapIsEnough() {
+    val plan = Reconciler.reconcile(
+      listOf(stored("id-1", "Send the report — Unassigned", 5000, 9000, "confirmed")),
+      listOf(incoming("Send the report — Unassigned", 8999, 12000)),
+    )
+    assertEquals(1, plan.rows.size)
+    assertEquals("id-1", plan.rows[0].id)
+    assertEquals("confirmed", plan.rows[0].review)
+  }
+
+  /**
+   * The closest miss in the measured table — 0.556 — must not be confident.
+   *
+   * Two different commitments to the same person in the same minute. This pair is the stated
+   * reason CONFIDENT_SIMILARITY is not lower, and without it the constant is pinned only from
+   * above: dropping it to 0.5 keeps every other test green while making this a silent match.
+   *
+   * Lost: a confirmation transplanted between two of one person's commitments, which is worse than
+   * losing it — the tick on "send the deck to legal" now sits on "send the invoice to accounts".
+   */
+  @Test fun theClosestMissInTheMeasuredTableIsNotConfident() {
+    val plan = Reconciler.reconcile(
+      listOf(stored("id-1", "Send the deck to legal — Priya", 5000, 9000, "confirmed")),
+      listOf(incoming("Send the invoice to accounts — Priya", 5000, 9000)),
+    )
+    assertEquals(1, plan.rows.size)
+    assertEquals("id-1", plan.rows[0].id)
+    assertEquals("needs_review", plan.rows[0].review)
+  }
+
+  /**
+   * One incoming item never consumes two stored rows.
+   *
+   * Two confirmed rows share a window; the incoming item is word-for-word one of them. It must
+   * take that one and leave the other alone.
+   *
+   * Lost: both rows at once. Without the guard the incoming item is assigned twice and the later,
+   * far worse pairing wins — the exact-match text lands on the OTHER item's id with its
+   * confirmation demoted, and the row it really continued is left orphaned and flagged. One
+   * reprocess, two items wrong, and the text now sits under an id a person associates with
+   * something else entirely.
+   */
+  @Test fun oneIncomingItemNeverConsumesTwoStoredRows() {
+    val plan = Reconciler.reconcile(
+      listOf(
+        stored("id-a", "Send the quarterly report to finance — Priya", 5000, 9000, "confirmed"),
+        stored("id-b", "Book the venue — Raj", 5000, 9000, "confirmed"),
+      ),
+      listOf(incoming("Send the quarterly report to finance — Priya", 5000, 9000)),
+    )
+    assertEquals(2, plan.rows.size)
+    val matched = plan.rows.first { it.id == "id-a" }
+    assertEquals("Send the quarterly report to finance — Priya", matched.item.text)
+    assertEquals("confirmed", matched.review)
+    val untouched = plan.rows.first { it.id == "id-b" }
+    assertEquals("Book the venue — Raj", untouched.item.text)
+    assertEquals("needs_review", untouched.review)
+  }
+
+  /**
+   * A preserved source keeps a null utterance id as null.
+   *
+   * Lost: the difference between "this row never had an utterance id" and "its id is the empty
+   * string". `item_sources.utterance_id` is nullable on purpose — ids are re-minted every
+   * recognition pass — and writing "" back puts a value that reads like an id into a column whose
+   * NULL is the honest answer.
+   */
+  @Test fun aPreservedSourceKeepsANullUtteranceIdNull() {
+    val stored = AudioDb.StoredItem(
+      "id-1", "action", "Send the report — Unassigned", "confirmed", "rules@1", 5000, 9000,
+      listOf(AudioDb.StoredSource(5000, 9000, 0, 27, null)), LONG_AGO, false, false,
+    )
+    val plan = Reconciler.reconcile(
+      listOf(stored),
+      listOf(incoming("Book the venue — Unassigned", 3_600_000, 3_604_000)),
+    )
+    assertNull(plan.rows.first { it.id == "id-1" }.item.sources[0].utteranceId)
   }
 }

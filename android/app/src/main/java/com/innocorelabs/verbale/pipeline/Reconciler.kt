@@ -115,12 +115,24 @@ object Reconciler {
   /**
    * Words that flip the sign of a sentence. Small and explicit on purpose — extend it here.
    *
-   * Any token ending in `n't` counts too, which covers won't, don't, didn't, isn't, aren't,
-   * can't, shouldn't and every other contraction without an endless list. The extractor folds
-   * U+2019 to an ASCII apostrophe before it builds an item's text, so the contractions arrive
-   * spelled this way.
+   * Compared as MEANINGS, not as spellings: `cannot` and anything ending in `n't` canonicalise to
+   * [NOT], so "will not" against "won't" and "cannot" against "can't" are the same negation and
+   * not a change of sign. ASR flips between contracted and expanded forms between runs as a matter
+   * of course, and a guard that called that a reversal would flag ordinary re-recognitions — a
+   * queue that flags everything says nothing, which is the argument this guard is built on.
+   *
+   * The extractor folds U+2019 to an ASCII apostrophe before building an item's text, so the
+   * contractions arrive spelled this way.
    */
-  private val NEGATIONS = setOf("not", "never", "no", "cannot")
+  private const val NOT = "not"
+  private val NEGATIONS = setOf(NOT, "never", "no")
+
+  /** The negation this token expresses, or null if it is not one. See [NEGATIONS]. */
+  private fun canonicalNegation(token: String): String? = when {
+    token == "cannot" || token.endsWith("n't") -> NOT
+    token in NEGATIONS -> token
+    else -> null
+  }
 
   /** `gen_version` of an item a person typed. See rule 1. */
   private const val USER_GEN = "user"
@@ -153,15 +165,28 @@ object Reconciler {
         pairings.add(Pairing(i, j, score))
       }
     }
+    // Position breaks ties so the OUTPUT is reproducible, but reproducible is not the same as
+    // order-independent: whichever item the extractor emitted first wins an exact tie, and a
+    // different emission order would hand the row to the other one. That is precisely the
+    // ambiguity this class says it never resolves by guessing, so a tied winner keeps the state
+    // AND is flagged — see [tied].
     pairings.sortWith(
       compareByDescending<Pairing> { it.score }.thenBy { it.incomingIndex }.thenBy { it.storedIndex },
     )
 
     val matched = arrayOfNulls<AudioDb.StoredItem>(incoming.size)
     val matchedScore = DoubleArray(incoming.size)
+    val tied = BooleanArray(incoming.size)
     val storedTaken = BooleanArray(candidates.size)
     for (p in pairings) {
       if (matched[p.incomingIndex] != null || storedTaken[p.storedIndex]) continue
+      // Was anything else still in the running for the same row, or for the same incoming item,
+      // at exactly this score? Then position alone chose the winner.
+      tied[p.incomingIndex] = pairings.any { q ->
+        q !== p && q.score == p.score &&
+          (q.storedIndex == p.storedIndex || q.incomingIndex == p.incomingIndex) &&
+          matched[q.incomingIndex] == null && !storedTaken[q.storedIndex]
+      }
       matched[p.incomingIndex] = candidates[p.storedIndex]
       matchedScore[p.incomingIndex] = p.score
       storedTaken[p.storedIndex] = true
@@ -178,7 +203,17 @@ object Reconciler {
       reusedIds.add(old.id)
       // Rule 3. Confident: carry everything forward untouched. Ambiguous: carry it forward AND
       // say so. The row's text is this run's, so its created_at is the only history it keeps.
-      val confident = matchedScore[i] >= CONFIDENT_SIMILARITY && !negationChanged(old.text, incoming[i].text)
+      //
+      // Note what this does to a REJECTED row that matches ambiguously: `needs_review` overwrites
+      // the rejection, so a person is asked again about something they already said no to. Rule 4
+      // argues the opposite for a rejected row that vanished, and the difference is deliberate —
+      // there the text was unchanged, here it changed enough that the machine cannot say it is the
+      // same sentence, and re-asking about genuinely different text is a fair question. With a
+      // margin of 0.11 around CONFIDENT_SIMILARITY this will happen, so it is stated rather than
+      // left to be discovered.
+      val confident = matchedScore[i] >= CONFIDENT_SIMILARITY &&
+        !negationChanged(old.text, incoming[i].text) &&
+        !tied[i]
       val review = if (confident) old.review else NEEDS_REVIEW
       rows.add(Row(old.id, incoming[i], review, old.createdAt, null))
     }
@@ -193,7 +228,9 @@ object Reconciler {
         old.kind,
         old.text,
         old.sources.map {
-          Minutes.Source(it.utteranceId ?: "", it.startMs, it.endMs, it.charStart, it.charEnd)
+          // utteranceId stays null when it was null. Writing "" back would turn "this row
+          // never had one" into an empty string that reads like an id.
+          Minutes.Source(it.utteranceId, it.startMs, it.endMs, it.charStart, it.charEnd)
         },
         old.anchorStartMs,
         old.anchorEndMs,
@@ -206,10 +243,12 @@ object Reconciler {
         // next recogniser improvement re-suggest it as brand new. Keeping the "no" is what makes
         // it stick.
         old.review == REJECTED -> REJECTED
-        // Untouched by anyone and no longer extracted: genuinely gone. `review == suggested` is
-        // not enough on its own to say that — a tick lives in item_done and never changes review,
-        // so a finished item can still read `suggested`, and dropping it deletes the tick.
-        old.review == SUGGESTED && !old.done -> continue
+        // Untouched by anyone and no longer extracted: genuinely gone. "Touched" is reviewed OR
+        // ticked OR edited, and only `review` is visible in this row's own table: a tick lives in
+        // item_done and a hand correction lives in edits, and NEITHER changes `review`. So a
+        // finished item and a rewritten item both still read `suggested`, and dropping them
+        // deletes the tick and the person's own words respectively.
+        old.review == SUGGESTED && !old.done && !old.edited -> continue
         // Confirmed, edited, or ticked, and the rules no longer find it. This row is now the only
         // record of it, so it is kept and flagged rather than deleted.
         else -> NEEDS_REVIEW
@@ -234,22 +273,27 @@ object Reconciler {
    * match into `needs_review`. It never makes a non-match into a match, never drops a row, and
    * never reaches a user item — those are excluded from matching before any of this runs.
    *
-   * What it does NOT close, so nobody mistakes it for more than it is:
+   * What it does NOT close — misses AND false positives, because a list of only the former reads
+   * as though there are none of the latter:
    *
-   *  - A subject swap. "Priya sends Raj the file" and "Raj sends Priya the file" score 1.000 with
-   *    identical negation sets. Word order and who-does-what-to-whom are beyond any token guard
-   *    and belong to Phase B's classifier.
-   *  - Sets, not counts, and not positions. "We will not ship but we will deploy" against "We will
-   *    ship but we will not deploy" has `{not}` on both sides and stays confident. Same limit,
-   *    same owner.
+   *  - MISS: a subject swap. "Priya sends Raj the file" and "Raj sends Priya the file" score 1.000
+   *    with identical negation sets. Word order and who-does-what-to-whom are beyond any token
+   *    guard and belong to Phase B's classifier.
+   *  - MISS: sets, not counts, and not positions. "We will not ship but we will deploy" against
+   *    "We will ship but we will not deploy" has `{not}` on both sides and stays confident. Same
+   *    limit, same owner.
+   *  - FALSE POSITIVE: `never` and `no` are not folded into [NOT], so "we will never ship" against
+   *    "we will not ship" reads as a change of sign when both negate. Left unfolded because they
+   *    are not spelling variants of one another the way `won't` and `will not` are — they differ
+   *    in force — and because ASR does not interchange them the way it interchanges contractions.
+   *    The cost when it does fire is one review flag on a carried-forward row, not lost state.
    */
   private fun negationChanged(a: String, b: String): Boolean =
     negations(normalise(a)) != negations(normalise(b))
 
   private fun negations(normalised: String): Set<String> =
     normalised.split(' ')
-      .map { it.trim { c -> !c.isLetter() && c != '\'' } }
-      .filter { it.isNotEmpty() && (it in NEGATIONS || it.endsWith("n't")) }
+      .mapNotNull { canonicalNegation(it.trim { c -> !c.isLetter() && c != '\'' }) }
       .toSet()
 
   /**

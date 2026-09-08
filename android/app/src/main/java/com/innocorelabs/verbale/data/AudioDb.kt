@@ -948,6 +948,17 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    *    extracted. Read it with a LEFT JOIN on `item_done`; a default of `false` here would let a
    *    caller that forgot the join silently throw ticks away, which is the exact class of bug this
    *    whole area exists to end.
+   *  - [edited] for the same reason in its third form. Hand-correcting an item's text writes
+   *    `edits` and touches neither `review` nor `item_done`, so a rewritten item also reads
+   *    `suggested`/not-done and would be dropped as "nobody cared" — discarding the one version of
+   *    the text a person actually wrote. Read it with a LEFT JOIN on `edits` where
+   *    `target_kind='item'` and `target_key = items.id`.
+   *
+   * `edits` carries a foreign key to `meetings` only — none to `items` — and nothing anywhere
+   * cleans up orphans, so an edit row outlives an item id that will never be re-minted. That is
+   * latent today because Task 11 is what starts writing `target_kind='item'`, and no compile error
+   * will catch it there: the query simply returns no rows and every edited item looks untouched.
+   * Whoever implements that join owns this note.
    */
   data class StoredItem(
     val id: String,
@@ -960,6 +971,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     val sources: List<StoredSource>,
     val createdAt: Long,
     val done: Boolean,
+    val edited: Boolean,
   )
 
   companion object {

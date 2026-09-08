@@ -59,9 +59,16 @@ object Minutes {
    * [utteranceId] is a convenience, not an identity: AudioDb re-mints utterance ids on every
    * recognition pass, so an id saved today points at nothing after a re-run. The anchor
    * ([startMs], [endMs]) is what survives.
+   *
+   * It is nullable for that reason, even though the extractor always supplies one and `parseItems`
+   * therefore never yields null here. `Reconciler` re-emits sources it read back from
+   * `item_sources`, whose `utterance_id` column is nullable on purpose; forcing them through a
+   * non-null field meant writing `""` back to a column where NULL is the honest value, turning
+   * "this row never had one" into an empty string that reads like an id. The absence has to
+   * survive the round trip.
    */
   data class Source(
-    val utteranceId: String,
+    val utteranceId: String?,
     val startMs: Long,
     val endMs: Long,
     val charStart: Int,
