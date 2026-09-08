@@ -963,6 +963,43 @@ dangles every pointer. That is silent UB no golden can catch."
 
 ---
 
+## Discovered during Task 7: the match threshold is unvalidated, and Jaccard is meaning-blind
+
+`CONFIDENT_SIMILARITY = 0.6` was a guess in this plan. Measured on realistic pairs (Jaccard over
+the real `normalise`), for an *n*-token item with one token substituted the score is exactly
+`(n-1)/(n+1)`, so 0.6 means one changed word is confident from four tokens up, two from eight.
+
+| Pair | Score |
+|---|---|
+| Same item, one word re-recognised, ten words | 0.846 |
+| Same item, five words | 0.667 |
+| Same item, owner resolved by a speaker merge | 0.667 |
+| **Different items, same minute, same owner** | **0.556** |
+| Different items, same minute, both about "the report" | 0.500 |
+
+**The margin is 0.11**, between a worst same-item pair at 0.667 and a best different-item pair at
+0.556 — and it is measured on invented samples, not on real reprocess pairs. 0.6 sits in the gap.
+Dropping to 0.5 would make two different people's actions on the same report a confident match.
+**Task 14 is the first opportunity to set this number from real before/after pairs off a phone.**
+Until then it is a guess that happens to work on the cases someone thought of.
+
+**The sharper problem is not the threshold.** Jaccard cannot see meaning:
+
+| | Score | Verdict |
+|---|---|---|
+| "We will ship on Friday" vs "We will **not** ship on Friday" | 0.875 | **confident** |
+| "Priya sends Raj the file" vs "Raj sends Priya the file" | 1.000 | **confident** |
+
+A decision that reversed between two runs keeps its confirmation, unflagged. A five-line guard —
+force `needs_review` when the negation tokens differ — does not require understanding meaning, only
+refusing to be confident when the evidence changed sign. That is the same rule as everything else
+here: never guess silently.
+
+Phase B's classifier is the real answer, since it types an item as commitment or rejection. This
+guard is the Phase A floor beneath it.
+
+---
+
 ## Discovered during Task 5: the schema mirror is five tables wrong
 
 `src/db/schema.ts` calls itself "NOT THE SOURCE OF TRUTH... the readable copy - change both", and
@@ -1732,6 +1769,36 @@ deep link since it was written, and has never had a number to put in it."
 ---
 
 ## Task 7: `Reconciler` — the only code allowed to touch a confirmed row
+
+> **The listing below had four defects that would have shipped. The worst one destroys ticks —
+> which is the failure this entire sub-project exists to end.**
+>
+> 1. **`review == "suggested"` does NOT mean "untouched".** A tick writes `item_done` and never
+>    touches `review`, so a *finished* item still reads `suggested`. Rule 4's
+>    `if (old.review == "suggested") continue` therefore drops a completed item, and Task 6's
+>    `DELETE FROM item_done WHERE item_id NOT IN (SELECT id FROM items…)` then deletes its tick.
+>    Silently. `StoredItem` must carry `done`, and "touched" must mean reviewed **or** ticked
+>    **or** edited.
+> 2. **Arrival-order greed.** Matching each incoming item against the best remaining candidate in
+>    order lets a poor early match steal the row a later perfect match needed — landing a person's
+>    confirmation on one item and the text it belonged to on another. Score every legal pair and
+>    take them best-first.
+> 3. **`Row` carries no `created_at` or `gen_version`.** Task 6 writes the run's values to every
+>    row, so a reconciled item shows today's date, and a user-written item gets relabelled
+>    `rules@1` — after which rule 1 no longer protects it on the *next* reprocess.
+> 4. **An undocumented implicit floor.** `var bestScore = 0.0` with `if (score > bestScore)` means
+>    a zero-similarity pair is never matched. That is correct and was invisible; relaxing it hands
+>    a confirmed item's id and tick to a commitment sharing not one word with it.
+>
+> **And the Task 12 snippet below is a false test.** Its fixture anchors the user item at `0..0`
+> against an incoming item at `5000..9000` — the anchors do not overlap, so no matcher would ever
+> pair them. Verified: delete the user guard and the assertion still passes. It exercises the
+> vanished-row exception and never the matching one.
+>
+> **Task 6 will not compile against the corrected `Row`, and must not be "fixed" with defaults.**
+> `items()` must select `created_at` and `LEFT JOIN item_done`; `replaceItems` must write
+> `r.createdAt ?: now` and `r.genVersion ?: genVersion`. The no-default constructor is the
+> enforcement — a compile error, not a test.
 
 **Files:**
 - Create: `android/app/src/main/java/com/innocorelabs/verbale/pipeline/Reconciler.kt`
