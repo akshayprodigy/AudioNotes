@@ -349,8 +349,14 @@ function timed(rows: { text: string; speakerId: string }[]) {
 }
 
 const SPANS = [
-  { text: 'Good morning everyone.  We agreed to ship on Monday.', speakerId: 'S0' },
-  { text: "Right.\nI'll send the report by Friday.", speakerId: 'S1' },
+  // The whitespace runs are INSIDE the sentences, not between them. A run between two sentences
+  // is not in either of them, so text.indexOf still finds each one intact and the fallback is
+  // never entered - which is exactly the mistake the first version of this fixture made.
+  { text: 'Good morning. We agreed  to ship on\nMonday.', speakerId: 'S0' },
+  // The same sentence twice in ONE turn: each source must carry its OWN span, not the first
+  // occurrence's. This is whisper's repetition-loop failure mode, which this project has on
+  // record from the Galaxy A07.
+  { text: "Right. I'll send the report by Friday. I'll send the report by Friday.", speakerId: 'S1' },
 ];
 
 function writeEvidenceGolden(name: string, rows: { text: string; speakerId: string }[]) {
@@ -374,7 +380,10 @@ it('writes the evidence goldens', () => {
 });
 ```
 
-`SPANS` exists to exercise the two cases `sentenceSpan` has a fallback for: a double space and an embedded newline, both of which `splitSentences` collapses.
+`SPANS` exercises the two things nothing else does: a whitespace run **inside** a sentence, which
+is the only way into `sentenceSpan`'s fallback, and the same sentence twice in one turn, which is
+the only way to catch a source carrying the wrong span. Verify the second one by hand after
+generating - the two sources must have DIFFERENT `charStart` values.
 
 - [ ] **Step 2: Generate them**
 
@@ -689,27 +698,24 @@ std::vector<DraftItem> extractItems(const std::vector<TimedUtt>& utterances,
   for (const auto& s : speakers) name_by_id[s.id] = s.display_name;
 
   std::vector<DraftItem> decisions, actions, questions;
-  std::unordered_map<std::string, DraftItem*> by_key;
+  std::vector<DraftItem>* const buckets[3] = {&decisions, &actions, &questions};
+  // (bucket, index), never a pointer. See the note under this listing.
+  std::unordered_map<std::string, std::pair<int, size_t>> by_key;
 
-  auto add = [&by_key](std::vector<DraftItem>& arr, const char* kind, const std::string& text,
-                       const ItemSource& src) {
+  auto add = [&](int bucket, const char* kind, const std::string& text, const ItemSource& src) {
     if (text.empty()) return;
     const std::string key = std::string(kind) + "|" + rules::norm(text);
     auto it = by_key.find(key);
     if (it != by_key.end()) {
-      it->second->sources.push_back(src);
-      it->second->anchor_start_ms = std::min(it->second->anchor_start_ms, src.start_ms);
-      it->second->anchor_end_ms = std::max(it->second->anchor_end_ms, src.end_ms);
+      DraftItem& existing = (*buckets[it->second.first])[it->second.second];
+      existing.sources.push_back(src);
+      existing.anchor_start_ms = std::min(existing.anchor_start_ms, src.start_ms);
+      existing.anchor_end_ms = std::max(existing.anchor_end_ms, src.end_ms);
       return;
     }
-    arr.push_back({kind, text, {src}, src.start_ms, src.end_ms});
-    by_key[key] = &arr.back();
+    buckets[bucket]->push_back({kind, text, {src}, src.start_ms, src.end_ms});
+    by_key[key] = {bucket, buckets[bucket]->size() - 1};
   };
-
-  // reserve() so push_back cannot reallocate and invalidate the pointers held in by_key.
-  decisions.reserve(utterances.size() * 4);
-  actions.reserve(utterances.size() * 4);
-  questions.reserve(utterances.size() * 4);
 
   for (const auto& u : utterances) {
     std::string speaker_name;
@@ -723,14 +729,14 @@ std::vector<DraftItem> extractItems(const std::vector<TimedUtt>& utterances,
       const auto span = sentenceSpan(normalized, sentence);
       const ItemSource src{u.id, u.start_ms, u.end_ms, span.first, span.second};
 
-      if (rules::isQuestion(sentence)) { add(questions, "question", sentence, src); continue; }
-      if (rules::isDecision(sentence)) { add(decisions, "decision", sentence, src); continue; }
+      if (rules::isQuestion(sentence)) { add(2, "question", sentence, src); continue; }
+      if (rules::isDecision(sentence)) { add(0, "decision", sentence, src); continue; }
       if (rules::isAction(sentence)) {
         const std::string owner = rules::detectOwner(sentence, speaker_name);
         std::string text = sentence + " \xE2\x80\x94 " + owner;
         std::string due;
         if (rules::matchDue(sentence, &due)) text += " (due " + due + ")";
-        add(actions, "action", text, src);
+        add(1, "action", text, src);
       }
     }
   }
@@ -749,7 +755,14 @@ std::vector<DraftItem> extractItems(const std::vector<TimedUtt>& utterances,
 }  // namespace audionotes
 ```
 
-**The `reserve()` is load-bearing.** `by_key` holds raw pointers into the three vectors; without reserving, a `push_back` that reallocates leaves every earlier pointer dangling and a repeated item corrupts memory instead of gaining a source. The TypeScript has no such hazard, which is exactly the sort of divergence the goldens exist to catch.
+**`by_key` stores indices, not pointers, and this is not a style preference.** The obvious port
+holds `DraftItem*` and reserves the vectors up front to stop `push_back` invalidating them. That
+reservation cannot be a bound: sentences per utterance is unbounded, so one long turn containing
+more decision sentences than the reservation allowed reallocates the vector and leaves every
+pointer in `by_key` dangling. It is silent undefined behaviour, it depends on the shape of the
+input rather than on the code, and no golden test can catch it. A `(bucket, index)` pair stays
+valid across any number of `push_back`s. The TypeScript has no equivalent hazard, which is exactly
+the sort of divergence the goldens cannot see and a reviewer has to.
 
 - [ ] **Step 5: Build and run**
 
@@ -784,10 +797,10 @@ Character spans are counted in UTF-16 code units, not bytes, for the reason
 minutes_extractor.cpp already carries utf16Length: JavaScript string indices
 are UTF-16 units and the goldens are written by the TypeScript.
 
-by_key holds pointers into the three vectors, so they are reserved up front.
-Without that a repeated item reallocates the vector and corrupts memory
-instead of gaining a source — a hazard the TypeScript does not have, and the
-kind of divergence the goldens exist to catch."
+by_key stores (bucket, index) rather than DraftItem*. Reserving the vectors
+and holding pointers looks equivalent and is not: sentences per utterance is
+unbounded, so one long turn overflows any reservation, reallocates, and
+dangles every pointer. That is silent UB no golden can catch."
 ```
 
 ---
