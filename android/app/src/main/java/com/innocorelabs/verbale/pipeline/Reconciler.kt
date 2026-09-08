@@ -28,9 +28,11 @@ import kotlin.math.min
  *  2. Every legal (stored, incoming) pair is scored, and the pairs are taken best-first across the
  *     whole meeting. Matching each incoming item against the best remaining candidate in arrival
  *     order lets a poor early match steal the row a later, perfect match needed.
- *  3. A pair at or above [CONFIDENT_SIMILARITY] carries the stored row's review forward untouched.
- *     Below it, the row is still carried — the state is never thrown away — but marked
- *     `needs_review`, because the alternative is deciding on the person's behalf and not saying so.
+ *  3. A pair at or above [CONFIDENT_SIMILARITY] carries the stored row's review forward untouched,
+ *     unless the two texts disagree about negation ([negationChanged]), which is the one meaning
+ *     change token overlap scores as near-identical. Below it, the row is still carried — the
+ *     state is never thrown away — but marked `needs_review`, because the alternative is deciding
+ *     on the person's behalf and not saying so.
  *  4. Whatever matched nothing is kept if a person has touched it in any way, and dropped only if
  *     nobody ever has.
  *
@@ -68,17 +70,57 @@ object Reconciler {
   /**
    * Below this, two items that overlap in time are carried forward but not trusted.
    *
-   * A guess, and worth knowing it is one. On token overlap (Jaccard), a ten-word action with one
-   * word re-recognised scores 9/11 ≈ 0.82 and a five-word one scores 4/6 ≈ 0.67, so ordinary
-   * re-recognition clears it; two different actions that share an opening verb and an article
-   * score around 0.2-0.45 and do not. The consequence of being wrong is asymmetric and mild: too
-   * high only adds a review flag to something that did not need one, and the state is carried
-   * either way. Too low silently trusts a bad pair, which is why it is not lower.
+   * **A guess, and worth knowing it is one.** What the number does is exact: for an n-token item
+   * with one token substituted the Jaccard score is `(n-1)/(n+1)`, so 0.6 means one changed word
+   * is confident from 4 tokens up, and two changed words from 8 tokens up. Real items carry a
+   * " — Owner" suffix worth two tokens, so almost nothing falls under 4.
+   *
+   * Measured on the pairs below. These are INVENTED pairs, not real reprocesses — no before/after
+   * item pairs from a phone exist yet, and Task 14 is where they come from. Anyone may re-run
+   * this table; a number defended by a measurement you can re-run beats one that merely looks
+   * principled.
+   *
+   * ```
+   * SAME ITEM,  one word re-recognised (10 words)      0.846  confident
+   * SAME ITEM,  one word re-recognised (5 words)       0.667  confident
+   * SAME ITEM,  owner resolved by a speaker merge      0.667  confident
+   * SAME ITEM,  filler dropped by better ASR           0.909  confident
+   * SAME ITEM,  two words wrong in a 12-word action    0.750  confident
+   * DIFFERENT,  same minute, shared verb + article     0.400  needs_review
+   * DIFFERENT,  same minute, same owner                0.556  needs_review   <- closest miss
+   * DIFFERENT,  same minute, both about "the report"   0.500  needs_review
+   * DIFFERENT,  same minute, nothing shared            0.000  not matched
+   * ```
+   *
+   * The margin between the worst same-item pair (0.667) and the best different-item pair (0.556)
+   * is **0.11**. Thin. Dropping to 0.5 would make two different people's actions on the same
+   * report a confident match, which is why it is not lower. The cost of being too high is mild
+   * and one-sided — a review flag on something that did not need one — and the state is carried
+   * forward either way.
    */
   private const val CONFIDENT_SIMILARITY = 0.6
 
-  /** Anchors must overlap at all before text is even considered. */
+  /**
+   * Anchors must overlap at all before text is even considered.
+   *
+   * Deliberately a hard gate and not a tolerance window. An item whose anchor drifted entirely
+   * past its old one under a re-ASR is unmatchable here at any similarity — but the consequence
+   * is a SPLIT, not a loss: the incoming item gets a fresh row and the stored one is retained and
+   * flagged by rule 4, so a person sees both. Real anchor drift under re-ASR has never been
+   * measured, so widening this would be a second guess stacked on the guess above. Task 14 is
+   * where the number should come from.
+   */
   private const val MIN_OVERLAP_MS = 1L
+
+  /**
+   * Words that flip the sign of a sentence. Small and explicit on purpose — extend it here.
+   *
+   * Any token ending in `n't` counts too, which covers won't, don't, didn't, isn't, aren't,
+   * can't, shouldn't and every other contraction without an endless list. The extractor folds
+   * U+2019 to an ASCII apostrophe before it builds an item's text, so the contractions arrive
+   * spelled this way.
+   */
+  private val NEGATIONS = setOf("not", "never", "no", "cannot")
 
   /** `gen_version` of an item a person typed. See rule 1. */
   private const val USER_GEN = "user"
@@ -136,7 +178,8 @@ object Reconciler {
       reusedIds.add(old.id)
       // Rule 3. Confident: carry everything forward untouched. Ambiguous: carry it forward AND
       // say so. The row's text is this run's, so its created_at is the only history it keeps.
-      val review = if (matchedScore[i] >= CONFIDENT_SIMILARITY) old.review else NEEDS_REVIEW
+      val confident = matchedScore[i] >= CONFIDENT_SIMILARITY && !negationChanged(old.text, incoming[i].text)
+      val review = if (confident) old.review else NEEDS_REVIEW
       rows.add(Row(old.id, incoming[i], review, old.createdAt, null))
     }
 
@@ -177,6 +220,37 @@ object Reconciler {
   }
 
   private fun normalise(s: String) = s.trim().lowercase().replace(Regex("\\s+"), " ")
+
+  /**
+   * Did the evidence change sign between the two texts?
+   *
+   * "We will ship on Friday" and "We will not ship on Friday" share seven tokens of eight and
+   * score 0.875 — comfortably confident, and opposite in meaning. Token overlap cannot see that,
+   * so a decision that reversed between two runs would keep its confirmation with nothing said.
+   * This does not understand the sentence; it only refuses to be confident when the negation
+   * tokens differ, which is the same rule as everything else in this file: never guess silently.
+   *
+   * **Downgrade only.** It runs after a pair has already been chosen and can only turn a confident
+   * match into `needs_review`. It never makes a non-match into a match, never drops a row, and
+   * never reaches a user item — those are excluded from matching before any of this runs.
+   *
+   * What it does NOT close, so nobody mistakes it for more than it is:
+   *
+   *  - A subject swap. "Priya sends Raj the file" and "Raj sends Priya the file" score 1.000 with
+   *    identical negation sets. Word order and who-does-what-to-whom are beyond any token guard
+   *    and belong to Phase B's classifier.
+   *  - Sets, not counts, and not positions. "We will not ship but we will deploy" against "We will
+   *    ship but we will not deploy" has `{not}` on both sides and stays confident. Same limit,
+   *    same owner.
+   */
+  private fun negationChanged(a: String, b: String): Boolean =
+    negations(normalise(a)) != negations(normalise(b))
+
+  private fun negations(normalised: String): Set<String> =
+    normalised.split(' ')
+      .map { it.trim { c -> !c.isLetter() && c != '\'' } }
+      .filter { it.isNotEmpty() && (it in NEGATIONS || it.endsWith("n't")) }
+      .toSet()
 
   /**
    * Token overlap (Jaccard). Cheap, order-insensitive, and enough to tell a re-recognition of the

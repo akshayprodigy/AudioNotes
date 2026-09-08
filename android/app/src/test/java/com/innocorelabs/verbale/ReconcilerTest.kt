@@ -142,6 +142,79 @@ class ReconcilerTest {
   }
 
   /**
+   * A decision that reversed between two runs is never a confident match.
+   *
+   * "We will ship on Friday" and "We will not ship on Friday" share seven tokens of eight and
+   * score 0.875 — well clear of the threshold, and opposite in meaning.
+   *
+   * Lost: the confirmation, attached to its own reversal. The person confirmed that the team
+   * ships on Friday; after the reprocess the row says they do not ship on Friday and still reads
+   * as confirmed by them. Nothing on screen says a thing changed. The row is still carried — the
+   * tick is not thrown away — it is carried and flagged.
+   */
+  @Test fun aNegationFlipIsNeverAConfidentMatch() {
+    val plan = Reconciler.reconcile(
+      listOf(stored("id-1", "We will ship on Friday — Unassigned", 5000, 9000, "confirmed")),
+      listOf(incoming("We will not ship on Friday — Unassigned", 5000, 9000)),
+    )
+    assertEquals(1, plan.rows.size)
+    assertEquals("id-1", plan.rows[0].id)
+    assertEquals("needs_review", plan.rows[0].review)
+  }
+
+  /**
+   * The same, spelled as a contraction, which is how people actually talk.
+   *
+   * Exercises the `n't` rule rather than the explicit word list — the two halves of the guard fail
+   * independently, so they are tested independently.
+   *
+   * Lost: exactly what the previous test protects, for every sentence that says "won't" instead
+   * of "will not".
+   */
+  @Test fun aContractedNegationFlipIsCaughtToo() {
+    val plan = Reconciler.reconcile(
+      listOf(stored("id-1", "We will ship on Friday — Unassigned", 5000, 9000, "confirmed")),
+      listOf(incoming("We won't ship on Friday — Unassigned", 5000, 9000)),
+    )
+    assertEquals("needs_review", plan.rows[0].review)
+  }
+
+  /**
+   * Two texts that both negate are the same sentence re-recognised, and stay confident.
+   *
+   * Lost: the guard's whole value. A negation check that fires whenever a negation is PRESENT,
+   * rather than when it CHANGED, would flag every negative item in every meeting on every
+   * reprocess — and a review queue that flags everything says nothing.
+   */
+  @Test fun twoTextsThatBothNegateStillMatchConfidently() {
+    val plan = Reconciler.reconcile(
+      listOf(stored("id-1", "We will not ship on Friday — Unassigned", 5000, 9000, "confirmed")),
+      listOf(incoming("We will not ship on Fridays — Unassigned", 5000, 9000)),
+    )
+    assertEquals(1, plan.rows.size)
+    assertEquals("id-1", plan.rows[0].id)
+    assertEquals("confirmed", plan.rows[0].review)
+  }
+
+  /**
+   * The guard downgrades and does nothing else: a differing negation on an already-ambiguous pair
+   * still produces one matched, flagged row — not a drop, not a duplicate, not a new id.
+   *
+   * Lost: the state. A guard that rejected the pair instead of downgrading it would turn a
+   * carried-forward tick into a new item plus a retained orphan, which is the failure this class
+   * exists to prevent, arriving through the code meant to prevent it.
+   */
+  @Test fun theNegationGuardOnlyDowngrades_itNeverUnmatches() {
+    val plan = Reconciler.reconcile(
+      listOf(stored("id-1", "Send the quarterly report to finance — Priya", 5000, 9000, "confirmed")),
+      listOf(incoming("Do not cancel the quarterly report — Unassigned", 5200, 9100)),
+    )
+    assertEquals(1, plan.rows.size)
+    assertEquals("id-1", plan.rows[0].id)
+    assertEquals("needs_review", plan.rows[0].review)
+  }
+
+  /**
    * A person confirmed it; an exact re-match must not quietly demote it back to suggested.
    *
    * Lost: the review itself. Demoting on every reprocess would put an item a person already
