@@ -1033,6 +1033,19 @@ and column names across the two files and failing the build on a difference, is 
 Its own task, with the drift above as its first fixture: the check must fail on today's tree before
 the tree is corrected, or there is no evidence it works.
 
+Three notes for whoever writes it, from the people who built the tests it would extend:
+
+- Reuse `ddlFor`/`freshDb`/PRAGMA from `src/db/__tests__/schema.test.ts`, but extract the DDL from
+  `AudioDb.kt` rather than importing `schema.ts`, and diff PRAGMA output per table.
+- **That Kotlin extractor is itself a second hand-rolled parser** and needs the same mutation
+  discipline this file got. It must throw loudly on an array entry it does not recognise — the
+  `+`-concatenated multi-line string that builds `search_fts` is the shape to test against — so a
+  table added in an unfamiliar style cannot quietly fall out of coverage. A guard that silently
+  skips what it cannot parse is the failure mode this whole plan keeps rediscovering.
+- **`node:sqlite` has no fts5 module** (checked). `search_fts` and `meetings_fts` can therefore
+  never be diffed this way, in either direction. State that as a permanent gap rather than papering
+  over it.
+
 ---
 
 ## Discovered during Task 4: an illegal JNI pattern at twelve sites
@@ -1446,6 +1459,21 @@ nonsense would pass every host test."
 ---
 
 ## Task 5: The three tables
+
+> **SHIPPED 8 September 2026** — commits `2ec7680`, `130b918`, `b0e7d04`, `e2c4211`. 135 Kotlin
+> unit tests, 252 jest.
+>
+> Review found the column assertions could not catch a wrong column list, then that the rewrite
+> could not catch a wrong column *type* — `anchor_start_ms INTEGER -> TEXT` passed 17/17, and that
+> is the column the items list is ordered by, so a meeting's items would have come back sorted
+> lexicographically with every test green. Both closed. The TypeScript side now executes the real
+> DDL in `node:sqlite` and asserts via PRAGMA, which also proves the DDL parses — a trailing comma
+> would otherwise have shipped a build that cannot open its own database.
+>
+> Design changes made here rather than after ship: `items.id` gained `NOT NULL` (SQLite's legacy
+> quirk means `TEXT PRIMARY KEY` alone permits NULL, proven with two NULL-id rows that did not
+> collide); `char_start`/`char_end` gained `NOT NULL` so a null span cannot read back as offset 0;
+> and `idx_item_sources_start` was dropped for having no reader in Tasks 6-13.
 
 **Files:**
 - Modify: `android/app/src/main/java/com/innocorelabs/verbale/data/AudioDb.kt`
