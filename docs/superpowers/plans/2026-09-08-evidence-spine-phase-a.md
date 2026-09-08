@@ -386,8 +386,32 @@ Expected: PASS, and three new files under `cpp/tests/golden/`.
 
 - [ ] **Step 3: Check the goldens say something true**
 
-Run: `python3 -c "import json;d=json.load(open('cpp/tests/golden/evidence_spans.json'));i=d['output'][0];u=d['input']['utterances'][i['sources'][0]['utteranceId'][1:] and 0];print(repr(u['text'][i['sources'][0]['charStart']:i['sources'][0]['charEnd']]))"`
-Expected: prints `'We agreed to ship on Monday.'` — the span resolves to the sentence, through a double space.
+A golden is only worth having if somebody has looked at it once. Slice every span back out of the
+turn it points into and read the result:
+
+```bash
+python3 - <<'EOF'
+import json
+d = json.load(open('cpp/tests/golden/evidence_spans.json'))
+utts = {u['id']: u['text'] for u in d['input']['utterances']}
+for item in d['output']:
+    for i, s in enumerate(item['sources']):
+        got = utts[s['utteranceId']][s['charStart']:s['charEnd']]
+        print(f"{item['kind']:9} src{i} {s['utteranceId']} [{s['charStart']:3},{s['charEnd']:3}] {got!r}")
+EOF
+```
+
+Three things must be true in that output, and each corresponds to one row of `SPANS`:
+
+1. Every slice is the sentence the item was lifted from — including the one containing a double
+   space and a newline, which is the only proof the collapsed scan ran at all.
+2. The repeated `I'll send the report by Friday.` has **two sources with different `charStart`
+   values**. Identical values mean both sources point at one occurrence.
+3. For `'We agreed  to ship. We agreed to ship.'` the **first source starts at 0**, not at 20. A
+   first source starting at 20 means the direct match beat the collapsed one, and the port that
+   does that is wrong in a way no other fixture would show.
+
+If any of the three fails, stop — the goldens would then lock in the bug rather than catch it.
 
 - [ ] **Step 4: Commit**
 
@@ -396,10 +420,13 @@ git add src/pipeline/__tests__/minutes.golden.test.ts cpp/tests/golden/evidence_
 git commit -m "test(evidence): goldens the C++ port has to replay
 
 Same discipline as the minutes goldens: the real TypeScript runs on fixed
-fixtures and writes JSON, and the C++ replays it byte-for-byte. The spans
-fixture carries a double space and an embedded newline because splitSentences
-collapses both, which is the one case where a sentence is not a substring of
-the turn it came from."
+fixtures and writes JSON, and the C++ replays it byte-for-byte. The spans fixture
+carries the three shapes nothing else does: a whitespace run inside a sentence,
+which is the only way into the collapsed scan; the same sentence twice in one
+turn, which is the only way a source can carry the wrong span; and a repeat
+whose FIRST copy holds the run, which is the only way to catch a port that
+resolves the two scans in the wrong order. Without that last row the goldens
+agree with either ordering, which is how the bug stayed invisible."
 ```
 
 ---
