@@ -718,10 +718,14 @@ std::optional<std::pair<size_t, size_t>> findFrom(const std::string& text,
   }
 
   // Collapsed scan: the squashed form alongside a map back to byte offsets.
+  //
+  // Built FROM `from`, not from 0 with a translated offset. The two are equivalent only because
+  // every needle here is a trimmed sentence, and relying on that is how a port drifts: build the
+  // window the TypeScript builds and the equivalence needs no argument.
   std::vector<size_t> map;
   std::string flat;
   bool was_space = false;
-  for (size_t i = 0; i < text.size(); ++i) {
+  for (size_t i = from; i < text.size(); ++i) {
     if (isSpace(text[i])) {
       if (!was_space && !flat.empty()) { map.push_back(i); flat += ' '; }
       was_space = true;
@@ -731,12 +735,9 @@ std::optional<std::pair<size_t, size_t>> findFrom(const std::string& text,
       flat += text[i];
     }
   }
-  // `from` is a byte offset into `text`; translate it into an offset into `flat`.
-  size_t flat_from = 0;
-  while (flat_from < map.size() && map[flat_from] < from) ++flat_from;
 
   const std::string needle = squash(sentence);
-  const size_t at = flat.find(needle, flat_from);
+  const size_t at = flat.find(needle);
 
   // No bounds guards on `map`, deliberately. map.size() == flat.size() by construction: every
   // branch that appends to `flat` pushes exactly one entry to `map`, and nothing else touches
