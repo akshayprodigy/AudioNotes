@@ -407,7 +407,7 @@ for (const f of fs.readdirSync("cpp/tests/golden").filter(n => n.startsWith("evi
 }'
 ```
 
-Three things must be true in that output, and each corresponds to one row of `SPANS`:
+Four things must be true in that output, each corresponding to a row of `SPANS`:
 
 1. Every slice is the sentence the item was lifted from — including the one containing a double
    space and a newline, which is the only proof the collapsed scan ran at all.
@@ -422,7 +422,20 @@ Three things must be true in that output, and each corresponds to one row of `SP
    checks they still are - if a later edit makes any two coincide, the row has stopped
    discriminating and must be rebuilt rather than re-baselined.
 
-If any of the three fails, stop — the goldens would then lock in the bug rather than catch it.
+If any of the four fails, stop — the goldens would then lock in the bug rather than catch it.
+
+**A finding worth keeping, from the review of this task.** Adding a third `PRIORITY` row also
+regenerates `minutes_priority.json`, which the OLDER `cpp/tests/test_minutes.cpp` replays. That was
+written off as a harmless side effect and is not one: with the C++ port's question and decision
+branches swapped, the port passes the old goldens and fails the new ones with four failures,
+including a summary line reading `2 decisions, 1 open question` against `1 decision, 2 open
+questions`.
+
+So question-before-decision precedence was **entirely unpinned in the shipped C++ minutes port**
+until this commit, and had been since that port was written. It was closed by accident, while
+fixing something else, because one fixture row happened to make an existing test able to fail.
+That is the argument for this whole task in one sentence: a golden nobody has tried to break is a
+file, not a test.
 
 - [ ] **Step 4: Commit**
 
