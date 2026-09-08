@@ -33,6 +33,7 @@
 #include "diar/diarizer.h"
 #include "diar/span_map.h"
 #include "llm/llama_engine.h"
+#include "minutes/evidence.h"
 #include "minutes/llm_minutes.h"
 #include "minutes/minutes_extractor.h"
 #include "vad/silero_vad.h"
@@ -559,6 +560,19 @@ std::vector<std::string> jstrArray(JNIEnv* env, jobjectArray arr) {
   return out;
 }
 
+// A jlongArray copied out, so callers never have to remember the Release. JNI_ABORT because
+// nothing here writes back.
+std::vector<int64_t> jlongVec(JNIEnv* env, jlongArray arr) {
+  std::vector<int64_t> out;
+  if (!arr) return out;
+  const jsize n = env->GetArrayLength(arr);
+  jlong* p = env->GetLongArrayElements(arr, nullptr);
+  if (!p) return out;
+  out.assign(p, p + n);
+  env->ReleaseLongArrayElements(arr, p, JNI_ABORT);
+  return out;
+}
+
 }  // namespace
 
 extern "C" JNIEXPORT jobjectArray JNICALL
@@ -610,6 +624,73 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeMinutes(
     }
   }
   return out;
+}
+
+// The same rules again, with the provenance nativeMinutes discards: the turn each item came from,
+// its start and end in the meeting timeline, and the character span of the sentence inside that
+// turn. nativeMinutes takes texts and speaker ids and NO timestamps, so it cannot produce an
+// anchor; that is the whole reason this exists rather than a widened nativeMinutes.
+//
+// Returns JSON rather than the parallel string arrays nativeMinutes and nativeDiarize use, because
+// an item has a VARIABLE number of sources — the same sentence said twice is one item with two
+// pieces of evidence. Parallel arrays cannot carry that without a second array of per-item source
+// counts and matching index arithmetic on both sides of the boundary. One string is cheaper to get
+// right, and the payload is a few kilobytes for a long meeting.
+//
+// The serialization itself is audionotes::itemsToJson, in minutes/evidence.cpp, so the goldens can
+// pin the bytes on the host; this function is marshalling and nothing else. It is also why nothing
+// here composes JSON with the local jsonEscape helper.
+//
+// Nothing on the far side may rebuild an item's text by slicing the transcript with charStart and
+// charEnd. The offsets index the turn as recorded and the text comes from an apostrophe-normalized
+// copy, so the two differ on any turn containing a curly apostrophe — which is most of what
+// whisper emits. See the note on ItemSource in minutes/evidence.h.
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeItems(
+    JNIEnv* env, jobject /*thiz*/, jobjectArray jIds, jlongArray jStartsMs, jlongArray jEndsMs,
+    jobjectArray jTexts, jobjectArray jSpeakerIds, jobjectArray jSpkIds, jobjectArray jSpkNames) {
+  std::string json;
+  try {
+    const auto ids = jstrArray(env, jIds);
+    const auto texts = jstrArray(env, jTexts);
+    const auto speaker_ids = jstrArray(env, jSpeakerIds);
+    const auto spk_ids = jstrArray(env, jSpkIds);
+    const auto spk_names = jstrArray(env, jSpkNames);
+
+    // jstrArray deletes each local ref as it goes; reading the arrays inline here instead would
+    // leave one local reference per turn alive for the whole call, and the local reference table
+    // is 512 entries. A meeting long enough to matter would abort the process, on a device, with
+    // nothing on the host able to see it.
+    std::vector<int64_t> starts = jlongVec(env, jStartsMs);
+    std::vector<int64_t> ends = jlongVec(env, jEndsMs);
+
+    std::vector<audionotes::TimedUtt> utts;
+    utts.reserve(texts.size());
+    for (size_t i = 0; i < texts.size(); ++i) {
+      // Every array is read defensively at its own length. Kotlin builds all five from the same
+      // list so they agree, but a shorter timing array here would be an out-of-bounds read rather
+      // than a wrong answer, and this boundary is one no host test can reach.
+      utts.push_back({i < ids.size() ? ids[i] : std::string(),
+                      i < starts.size() ? starts[i] : 0,
+                      i < ends.size() ? ends[i] : 0,
+                      // "" is how an unassigned speaker crosses this boundary; Kotlin cannot pass
+                      // null through Array<String>. extractItems already treats an empty id as
+                      // unassigned, which is what evidence_unassigned.json pins.
+                      i < speaker_ids.size() ? speaker_ids[i] : std::string(), texts[i]});
+    }
+
+    std::vector<audionotes::MinuteSpk> spks;
+    spks.reserve(spk_ids.size());
+    for (size_t i = 0; i < spk_ids.size(); ++i) {
+      spks.push_back({spk_ids[i], i < spk_names.size() ? spk_names[i] : std::string()});
+    }
+
+    json = audionotes::itemsToJson(audionotes::extractItems(utts, spks));
+  } catch (const std::exception& e) {
+    throwRuntime(env, e.what());
+    return env->NewStringUTF("[]");
+  }
+  return env->NewStringUTF(json.c_str());
 }
 
 // ---------------------------------------------------------------------------

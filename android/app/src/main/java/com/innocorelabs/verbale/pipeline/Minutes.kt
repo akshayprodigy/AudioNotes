@@ -1,5 +1,7 @@
 package com.innocorelabs.verbale.pipeline
 
+import org.json.JSONArray
+
 /** Mirrors src/pipeline/minutes.ts DraftMinute. kind in: summary|decision|action|question. */
 data class DraftMinute(val kind: String, val content: String, val source: String = "rule")
 
@@ -35,6 +37,111 @@ object Minutes {
     while (i + 2 < flat.size) {
       out.add(DraftMinute(flat[i], flat[i + 1], flat[i + 2]))
       i += 3
+    }
+    return out
+  }
+
+  /**
+   * One piece of evidence for an item: the turn it was said in, that turn's place in the meeting,
+   * and where the sentence sits inside the turn's text.
+   *
+   * [charStart]/[charEnd] are UTF-16 code units — the unit a Kotlin string is indexed in — so
+   * `turnText.substring(charStart, charEnd)` is the range to highlight. They cross the JNI boundary
+   * unconverted for that reason; converting them would only misbehave on a transcript containing an
+   * astral character, which is the kind of bug that ships.
+   *
+   * Do NOT rebuild [Item.text] from that substring. The offsets index the turn as it was recorded,
+   * and the item text comes from a normalized copy — U+2019 folded to an ASCII apostrophe, and
+   * whitespace runs collapsed to one space. Whisper emits curly apostrophes constantly, so the two
+   * differ on most real meetings. The text is carried in the payload precisely so nothing has to
+   * re-derive it. See the note on ItemSource in cpp/minutes/evidence.h.
+   *
+   * [utteranceId] is a convenience, not an identity: AudioDb re-mints utterance ids on every
+   * recognition pass, so an id saved today points at nothing after a re-run. The anchor
+   * ([startMs], [endMs]) is what survives.
+   */
+  data class Source(
+    val utteranceId: String,
+    val startMs: Long,
+    val endMs: Long,
+    val charStart: Int,
+    val charEnd: Int,
+  )
+
+  /**
+   * A rule-extracted decision, action or question, with every place it was said.
+   *
+   * [anchorStartMs]/[anchorEndMs] envelope ALL of [sources] — an item said at 1000-3000 and again
+   * at 8000-9500 anchors at 1000-9500. That is an ordering key and a range to draw, never a range
+   * to play; play a single source.
+   */
+  data class Item(
+    val kind: String,  // decision | action | question
+    val text: String,
+    val sources: List<Source>,
+    val anchorStartMs: Long,
+    val anchorEndMs: Long,
+  )
+
+  /**
+   * The same rules as [extract], plus the provenance it discards.
+   *
+   * The arrays are parallel and in transcript order: `ids[i]`, `startsMs[i]`, `endsMs[i]`,
+   * `texts[i]` and `speakerIds[i]` describe one turn. `speakerIds[i]` is "" for an unassigned turn
+   * — Kotlin cannot put a null in an Array<String>, and the C++ treats an empty id exactly as the
+   * TypeScript treats null.
+   *
+   * Requires NativeBridge.ensureLoaded() to have run.
+   */
+  fun extractItems(
+    ids: Array<String>,
+    startsMs: LongArray,
+    endsMs: LongArray,
+    texts: Array<String>,
+    speakerIds: Array<String>,
+    spkIds: Array<String>,
+    spkNames: Array<String>,
+  ): List<Item> =
+    parseItems(NativeBridge.nativeItems(ids, startsMs, endsMs, texts, speakerIds, spkIds, spkNames))
+
+  /**
+   * The parse, split out of [extractItems] so it can be tested on the JVM with a literal string and
+   * no device — see ItemsJsonTest, which drives it with the exact bytes
+   * `audionotes::itemsToJson` emits for the goldens. What is left needing a phone is then the JNI
+   * marshalling alone, which is where this project has broken silently before.
+   *
+   * Strict on purpose: a missing or mistyped field throws rather than defaulting. Anything wrong
+   * here means the boundary is broken, and a quietly empty item list would look exactly like a
+   * meeting with nothing in it.
+   */
+  internal fun parseItems(json: String): List<Item> {
+    val arr = JSONArray(json)
+    val out = ArrayList<Item>(arr.length())
+    for (i in 0 until arr.length()) {
+      val o = arr.getJSONObject(i)
+      val sa = o.getJSONArray("sources")
+      val sources = ArrayList<Source>(sa.length())
+      for (j in 0 until sa.length()) {
+        val s = sa.getJSONObject(j)
+        sources.add(
+          Source(
+            s.getString("utteranceId"),
+            s.getLong("startMs"),
+            s.getLong("endMs"),
+            s.getInt("charStart"),
+            s.getInt("charEnd"),
+          ),
+        )
+      }
+      out.add(
+        Item(
+          o.getString("kind"),
+          o.getString("text"),
+          sources,
+          o.getLong("anchorStartMs"),
+          o.getLong("anchorEndMs"),
+        ),
+      )
     }
     return out
   }

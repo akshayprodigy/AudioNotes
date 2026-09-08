@@ -3,6 +3,7 @@
 #include "minutes/evidence.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <optional>
 #include <unordered_map>
 
@@ -316,6 +317,78 @@ std::vector<DraftItem> extractItems(const std::vector<TimedUtt>& utterances,
   out.insert(out.end(), decisions.begin(), decisions.end());
   out.insert(out.end(), actions.begin(), actions.end());
   out.insert(out.end(), questions.begin(), questions.end());
+  return out;
+}
+
+namespace {
+
+// JSON string escaping, byte by byte. Bytes >= 0x80 are copied through: the input is well-formed
+// UTF-8 (see the header) and raw UTF-8 is legal inside a JSON string, so an em dash stays three
+// bytes rather than becoming a \u escape of one of them. Only the two metacharacters and the C0
+// control range have to change, and the control range must — a literal newline inside a JSON
+// string is a parse error, and on the far side that is a JSONException and a meeting whose items
+// all vanish.
+void jsonEscape(const std::string& in, std::string& out) {
+  out += '"';
+  for (char ch : in) {
+    switch (ch) {
+      case '"': out += "\\\""; break;
+      case '\\': out += "\\\\"; break;
+      case '\n': out += "\\n"; break;
+      case '\r': out += "\\r"; break;
+      case '\t': out += "\\t"; break;
+      default:
+        if (static_cast<unsigned char>(ch) < 0x20) {
+          char buf[8];
+          std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned char>(ch));
+          out += buf;
+        } else {
+          out += ch;
+        }
+    }
+  }
+  out += '"';
+}
+
+void appendInt(int64_t v, std::string& out) { out += std::to_string(v); }
+
+}  // namespace
+
+std::string itemsToJson(const std::vector<DraftItem>& items) {
+  std::string out = "[";
+  for (size_t i = 0; i < items.size(); ++i) {
+    if (i) out += ',';
+    const DraftItem& it = items[i];
+    out += "{\"kind\":";
+    jsonEscape(it.kind, out);
+    out += ",\"text\":";
+    jsonEscape(it.text, out);
+    out += ",\"sources\":[";
+    for (size_t j = 0; j < it.sources.size(); ++j) {
+      if (j) out += ',';
+      const ItemSource& s = it.sources[j];
+      out += "{\"utteranceId\":";
+      jsonEscape(s.utterance_id, out);
+      out += ",\"startMs\":";
+      appendInt(s.start_ms, out);
+      out += ",\"endMs\":";
+      appendInt(s.end_ms, out);
+      // UTF-16 code units, and they cross the boundary as they are. Kotlin strings are UTF-16, so
+      // the far side indexes a turn with them directly; converting anywhere in between would be a
+      // bug that only shows up on a transcript containing an emoji.
+      out += ",\"charStart\":";
+      appendInt(s.char_start, out);
+      out += ",\"charEnd\":";
+      appendInt(s.char_end, out);
+      out += '}';
+    }
+    out += "],\"anchorStartMs\":";
+    appendInt(it.anchor_start_ms, out);
+    out += ",\"anchorEndMs\":";
+    appendInt(it.anchor_end_ms, out);
+    out += '}';
+  }
+  out += ']';
   return out;
 }
 

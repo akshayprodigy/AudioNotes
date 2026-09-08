@@ -410,4 +410,13 @@ dependencies {
     androidTestImplementation("androidx.test:rules:1.6.1")
 
     testImplementation("junit:junit:4.13.2") // local JVM unit tests (testDebugUnitTest)
+    // A REAL org.json for JVM unit tests. The android.jar the unit-test task compiles against is
+    // the "mockable" one: every framework method, org.json included, throws "not mocked". Without
+    // this, any test that parses JSON off the JNI boundary would have to be an instrumentation
+    // test and would need a device — which is the exact split Minutes.parseItems exists to avoid.
+    //
+    // This is the reference implementation, not Android's Harmony-derived one. They agree on
+    // well-formed input, which is all that crosses this boundary; the tests deliberately assert
+    // nothing that depends on the two disagreeing (coercions, duplicate keys, lenient syntax).
+    testImplementation("org.json:json:20240303")
 }

@@ -91,4 +91,34 @@ std::pair<int32_t, int32_t> sentenceSpan(const std::string& text, const std::str
 std::vector<DraftItem> extractItems(const std::vector<TimedUtt>& utterances,
                                     const std::vector<MinuteSpk>& speakers = {});
 
+// The items as the JSON that crosses the JNI boundary — an array of
+// {kind, text, sources:[{utteranceId, startMs, endMs, charStart, charEnd}], anchorStartMs,
+// anchorEndMs}, field-for-field the shape the goldens' `output` array carries. Empty input gives
+// "[]", never "".
+//
+// JSON rather than the parallel string arrays the rest of the bridge exchanges (nativeVad,
+// nativeDiarize, nativeMinutes) because an item has a VARIABLE number of sources: parallel arrays
+// cannot express that without a second array of per-item source counts and matching index
+// arithmetic on both sides of the boundary. One string is cheaper to get right, and the payload is
+// a few kilobytes for a long meeting.
+//
+// It lives HERE rather than inline in the JNI function so it can be tested on the host: the
+// goldens then pin the bytes as well as the structs, and the only thing left needing a device is
+// the marshalling glue itself.
+//
+// Hand-rolled rather than nlohmann on purpose. This file is compiled into libaudionotes.so, and
+// nlohmann is deliberately kept out of that library — ~200 KB of template machinery, which is why
+// llm_prompts.cpp was split out of llm_minutes.cpp in the first place. Writing two field names in
+// a loop does not justify reversing that.
+//
+// `text` is DraftItem::text and is NOT reconstructible by slicing the turn with charStart and
+// charEnd; see the note on ItemSource above. It is carried explicitly for exactly that reason —
+// no consumer on the far side should ever be in a position to re-derive it.
+//
+// Item text originates in a Java string (GetStringUTFChars) or in this file's own literals, so it
+// is well-formed UTF-8 and multi-byte sequences are emitted as themselves. This function escapes
+// the JSON metacharacters and the C0 control range and validates nothing else; it is not a
+// sanitiser for engine output.
+std::string itemsToJson(const std::vector<DraftItem>& items);
+
 }  // namespace audionotes

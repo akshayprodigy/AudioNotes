@@ -265,4 +265,36 @@ object NativeBridge {
     spkIds: Array<String>,
     spkNames: Array<String>,
   ): Array<String>
+
+  /**
+   * Rule-based items WITH their provenance — the same rules as [nativeMinutes], plus the turn each
+   * item came from, its start and end in the meeting timeline, and the character span of the
+   * sentence inside that turn.
+   *
+   * [nativeMinutes] takes texts and speaker ids and no timestamps, so it cannot produce an anchor.
+   * That is why this is a second entry point rather than a widened one: the callers of the old
+   * shape do not have timings to give.
+   *
+   * ids/startsMs/endsMs/texts/speakerIds are parallel and must be the same length — one entry per
+   * turn, in transcript order. speakerIds[i] is "" for an unassigned turn, matching [nativeMinutes]
+   * (an Array<String> cannot carry a null). spkIds[i] pairs with spkNames[i].
+   *
+   * Returns JSON, not the parallel-array shape the rest of this bridge uses, because an item has a
+   * VARIABLE number of sources — a sentence said twice is one item with two pieces of evidence.
+   * Parallel arrays cannot carry that without a second array of per-item source counts and matching
+   * index arithmetic on both sides. See the note above nativeItems in cpp/jni/audionotes_jni.cpp.
+   *
+   * The item text is carried in the payload and must never be reconstructed by slicing a turn with
+   * charStart/charEnd: the offsets index the turn as recorded and the text comes from an
+   * apostrophe-normalized copy of it. See [Minutes.Source].
+   */
+  external fun nativeItems(
+    ids: Array<String>,
+    startsMs: LongArray,
+    endsMs: LongArray,
+    texts: Array<String>,
+    speakerIds: Array<String>,
+    spkIds: Array<String>,
+    spkNames: Array<String>,
+  ): String
 }

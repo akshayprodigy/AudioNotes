@@ -77,6 +77,79 @@ static void runGolden(const std::string& dir, const char* name) {
   }
 }
 
+// The JSON that crosses the JNI boundary.
+//
+// itemsToJson is the whole of the serialization: the JNI entry point calls it and does nothing
+// else to the payload, so proving the JSON here leaves only the marshalling glue
+// (GetArrayLength/GetObjectArrayElement/NewStringUTF) needing a phone. Field-for-field against the
+// golden's own `output`, which is what the TypeScript wrote — the same standard runGolden holds
+// the structs to, applied to the bytes.
+static void runJsonGolden(const std::string& dir, const char* name) {
+  json g = load(dir, name);
+  std::vector<audionotes::TimedUtt> utts;
+  for (const auto& u : g["input"]["utterances"])
+    utts.push_back({u["id"].get<std::string>(), u["startMs"].get<int64_t>(),
+                    u["endMs"].get<int64_t>(),
+                    u.contains("speakerId") && !u["speakerId"].is_null()
+                        ? u["speakerId"].get<std::string>() : "",
+                    u["text"].get<std::string>()});
+  std::vector<audionotes::MinuteSpk> spks;
+  for (const auto& s : g["input"]["speakers"])
+    spks.push_back({s["id"].get<std::string>(), s["displayName"].get<std::string>()});
+
+  const std::string dumped = audionotes::itemsToJson(audionotes::extractItems(utts, spks));
+  json got;
+  try {
+    got = json::parse(dumped);
+  } catch (const std::exception& e) {
+    CHECK(false, "%s: itemsToJson emitted unparseable JSON: %s\n%s", name, e.what(),
+          dumped.c_str());
+    return;
+  }
+  // Parsed and re-serialised on both sides, so key order and whitespace cannot make this pass or
+  // fail — only the values can.
+  CHECK(got == g["output"], "%s: JSON differs from the golden output\n  got: %s\n want: %s", name,
+        got.dump().c_str(), g["output"].dump().c_str());
+}
+
+// The escaper, on the characters no golden happens to contain. A transcript reaches this from
+// GetStringUTFChars, so it is valid (modified) UTF-8 and multi-byte sequences pass through as
+// bytes; what has to be escaped is the ASCII control range, the quote and the backslash. An
+// unescaped newline here is a JSONException on the Kotlin side and an empty items list in the app.
+static void runJsonEscaping() {
+  audionotes::DraftItem item;
+  item.kind = "decision";
+  item.text = "a\"b\\c\nd\te\rf\x01g \xE2\x80\x94 \xF0\x9F\x9A\x80";
+  item.sources.push_back({"u\"0", 1, 2, 3, 4});
+  item.anchor_start_ms = 1;
+  item.anchor_end_ms = 2;
+
+  const std::string dumped = audionotes::itemsToJson({item});
+  json got;
+  try {
+    got = json::parse(dumped);
+  } catch (const std::exception& e) {
+    CHECK(false, "escaping: unparseable JSON: %s\n%s", e.what(), dumped.c_str());
+    return;
+  }
+  CHECK(got.size() == 1, "escaping: %zu items", got.size());
+  if (got.size() != 1) return;
+  CHECK(got[0]["text"].get<std::string>() == item.text, "escaping: text did not round-trip\n  %s",
+        got[0]["text"].dump().c_str());
+  CHECK(got[0]["sources"][0]["utteranceId"].get<std::string>() == "u\"0",
+        "escaping: utteranceId did not round-trip");
+  // The em dash and the astral emoji must survive as themselves, not as \u escapes of the bytes.
+  CHECK(dumped.find("\xE2\x80\x94") != std::string::npos, "escaping: em dash was mangled");
+  CHECK(dumped.find("\xF0\x9F\x9A\x80") != std::string::npos, "escaping: astral char was mangled");
+}
+
+// An empty run must be "[]", not "" — Kotlin's JSONArray("") throws, which would turn a meeting
+// with nothing extractable into a crash rather than an empty list.
+static void runJsonEmpty() {
+  CHECK(audionotes::itemsToJson({}) == "[]", "empty: '%s' != '[]'",
+        audionotes::itemsToJson({}).c_str());
+}
+
 // The exported surface, called directly rather than through extractItems.
 //
 // extractItems only ever hands sentenceSpan a trimmed, non-empty sentence found in the turn it
@@ -124,6 +197,20 @@ int main(int argc, char** argv) {
   runGolden(dir, "evidence_empty.json");
   runGolden(dir, "evidence_caps.json");
   runEdgeCases();
+  // The serialization, on EVERY golden rather than a sample. The Android instrumentation test
+  // replays these same files through the JNI boundary and asserts the same numbers, so pinning all
+  // of them here means a failure over there is the marshalling and nothing else - which is the
+  // only question a device can answer that the host cannot.
+  runJsonGolden(dir, "evidence_meeting.json");
+  runJsonGolden(dir, "evidence_dedup.json");
+  runJsonGolden(dir, "evidence_spans.json");
+  runJsonGolden(dir, "evidence_decision_dedup.json");
+  runJsonGolden(dir, "evidence_priority.json");
+  runJsonGolden(dir, "evidence_unassigned.json");
+  runJsonGolden(dir, "evidence_empty.json");
+  runJsonGolden(dir, "evidence_caps.json");
+  runJsonEscaping();
+  runJsonEmpty();
   if (failures) { std::fprintf(stderr, "%d failure(s)\n", failures); return 1; }
   std::printf("test_evidence: OK\n");
   return 0;
