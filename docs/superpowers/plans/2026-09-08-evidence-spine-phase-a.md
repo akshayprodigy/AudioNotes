@@ -975,12 +975,45 @@ correct. The honest sequence is a fixture first, then the fix — which is a sma
 not a rider on this one. `extractItems` takes the TypeScript's reading for the length filter, so
 the new code is right and the old code is knowingly left wrong until then.
 
-**A third one WAS fixed, because a golden forced it.** `evidence_spans.json` carries a
-non-breaking space, and the needle comes from `rules::splitSentences`, so there was no way to make
-the port pass without teaching the shared splitter that JavaScript's `/\s/` includes U+00A0 and
-its relatives. That changes `extractMinutes` on Unicode-whitespace input — toward the TypeScript,
-which `minutes_extractor.cpp`'s own header says is the contract ("match the JS exactly, oddities
-included"). No existing fixture moved, because they are all ASCII.
+**A third one was fixed during Task 3 and then reverted, and the reason matters more than the
+bug.** `evidence_spans.json` carries a non-breaking space, and JavaScript's `/\s/` matches U+00A0
+where C's `isspace` does not. The port initially fixed this by teaching the SHARED splitter
+`rules::collapseWhitespace` about JavaScript's whitespace set, on the argument that the needle
+comes from `rules::splitSentences` and there was no other route.
+
+There was another route, and review built it: asciify the JS-whitespace characters locally in
+`evidence.cpp` before splitting, which is offset-neutral for the same reason `normalizeApostrophes`
+is - every one of them is a single BMP code unit replaced by one space. It passes all eight
+evidence goldens with `minutes_extractor.cpp` untouched.
+
+So the shared change was reverted, and the honest reason is consistency rather than risk. The fix
+was correct: the old build leaks a hair space into a free user's exported document. But it changed
+shipped export output while **no minutes fixture pinned it** - revert it and `test_minutes` still
+passes; only `test_evidence` notices. Having written "fixture first, then fix" two paragraphs
+above, letting this one through because a different task's golden happened to force it is applying
+the rule to whichever bug is inconvenient.
+
+### The follow-up task these three make together
+
+One task, after Phase A: **teach the shared rules to count what the TypeScript counts.** All three
+sites are the same bug - byte semantics where `minutes.ts` uses UTF-16 or JavaScript semantics -
+all three are in `cpp/minutes/minutes_extractor.cpp`, and all three change `extractMinutes`, whose
+output is a free user's exported document.
+
+| Site | Now | Should be |
+|---|---|---|
+| `collapseWhitespace` / `trim` | `isspace`, bytes | JavaScript `/\s/` |
+| `sentence.size() < 4`, line 386 | bytes | UTF-16 units |
+| `t.size() < 160` in `isQuestion`, line 199 | bytes | UTF-16 units |
+
+The third is the worst and was under-recorded here at first: it changes an item's **kind**, not
+just whether it appears. `"What " + 84 em dashes + " should we do"` is a question in TypeScript and
+an action in C++, and one em dash further it is dropped entirely.
+
+**The order is fixtures first.** Generate Unicode-whitespace and long-non-ASCII rows into the
+`minutes_*` goldens from the real TypeScript, watch the C++ fail them, then fix all three. Until
+that lands, `extractItems` and `extractMinutes` disagree with each other in C++ where they agree by
+construction in TypeScript - a divergence worth a characterisation test rather than a silent one.
 
 ---
 
