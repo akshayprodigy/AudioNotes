@@ -49,6 +49,20 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
    * the user had worked through. The consequence is that every reader has to ask for the edit
    * first, and this is the export's asking.
    */
+  /**
+   * The line at the foot of every exported document.
+   *
+   * An exported set of minutes is forwarded to people who were in the meeting and people who were
+   * not, which makes it the only part of this product that travels on its own. A quiet credit at
+   * the bottom is what turns a document somebody wrote into a document that says where it came
+   * from — so it stays at the FOOT, after the content, never over it. Nobody forwards a page with
+   * a logo stamped across their minutes.
+   *
+   * It is not a paywall. Free exports carry it and so do paid ones: the point is reach, and the
+   * free tier is the half that gets forwarded most.
+   */
+  private val EXPORT_CREDIT = "Created with Verbale — verbale.innocorelabs.com"
+
   private fun document(meetingId: String, format: String): Document {
     val db = AudioDb.get(ctx)
     val meeting = JSONArray(
@@ -112,7 +126,12 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
                             color = android.graphics.Color.rgb(0x8A, 0x5A, 0x00), spaceBefore = 14f))
         addAll(blocks.drop(2))
       }
-      return Document(title, "pdf", "", withMarker)
+      // Last block on the last page, small and grey: a footer, not a stamp.
+      val withCredit = withMarker + PdfExport.Block(
+        EXPORT_CREDIT, 8f,
+        color = android.graphics.Color.rgb(0x8A, 0x8F, 0xA2), spaceBefore = 20f,
+      )
+      return Document(title, "pdf", "", withCredit)
     }
 
     val ext = when (format) { "srt" -> "srt"; "txt", "transcript" -> "txt"; else -> "md" }
@@ -130,7 +149,15 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
       ext == "md" -> "> " + marker + "\n\n" + body
       else -> marker + "\n\n" + body
     }
-    return Document(title, ext, marked)
+    // The credit goes at the end, in the shape each format reads as a footer. SRT is deliberately
+    // left alone: a subtitle track is played over video, and a cue that appears at the end of
+    // somebody's meeting saying where the file came from is an advert in the middle of their work.
+    val credited = when (ext) {
+      "srt" -> marked
+      "md" -> marked.trimEnd() + "\n\n---\n\n*" + EXPORT_CREDIT + "*\n"
+      else -> marked.trimEnd() + "\n\n" + EXPORT_CREDIT + "\n"
+    }
+    return Document(title, ext, credited)
   }
 
   @ReactMethod

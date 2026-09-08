@@ -6,7 +6,19 @@ import { TurboModuleRegistry } from 'react-native';
 
 export interface Spec extends TurboModule {
   // Start capture in the foreground service. Returns a sessionId.
-  start(config: { sampleRate: number; language: string | null }): Promise<string>;
+  /**
+   * `capMs` is the free tier's length limit in milliseconds; 0 or omitted means uncapped.
+   *
+   * Passed in rather than derived natively because entitlement is a JavaScript concept, and
+   * enforced natively because the recording outlives the UI — screen off, app killed, service
+   * still running. A limit that lived only here would not survive the case it exists for.
+   */
+  start(config: {
+    sampleRate: number;
+    language: string | null;
+    tier?: string;
+    capMs?: number;
+  }): Promise<string>;
   // Stop capture; the meeting row is left in status 'captured'.
   stop(sessionId: string): Promise<void>;
 

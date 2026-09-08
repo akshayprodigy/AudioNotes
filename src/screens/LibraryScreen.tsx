@@ -309,6 +309,9 @@ export default function LibraryScreen({ navigation }: Props) {
   };
 
   const [nudge, setNudge] = useState(false);
+  // Search across every transcript is part of Pro. Read here rather than inside the button so the
+  // tap is decided from state that is already loaded, not from an await in a press handler.
+  const [paid, setPaid] = useState(false);
 
   /**
    * Meetings that actually finished.
@@ -322,6 +325,7 @@ export default function LibraryScreen({ navigation }: Props) {
     let alive = true;
     (async () => {
       const [ent, seen] = await Promise.all([entitlement(), nudgeState()]);
+      if (alive) setPaid(ent.paid);
       const show = shouldNudgeForPro({
         completed,
         lastShownAt: seen.lastShownAt,
@@ -594,7 +598,13 @@ export default function LibraryScreen({ navigation }: Props) {
               label="Import a recording"
               onPress={importing.busy ? () => {} : importing.pick}
             />
-            <IconButton icon="search" label="Search meetings" onPress={() => navigation.navigate('Search')} />
+            {/* Free lands on the paywall, where search is the first thing listed, so the tap
+                explains itself instead of appearing to do nothing. */}
+            <IconButton
+              icon="search"
+              label={paid ? 'Search meetings' : 'Search meetings (Pro)'}
+              onPress={() => navigation.navigate(paid ? 'Search' : 'Paywall')}
+            />
             <IconButton icon="sliders" label="Settings" onPress={() => navigation.navigate('Settings')} />
           </View>
         </View>

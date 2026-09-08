@@ -259,7 +259,7 @@ object CaptureController {
   }
 
   /** Create the meeting row, start the foreground capture service. Returns the meetingId, or null. */
-  fun start(context: Context, tier: String = "free"): String? {
+  fun start(context: Context, tier: String = "free", capMs: Long = 0L): String? {
     if (isRecording) return currentMeetingId
     // A start that lands during the flush would open a second session over a file the old one is
     // still writing. The caller sees null and can say "finishing the last one" rather than
@@ -278,6 +278,10 @@ object CaptureController {
     val intent = Intent(context, RecordingService::class.java).apply {
       putExtra(RecordingService.EXTRA_MEETING_ID, meetingId)
       putExtra(RecordingService.EXTRA_AUDIO_PATH, audioPath)
+      // The free tier's length limit, in ms; 0 means uncapped. Enforced in the capture loop and
+      // not in the UI, because a recording runs with the screen off and the app killed — which is
+      // the normal case, and a limit that only existed in JavaScript would not survive it.
+      putExtra(RecordingService.EXTRA_CAP_MS, capMs)
     }
     ContextCompat.startForegroundService(context, intent)
 

@@ -52,10 +52,19 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Paywall'>;
  *   - Nothing on it is advertised that is not built. The paid half is prose summaries, narrated
  *     minutes, and the larger transcriber. There is no roadmap on this page.
  *   - Nothing free is dressed up as paid. The free tier's floor — record, transcribe, tell the
- *     speakers apart, rule-based minutes, search, export — is stated on the page that is trying
- *     to take money, because that is where it is worth something.
+ *     speakers apart, rule-based minutes, export — is stated on the page that is trying to take
+ *     money, because that is where it is worth something. Export stays free deliberately: the
+ *     document a free user forwards to five colleagues is the acquisition loop, and charging for
+ *     it would be charging for our own marketing.
  */
 const INCLUDED: { icon: IconName; title: string; body: string }[] = [
+  {
+    icon: 'search',
+    title: 'Search everything you have recorded',
+    body:
+      'Every word of every transcript, searchable across all your meetings — for when you know it ' +
+      'was said and not which meeting it was said in.',
+  },
   {
     icon: 'edit',
     title: 'Summaries written, not extracted',
@@ -80,8 +89,8 @@ const INCLUDED: { icon: IconName; title: string; body: string }[] = [
 ];
 
 const FREE_FOREVER =
-  'Recording, transcripts, who-said-what, search, export and rule-based minutes stay free — with ' +
-  'or without a subscription, before or after a trial.';
+  'Recording, transcripts, who-said-what, export and rule-based minutes stay free — with or ' +
+  'without a subscription, before or after a trial. Free meetings run up to 15 minutes.';
 
 export default function PaywallScreen({ navigation }: Props) {
   const { colors } = useTheme();

@@ -37,6 +37,7 @@ class RecordingService : Service(), CaptureListener {
   companion object {
     const val EXTRA_MEETING_ID = "meetingId"
     const val EXTRA_AUDIO_PATH = "audioPath"
+    const val EXTRA_CAP_MS = "capMs"
     const val SAMPLE_RATE = 16000
     const val BYTES_PER_MS = 32 // 16000 samples/s * 2 bytes / 1000 ms
     private const val CHANNEL_ID = "audionotes.recording"
@@ -70,6 +71,15 @@ class RecordingService : Service(), CaptureListener {
     const val END_DISK_FULL = "disk_full"
     const val END_MIC_LOST = "mic_lost"
 
+    /**
+     * The free tier's length limit was reached.
+     *
+     * A distinct reason because it is not a failure and must not be reported as one: the audio is
+     * complete, it is kept, and it is transcribed in full. The only thing that ended is the
+     * recording.
+     */
+    const val END_CAP_REACHED = "cap_reached"
+
     /** Sent by the notification's buttons. */
     const val ACTION_STOP = "com.innocorelabs.verbale.action.STOP_RECORDING"
     const val ACTION_PAUSE = "com.innocorelabs.verbale.action.PAUSE_RECORDING"
@@ -85,6 +95,9 @@ class RecordingService : Service(), CaptureListener {
   @Volatile private var endReason: String = END_NORMAL
   /** True while the system has muted our capture (phone call, or another app took the mic). */
   @Volatile private var silenced = false
+
+  /** Free-tier length limit in ms, 0 when uncapped. Read from the intent, so a restart keeps it. */
+  @Volatile private var capMs = 0L
 
   /**
    * Transcribes while we record, so the wait after "stop" is roughly halved. It only ever READS
@@ -164,6 +177,7 @@ class RecordingService : Service(), CaptureListener {
     }
     meetingId = id
     audioPath = path
+    capMs = intent?.getLongExtra(EXTRA_CAP_MS, 0L) ?: 0L
     // Rehydrate the shared state BEFORE the notification is built, or a service restarted by
     // START_REDELIVER_INTENT runs the microphone while CaptureController still reads "idle" —
     // which is what made Stop a no-op and let a second session open over this same file.
@@ -332,7 +346,21 @@ class RecordingService : Service(), CaptureListener {
               }
             }
 
-            if (++reads % DISK_CHECK_EVERY_READS == 0 && filesDir.usableSpace < MIN_FREE_BYTES) {
+            // Measured in BYTES WRITTEN, not wall clock: a paused recording must not be charged
+            // for the pause, and the file length is the only thing that matches what the person
+            // will actually get. Checked on the same cadence as the disk check.
+            // One increment for both checks below. Incrementing in each condition would make
+            // every check fire half as often as its name says.
+            ++reads
+            if (capMs > 0L && reads % DISK_CHECK_EVERY_READS == 0) {
+              val capturedMs = File(path).length() / BYTES_PER_MS
+              if (capturedMs >= capMs) {
+                Log.i(TAG, "free tier limit reached at ${capturedMs}ms — stopping and keeping it")
+                endReason = END_CAP_REACHED
+                recording = false
+              }
+            }
+            if (reads % DISK_CHECK_EVERY_READS == 0 && filesDir.usableSpace < MIN_FREE_BYTES) {
               Log.w(TAG, "free space below ${MIN_FREE_BYTES / 1024 / 1024}MB — stopping capture")
               endReason = END_DISK_FULL
               recording = false

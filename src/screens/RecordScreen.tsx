@@ -22,6 +22,8 @@ import LiveWaveform from '../components/LiveWaveform';
 import Mascot from '../components/Mascot';
 import Icon, { type IconName } from '../components/Icon';
 import { Button, IconButton, Pop, Raised, SoftButton, Txt } from '../components/ui';
+import { capMsFor, capPhase, countdown, FREE_CAP_MS } from '../billing/recordingCap';
+import { entitlement, startTrial } from '../billing/trial';
 import { radius, s, sv, useTheme, type Colors } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Record'>;
@@ -64,6 +66,11 @@ export default function RecordScreen({ navigation }: Props) {
   const [announceOn, setAnnounceOn] = useState(true);
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  // The free tier's length limit for THIS recording, in ms; 0 means uncapped. Read once when the
+  // screen opens and again when a trial is started, which is what lets the offer below lift the
+  // limit without interrupting the recording. Native enforces it; this is only what is shown.
+  const [capMs, setCapMs] = useState(FREE_CAP_MS);
+  const [lifting, setLifting] = useState(false);
   const levelRef = useRef(0);
 
   // Acknowledged once, not before every recording — repeating the same notice trains people to
@@ -103,6 +110,16 @@ export default function RecordScreen({ navigation }: Props) {
       sub.remove();
     };
   }, [sync]);
+
+  useEffect(() => {
+    let alive = true;
+    entitlement()
+      .then(e => alive && setCapMs(capMsFor(Boolean(e?.paid))))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [isRecording]);
 
   useEffect(() => {
     if (!isRecording) {
@@ -309,11 +326,49 @@ export default function RecordScreen({ navigation }: Props) {
           </Txt>
           <Txt variant="bodyStrong" color={colors.inkDim} style={st.hint}>
             {!isRecording
-              ? 'Tap to start recording'
+              ? capMs > 0
+                ? 'Tap to start recording · up to 15 min on Free'
+                : 'Tap to start recording'
               : paused
               ? 'Paused — tap resume to continue'
               : 'Listening — tap to finish'}
           </Txt>
+
+          {/* The offer arrives with three minutes left, not at the limit. Somebody who finds out
+              their meeting is ending as it ends has already lost it; three minutes is enough to
+              read this, decide, and carry on without breaking stride. Starting the trial lifts the
+              cap for the recording ALREADY RUNNING — it does not restart it. */}
+          {isRecording && capPhase(elapsed, capMs) === 'warning' ? (
+            <Raised edge={colors.line} fill={colors.card} rad={radius.lg} depth={4}>
+              <View style={st.capNote}>
+                <Txt variant="bodyStrong" color={colors.ink}>
+                  {countdown(elapsed, capMs)} left on Free
+                </Txt>
+                <Txt variant="chip" color={colors.inkDim}>
+                  This recording will stop at 15 minutes and be transcribed in full. Start the free
+                  trial to keep going — no account, no card.
+                </Txt>
+                <SoftButton
+                  icon="check"
+                  label={lifting ? 'One moment…' : 'Keep recording'}
+                  disabled={lifting}
+                  onPress={async () => {
+                    setLifting(true);
+                    try {
+                      await startTrial();
+                      const e = await entitlement();
+                      setCapMs(capMsFor(Boolean(e?.paid)));
+                    } catch {
+                      // Leaving the cap in place is the safe failure: the recording still stops
+                      // cleanly and is still kept.
+                    } finally {
+                      setLifting(false);
+                    }
+                  }}
+                />
+              </View>
+            </Raised>
+          ) : null}
 
           {/* Reserved band, toggled by opacity rather than unmounted: removing it would shift the
               button upward the instant recording starts, right under the user's finger. */}
@@ -372,6 +427,7 @@ function makeStyles(c: Colors) {
 
     stage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     clock: { marginTop: sv(14) },
+    capNote: { padding: s(14), gap: s(8), alignItems: 'flex-start' },
     hint: { marginTop: s(4) },
     meter: { marginTop: sv(22), marginBottom: sv(6) },
 
