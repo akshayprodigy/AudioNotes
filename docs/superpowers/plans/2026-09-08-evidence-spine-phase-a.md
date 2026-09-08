@@ -1605,6 +1605,32 @@ normally on every open."
 
 ## Task 6: Writing items, and indexing them at the moment they were said
 
+> **Design decision taken after Task 7, and it is the fix for a bug class rather than a bug.**
+>
+> Whether a person has engaged with an item is recorded in **three different tables** — `review` in
+> `items`, a tick in `item_done`, a hand-correction in `edits` — and **none of the other two writes
+> back to the item's own row**. `Reconciler` rule 4 drops an untouched vanished item, so every
+> signal it cannot see is a silent data loss. That mistake has now been made three times in this
+> plan: `review` alone, then `review || done`, then the edit case, each found only because someone
+> asked what the branch would do to a real meeting.
+>
+> The fourth will be the same. A snooze, a reassignment, a comment — each lands in a new table,
+> each is invisible to rule 4, and **none of them will fail to compile**.
+>
+> So `items()` computes a single `touched` predicate at the database boundary and `StoredItem`
+> carries it as one field. Rule 4 asks `!old.touched` and nothing else. Individual flags may stay
+> where a screen needs to tell a tick from an edit, but **the reconciler must never assemble the
+> predicate itself** — there is then exactly one place to extend when a fifth signal appears, and
+> it sits next to the SQL that would have to change anyway.
+>
+> The three joins are `LEFT JOIN item_done`, `LEFT JOIN edits ON target_kind='item' AND
+> target_key=items.id`, and `items.review != 'suggested'`.
+>
+> **Enforcement is behavioural, not structural.** A compile error catches a missing constructor
+> argument; it does not catch a `touched` that forgot to OR in a table. Task 6 needs a test per
+> signal: for each of ticked, edited and reviewed, an otherwise-untouched item carrying only that
+> signal must survive a reprocess in which it vanishes.
+
 **Files:**
 - Modify: `android/app/src/main/java/com/innocorelabs/verbale/data/AudioDb.kt`
 - Test: `android/app/src/androidTest/java/com/innocorelabs/verbale/ItemsDbTest.kt`
