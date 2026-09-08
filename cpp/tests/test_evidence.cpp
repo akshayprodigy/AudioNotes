@@ -2,6 +2,7 @@
 // port. argv[1] = golden dir. Exits non-zero with a diff on the first mismatch.
 #include "minutes/evidence.h"
 
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -143,6 +144,116 @@ static void runJsonEscaping() {
   CHECK(dumped.find("\xF0\x9F\x9A\x80") != std::string::npos, "escaping: astral char was mangled");
 }
 
+// Re-encode every astral character as a CESU-8 surrogate pair: the 4-byte UTF-8 sequence becomes
+// two 3-byte sequences encoding the UTF-16 surrogate halves. Everything below U+10000 is copied
+// through, so this is the identity on any ASCII or BMP text.
+//
+// Input must be well-formed UTF-8, which every golden is.
+static std::string toCesu8(const std::string& in) {
+  std::string out;
+  out.reserve(in.size());
+  for (size_t i = 0; i < in.size();) {
+    const unsigned char c = static_cast<unsigned char>(in[i]);
+    size_t adv = 1;
+    if (c >= 0xF0) adv = 4;
+    else if (c >= 0xE0) adv = 3;
+    else if (c >= 0xC0) adv = 2;
+    if (adv != 4 || i + 4 > in.size()) {
+      out.append(in, i, adv);
+      i += adv;
+      continue;
+    }
+    const uint32_t cp = ((c & 0x07u) << 18) |
+                        ((static_cast<unsigned char>(in[i + 1]) & 0x3Fu) << 12) |
+                        ((static_cast<unsigned char>(in[i + 2]) & 0x3Fu) << 6) |
+                        (static_cast<unsigned char>(in[i + 3]) & 0x3Fu);
+    const uint32_t v = cp - 0x10000u;
+    const uint32_t hi = 0xD800u + (v >> 10), lo = 0xDC00u + (v & 0x3FFu);
+    for (uint32_t sur : {hi, lo}) {
+      out += static_cast<char>(0xE0u | (sur >> 12));
+      out += static_cast<char>(0x80u | ((sur >> 6) & 0x3Fu));
+      out += static_cast<char>(0x80u | (sur & 0x3Fu));
+    }
+    i += 4;
+  }
+  return out;
+}
+
+// The JNI boundary hands C++ MODIFIED UTF-8, not standard UTF-8: GetStringUTFChars encodes an
+// astral character as a CESU-8 surrogate pair, six bytes, never the four a UTF-8 encoder writes.
+// Every golden is produced by Node and read by nlohmann, so every fixture in this file feeds the
+// FOUR-byte form. The encoding the app actually runs on is therefore the one nothing tested.
+//
+// This closes that. Nothing about CESU-8 needs a JVM — it is only a different byte sequence for
+// the same string — so the property can be measured here rather than argued: the spans are
+// offsets into the string being searched, and if they are stable across the two encodings then a
+// device sees the same numbers a golden records.
+//
+// The claim being measured is that utf16Units answers 2 for both forms (one 4-byte lead counted 2,
+// or two 3-byte leads counted 1 each) and that sentenceSpan is byte-self-consistent within
+// whichever string it was handed. Both encodings must yield IDENTICAL char_start/char_end.
+//
+// If this ever fails, the port is wrong on every meeting containing an emoji and no golden can see
+// it. That is the whole reason it is here.
+static void runCesu8(const std::string& dir, const char* name) {
+  // Pin the transcoder first: a toCesu8 that silently did nothing would make everything below
+  // pass by construction. U+1F680 is F0 9F 9A 80 in UTF-8 and the surrogate pair U+D83D U+DE80 —
+  // ED A0 BD ED BA 80 — in CESU-8.
+  CHECK(toCesu8("\xF0\x9F\x9A\x80") == std::string("\xED\xA0\xBD\xED\xBA\x80", 6),
+        "toCesu8 does not produce the surrogate pair");
+  CHECK(toCesu8("Priya said \xE2\x80\x9Cship it\xE2\x80\x9D.") ==
+            "Priya said \xE2\x80\x9Cship it\xE2\x80\x9D.",
+        "toCesu8 disturbed a BMP-only string");
+
+  json g = load(dir, name);
+  std::vector<audionotes::TimedUtt> utts;
+  for (const auto& u : g["input"]["utterances"])
+    utts.push_back({u["id"].get<std::string>(), u["startMs"].get<int64_t>(),
+                    u["endMs"].get<int64_t>(),
+                    u.contains("speakerId") && !u["speakerId"].is_null()
+                        ? u["speakerId"].get<std::string>() : "",
+                    // The one difference from runGolden. Everything else is byte-identical.
+                    toCesu8(u["text"].get<std::string>())});
+  std::vector<audionotes::MinuteSpk> spks;
+  for (const auto& s : g["input"]["speakers"])
+    spks.push_back({s["id"].get<std::string>(), s["displayName"].get<std::string>()});
+
+  auto got = audionotes::extractItems(utts, spks);
+  const auto& want = g["output"];
+  CHECK(got.size() == want.size(), "cesu8 %s: size %zu != %zu", name, got.size(), want.size());
+  for (size_t i = 0; i < got.size() && i < want.size(); ++i) {
+    CHECK(got[i].kind == want[i]["kind"].get<std::string>(), "cesu8 %s[%zu].kind", name, i);
+    // The text comes back in the encoding it went in as, so the golden's own text is transcoded
+    // for the comparison. Every other field must match the golden EXACTLY.
+    CHECK(got[i].text == toCesu8(want[i]["text"].get<std::string>()),
+          "cesu8 %s[%zu].text\n  got: %s\n want: %s", name, i, got[i].text.c_str(),
+          toCesu8(want[i]["text"].get<std::string>()).c_str());
+    CHECK(got[i].anchor_start_ms == want[i]["anchorStartMs"].get<int64_t>(),
+          "cesu8 %s[%zu].anchorStartMs", name, i);
+    CHECK(got[i].anchor_end_ms == want[i]["anchorEndMs"].get<int64_t>(),
+          "cesu8 %s[%zu].anchorEndMs", name, i);
+    const auto& ws = want[i]["sources"];
+    CHECK(got[i].sources.size() == ws.size(), "cesu8 %s[%zu].sources %zu != %zu", name, i,
+          got[i].sources.size(), ws.size());
+    for (size_t j = 0; j < got[i].sources.size() && j < ws.size(); ++j) {
+      CHECK(got[i].sources[j].utterance_id == ws[j]["utteranceId"].get<std::string>(),
+            "cesu8 %s[%zu].sources[%zu].utteranceId", name, i, j);
+      CHECK(got[i].sources[j].start_ms == ws[j]["startMs"].get<int64_t>(),
+            "cesu8 %s[%zu].sources[%zu].startMs", name, i, j);
+      CHECK(got[i].sources[j].end_ms == ws[j]["endMs"].get<int64_t>(),
+            "cesu8 %s[%zu].sources[%zu].endMs", name, i, j);
+      // The measurement. A byte-counting or codepoint-counting port answers a different number
+      // here for one encoding than for the other, and the golden pins which one is right.
+      CHECK(got[i].sources[j].char_start == ws[j]["charStart"].get<int32_t>(),
+            "cesu8 %s[%zu].sources[%zu].charStart %d != %d (UTF-8 and CESU-8 DISAGREE)", name, i, j,
+            got[i].sources[j].char_start, ws[j]["charStart"].get<int32_t>());
+      CHECK(got[i].sources[j].char_end == ws[j]["charEnd"].get<int32_t>(),
+            "cesu8 %s[%zu].sources[%zu].charEnd %d != %d (UTF-8 and CESU-8 DISAGREE)", name, i, j,
+            got[i].sources[j].char_end, ws[j]["charEnd"].get<int32_t>());
+    }
+  }
+}
+
 // An empty run must be "[]", not "" — Kotlin's JSONArray("") throws, which would turn a meeting
 // with nothing extractable into a crash rather than an empty list.
 static void runJsonEmpty() {
@@ -211,6 +322,11 @@ int main(int argc, char** argv) {
   runJsonGolden(dir, "evidence_caps.json");
   runJsonEscaping();
   runJsonEmpty();
+  // The same fixtures again in the encoding the JNI boundary actually delivers. evidence_spans is
+  // the one that matters — it is the only golden carrying an astral character — and
+  // evidence_meeting is the control, where toCesu8 is the identity and the run must be unchanged.
+  runCesu8(dir, "evidence_spans.json");
+  runCesu8(dir, "evidence_meeting.json");
   if (failures) { std::fprintf(stderr, "%d failure(s)\n", failures); return 1; }
   std::printf("test_evidence: OK\n");
   return 0;

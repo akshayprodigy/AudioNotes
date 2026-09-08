@@ -43,6 +43,23 @@ struct ItemSource {
   // A consumer that needs the exact spoken characters should slice the turn. A consumer that needs
   // the item should read DraftItem::text. A consumer that compares the two will be wrong roughly
   // as often as people use apostrophes.
+  //
+  // These offsets are STABLE ACROSS UTF-8 AND CESU-8 encodings of the same string, and that
+  // property is load-bearing at the JNI boundary: GetStringUTFChars hands C++ modified UTF-8, so
+  // an astral character arrives as a six-byte surrogate PAIR where a UTF-8 encoder writes four
+  // bytes — and every golden here is written by Node, in the four-byte form. The app therefore
+  // runs on the encoding no fixture contains.
+  //
+  // It holds for two reasons, and both are needed. utf16Units answers 2 for either form: one
+  // 4-byte lead scores 2, and two 3-byte surrogate leads score 1 each. And sentenceSpan works in
+  // bytes of whichever single string it was handed, converting to UTF-16 only at the end, so the
+  // differing byte lengths never leak out.
+  //
+  // That was an argument until test_evidence's runCesu8 made it a measurement: it replays
+  // evidence_spans.json with every astral character re-encoded as a surrogate pair and requires
+  // char_start/char_end to come back IDENTICAL to the golden. Mutating utf16Units to score a
+  // surrogate half as 2 fails that test in five places and leaves every golden green — which is
+  // exactly how wrong this could have been while looking correct.
   int32_t char_start = 0;
   int32_t char_end = 0;
 };
