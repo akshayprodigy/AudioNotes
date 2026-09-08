@@ -14,14 +14,18 @@ add_library(audionotes SHARED
   util/utf8.cpp
   util/ort_init.cpp
   vad/silero_vad.cpp
+  vad/vad_span_builder.cpp
   asr/whisper_asr.cpp
   asr/asr_chunker.cpp
+  asr/live_chunker.cpp
   asr/asr_postprocess.cpp
   asr/asr_factory.cpp
   asr/asr_languages.cpp
   asr/qwen3_asr.cpp
   asr/sherpa_asr.cpp
   diar/diarizer.cpp
+  diar/span_map.cpp
+  diar/speaker_match.cpp
   llm/llama_engine.cpp
   # Rule-based minutes, shared with the CLI and minutes.ts (see jni nativeMinutes). The rest of
   # the core's upper layers (pipeline/, capi/) are NOT built here: Android drives the stages from

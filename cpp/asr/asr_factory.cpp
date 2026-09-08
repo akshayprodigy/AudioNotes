@@ -93,8 +93,12 @@ std::unique_ptr<AsrEngine> makeAsrEngine(const AsrConfig& cfg) {
   if (cfg.whisper_model.empty()) {
     return std::unique_ptr<AsrEngine>(new UnavailableAsr("no whisper model configured"));
   }
-  return std::unique_ptr<AsrEngine>(
+  auto w = std::unique_ptr<WhisperAsr>(
       new WhisperAsr(cfg.whisper_model, cfg.language, cfg.skip_language_refusal));
+  // Handed over while the concrete type is still in hand: only whisper consults it, and the
+  // interface everyone else implements should not grow a parameter for one engine's optimisation.
+  w->setChunkCache(cfg.chunk_cache);
+  return std::unique_ptr<AsrEngine>(w.release());
 }
 
 }  // namespace audionotes

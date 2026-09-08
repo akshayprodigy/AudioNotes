@@ -865,7 +865,8 @@ export default function SettingsScreen({ navigation }: Props) {
           <View style={st.assure}>
             <Icon name="shield" size={s(20)} color={colors.success} strokeWidth={2.4} />
             <Txt variant="chip" color={colors.ink} style={st.flex}>
-              Everything runs on this device. No third-party AI, no account, nothing uploaded.
+              Recording, transcription and notes all run on this device. No third-party AI, no
+              account, and none of it is uploaded.
             </Txt>
           </View>
         </View>

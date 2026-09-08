@@ -1,39 +1,43 @@
 /**
  * The consent gate on crash reporting.
  *
- * This is the only code in the app that can cause a network request the user did not ask for, in
- * a product sold on the promise that there are none. The tests that matter are therefore not
- * "does Sentry work" — that is Sentry's job — but "can the SDK ever start without a yes", which
- * is ours, and which has exactly three ways to go wrong: no DSN, no answer, and a revoked answer.
+ * This is the only code in the app that can cause a network request the user did not ask for, so
+ * the tests that matter are not "does Crashlytics work" — that is Google's job — but "can
+ * collection ever be switched on without a yes", which is ours.
  *
- * Every test loads the module fresh. crash.ts keeps a module-level `started` flag so a second
- * start() is a no-op — correct in the app, where the module lives as long as the process, and a
- * trap in a test file, where a leftover `true` from an earlier case would silently stop init from
- * being called and turn a real regression into a green run.
+ * Moving off Sentry narrowed what is testable here and widened what matters. There is no longer a
+ * beforeSend hook to assert scrubbing against, because Crashlytics has none: reports are built and
+ * uploaded by native code this app cannot inspect. Safety is therefore no longer "we strip the
+ * dangerous fields" but "we never hand it anything to leak", and the one lever left — the
+ * collection flag — carries all the weight. Hence every one of these.
+ *
+ * Every test loads the module fresh, because consent is read through a store the mock resets.
  */
-const DSN = 'https://examplekey@o0.ingest.sentry.io/1';
-
 type CrashModule = typeof import('../crash');
-type SentryMock = { init: jest.Mock; close: jest.Mock };
 
-/** A fresh copy of the module, and the Sentry mock that copy is bound to. */
-function load(dsn: string = DSN): { crash: CrashModule; sentry: SentryMock } {
+const crashlytics = (global as unknown as {
+  __TEST_CRASHLYTICS__: { setCrashlyticsCollectionEnabled: jest.Mock };
+}).__TEST_CRASHLYTICS__;
+
+/** A fresh copy of the module, bound to a build that may or may not report at all. */
+function load(enabled = true): CrashModule {
   jest.resetModules();
-  jest.doMock('../dsn', () => ({ SENTRY_DSN: dsn }));
-  return {
-    crash: require('../crash') as CrashModule,
-    sentry: require('@sentry/react-native') as SentryMock,
-  };
+  jest.doMock('../enabled', () => ({ CRASH_REPORTING_BUILD: enabled }));
+  return require('../crash') as CrashModule;
 }
 
-// Named StorageMock, not Storage: this file has no top-level import, so TypeScript treats it as a
-// script rather than a module, and a bare `Storage` collides with the DOM lib's global type.
 const StorageMock = (global as unknown as {
   __TEST_NATIVE_MODULES__: Record<string, Record<string, jest.Mock>>;
 }).__TEST_NATIVE_MODULES__.Storage;
 
 const settings = new Map<string, string>();
 const KEY = 'crash_reports';
+
+/** What collection was last set to, or undefined if it was never touched. */
+const lastSetting = (): boolean | undefined => {
+  const calls = crashlytics.setCrashlyticsCollectionEnabled.mock.calls;
+  return calls.length ? (calls[calls.length - 1][0] as boolean) : undefined;
+};
 
 beforeEach(() => {
   settings.clear();
@@ -54,133 +58,83 @@ beforeEach(() => {
 
 describe('consent', () => {
   it('is null until the question has been answered', async () => {
-    const { crash } = load();
-    expect(await crash.crashConsent()).toBeNull();
+    expect(await load().crashConsent()).toBeNull();
   });
 
-  it('does not start the SDK on launch when nobody has answered', async () => {
-    const { crash, sentry } = load();
-    await crash.initCrashReporting();
-    expect(sentry.init).not.toHaveBeenCalled();
+  it('does not enable collection on launch when nobody has answered', async () => {
+    await load().initCrashReporting();
+    expect(lastSetting()).toBe(false);
   });
 
-  it('does not start the SDK on launch when the answer was no', async () => {
+  it('does not enable collection on launch when the answer was no', async () => {
     settings.set(KEY, 'off');
-    const { crash, sentry } = load();
-    await crash.initCrashReporting();
-    expect(sentry.init).not.toHaveBeenCalled();
+    await load().initCrashReporting();
+    expect(lastSetting()).toBe(false);
   });
 
-  it('starts the SDK on launch when the answer was yes', async () => {
+  it('enables collection on launch when the answer was yes', async () => {
     settings.set(KEY, 'on');
-    const { crash, sentry } = load();
-    await crash.initCrashReporting();
-    expect(sentry.init).toHaveBeenCalledTimes(1);
+    await load().initCrashReporting();
+    expect(lastSetting()).toBe(true);
   });
 
   it('records the answer so it survives a restart', async () => {
-    const { crash } = load();
-    await crash.setCrashConsent(true);
+    await load().setCrashConsent(true);
     expect(settings.get(KEY)).toBe('on');
-    await crash.setCrashConsent(false);
-    expect(settings.get(KEY)).toBe('off');
+    expect(lastSetting()).toBe(true);
   });
 
-  it('closes the SDK when consent is withdrawn', async () => {
+  it('disables collection when consent is withdrawn', async () => {
     settings.set(KEY, 'on');
-    const { crash, sentry } = load();
-    await crash.initCrashReporting();
-    await crash.setCrashConsent(false);
-    expect(sentry.close).toHaveBeenCalledTimes(1);
+    await load().setCrashConsent(false);
+    expect(settings.get(KEY)).toBe('off');
+    expect(lastSetting()).toBe(false);
+  });
+
+  it('turns collection off on launch after a withdrawal, not merely leaving it alone', async () => {
+    // Crashlytics persists this flag natively across launches. A build that only ever enabled it
+    // would keep reporting for somebody who said no once and never opened Settings again.
+    settings.set(KEY, 'off');
+    await load().initCrashReporting();
+    expect(crashlytics.setCrashlyticsCollectionEnabled).toHaveBeenCalledWith(false);
   });
 
   it('treats a store that will not open as "not asked", never as yes', async () => {
     StorageMock.query.mockRejectedValue(new Error('locked'));
-    const { crash, sentry } = load();
+    const crash = load();
     expect(await crash.crashConsent()).toBeNull();
     await crash.initCrashReporting();
-    expect(sentry.init).not.toHaveBeenCalled();
+    expect(lastSetting()).toBe(false);
   });
 
-  it('does not start the SDK when the consent write fails', async () => {
-    // Starting off the back of a yes we could not record would leave the SDK running with no way
-    // for the user to find the switch that turns it off again.
-    const { crash, sentry } = load();
-    StorageMock.query.mockRejectedValue(new Error('disk full'));
-    await crash.setCrashConsent(true);
-    expect(sentry.init).not.toHaveBeenCalled();
-  });
-});
-
-describe('the SDK options', () => {
-  /** The options object crash.ts hands to Sentry.init, with consent already granted. */
-  async function options(): Promise<Record<string, any>> {
-    settings.set(KEY, 'on');
-    const { crash, sentry } = load();
-    await crash.initCrashReporting();
-    return sentry.init.mock.calls[0][0];
-  }
-
-  it('never attaches a screenshot or the view hierarchy', async () => {
-    // A screenshot of this app is somebody's transcript. Both are opt-in SDK features and both
-    // must stay off; this test is here so that turning one on has to be deliberate.
-    const opts = await options();
-    expect(opts.attachScreenshot).toBe(false);
-    expect(opts.attachViewHierarchy).toBe(false);
-    expect(opts.sendDefaultPii).toBe(false);
-    expect(opts.tracesSampleRate).toBe(0);
-    expect(opts.enableAutoSessionTracking).toBe(false);
-  });
-
-  it('strips the fields that could identify a person or a phone', async () => {
-    const opts = await options();
-    const event = opts.beforeSend({
-      user: { id: 'someone', email: 'a@b.c' },
-      request: { url: 'https://example.test/x' },
-      server_name: 'a-phone',
-      message: 'transcript line that should never travel',
-      extra: { transcript: 'nor this' },
-      contexts: { device: { name: "somebody's Pixel", model: 'Pixel 7 Pro' } },
-      exception: { values: [{ type: 'SIGSEGV' }] },
+  it('does not enable collection when the consent write fails', async () => {
+    StorageMock.query.mockImplementation(async (sql: string) => {
+      if (sql.startsWith('INSERT OR REPLACE INTO settings')) throw new Error('disk full');
+      return '[]';
     });
-    expect(event.user).toBeUndefined();
-    expect(event.request).toBeUndefined();
-    expect(event.server_name).toBeUndefined();
-    expect(event.message).toBeUndefined();
-    expect(event.extra).toBeUndefined();
-    expect(event.contexts.device.name).toBeUndefined();
-    // What is left is the part that makes a crash fixable.
-    expect(event.contexts.device.model).toBe('Pixel 7 Pro');
-    expect(event.exception.values[0].type).toBe('SIGSEGV');
+    await load().setCrashConsent(true);
+    expect(crashlytics.setCrashlyticsCollectionEnabled).not.toHaveBeenCalled();
   });
 
-  it('survives an event with no device context', async () => {
-    const opts = await options();
-    expect(() => opts.beforeSend({ exception: { values: [] } })).not.toThrow();
-  });
-
-  it('drops every breadcrumb that could carry free text', async () => {
-    const opts = await options();
-    expect(opts.beforeBreadcrumb({ category: 'console', message: 'a transcript' })).toBeNull();
-    expect(opts.beforeBreadcrumb({ category: 'http', data: { url: '/meeting/9' } })).toBeNull();
-    expect(opts.beforeBreadcrumb({ category: 'xhr' })).toBeNull();
-    // Screen names are what make a stack trace readable and carry nothing of the meeting.
-    expect(opts.beforeBreadcrumb({ category: 'navigation' })).not.toBeNull();
+  it('survives Crashlytics throwing, rather than taking the launch down with it', async () => {
+    crashlytics.setCrashlyticsCollectionEnabled.mockRejectedValueOnce(new Error('no play services'));
+    settings.set(KEY, 'on');
+    await expect(load().initCrashReporting()).resolves.toBeUndefined();
   });
 });
 
-describe('with no DSN configured', () => {
-  it('reports itself unavailable and cannot start', async () => {
-    const { crash, sentry } = load('');
+describe('a build with reporting switched off', () => {
+  it('reports itself unavailable and never touches the SDK', async () => {
+    const crash = load(false);
     expect(crash.crashReportingAvailable()).toBe(false);
+    expect(await crash.crashConsent()).toBe('off');
     await crash.initCrashReporting();
     await crash.setCrashConsent(true);
-    expect(sentry.init).not.toHaveBeenCalled();
-    // And it must not have written a consent row for a thing that cannot happen.
+    expect(crashlytics.setCrashlyticsCollectionEnabled).not.toHaveBeenCalled();
     expect(settings.get(KEY)).toBeUndefined();
   });
 });
 
-it('is available when a DSN is configured', () => {
-  expect(load().crash.crashReportingAvailable()).toBe(true);
+it('is available in a build with reporting switched on', () => {
+  expect(load(true).crashReportingAvailable()).toBe(true);
 });

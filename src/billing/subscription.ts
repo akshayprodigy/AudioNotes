@@ -1,4 +1,4 @@
-import Billing from '../native/NativeBilling';
+import Billing, { type PlayPlan } from '../native/NativeBilling';
 import Licence, { type LicenceStatus } from '../native/NativeLicence';
 import { hostOf, record } from '../privacy/ledger';
 
@@ -178,12 +178,94 @@ export async function playPrice(): Promise<string | null> {
   }
 }
 
+/** Monthly and annual, as Play describes them. Empty when Play cannot be reached. */
+export async function playPlans(): Promise<PlayPlan[]> {
+  try {
+    return await Billing.plans();
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * What a plan may honestly show struck through, and what it saves.
+ *
+ * Two sources, both real. Play's own `fullPrice` when an introductory offer means the buyer is
+ * charged less than the standing rate; otherwise, for an annual plan, twelve times the monthly
+ * price — a comparison that is true by arithmetic rather than by assertion.
+ *
+ * Returns null when neither applies. It never invents a number: a "was" price nobody was ever
+ * charged is a fabricated anchor, and this app does not make claims it cannot support.
+ */
+export function referencePrice(
+  plan: PlayPlan,
+  plans: PlayPlan[],
+): { was: string; savedPercent: number } | null {
+  if (plan.fullPrice && plan.priceMicros > 0) {
+    const monthly = plans.find((p) => p.period === 'P1M');
+    const full = plan.fullPrice;
+    // The saving is only computable when Play gave us both numbers; show the strike either way.
+    const fullMicros = monthly && plan.basePlanId === monthly.basePlanId ? monthly.priceMicros : 0;
+    const pct = fullMicros > plan.priceMicros
+      ? Math.round((1 - plan.priceMicros / fullMicros) * 100)
+      : 0;
+    return { was: full, savedPercent: pct };
+  }
+  if (plan.period !== 'P1Y') return null;
+  const monthly = plans.find((p) => p.period === 'P1M');
+  if (!monthly || monthly.priceMicros <= 0 || plan.priceMicros <= 0) return null;
+  const yearAtMonthlyRate = monthly.priceMicros * 12;
+  if (yearAtMonthlyRate <= plan.priceMicros) return null;
+  // Shaped from the monthly price Play returned, so the symbol and separators match its locale.
+  // No renderable "was" means no strikethrough: a claim we cannot state exactly is not made.
+  const was = formatLike(monthly.price, yearAtMonthlyRate);
+  if (was === null) return null;
+  return {
+    was,
+    savedPercent: Math.round((1 - plan.priceMicros / yearAtMonthlyRate) * 100),
+  };
+}
+
+/**
+ * Render `micros` using the currency symbol, grouping and decimal places of an already-localised
+ * Play price. Returns null when the sample cannot be read confidently.
+ *
+ * Deliberately narrow: it copies the shape of a string Google produced rather than choosing a
+ * format itself. Intl is unavailable in this Hermes build (see the language-name fix), and a
+ * hand-rolled currency formatter is wrong in exactly the markets that matter.
+ *
+ * It must never round UP. $4.99 x 12 is $59.88, and showing "$60" would overstate the price the
+ * buyer is being compared against — the same fabricated anchor this function exists to avoid,
+ * only smaller. So the decimal places of the sample are mirrored exactly, and a sample this
+ * cannot parse produces no strikethrough at all.
+ */
+function formatLike(sample: string | null, micros: number): string | null {
+  if (!sample) return null;
+  const core = sample.match(/[\d][\d.,\u00A0 ]*[\d]|[\d]/)?.[0];
+  if (!core) return null;
+  const prefix = sample.slice(0, sample.indexOf(core));
+  const suffix = sample.slice(sample.indexOf(core) + core.length);
+
+  // The last separator followed by exactly two digits is a decimal point; anything else groups.
+  const tail = core.match(/([.,])(\d{2})$/);
+  const decimalSep = tail ? tail[1] : '';
+  const decimals = tail ? 2 : 0;
+  const groupSep = decimalSep === ',' ? '.' : ',';
+
+  const units = micros / 1_000_000;
+  const whole = Math.floor(units);
+  const frac = Math.round((units - whole) * 100);
+  const grouped = whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, groupSep);
+  const body = decimals === 2 ? `${grouped}${decimalSep}${String(frac).padStart(2, '0')}` : grouped;
+  return `${prefix}${body}${suffix}`;
+}
+
 /** Buy through Play, then exchange the purchase for a licence. */
-export async function buyWithPlay(): Promise<PlayResult> {
+export async function buyWithPlay(basePlanId: string | null = null): Promise<PlayResult> {
   const base = await Licence.baseUrl();
   if (!base) throw new Error('This build has no licence server configured.');
 
-  const purchaseToken = await Billing.purchase();
+  const purchaseToken = await Billing.purchase(basePlanId);
   // Null covers two different things that need the same handling: the buyer changed their mind,
   // and a payment method still authorising. Neither is a failure worth an error dialog.
   if (!purchaseToken) return { paid: false };

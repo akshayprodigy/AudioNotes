@@ -2,6 +2,7 @@
 #include <jni.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <stdexcept>
 #include <string>
@@ -20,7 +21,9 @@
 #endif
 
 #include "asr/asr_engine.h"
+#include "asr/asr_chunker.h"
 #include "asr/asr_languages.h"
+#include "asr/live_chunker.h"
 #include "asr/whisper_asr.h"
 #include "util/utf8.h"
 
@@ -28,6 +31,7 @@
 #include "whisper.h"
 #endif
 #include "diar/diarizer.h"
+#include "diar/span_map.h"
 #include "llm/llama_engine.h"
 #include "minutes/llm_minutes.h"
 #include "minutes/minutes_extractor.h"
@@ -68,6 +72,66 @@ void jsonEscape(const std::string& in, std::string& out) {
   }
 }
 
+// The flat [start0, end0, start1, end1, ...] shape nativeVad and nativeDiarize already use, so
+// every span crossing this boundary looks the same on the Kotlin side.
+jlongArray segmentsToJava(JNIEnv* env, const std::vector<audionotes::Segment>& segs) {
+  const jsize n = static_cast<jsize>(segs.size() * 2);
+  jlongArray arr = env->NewLongArray(n);
+  if (!arr || n == 0) return arr ? arr : env->NewLongArray(0);
+  std::vector<jlong> flat;
+  flat.reserve(static_cast<size_t>(n));
+  for (const audionotes::Segment& s : segs) {
+    flat.push_back(static_cast<jlong>(s.start_ms));
+    flat.push_back(static_cast<jlong>(s.end_ms));
+  }
+  env->SetLongArrayRegion(arr, 0, n, flat.data());
+  return arr;
+}
+
+std::vector<audionotes::Segment> spansFromJava(JNIEnv* env, jlongArray jSpans) {
+  std::vector<audionotes::Segment> spans;
+  if (!jSpans) return spans;
+  const jsize n = env->GetArrayLength(jSpans);
+  if (n < 2) return spans;
+  std::vector<jlong> flat(static_cast<size_t>(n));
+  env->GetLongArrayRegion(jSpans, 0, n, flat.data());
+  for (jsize i = 0; i + 1 < n; i += 2) spans.push_back(audionotes::Segment{flat[i], flat[i + 1]});
+  return spans;
+}
+
+// Reads exactly what nativeAsrDecodeWindow writes: [{"t0":N,"t1":N,"text":"..."}]. Deliberately
+// not a general JSON parser and must not become one — anything it does not recognise yields no
+// utterances, which costs a cache miss and never a wrong transcript.
+std::vector<audionotes::Utterance> parseWindowJson(const std::string& s) {
+  std::vector<audionotes::Utterance> out;
+  size_t i = 0;
+  while ((i = s.find("{\"t0\":", i)) != std::string::npos) {
+    i += 6;
+    const int64_t t0 = std::strtoll(s.c_str() + i, nullptr, 10);
+    size_t j = s.find("\"t1\":", i);
+    if (j == std::string::npos) break;
+    j += 5;
+    const int64_t t1 = std::strtoll(s.c_str() + j, nullptr, 10);
+    size_t k = s.find("\"text\":\"", j);
+    if (k == std::string::npos) break;
+    k += 8;
+    std::string text;
+    for (; k < s.size(); ++k) {
+      if (s[k] == '\\' && k + 1 < s.size()) {
+        const char c = s[++k];
+        text += (c == 'n') ? '\n' : (c == 't') ? '\t' : c;
+      } else if (s[k] == '"') {
+        break;
+      } else {
+        text += s[k];
+      }
+    }
+    if (!text.empty()) out.push_back(audionotes::Utterance{t0, t1, text});
+    i = k;
+  }
+  return out;
+}
+
 }  // namespace
 
 extern "C" JNIEXPORT jlongArray JNICALL
@@ -97,11 +161,155 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeVad(
   return result;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Streaming VAD and ASR handles, for transcribing while the recording is still being written.
+//
+// Handle-based for one reason: nativeTranscribe builds a fresh engine per call, so whisper
+// re-reads its weights from disk every time. That is fine once per meeting and impossible once
+// per 30-second window. Same shape as nativeLlmLoad/Generate/Free below.
+// ---------------------------------------------------------------------------------------------
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeVadOpen(
+    JNIEnv* env, jobject /*thiz*/, jstring jModelPath, jint sampleRate) {
+  try {
+    auto* vad = new audionotes::SileroVad(jstr(env, jModelPath), static_cast<int>(sampleRate));
+    vad->reset();
+    return reinterpret_cast<jlong>(vad);
+  } catch (const std::exception& e) {
+    // 0, not an exception: the live pass is an optimisation and a phone that cannot open the
+    // model must still record and still transcribe afterwards.
+    ASRLOG("nativeVadOpen failed: %s", e.what());
+    return 0;
+  }
+}
+
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeVadFeed(
+    JNIEnv* env, jobject /*thiz*/, jlong handle, jstring jPcmPath, jlong fromByte,
+    jlong byteCount) {
+  auto* vad = reinterpret_cast<audionotes::SileroVad*>(handle);
+  if (!vad) return env->NewLongArray(0);
+  try {
+    return segmentsToJava(env, vad->feed(jstr(env, jPcmPath), fromByte, byteCount));
+  } catch (const std::exception& e) {
+    ASRLOG("nativeVadFeed failed: %s", e.what());
+    return env->NewLongArray(0);
+  }
+}
+
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeVadFinish(
+    JNIEnv* env, jobject /*thiz*/, jlong handle) {
+  auto* vad = reinterpret_cast<audionotes::SileroVad*>(handle);
+  if (!vad) return env->NewLongArray(0);
+  try {
+    return segmentsToJava(env, vad->finish());
+  } catch (const std::exception& e) {
+    ASRLOG("nativeVadFinish failed: %s", e.what());
+    return env->NewLongArray(0);
+  }
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeVadPendingSpanStartMs(
+    JNIEnv* /*env*/, jobject /*thiz*/, jlong handle) {
+  auto* vad = reinterpret_cast<audionotes::SileroVad*>(handle);
+  return vad ? static_cast<jlong>(vad->pendingSpanStartMs()) : -1;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeVadClose(
+    JNIEnv* /*env*/, jobject /*thiz*/, jlong handle) {
+  delete reinterpret_cast<audionotes::SileroVad*>(handle);
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeAsrOpen(
+    JNIEnv* env, jobject /*thiz*/, jstring jModelPath, jstring jLanguage, jstring jQwen3Dir) {
+  // Through the factory, never by class name: the language picks the engine, and a live pass
+  // hard-wired to whisper would be unreachable for every language whisper does not serve — the
+  // exact shape of the bug scripts/check-engine-encapsulation.py exists to prevent.
+  audionotes::AsrConfig cfg;
+  cfg.language = jstr(env, jLanguage);
+  cfg.whisper_model = jstr(env, jModelPath);
+  cfg.qwen3_model_dir = jstr(env, jQwen3Dir);
+  std::unique_ptr<audionotes::AsrEngine> asr = audionotes::makeAsrEngine(cfg);
+  if (!asr->ok()) return 0;
+  return reinterpret_cast<jlong>(asr.release());
+}
+
+// Decode ONE window. Same JSON shape nativeTranscribe returns, but with CHUNK-RELATIVE
+// timestamps, because that is what makes the value cacheable: it depends on the window's audio
+// and nothing about where the window sits in the meeting.
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeAsrDecodeWindow(
+    JNIEnv* env, jobject /*thiz*/, jlong handle, jstring jPcmPath, jint sampleRate,
+    jlong startMs, jlong endMs, jint threads) {
+  auto* asr = reinterpret_cast<audionotes::AsrEngine*>(handle);
+  if (!asr) return env->NewStringUTF("[]");
+  std::vector<audionotes::Utterance> utts;
+  try {
+    // The failure flag is the pipeline's business, not the live pass's: a window this pass
+    // cannot decode is simply one it does not cache, and the post-hoc run decodes it and counts
+    // it exactly as it does today.
+    utts = asr->decodeWindow(jstr(env, jPcmPath), static_cast<int>(sampleRate), startMs, endMs,
+                             static_cast<int>(threads), nullptr);
+  } catch (const std::exception& e) {
+    ASRLOG("nativeAsrDecodeWindow failed: %s", e.what());
+    return env->NewStringUTF("[]");
+  }
+  std::string json = "[";
+  for (size_t i = 0; i < utts.size(); ++i) {
+    if (i) json += ",";
+    std::string esc;
+    jsonEscape(utts[i].text, esc);
+    json += "{\"t0\":" + std::to_string(utts[i].start_ms) +
+            ",\"t1\":" + std::to_string(utts[i].end_ms) + ",\"text\":\"" + esc + "\"}";
+  }
+  json += "]";
+  return env->NewStringUTF(json.c_str());
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeAsrClose(
+    JNIEnv* /*env*/, jobject /*thiz*/, jlong handle) {
+  delete reinterpret_cast<audionotes::AsrEngine*>(handle);
+}
+
+// Which windows can no longer change. Kotlin drives the live loop but must not own the chunking
+// rule — it exists once, in asr_chunker.cpp, and the post-hoc pass uses the same one.
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLiveChunks(
+    JNIEnv* env, jobject /*thiz*/, jlong handle, jlongArray jSpans, jlong pendingSpanStartMs,
+    jlong capturedMs) {
+  auto* asr = reinterpret_cast<audionotes::AsrEngine*>(handle);
+  if (!asr) return env->NewLongArray(0);
+  // The engine's OWN budget and packing mode, not whisper's constants: an engine that wants one
+  // span per window would otherwise be handed 30-second packed windows it never asks for, and
+  // every cached window would miss.
+  const std::vector<audionotes::Chunk> chunks =
+      audionotes::finalChunks(spansFromJava(env, jSpans), pendingSpanStartMs, capturedMs,
+                              asr->maxChunkMs(), asr->chunkMode());
+  std::vector<jlong> out;
+  out.reserve(chunks.size() * 2);
+  for (const audionotes::Chunk& c : chunks) {
+    out.push_back(static_cast<jlong>(c.start_ms));
+    out.push_back(static_cast<jlong>(c.end_ms));
+  }
+  jlongArray arr = env->NewLongArray(static_cast<jsize>(out.size()));
+  if (arr && !out.empty()) {
+    env->SetLongArrayRegion(arr, 0, static_cast<jsize>(out.size()), out.data());
+  }
+  return arr ? arr : env->NewLongArray(0);
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeTranscribe(
     JNIEnv* env, jobject /*thiz*/, jstring jPcmPath, jstring jModelPath, jint sampleRate,
     jlongArray jStarts, jlongArray jEnds, jint threads, jstring jLanguage,
-    jstring jQwen3Dir, jboolean jForceLanguage) {
+    jstring jQwen3Dir, jboolean jForceLanguage, jlongArray jCachedRanges,
+    jobjectArray jCachedJson) {
   const std::string pcm = jstr(env, jPcmPath);
   const std::string model = jstr(env, jModelPath);
   // Empty when Qwen3-ASR is not installed, which is the normal case today. The factory then falls
@@ -135,6 +343,29 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeTranscribe(
     acfg.qwen3_model_dir = qwen3_dir;
     // Set only by "Transcribe it anyway" on a meeting this build already refused once.
     acfg.skip_language_refusal = (jForceLanguage == JNI_TRUE);
+    // Windows the live capture pass already decoded, as parallel arrays: ranges flat as
+    // [start0,end0,...] and one JSON string per window. Passed in rather than read here because
+    // the cache lives in the app's encrypted database, which native code has no key for — and
+    // should not.
+    if (jCachedRanges != nullptr && jCachedJson != nullptr) {
+      const jsize rn = env->GetArrayLength(jCachedRanges);
+      const jsize cn = env->GetArrayLength(jCachedJson);
+      if (rn / 2 == cn) {
+        std::vector<jlong> ranges(static_cast<size_t>(rn));
+        if (rn > 0) env->GetLongArrayRegion(jCachedRanges, 0, rn, ranges.data());
+        for (jsize i = 0; i < cn; ++i) {
+          auto* js = static_cast<jstring>(env->GetObjectArrayElement(jCachedJson, i));
+          audionotes::AsrCachedWindow w;
+          w.start_ms = ranges[i * 2];
+          w.end_ms = ranges[i * 2 + 1];
+          w.utterances = parseWindowJson(jstr(env, js));
+          env->DeleteLocalRef(js);
+          acfg.chunk_cache.push_back(std::move(w));
+        }
+      } else {
+        ASRLOG("ignoring chunk cache: %d range(s) for %d window(s)", (int)(rn / 2), (int)cn);
+      }
+    }
     std::unique_ptr<audionotes::AsrEngine> asr = audionotes::makeAsrEngine(acfg);
     if (!asr->ok()) {
       const std::string why = asr->unavailableReason();
@@ -149,8 +380,8 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeTranscribe(
       throwRuntime(env, "every ASR chunk failed to decode");
       return env->NewStringUTF("[]");
     }
-    ASRLOG("transcribed with %s (%d chunk(s), %d failed)", run.engine.c_str(),
-           run.chunks_total, run.chunks_failed);
+    ASRLOG("transcribed with %s (%d chunk(s), %d failed, %d from the live pass)",
+           run.engine.c_str(), run.chunks_total, run.chunks_failed, run.chunks_cached);
     const auto& utts = run.utterances;
     for (size_t i = 0; i < utts.size(); ++i) {
       if (i) json += ",";
@@ -248,15 +479,33 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmFree(
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeDiarize(
     JNIEnv* env, jobject /*thiz*/, jstring jPcmPath, jstring jSegModel, jstring jEmbModel,
-    jint sampleRate, jint numSpeakers) {
+    jint sampleRate, jint numSpeakers, jlongArray jSpans, jlong windowMs) {
   const std::string pcm = jstr(env, jPcmPath);
   const std::string seg = jstr(env, jSegModel);
   const std::string emb = jstr(env, jEmbModel);
 
+  // Flat [start_ms, end_ms, ...], the same shape nativeVad returns, so the caller can hand the
+  // VAD result straight back without reshaping it. Empty means "diarize the whole recording",
+  // which is the old behaviour and is what a caller with no VAD result still gets.
+  std::vector<audionotes::Span> spans;
+  if (jSpans != nullptr) {
+    const jsize n = env->GetArrayLength(jSpans);
+    std::vector<jlong> raw(static_cast<size_t>(n));
+    if (n > 0) env->GetLongArrayRegion(jSpans, 0, n, raw.data());
+    spans.reserve(static_cast<size_t>(n) / 2);
+    for (jsize i = 0; i + 1 < n; i += 2) {
+      spans.push_back(audionotes::Span{static_cast<int64_t>(raw[i]),
+                                       static_cast<int64_t>(raw[i + 1])});
+    }
+  }
+
   std::vector<jlong> flat;  // [start_ms, end_ms, speaker, ...]
   try {
     audionotes::Diarizer diar(seg, emb, static_cast<int>(sampleRate), static_cast<int>(numSpeakers));
-    auto segments = diar.process(pcm);
+    // The window is the caller's, not ours: only Kotlin can see how much memory this phone has
+    // free right now, and that is what decides whether a long meeting is diarized in pieces,
+    // diarized in one go, or skipped entirely. See DiarBudget.
+    auto segments = diar.process(pcm, spans, static_cast<int64_t>(windowMs));
     flat.reserve(segments.size() * 3);
     for (const auto& s : segments) {
       flat.push_back(static_cast<jlong>(s.start_ms));

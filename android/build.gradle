@@ -15,9 +15,14 @@ buildscript {
         classpath("com.android.tools.build:gradle")
         classpath("com.facebook.react:react-native-gradle-plugin")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+        // Reads android/app/google-services.json and generates the Firebase config resources.
+        classpath("com.google.gms:google-services:4.4.2")
         // Uploads the R8 mapping and the native (C++/JNI) debug symbols so a crash report is a
-        // stack trace rather than a column of hex addresses. Inert without SENTRY_AUTH_TOKEN.
-        classpath("io.sentry:sentry-android-gradle-plugin:5.8.0")
+        // stack trace rather than a column of hex addresses. The half of this app that crashes is
+        // native — whisper.cpp, llama.cpp, sherpa-onnx and the JNI between them — and without the
+        // symbols a production crash arrives as hex against obfuscated frames, which is
+        // indistinguishable from having no crash reporting at all.
+        classpath("com.google.firebase:firebase-crashlytics-gradle:3.0.2")
     }
 }
 

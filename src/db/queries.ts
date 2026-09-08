@@ -66,7 +66,8 @@ export const db = {
     run<Meeting>(
       'SELECT id, title, created_at AS createdAt, duration_ms AS durationMs, language, ' +
         'status, tier_used AS tierUsed, audio_retained AS audioRetained, summary_line AS summaryLine, ' +
-        'transcribe_forced_at AS transcribeForcedAt, forced_from_language AS forcedFromLanguage ' +
+        'transcribe_forced_at AS transcribeForcedAt, forced_from_language AS forcedFromLanguage, ' +
+        'diar_skipped_reason AS diarSkippedReason ' +
         'FROM meetings WHERE archived_at IS NULL' +
         (tag ? ' AND EXISTS(SELECT 1 FROM tags t WHERE t.meeting_id = meetings.id AND t.name = ?)' : '') +
         ` ORDER BY ${MEETING_ORDER[sort] ?? MEETING_ORDER.recent}`,
@@ -77,7 +78,8 @@ export const db = {
     run<Meeting>(
       'SELECT id, title, created_at AS createdAt, duration_ms AS durationMs, language, ' +
         'status, tier_used AS tierUsed, audio_retained AS audioRetained, summary_line AS summaryLine, ' +
-        'transcribe_forced_at AS transcribeForcedAt, forced_from_language AS forcedFromLanguage ' +
+        'transcribe_forced_at AS transcribeForcedAt, forced_from_language AS forcedFromLanguage, ' +
+        'diar_skipped_reason AS diarSkippedReason ' +
         'FROM meetings WHERE archived_at IS NOT NULL ORDER BY archived_at DESC',
     ),
 
@@ -119,7 +121,8 @@ export const db = {
     run<Meeting>(
       'SELECT id, title, created_at AS createdAt, duration_ms AS durationMs, language, ' +
         'status, tier_used AS tierUsed, audio_retained AS audioRetained, summary_line AS summaryLine, ' +
-        'transcribe_forced_at AS transcribeForcedAt, forced_from_language AS forcedFromLanguage ' +
+        'transcribe_forced_at AS transcribeForcedAt, forced_from_language AS forcedFromLanguage, ' +
+        'diar_skipped_reason AS diarSkippedReason ' +
         'FROM meetings WHERE id = ?',
       [id],
     ).then(r => r[0]),

@@ -6,6 +6,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import Icon from '../components/Icon';
 import { IconButton, Raised, SectionRule, Txt } from '../components/ui';
 import { drops, events } from '../privacy/ledger';
+import { crashConsent } from '../telemetry/crash';
 import { formatBytes, summarise, type NetworkEvent } from '../privacy/summary';
 import { radius, s, useTheme, type Colors } from '../theme';
 
@@ -36,6 +37,10 @@ export default function PrivacyScreen({ navigation }: Props) {
   const [log, setLog] = useState<NetworkEvent[] | null>(null);
   const [unrecorded, setUnrecorded] = useState(0);
   const [showLog, setShowLog] = useState(false);
+  // Whether crash reports are actually on. The "not counted" note about Crashlytics is only true
+  // for somebody who turned them on, and a screen that lists a source you are not using is the
+  // same kind of inaccuracy as one that hides a source you are.
+  const [crashOn, setCrashOn] = useState(false);
 
   useEffect(() => {
     events()
@@ -44,6 +49,9 @@ export default function PrivacyScreen({ navigation }: Props) {
     drops()
       .then(setUnrecorded)
       .catch(() => setUnrecorded(0));
+    crashConsent()
+      .then(v => setCrashOn(v === 'on'))
+      .catch(() => setCrashOn(false));
   }, []);
 
   const sum = useMemo(() => summarise(log ?? [], Date.now()), [log]);
@@ -107,6 +115,18 @@ export default function PrivacyScreen({ navigation }: Props) {
               Google Play makes its own connection when you open the subscription screen. That one
               is Play's, not ours, and this app cannot see or count it.
             </Txt>
+            {/* Crashlytics is uncountable by construction: reports are assembled and sent by
+                Google Play Services, not by this app, so no hook in our code sees them. Naming it
+                is the whole point — an uncounted source that is disclosed is honest, and one that
+                is not is the overclaim this screen exists to prevent. Shown only when the person
+                actually turned crash reports on, because for everyone else it is not true. */}
+            {crashOn ? (
+              <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
+                Crash reports go to Google Crashlytics, which sends them itself, so this app cannot
+                count them. They carry a stack trace, the app version and the phone model — never
+                your audio, transcripts or notes. Turn them off any time in Settings.
+              </Txt>
+            ) : null}
             <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
               Sent totals are request bodies. A request also carries a few hundred bytes of
               headers, which are not counted as data you sent.

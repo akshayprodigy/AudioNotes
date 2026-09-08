@@ -96,7 +96,10 @@ add_executable(audionotes_cli
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
+  ${CORE}/vad/vad_span_builder.cpp
   ${CORE}/diar/diarizer.cpp
+  ${CORE}/diar/span_map.cpp
+  ${CORE}/diar/speaker_match.cpp
   ${CORE}/llm/llama_engine.cpp
   ${CORE}/pipeline/pipeline.cpp
   ${CORE}/pipeline/result_json.cpp
@@ -153,9 +156,50 @@ get_filename_component(REPO_ROOT ${CORE}/.. ABSOLUTE)
 add_test(NAME engine_encapsulation
          COMMAND python3 ${REPO_ROOT}/scripts/check-engine-encapsulation.py)
 
+# The diarization window and sample rate are written down in both C++ and Kotlin, on either side of
+# a JNI call where 0 means "use the native default". If the two defaults drift, every phone
+# diarizes in a shape nothing was measured in — and nothing fails, it just quietly stops matching.
+add_test(NAME diar_constants
+         COMMAND python3 ${REPO_ROOT}/scripts/check-diar-constants.py)
+
+# The live capture pass must only ever write its cache. If it writes utterances instead, a pass
+# that covered 80% of a meeting looks COMPLETE to ResumePlan, Stage.ASR is skipped, and the last
+# eighteen minutes vanish with nothing failing.
+add_test(NAME live_transcript_cache_only
+         COMMAND python3 ${REPO_ROOT}/scripts/check-live-transcript.py)
+
 audionotes_add_test(test_asr_chunker
   ${CORE}/tests/test_asr_chunker.cpp
   ${CORE}/asr/asr_chunker.cpp)
+
+# Chunk finality during a live capture. Model-free on purpose: emitting a chunk one span too
+# early is invisible in any transcript — it only shows up as the feature being mysteriously slow.
+audionotes_add_test(test_live_chunker
+  ${CORE}/tests/test_live_chunker.cpp
+  ${CORE}/asr/live_chunker.cpp
+  ${CORE}/asr/asr_chunker.cpp)
+
+# The VAD span state machine, driven by synthetic probabilities so no model is needed. The live
+# path and the file path share this code; a slip here shifts every chunk boundary at once.
+audionotes_add_test(test_vad_span_builder
+  ${CORE}/tests/test_vad_span_builder.cpp
+  ${CORE}/vad/vad_span_builder.cpp)
+
+# The chunk-cache lookup rule: exact boundaries only, and an empty result is still a result.
+audionotes_add_test(test_asr_cache ${CORE}/tests/test_asr_cache.cpp)
+
+# The arithmetic that puts diarization results back on the real timeline after the silence has
+# been cut out of them. Deliberately free of sherpa and ONNX so it builds and runs anywhere.
+audionotes_add_test(test_span_map
+  ${CORE}/tests/test_span_map.cpp
+  ${CORE}/diar/span_map.cpp)
+
+# Reconciling the speaker numbering across diarization windows. Also sherpa-free and ONNX-free:
+# the clustering is arithmetic, and the failure it guards against — one person's words attributed
+# to another — is invisible in a transcript, so it gets tested without a model in the way.
+audionotes_add_test(test_speaker_match
+  ${CORE}/tests/test_speaker_match.cpp
+  ${CORE}/diar/speaker_match.cpp)
 
 audionotes_add_test(test_asr_postprocess
   ${CORE}/tests/test_asr_postprocess.cpp
@@ -177,7 +221,8 @@ audionotes_add_test(test_asr_factory
   ${CORE}/asr/sherpa_asr.cpp
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
-  ${CORE}/vad/silero_vad.cpp)
+  ${CORE}/vad/silero_vad.cpp
+  ${CORE}/vad/vad_span_builder.cpp)
 target_include_directories(test_asr_factory PRIVATE
   ${TP}/onnxruntime/include ${TP}/whisper.cpp/include ${TP}/whisper.cpp/ggml/include)
 target_compile_definitions(test_asr_factory PRIVATE HAVE_WHISPER)
@@ -215,7 +260,10 @@ audionotes_add_test(test_pipeline_align
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
+  ${CORE}/vad/vad_span_builder.cpp
   ${CORE}/diar/diarizer.cpp
+  ${CORE}/diar/span_map.cpp
+  ${CORE}/diar/speaker_match.cpp
   ${CORE}/llm/llama_engine.cpp)
 target_include_directories(test_pipeline_align PRIVATE
   ${TP}/onnxruntime/include ${TP}/whisper.cpp/include ${TP}/whisper.cpp/ggml/include
@@ -247,7 +295,10 @@ audionotes_add_test(test_cancel
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
+  ${CORE}/vad/vad_span_builder.cpp
   ${CORE}/diar/diarizer.cpp
+  ${CORE}/diar/span_map.cpp
+  ${CORE}/diar/speaker_match.cpp
   ${CORE}/llm/llama_engine.cpp)
 target_include_directories(test_cancel PRIVATE
   ${TP} ${TP}/onnxruntime/include ${TP}/whisper.cpp/include ${TP}/whisper.cpp/ggml/include
@@ -279,7 +330,10 @@ audionotes_add_test(test_capi
   ${CORE}/util/utf8.cpp
   ${CORE}/util/ort_init.cpp
   ${CORE}/vad/silero_vad.cpp
+  ${CORE}/vad/vad_span_builder.cpp
   ${CORE}/diar/diarizer.cpp
+  ${CORE}/diar/span_map.cpp
+  ${CORE}/diar/speaker_match.cpp
   ${CORE}/llm/llama_engine.cpp)
 target_include_directories(test_capi PRIVATE
   ${TP}/onnxruntime/include ${TP}/whisper.cpp/include ${TP}/whisper.cpp/ggml/include

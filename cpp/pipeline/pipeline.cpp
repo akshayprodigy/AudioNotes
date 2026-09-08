@@ -1,5 +1,7 @@
 #include "pipeline/pipeline.h"
 
+#include "diar/span_map.h"
+
 #include "asr/asr_engine.h"
 
 #include <memory>
@@ -125,6 +127,7 @@ bool Pipeline::run(const std::string& pcm_path, PipelineResult* out,
     acfg.qwen3_model_dir = cfg_.qwen3_model_dir;
     acfg.sherpa_model_dir = cfg_.sherpa_model_dir;
     acfg.skip_language_refusal = cfg_.skip_language_refusal;
+    acfg.chunk_cache = cfg_.chunk_cache;
     std::unique_ptr<AsrEngine> asr = makeAsrEngine(acfg);
     if (!asr->ok()) {
       // Prefer the engine's own reason. Saying "failed to load ggml-base-q5_1.bin" when the real
@@ -172,8 +175,19 @@ bool Pipeline::run(const std::string& pcm_path, PipelineResult* out,
     report("diarize", 0, 1);
     try {
       Diarizer d(cfg_.diar_seg_model, cfg_.diar_emb_model, cfg_.sample_rate,
-                 cfg_.num_speakers, cfg_.diar_threshold);
-      if (d.ok()) diar = d.process(pcm_path);
+                 cfg_.num_speakers, cfg_.diar_threshold,
+                 cfg_.diar_speaker_threshold > 0.0f ? cfg_.diar_speaker_threshold
+                                                    : kSpeakerMergeThreshold);
+      // Diarize the speech, not the silence — the same spans ASR just worked from, so desktop and
+      // Android agree. That is worth 13-38% (eval/speech_fraction.py) and it improved DER, but
+      // what keeps a long meeting inside a phone's memory is the window: whole-file diarization
+      // read a 90-minute meeting into a 346 MB float vector and needed 2.55 GB. An empty list (no
+      // VAD model configured) falls back to the whole file, which is the only sensible answer
+      // when nothing has told us where the speech is.
+      std::vector<Span> spans;
+      spans.reserve(out->segments.size());
+      for (const auto& seg : out->segments) spans.push_back(Span{seg.start_ms, seg.end_ms});
+      if (d.ok()) diar = d.process(pcm_path, spans, cfg_.diar_window_ms);
     } catch (const std::exception&) {
       // Best-effort: a diarization failure never sinks a good transcript.
     }

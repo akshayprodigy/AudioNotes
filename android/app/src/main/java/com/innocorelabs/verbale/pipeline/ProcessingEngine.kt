@@ -126,9 +126,18 @@ class ProcessingEngine(
           // rather than held, so a reprocess of a forced meeting stays forced.
           val forced = db.transcribeForcedAt(meetingId) != null
           val qwen3Dir = ModelCatalog.qwen3DirFor(ctx)
+          // Windows the live pass decoded while this meeting was still being recorded. Whisper
+          // uses one only when the boundaries match EXACTLY, so a cache built against different
+          // VAD spans costs a decode and never a wrong word. Read ONCE, here: a window cached
+          // after this line is not looked at, which is why LiveTranscriber bounds its drain.
+          val (cachedRanges, cachedJson) = db.cachedWindows(meetingId, asrFile.name)
+          if (cachedJson.isNotEmpty()) {
+            Log.i(TAG, "live pass offers ${cachedJson.size} window(s) for $meetingId")
+          }
           val json = NativeBridge.nativeTranscribe(
             audioPath, asrFile.absolutePath, RecordingService.SAMPLE_RATE, starts, ends, 0, language,
             if (qwen3Dir.isDirectory) qwen3Dir.absolutePath else "", forced,
+            cachedRanges, cachedJson,
           )
           stageDone("asr", t0)
 
@@ -172,6 +181,11 @@ class ProcessingEngine(
           db.setLanguage(meetingId, language)
           val count = db.replaceUtterancesJson(meetingId, asr.getJSONArray("utterances").toString())
           db.setStatus(meetingId, "asr")
+          // Scaffolding, not a record. Once utterances exist the cache's only remaining use is
+          // making a Redo faster, and a Redo is explicitly a request to recompute. Keeping it
+          // would leave a second copy of transcript text to honour in retention sweeps, in
+          // exports and in the privacy summary; deleting it is the smaller promise.
+          db.clearCachedWindows(meetingId)
           listener.onStage("asr", 1, 1)
           transcribed = count > 0
           Log.i(TAG, "ASR produced $count utterances for $meetingId")
@@ -190,22 +204,57 @@ class ProcessingEngine(
         val segModel = ModelCatalog.fileFor(ctx, "diar-seg")
         val embModel = ModelCatalog.fileFor(ctx, "diar-emb")
         if (transcribed && segModel != null && segModel.exists() && embModel != null && embModel.exists()) {
-          listener.onStage("diarize", 0, 1)
-          val t0 = System.currentTimeMillis()
-          val tri = NativeBridge.nativeDiarize(
-            audioPath, segModel.absolutePath, embModel.absolutePath, RecordingService.SAMPLE_RATE, 0,
+          // Can this phone afford to work out who spoke? This is the only stage whose working set
+          // follows the LENGTH of the meeting, and an hour to ninety minutes is ordinary here —
+          // rooms full of people run over in a way calls do not. Measured on a 12 GB Pixel, a
+          // 90-minute recording reached 2.55 GB; a 4 GB phone would not have survived it.
+          //
+          // The answer is whole-meeting or nothing. Diarizing in windows was built and measured
+          // and costs 6 DER points, because each window has to guess which of its speakers were in
+          // the last one — and speaker labels that are confidently wrong are worse than none.
+          val freeBytes = DiarBudget.availableBytes(ctx)
+          val speechMs = DiarBudget.paddedSpeechUpperBoundMs(
+            spans, File(audioPath).length() / 2 * 1000 / RecordingService.SAMPLE_RATE,
           )
-          stageDone("diarize", t0)
-          val m = tri.size / 3
-          if (m > 0) {
-            val ds = LongArray(m) { tri[it * 3] }
-            val de = LongArray(m) { tri[it * 3 + 1] }
-            val sp = IntArray(m) { tri[it * 3 + 2].toInt() }
-            db.assignSpeakers(meetingId, ds, de, sp)
-            db.setStatus(meetingId, "diarized")
+          val windowMs = DiarBudget.windowMsFor(freeBytes, speechMs)
+          if (windowMs == DiarBudget.SKIP) {
+            // Best-effort, and this is what that means when it is not free. Losing speaker labels
+            // costs the user a Redo on a less busy phone; being killed mid-diarization costs them
+            // the meeting, because minutes and narration both come after this.
+            db.setDiarSkippedReason(meetingId, DiarBudget.SKIPPED_FOR_MEMORY)
+            // The stage is over, so say so. Without this the progress screen sits on "Speakers
+            // separated" for the whole of minutes and narration, counting down an estimate for
+            // work that will never run. The meeting's status stays where it is on purpose — it
+            // records what happened, and diarization did not.
+            listener.onStage("diarize", 1, 1)
+            // The two numbers that decide this are the phone's, not ours, so a field report is
+            // only diagnosable if they are in the log next to the decision.
+            Log.w(TAG, "Diarization skipped for $meetingId: ${DiarBudget.describe(freeBytes, speechMs)}")
+          } else {
+            listener.onStage("diarize", 0, 1)
+            val t0 = System.currentTimeMillis()
+            // Hand VAD's spans over rather than the whole recording: worth 13-38% of the audio on
+            // a real meeting and measurably better for attribution (mean DER 20.4 -> 20.0). It is
+            // NOT a bound — most of a meeting is speech — which is what the check above is for.
+            // `spans` is the same flat array ASR already works from.
+            val tri = NativeBridge.nativeDiarize(
+              audioPath, segModel.absolutePath, embModel.absolutePath, RecordingService.SAMPLE_RATE, 0,
+              spans, windowMs,
+            )
+            stageDone("diarize", t0)
+            val m = tri.size / 3
+            if (m > 0) {
+              val ds = LongArray(m) { tri[it * 3] }
+              val de = LongArray(m) { tri[it * 3 + 1] }
+              val sp = IntArray(m) { tri[it * 3 + 2].toInt() }
+              db.assignSpeakers(meetingId, ds, de, sp)
+              db.setStatus(meetingId, "diarized")
+            }
+            // A meeting reprocessed on a phone with room must stop saying it ran out of it.
+            db.setDiarSkippedReason(meetingId, null)
+            listener.onStage("diarize", 1, 1)
+            Log.i(TAG, "Diarization produced $m segments for $meetingId")
           }
-          listener.onStage("diarize", 1, 1)
-          Log.i(TAG, "Diarization produced $m segments for $meetingId")
         } else if (transcribed) {
           Log.i(TAG, "Diarization skipped for $meetingId (no diar models installed yet)")
         }

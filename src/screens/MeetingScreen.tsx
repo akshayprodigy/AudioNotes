@@ -50,34 +50,10 @@ import {
   type EditMap,
 } from './meeting/shared';
 import { radius, s, sv, useTheme, type Colors } from '../theme';
+import { STAGES, progressFor } from './progress';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Meeting'>;
 
-/**
- * Pipeline stages, phrased as what they achieve, with the cost of each measured on device (the
- * `stage=` timings logged by AudioPipelineModule) as seconds of work per second of audio.
- *
- * Cost is held as a RATE rather than as a share of the whole, because a share only describes the
- * run it was measured on. A re-run that still has its transcript skips VAD, ASR and diarization
- * outright, so those four stages complete in well under a second — and an ETA that divided
- * elapsed time by percent-complete read that as the pace of the entire job. The screen said
- * "92% · about 1s left" with eight minutes of writing still ahead of it. A rate against the
- * meeting's own length survives a skipped stage, because a stage that does not run costs nothing.
- *
- * The rates also drive the ring, so progress advances at a roughly even pace rather than sitting
- * at 5% and then jumping to done.
- */
-const STAGES: { key: string; label: string; rate: number }[] = [
-  { key: 'vad', label: 'Audio cleaned up', rate: 0.08 },
-  // whisper-base runs at about 0.68x realtime, two threads.
-  { key: 'asr', label: 'Words written down', rate: 1.47 },
-  { key: 'diarize', label: 'Speakers separated', rate: 0.67 },
-  { key: 'minutes', label: 'Pulling out the minutes', rate: 0.11 },
-  // 460 s of narration against a 24-minute recording, three chunks, on the IPD meeting. Prefill
-  // at ~37 tok/s dominates, so the cost tracks transcript length rather than anything else.
-  { key: 'narrate', label: 'Written up in plain English', rate: 0.32 },
-];
-const TOTAL_RATE = STAGES.reduce((a, x) => a + x.rate, 0);
 
 /** Seconds into a human wait. "480s left" is a number; "about 8 min left" is an answer. */
 function etaLabel(sec: number): string {
@@ -604,18 +580,15 @@ export default function MeetingScreen({ route, navigation }: Props) {
 
   // ---------- Processing ----------
   if (working) {
-    const found = STAGES.findIndex(x => x.key === (stage ?? 'vad'));
-    const idx = found < 0 ? 0 : found;
-    // A stage reports only that it started, so treat the running one as 40% through.
-    const RUNNING = 0.4;
-    const doneRate = STAGES.slice(0, idx).reduce((a, x) => a + x.rate, 0);
-    const pct = Math.round(((doneRate + STAGES[idx].rate * RUNNING) / TOTAL_RATE) * 100);
-    // Remaining work priced from the recording's own length rather than from elapsed time, which
-    // is what made a transcript-only re-run promise a finish it was nowhere near.
-    const audioSec = (meeting?.durationMs ?? 0) / 1000;
-    const remainingRate =
-      STAGES.slice(idx).reduce((a, x) => a + x.rate, 0) - STAGES[idx].rate * RUNNING;
-    const eta = audioSec > 0 ? Math.max(1, Math.round(remainingRate * audioSec)) : 0;
+    // `stage` is null until an event arrives, and opening a meeting that is ALREADY processing
+    // is the common case — so the persisted status decides, rather than assuming the first stage.
+    // Assuming was the bug: a 90-minute meeting showed stage one for 78 minutes because the next
+    // event was half an hour away. See src/screens/progress.ts.
+    const { index: idx, pct, etaSec: eta } = progressFor({
+      liveStage: stage,
+      status: meeting?.status,
+      audioSec: (meeting?.durationMs ?? 0) / 1000,
+    });
 
     return (
       <View style={[st.root, { paddingTop: insets.top + s(8), paddingBottom: insets.bottom + s(20) }]}>
@@ -818,6 +791,17 @@ export default function MeetingScreen({ route, navigation }: Props) {
             <View style={st.forcedBanner}>
               <Txt variant="sub" color={colors.warning}>
                 {forcedTranscriptNote(meeting?.forcedFromLanguage)}
+              </Txt>
+            </View>
+          ) : null}
+          {/* Diarization is best-effort and this is what that costs when the phone cannot afford
+              it. Read from the meeting rather than composed here: the sentence has to describe the
+              run that made the decision, not the memory the phone happens to have now. Not a
+              warning colour — nothing went wrong, a stage was declined so the meeting survived. */}
+          {meeting?.diarSkippedReason ? (
+            <View style={st.forcedBanner}>
+              <Txt variant="sub" color={colors.inkSoft}>
+                {meeting.diarSkippedReason}
               </Txt>
             </View>
           ) : null}

@@ -183,7 +183,7 @@ def body(device_limit: int) -> str:
       </p>
     </div>
     <div class="grid g3">
-      {_feature(SHIELD, "Nothing is uploaded",
+      {_feature(SHIELD, "Your meeting is not uploaded",
                 "No recording, transcript or summary ever leaves the device. There is no bucket "
                 "somewhere with your meetings in it, because there is no bucket.", "")}
       {_feature(MIC, "Records the way meetings happen",
@@ -266,13 +266,21 @@ def body(device_limit: int) -> str:
     <div class="rise d1" style="margin-top:26px">
       {_faq("Is my audio really never uploaded?",
             "Yes. Transcription, speaker separation and the minutes all run on the device. The "
-            "app uses the network for exactly two things: downloading the speech models the "
-            "first time you open it, and checking a subscription if you have one. Neither of "
-            "those carries any of your content.")}
+            "app uses the network for three things: downloading the speech models the first time "
+            "you open it, checking a subscription if you have one, and sending a crash report if "
+            "you switched those on. None of the three carries any of your content, and the app "
+            "has a screen that counts every call it makes so you can check rather than trust.")}
+      {_faq("Does it report crashes?",
+            "Only if you say yes. You are asked once, it is off until then, and you can withdraw "
+            "at any time in Settings. A report carries the stack trace of the failure, the app "
+            "version and the model of phone &mdash; never your audio, transcripts or notes. It "
+            "goes to Google Crashlytics, and because Crashlytics sends it rather than the app, it "
+            "is the one thing the network screen cannot count. It says so, there, in those words.")}
       {_faq("Why is there a download when I first open it?",
             "The speech models are around 114 MB and are not bundled into the app, which would "
             "otherwise be far too large for the store. They download once and then the app works "
-            "with no connection at all.")}
+            "with no connection at all. Starting a Pro trial adds a larger writer model, about "
+            "1.1 GB, and that one is only fetched if you ask for it.")}
       {_faq("What happens if I stop paying?",
             "Recording, transcripts, speakers, search, export and the rule-based minutes keep "
             "working &mdash; those are the free tier and they do not expire. Every summary "

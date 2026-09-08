@@ -28,6 +28,14 @@ using AsrProgressFn = std::function<void(int, int)>;
 // would leave a cancel unanswered for minutes.
 using AsrCancelFn = std::function<bool()>;
 
+// A window somebody already decoded — in practice the live pass that ran during the capture.
+// `utterances` carry CHUNK-RELATIVE timestamps, exactly as WhisperAsr::decodeWindow returns them.
+struct AsrCachedWindow {
+  int64_t start_ms;
+  int64_t end_ms;
+  std::vector<Utterance> utterances;
+};
+
 // What a run produced AND what happened during it. The second half is not bookkeeping: a
 // transcribe() that returned a bare vector could not distinguish "the room was silent" from
 // "every chunk failed to decode", and the pipeline reported both as "no speech detected".
@@ -35,6 +43,9 @@ struct AsrRun {
   std::vector<Utterance> utterances;
   int chunks_total = 0;
   int chunks_failed = 0;
+  // Windows served from the cache rather than decoded. Provenance, and the only way to tell
+  // whether the live pass actually helped on a given phone.
+  int chunks_cached = 0;
   bool cancelled = false;
 
   // Provenance. Recorded so a user reporting a garbled meeting can be answered with what actually
@@ -75,6 +86,27 @@ class AsrEngine {
 
   // pcm_path: 16 kHz mono PCM16. segments: VAD speech spans (ms).
   // `threads` <= 0 selects the big.LITTLE-aware default (see util/cpu_topology.h).
+  // Decode ONE window and return its segments with CHUNK-RELATIVE timestamps.
+  //
+  // On the interface rather than on whisper alone so the live capture pass can reach it through
+  // makeAsrEngine and be routed BY LANGUAGE like everything else. Naming a concrete engine at the
+  // call site is how Qwen3-ASR once shipped compiled in and unreachable.
+  //
+  // `threads` <= 0 selects the engine's default, the same contract transcribe() has.
+  // `failed` (optional) separates the three ways this returns nothing: the window held no audio,
+  // the decode FAILED, or it succeeded and every segment scrubbed to empty. Only the middle one
+  // is a failure — see AsrRun::allChunksFailed.
+  //
+  // The default decodes nothing, which is the honest answer for an engine that cannot decode a
+  // window in isolation: the live pass caches nothing and the pipeline behaves as it always did.
+  virtual std::vector<Utterance> decodeWindow(const std::string& pcm_path, int sample_rate,
+                                              int64_t start_ms, int64_t end_ms, int threads,
+                                              bool* failed) {
+    (void)pcm_path; (void)sample_rate; (void)start_ms; (void)end_ms; (void)threads;
+    if (failed) *failed = false;
+    return {};
+  }
+
   virtual AsrRun transcribe(const std::string& pcm_path,
                             const std::vector<Segment>& segments,
                             int sample_rate,
@@ -104,6 +136,14 @@ struct AsrConfig {
   // the guarantee at all. This is per-run recovery from a detector that was wrong, which the
   // Galaxy A07 recording proved is possible — English heard as Turkish at p=0.88.
   bool skip_language_refusal = false;
+
+  // Pre-computed windows for THIS recording. Not configuration in spirit, but it travels the same
+  // path, and adding a parameter to AsrEngine::transcribe would change a five-engine interface
+  // for something only whisper consults. Empty for every run that had no live pass.
+  //
+  // A window is used only if its boundaries match EXACTLY, so a cache built against different VAD
+  // spans is inert rather than wrong.
+  std::vector<AsrCachedWindow> chunk_cache;
 };
 
 // The one place a language becomes a class. Never returns null: when nothing usable is available

@@ -5,7 +5,9 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <dlfcn.h>
+#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -27,6 +29,7 @@
 // The bootstrap used to live here as a file-local helper, which quietly made the VAD the only
 // engine that initialised the shared OrtApi — see util/ort_init.h for why that broke diarization.
 #include "util/ort_init.h"
+#include "vad/vad_span_builder.h"
 
 namespace audionotes {
 
@@ -61,6 +64,15 @@ struct SileroVad::Impl {
 
   /** Highest probability seen in the last process() run — used for diagnostics. */
   float max_prob = 0.0f;
+
+  // Streaming state. `builder` is null until reset() opens a stream.
+  std::unique_ptr<VadSpanBuilder> builder;
+  VadConfig cfg;
+  // Bytes fed that did not complete a frame. BYTES, not samples: a caller may hand over an odd
+  // number of them — a truncated write, or a resumed capture — and dropping the spare byte would
+  // shift every later sample by one and reinterpret the whole recording as noise.
+  std::vector<uint8_t> residual;
+  int64_t stream_cursor = 0;      // samples consumed by the stream so far
 
   Impl(const std::string& model_path, int sr)
       : sample_rate(sr),
@@ -167,74 +179,99 @@ SileroVad::SileroVad(const std::string& model_path, int sample_rate) {
 
 SileroVad::~SileroVad() { delete impl_; }
 
-std::vector<Segment> SileroVad::process(const std::string& pcm_path, const VadConfig& cfg) {
+void SileroVad::reset(const VadConfig& cfg) {
+  impl_->reset();
+  impl_->cfg = cfg;
+  impl_->builder.reset(new VadSpanBuilder(cfg, impl_->sample_rate));
+  impl_->residual.clear();
+  impl_->stream_cursor = 0;
+  VADLOGI("stream open: model=%s window=%d threshold=%.2f",
+          impl_->v5 ? "v5(state)" : "v4(h/c)", cfg.window, cfg.threshold);
+}
+
+std::vector<Segment> SileroVad::feed(const std::string& pcm_path, int64_t from_byte,
+                                     int64_t byte_count) {
   std::vector<Segment> out;
+  if (!impl_->builder || byte_count <= 0) return out;
+
   FILE* f = std::fopen(pcm_path.c_str(), "rb");
   if (!f) return out;
-
-  const int sr = impl_->sample_rate;
-  const int window = cfg.window;
-  const float neg_threshold = cfg.threshold - 0.15f;
-  const int64_t min_speech = static_cast<int64_t>(cfg.min_speech_ms) * sr / 1000;
-  const int64_t min_silence = static_cast<int64_t>(cfg.min_silence_ms) * sr / 1000;
-  const int64_t pad = static_cast<int64_t>(cfg.speech_pad_ms) * sr / 1000;
-
-  impl_->reset();
-  VADLOGI("model=%s window=%d threshold=%.2f", impl_->v5 ? "v5(state)" : "v4(h/c)", window, cfg.threshold);
-
-  std::vector<int16_t> raw(window);
-  std::vector<float> frame(window);
-  std::vector<std::pair<int64_t, int64_t>> spans;  // in samples
-
-  bool triggered = false;
-  int64_t temp_end = 0;
-  int64_t speech_start = 0;
-  int64_t cursor = 0;  // sample index at the start of the current frame
-
-  while (true) {
-    size_t got = std::fread(raw.data(), sizeof(int16_t), window, f);
-    if (got == 0) break;
-    for (size_t i = 0; i < static_cast<size_t>(window); ++i) {
-      frame[i] = (i < got) ? static_cast<float>(raw[i]) / 32768.0f : 0.0f;
-    }
-
-    const float prob = impl_->infer(frame);
-    const int64_t frame_start = cursor;
-    cursor += window;
-
-    if (prob >= cfg.threshold && temp_end != 0) temp_end = 0;
-    if (prob >= cfg.threshold && !triggered) {
-      triggered = true;
-      speech_start = frame_start;
-    } else if (prob < neg_threshold && triggered) {
-      if (temp_end == 0) temp_end = frame_start;
-      if (cursor - temp_end >= min_silence) {
-        if (temp_end - speech_start > min_speech) spans.emplace_back(speech_start, temp_end);
-        triggered = false;
-        temp_end = 0;
-      }
-    }
-    if (got < static_cast<size_t>(window)) break;  // last (short) frame
+  if (std::fseek(f, static_cast<long>(from_byte), SEEK_SET) != 0) {
+    std::fclose(f);
+    return out;
   }
+
+  const int window = impl_->cfg.window;
+  const size_t frame_bytes = static_cast<size_t>(window) * sizeof(int16_t);
+
+  std::vector<uint8_t> raw(static_cast<size_t>(byte_count));
+  const size_t got = std::fread(raw.data(), 1, raw.size(), f);
   std::fclose(f);
 
-  if (triggered && cursor - speech_start > min_speech) spans.emplace_back(speech_start, cursor);
+  // Prepend whatever did not complete a frame last time, so frame alignment never depends on
+  // how the caller happened to slice the file.
+  impl_->residual.insert(impl_->residual.end(), raw.begin(), raw.begin() + got);
 
-  // Pad, clamp, merge overlaps, convert samples -> ms.
-  const int64_t total = cursor;
-  for (auto& s : spans) {
-    s.first = std::max<int64_t>(0, s.first - pad);
-    s.second = std::min<int64_t>(total, s.second + pad);
-  }
-  for (const auto& s : spans) {
-    if (!out.empty() && s.first * 1000 / sr <= out.back().end_ms) {
-      out.back().end_ms = std::max(out.back().end_ms, s.second * 1000 / sr);
-    } else {
-      out.push_back(Segment{s.first * 1000 / sr, s.second * 1000 / sr});
+  std::vector<float> frame(window);
+  size_t off = 0;
+  while (impl_->residual.size() - off >= frame_bytes) {
+    for (int i = 0; i < window; ++i) {
+      int16_t sample;
+      std::memcpy(&sample, impl_->residual.data() + off + i * sizeof(int16_t), sizeof(int16_t));
+      frame[i] = static_cast<float>(sample) / 32768.0f;
     }
+    const float prob = impl_->infer(frame);
+    for (const Segment& s : impl_->builder->push(prob, impl_->stream_cursor)) out.push_back(s);
+    impl_->stream_cursor += window;
+    off += frame_bytes;
   }
-  VADLOGI("scanned %.1fs, peak speech prob %.3f -> %zu segment(s)",
-          static_cast<double>(cursor) / sr, impl_->max_prob, out.size());
+  impl_->residual.erase(impl_->residual.begin(), impl_->residual.begin() + off);
+  return out;
+}
+
+std::vector<Segment> SileroVad::finish() {
+  if (!impl_->builder) return {};
+  const int window = impl_->cfg.window;
+
+  std::vector<Segment> out;
+  // A final short frame is zero-padded to a full window, exactly as the file path did. A trailing
+  // odd byte is half a sample and is discarded, which is what reading the file whole also did.
+  if (impl_->residual.size() >= sizeof(int16_t)) {
+    std::vector<float> frame(window, 0.0f);
+    const size_t samples = impl_->residual.size() / sizeof(int16_t);
+    for (size_t i = 0; i < samples && i < static_cast<size_t>(window); ++i) {
+      int16_t sample;
+      std::memcpy(&sample, impl_->residual.data() + i * sizeof(int16_t), sizeof(int16_t));
+      frame[i] = static_cast<float>(sample) / 32768.0f;
+    }
+    const float prob = impl_->infer(frame);
+    out = impl_->builder->push(prob, impl_->stream_cursor);
+    impl_->stream_cursor += window;
+    impl_->residual.clear();
+  }
+  for (const Segment& s : impl_->builder->finish(impl_->stream_cursor)) out.push_back(s);
+  VADLOGI("stream closed at %.1fs, peak speech prob %.3f",
+          static_cast<double>(impl_->stream_cursor) / impl_->sample_rate, impl_->max_prob);
+  return out;
+}
+
+int64_t SileroVad::pendingSpanStartMs() const {
+  return impl_->builder ? impl_->builder->pendingSpanStartMs() : -1;
+}
+
+std::vector<Segment> SileroVad::process(const std::string& pcm_path, const VadConfig& cfg) {
+  FILE* f = std::fopen(pcm_path.c_str(), "rb");
+  if (!f) return {};
+  std::fseek(f, 0, SEEK_END);
+  const long bytes = std::ftell(f);
+  std::fclose(f);
+  if (bytes <= 0) return {};
+
+  reset(cfg);
+  std::vector<Segment> out = feed(pcm_path, 0, bytes);
+  for (const Segment& s : finish()) out.push_back(s);
+  VADLOGI("scanned %.1fs -> %zu segment(s)",
+          static_cast<double>(impl_->stream_cursor) / impl_->sample_rate, out.size());
   return out;
 }
 

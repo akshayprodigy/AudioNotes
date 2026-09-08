@@ -19,9 +19,15 @@ import sys
 
 # The call sites that own this app's entire network access, plus the ledger seam they record
 # through. Adding to this list is a deliberate act and should be argued for in review.
+#
+# telemetry/crash.ts was here until crash reporting moved from Sentry to Crashlytics. It is not a
+# call site any more: the previous SDK was driven from JavaScript, so the upload passed through a
+# beforeSend hook that recorded its exact byte count, while Crashlytics assembles and sends reports
+# from native Play Services code this app cannot reach. It counts for nothing here BECAUSE it can
+# no longer be counted, which is a loss, not a tidy-up — and the privacy screen names it as an
+# uncounted source for exactly that reason. See src/telemetry/crash.ts and PrivacyScreen.tsx.
 ALLOWED = {
     os.path.join("src", "billing", "subscription.ts"),
-    os.path.join("src", "telemetry", "crash.ts"),
     os.path.join("src", "privacy", "ledger.ts"),
     os.path.join(
         "android", "app", "src", "main", "java", "com", "innocorelabs", "verbale",
