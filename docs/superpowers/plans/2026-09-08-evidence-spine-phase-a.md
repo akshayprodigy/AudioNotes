@@ -1623,8 +1623,22 @@ normally on every open."
 > predicate itself** — there is then exactly one place to extend when a fifth signal appears, and
 > it sits next to the SQL that would have to change anyway.
 >
-> The three joins are `LEFT JOIN item_done`, `LEFT JOIN edits ON target_kind='item' AND
-> target_key=items.id`, and `items.review != 'suggested'`.
+> The joins are `LEFT JOIN item_done`, `LEFT JOIN edits ON target_kind='item' AND
+> target_key=items.id`, and the review state — **but see the two corrections below, both measured.**
+>
+> **`item_done` has no writers yet, so that join sees nothing a real user did.** Every tick the
+> shipped app records goes to `action_done`, keyed on a hash of the item's text. Until Task 8's
+> migration runs, `LEFT JOIN item_done` returns nothing for every meeting in every existing
+> library — and a genuinely ticked item whose text drifted is exactly the population this whole
+> sub-project exists for. **Task 6 must join `action_done` as well**, matching on the text hash the
+> way Task 8's backfill does, until Task 8 has run for that meeting. This is a sequencing problem
+> the plan created by numbering the migration after the writer.
+>
+> **The review state is not `review != 'suggested'`.** `suggested` and `needs_review` are what the
+> *machine* says; `confirmed` and `rejected` are what a *person* says. Counting `needs_review` as
+> engagement means the reconciler's own flag makes a row permanently undroppable — measured across
+> five consecutive reprocesses, an item nobody ever touched becomes permanent queue clutter. The
+> predicate is `review IN ('confirmed','rejected') OR done OR edited`.
 >
 > **Enforcement is behavioural, not structural.** A compile error catches a missing constructor
 > argument; it does not catch a `touched` that forgot to OR in a table. Task 6 needs a test per
