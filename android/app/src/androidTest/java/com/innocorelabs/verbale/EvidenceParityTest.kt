@@ -236,7 +236,11 @@ class EvidenceParityTest {
    * also pushes a ~4 KB payload through NewStringUTF, two orders of magnitude larger than any
    * golden, which is the only place the return leg is exercised at size.
    *
-   * The expectation is the decisions cap: 2000 distinct decisions truncate to 20.
+   * The LAST turn is an action, not a decision, and that is the point of the arrangement. Twenty
+   * decisions is the cap, so asserting only on those would be satisfied by a run that truncated
+   * every array past index 19 — "2000 turns were marshalled" would be an inference. An item that
+   * can only exist if turn 1999 arrived makes it an assertion. Verified on the host core: 21
+   * items, the last anchored at 7,996,000..8,000,000 from u1999.
    */
   @Test fun a_long_meeting_does_not_exhaust_the_local_reference_table() {
     ensureCore()
@@ -245,19 +249,31 @@ class EvidenceParityTest {
       ids = Array(n) { "u$it" },
       startsMs = LongArray(n) { it * 4000L },
       endsMs = LongArray(n) { it * 4000L + 4000L },
-      texts = Array(n) { "We agreed to ship on Monday number $it." },
+      texts = Array(n) {
+        if (it == n - 1) "I'll send the report by Friday."
+        else "We agreed to ship on Monday number $it."
+      },
       speakerIds = Array(n) { "S0" },
       spkIds = arrayOf("S0"),
       spkNames = arrayOf("Speaker 1"),
     )
-    assertEquals(20, items.size)
-    // Not just the count: the first and last surviving decisions, so a truncation that kept the
-    // wrong twenty is caught too.
-    assertEquals("We agreed to ship on Monday number 0.", items.first().text)
-    assertEquals(0L, items.first().anchorStartMs)
-    assertEquals("We agreed to ship on Monday number 19.", items.last().text)
-    assertEquals(76_000L, items.last().anchorStartMs)
-    assertEquals(80_000L, items.last().anchorEndMs)
+    // Twenty capped decisions, then the one action from the very last turn.
+    assertEquals(21, items.size)
+
+    assertEquals("We agreed to ship on Monday number 0.", items[0].text)
+    assertEquals(0L, items[0].anchorStartMs)
+    assertEquals("We agreed to ship on Monday number 19.", items[19].text)
+    assertEquals(76_000L, items[19].anchorStartMs)
+    assertEquals(80_000L, items[19].anchorEndMs)
+
+    // The observable tail. Nothing about this item can be produced without turn 1999's text, id
+    // and both of its timings having crossed the boundary.
+    val tail = items[20]
+    assertEquals("action", tail.kind)
+    assertEquals("I'll send the report by Friday. — Speaker 1 (due by Friday)", tail.text)
+    assertEquals("u1999", tail.sources[0].utteranceId)
+    assertEquals(7_996_000L, tail.anchorStartMs)
+    assertEquals(8_000_000L, tail.anchorEndMs)
   }
 
   /**

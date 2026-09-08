@@ -119,28 +119,44 @@ class ItemsJsonTest {
   /**
    * What the parse actually guarantees on a device, asserted rather than assumed.
    *
-   * Android's org.json is Harmony-derived and COERCES where the reference implementation throws.
-   * `parseItems` is therefore not "strict" in the sense of rejecting a mistyped field — a numeric
-   * `kind` arrives as its decimal string, and a JSON null arrives as the four characters "null".
-   * Neither is reachable from `itemsToJson`, which only ever writes strings for those fields, so
-   * this is a statement about the parser and not a defect.
+   * Android's org.json is Harmony-derived and is LENIENT where the reference implementation
+   * rejects. `parseItems` is therefore not "strict" in the sense of rejecting a malformed payload:
+   * a numeric `kind` arrives as its decimal string, a JSON null as the four characters "null", a
+   * duplicated key silently takes the last value, and a raw newline inside a string is accepted.
+   * None is reachable from `itemsToJson`, which writes a string for every string field, escapes
+   * every control character and emits each key once — so this describes the parser, not a hole.
    *
-   * It is also the check that this test is running against ANDROID'S parser at all: every
-   * assertion below throws a JSONException under org.json:json, so if the dependency in
-   * build.gradle is ever swapped back, this fails immediately instead of quietly testing the wrong
-   * implementation.
+   * It is also what pins this test to ANDROID'S parser. Each of the four payloads below was run
+   * through both jars and the reference implementation throws JSONException on every one, so a
+   * swap back in build.gradle fails here rather than quietly testing the wrong implementation.
+   *
+   * Deliberately NOT asserted: a numeric string read as a Long. `"anchorStartMs":"7"` gives 7 under
+   * both implementations, so it would look like a divergence and guard nothing.
    */
-  @Test fun androidsParserCoercesWhereTheReferenceImplementationThrows() {
+  @Test fun androidsParserIsLenientWhereTheReferenceImplementationThrows() {
     val coerced = Minutes.parseItems(
-      """[{"kind":42,"text":"t","sources":[],"anchorStartMs":"7","anchorEndMs":9}]""",
+      """[{"kind":42,"text":"t","sources":[],"anchorStartMs":7,"anchorEndMs":9}]""",
     ).single()
-    assertEquals("42", coerced.kind)      // a number read as a String
-    assertEquals(7L, coerced.anchorStartMs)  // a String read as a Long
+    assertEquals("42", coerced.kind)  // a number read as a String
 
     val nulled = Minutes.parseItems(
       """[{"kind":"decision","text":null,"sources":[],"anchorStartMs":0,"anchorEndMs":0}]""",
     ).single()
-    assertEquals("null", nulled.text)     // JSON null, not a Kotlin null and not an exception
+    assertEquals("null", nulled.text)  // JSON null, not a Kotlin null and not an exception
+
+    val duplicated = Minutes.parseItems(
+      """[{"kind":"decision","kind":"action","text":"t","sources":[],""" +
+        """"anchorStartMs":0,"anchorEndMs":0}]""",
+    ).single()
+    assertEquals("action", duplicated.kind)  // last key wins, silently
+
+    // A LITERAL newline inside a JSON string — the thing itemsToJson escapes. Android accepts it
+    // and hands the newline straight through.
+    val rawNewline = Minutes.parseItems(
+      "[{\"kind\":\"decision\",\"text\":\"a\nb\",\"sources\":[]," +
+        "\"anchorStartMs\":0,\"anchorEndMs\":0}]",
+    ).single()
+    assertEquals("a\nb", rawNewline.text)
   }
 
   @Test fun anEmptyMeetingIsAnEmptyList() {
