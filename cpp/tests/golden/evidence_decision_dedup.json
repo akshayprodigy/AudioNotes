@@ -1,0 +1,60 @@
+{
+  "input": {
+    "utterances": [
+      {
+        "id": "u0",
+        "meetingId": "m",
+        "startMs": 0,
+        "endMs": 4000,
+        "speakerId": "S0",
+        "text": "We decided to go with Plan A."
+      },
+      {
+        "id": "u1",
+        "meetingId": "m",
+        "startMs": 4000,
+        "endMs": 8000,
+        "speakerId": "S0",
+        "text": "we decided to go with Plan A!"
+      }
+    ],
+    "speakers": [
+      {
+        "id": "S0",
+        "displayName": "Speaker 1",
+        "meetingId": "m",
+        "clusterLabel": "S0"
+      },
+      {
+        "id": "S1",
+        "displayName": "Speaker 2",
+        "meetingId": "m",
+        "clusterLabel": "S1"
+      }
+    ]
+  },
+  "output": [
+    {
+      "kind": "decision",
+      "text": "We decided to go with Plan A.",
+      "sources": [
+        {
+          "utteranceId": "u0",
+          "startMs": 0,
+          "endMs": 4000,
+          "charStart": 0,
+          "charEnd": 29
+        },
+        {
+          "utteranceId": "u1",
+          "startMs": 4000,
+          "endMs": 8000,
+          "charStart": 0,
+          "charEnd": 29
+        }
+      ],
+      "anchorStartMs": 0,
+      "anchorEndMs": 8000
+    }
+  ]
+}

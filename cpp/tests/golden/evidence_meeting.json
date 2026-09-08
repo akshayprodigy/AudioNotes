@@ -21,23 +21,23 @@
         "id": "u2",
         "meetingId": "m",
         "startMs": 8000,
-        "endMs": 12000,
+        "endMs": 14500,
         "speakerId": "S0",
         "text": "Agreed. We decided to go with the phased rollout. Can you also update the project roadmap by Thursday?"
       },
       {
         "id": "u3",
         "meetingId": "m",
-        "startMs": 12000,
-        "endMs": 16000,
+        "startMs": 14500,
+        "endMs": 18500,
         "speakerId": "S1",
         "text": "Sure, I'll update the roadmap by Thursday. Maya will send the summary to everyone tomorrow."
       },
       {
         "id": "u4",
         "meetingId": "m",
-        "startMs": 16000,
-        "endMs": 20000,
+        "startMs": 18500,
+        "endMs": 22500,
         "speakerId": "S0",
         "text": "What about the pricing question? Should we revisit it next week?"
       }
@@ -65,13 +65,13 @@
         {
           "utteranceId": "u2",
           "startMs": 8000,
-          "endMs": 12000,
+          "endMs": 14500,
           "charStart": 8,
           "charEnd": 49
         }
       ],
       "anchorStartMs": 8000,
-      "anchorEndMs": 12000
+      "anchorEndMs": 14500
     },
     {
       "kind": "action",
@@ -109,14 +109,14 @@
       "sources": [
         {
           "utteranceId": "u3",
-          "startMs": 12000,
-          "endMs": 16000,
+          "startMs": 14500,
+          "endMs": 18500,
           "charStart": 0,
           "charEnd": 42
         }
       ],
-      "anchorStartMs": 12000,
-      "anchorEndMs": 16000
+      "anchorStartMs": 14500,
+      "anchorEndMs": 18500
     },
     {
       "kind": "action",
@@ -124,14 +124,14 @@
       "sources": [
         {
           "utteranceId": "u3",
-          "startMs": 12000,
-          "endMs": 16000,
+          "startMs": 14500,
+          "endMs": 18500,
           "charStart": 43,
           "charEnd": 91
         }
       ],
-      "anchorStartMs": 12000,
-      "anchorEndMs": 16000
+      "anchorStartMs": 14500,
+      "anchorEndMs": 18500
     },
     {
       "kind": "question",
@@ -140,13 +140,13 @@
         {
           "utteranceId": "u2",
           "startMs": 8000,
-          "endMs": 12000,
+          "endMs": 14500,
           "charStart": 50,
           "charEnd": 102
         }
       ],
       "anchorStartMs": 8000,
-      "anchorEndMs": 12000
+      "anchorEndMs": 14500
     },
     {
       "kind": "question",
@@ -154,14 +154,14 @@
       "sources": [
         {
           "utteranceId": "u4",
-          "startMs": 16000,
-          "endMs": 20000,
+          "startMs": 18500,
+          "endMs": 22500,
           "charStart": 0,
           "charEnd": 32
         }
       ],
-      "anchorStartMs": 16000,
-      "anchorEndMs": 20000
+      "anchorStartMs": 18500,
+      "anchorEndMs": 22500
     },
     {
       "kind": "question",
@@ -169,14 +169,14 @@
       "sources": [
         {
           "utteranceId": "u4",
-          "startMs": 16000,
-          "endMs": 20000,
+          "startMs": 18500,
+          "endMs": 22500,
           "charStart": 33,
           "charEnd": 64
         }
       ],
-      "anchorStartMs": 16000,
-      "anchorEndMs": 20000
+      "anchorStartMs": 18500,
+      "anchorEndMs": 22500
     }
   ]
 }

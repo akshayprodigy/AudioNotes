@@ -8,6 +8,7 @@ import * as path from 'path';
 import { extractMinutes } from '../minutes';
 import { parseMinutesJson } from '../summarize';
 import { extractItems } from '../evidence';
+import type { DraftItem } from '../evidence';
 
 const GOLDEN_DIR = path.join(__dirname, '../../../cpp/tests/golden');
 
@@ -147,16 +148,25 @@ test('write golden files for the C++ parity tests', () => {
 });
 
 // Timed variants of the existing fixtures. The rule fixtures carry no timings because
-// extractMinutes never needed any; extractItems does, so each turn gets four seconds.
-function timed(rows: { text: string; speakerId: string }[]) {
-  return rows.map((r, i) => ({
-    id: `u${i}`,
-    meetingId: 'm',
-    startMs: i * 4000,
-    endMs: i * 4000 + 4000,
-    speakerId: r.speakerId,
-    text: r.text,
-  }));
+// extractMinutes never needed any; extractItems does, so most turns get four seconds. Turn
+// index 2 runs long instead (6500ms) - every other turn stays uniform and contiguous, so a port
+// that assumed endMs = startMs + 4000, or passed through source ms with no merge logic, would
+// have nothing here to fail against.
+function timed(rows: { text: string; speakerId: string | null }[]) {
+  let cursorMs = 0;
+  return rows.map((r, i) => {
+    const startMs = cursorMs;
+    const durationMs = i === 2 ? 6500 : 4000;
+    cursorMs += durationMs;
+    return {
+      id: `u${i}`,
+      meetingId: 'm',
+      startMs,
+      endMs: cursorMs,
+      speakerId: r.speakerId,
+      text: r.text,
+    };
+  });
 }
 
 const SPANS = [
@@ -172,24 +182,115 @@ const SPANS = [
   // run, so a naive text.indexOf returns the SECOND copy and both sources end up sharing its span.
   // Any port that tries the direct match before the collapsed one fails on exactly this row.
   { text: 'We agreed  to ship. We agreed to ship.', speakerId: 'S0' },
+  // Non-ASCII BEFORE the span, so byte offsets, code-point offsets and UTF-16 offsets are three
+  // different numbers. Curly quotes and an astral emoji: the emoji is the only thing separating
+  // UTF-16 units from code points, which is the mistake a UTF-8-decoding port makes and no
+  // amount of em dashes would catch. A non-breaking space inside the sentence exercises the
+  // other half - JS \s matches U+00A0 and a byte-wise C++ isspace does not, which corrupts the
+  // item TEXT and not just its span. The span still needs the collapsed scan, so the conversion
+  // is exercised on a byte offset that came out of the flatten map.
+  {
+    text: 'Priya said “ship it” \u{1F680}. We agreed   to ship on\nMonday.',
+    speakerId: 'S1',
+  },
 ];
 
-function writeEvidenceGolden(name: string, rows: { text: string; speakerId: string }[]) {
+// Pins the caps (20 decisions / 30 actions / 20 questions) the same way evidence.test.ts's
+// "matches extractMinutes even when every bucket is over its cap" test does, but as a golden the
+// C++ port has to replay: every bucket here is well past its cap (25/35/25).
+function capBusting(): { text: string; speakerId: string }[] {
+  const rows: { text: string; speakerId: string }[] = [];
+  for (let i = 0; i < 25; i++) rows.push({ text: `We decided to ship batch ${i}.`, speakerId: 'S0' });
+  for (let i = 0; i < 35; i++) rows.push({ text: `I'll send report ${i}.`, speakerId: 'S1' });
+  for (let i = 0; i < 25; i++) rows.push({ text: `Should we revisit topic ${i}?`, speakerId: 'S0' });
+  return rows;
+}
+
+function writeEvidenceGolden(
+  name: string,
+  rows: { text: string; speakerId: string | null }[],
+): DraftItem[] {
   const utterances = timed(rows);
   const speakers = SPEAKERS.map(s => ({ ...s, meetingId: 'm', clusterLabel: s.id }));
+  const output = extractItems(utterances as any, speakers as any);
   fs.writeFileSync(
     path.join(GOLDEN_DIR, name),
-    JSON.stringify(
-      { input: { utterances, speakers }, output: extractItems(utterances as any, speakers as any) },
-      null,
-      2,
-    ) + '\n',
+    JSON.stringify({ input: { utterances, speakers }, output }, null, 2) + '\n',
   );
+  return output;
 }
 
 it('writes the evidence goldens', () => {
-  writeEvidenceGolden('evidence_meeting.json', MEETING);
-  writeEvidenceGolden('evidence_dedup.json', DEDUP);
-  writeEvidenceGolden('evidence_spans.json', SPANS);
+  const meeting = writeEvidenceGolden('evidence_meeting.json', MEETING);
   expect(fs.existsSync(path.join(GOLDEN_DIR, 'evidence_meeting.json'))).toBe(true);
+  expect(meeting.length).toBeGreaterThan(0);
+
+  const dedup = writeEvidenceGolden('evidence_dedup.json', DEDUP);
+  expect(dedup.filter(i => i.kind === 'action').length).toBe(2);
+
+  const spans = writeEvidenceGolden('evidence_spans.json', SPANS);
+  const decisions = spans.filter(i => i.kind === 'decision');
+  const action = spans.find(i => i.kind === 'action')!;
+
+  // Row 2: two repeats within one turn get two distinct spans - equal charStart values would
+  // mean both sources point at the same occurrence.
+  expect(new Set(action.sources.map(s => s.charStart)).size).toBe(2);
+
+  // Row 3: the FIRST copy carries the whitespace run, so the earliest match must win. A
+  // charStart of 20 for the FIRST source would mean the direct match beat the collapsed one -
+  // the exact bug this row exists to catch.
+  const ordering = decisions.find(d => d.text === 'We agreed to ship.')!;
+  expect(ordering.sources.map(s => s.charStart)).toEqual([0, 20]);
+
+  // Rows 1 and 4 share the collapsed sentence "We agreed to ship on Monday." (row 4 only adds a
+  // new prefix; its suffix deliberately matches row 1's), so they land in ONE decision item with
+  // two sources - an incidental second exercise of the cross-turn merge Critical 2 covers.
+  const onMonday = decisions.find(d => d.text === 'We agreed to ship on Monday.')!;
+  expect(onMonday.sources).toHaveLength(2);
+  const [row1Source, row4Source] = onMonday.sources;
+
+  // Row 1: the collapsed scan ran - the slice recovered from the ORIGINAL text still holds the
+  // double space and the newline that a literal indexOf could never have matched.
+  expect(row1Source.utteranceId).toBe('u0');
+  expect(SPANS[0].text.slice(row1Source.charStart, row1Source.charEnd)).toBe(
+    'We agreed  to ship on\nMonday.',
+  );
+
+  // Row 4: the only thing separating three different offset interpretations (bytes, code
+  // points, UTF-16 units) is what precedes the span - curly quotes (3 bytes / 1 unit each in
+  // UTF-8) and an astral emoji (4 bytes / 2 units / 1 code point). If any two of the three
+  // interpretations coincided here, a port using the wrong one could still pass.
+  expect(row4Source.utteranceId).toBe('u3');
+  const turn4 = SPANS[3].text;
+  const utf16Start = row4Source.charStart;
+  const byteStart = Buffer.byteLength(turn4.slice(0, utf16Start), 'utf8');
+  const codePointStart = Array.from(turn4.slice(0, utf16Start)).length;
+  expect(new Set([utf16Start, byteStart, codePointStart]).size).toBe(3);
+  // ...and the slice itself must reproduce the real sentence, non-breaking space included - the
+  // one detail a UTF-16-to-original conversion done on top of the collapsed scan has to survive.
+  expect(turn4.slice(row4Source.charStart, row4Source.charEnd)).toBe(
+    'We agreed   to ship on\nMonday.',
+  );
+
+  const decisionDedup = writeEvidenceGolden('evidence_decision_dedup.json', DECISION_DEDUP);
+  const dedupDecision = decisionDedup.find(i => i.kind === 'decision')!;
+  // First-wins gives (0, 4000), last-wins gives (4000, 8000) - only min/max over BOTH sources
+  // gives the full envelope DraftItem's own doc comment describes.
+  expect(dedupDecision.sources.map(s => s.utteranceId)).toEqual(['u0', 'u1']);
+  expect(dedupDecision.anchorStartMs).toBe(0);
+  expect(dedupDecision.anchorEndMs).toBe(8000);
+
+  const priority = writeEvidenceGolden('evidence_priority.json', PRIORITY);
+  expect(priority.filter(i => i.kind === 'action').length).toBe(0); // both classified away from action
+
+  const unassigned = writeEvidenceGolden('evidence_unassigned.json', UNASSIGNED);
+  expect(unassigned.map(i => i.kind)).toEqual(['decision', 'action']);
+
+  const empty = writeEvidenceGolden('evidence_empty.json', []);
+  expect(empty).toEqual([]);
+
+  const caps = writeEvidenceGolden('evidence_caps.json', capBusting());
+  expect(caps.filter(i => i.kind === 'decision').length).toBe(20);
+  expect(caps.filter(i => i.kind === 'action').length).toBe(30);
+  expect(caps.filter(i => i.kind === 'question').length).toBe(20);
 });

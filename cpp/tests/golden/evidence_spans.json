@@ -21,9 +21,17 @@
         "id": "u2",
         "meetingId": "m",
         "startMs": 8000,
-        "endMs": 12000,
+        "endMs": 14500,
         "speakerId": "S0",
         "text": "We agreed  to ship. We agreed to ship."
+      },
+      {
+        "id": "u3",
+        "meetingId": "m",
+        "startMs": 14500,
+        "endMs": 18500,
+        "speakerId": "S1",
+        "text": "Priya said “ship it” 🚀. We agreed   to ship on\nMonday."
       }
     ],
     "speakers": [
@@ -52,10 +60,17 @@
           "endMs": 4000,
           "charStart": 14,
           "charEnd": 43
+        },
+        {
+          "utteranceId": "u3",
+          "startMs": 14500,
+          "endMs": 18500,
+          "charStart": 25,
+          "charEnd": 55
         }
       ],
       "anchorStartMs": 0,
-      "anchorEndMs": 4000
+      "anchorEndMs": 18500
     },
     {
       "kind": "decision",
@@ -64,20 +79,20 @@
         {
           "utteranceId": "u2",
           "startMs": 8000,
-          "endMs": 12000,
+          "endMs": 14500,
           "charStart": 0,
           "charEnd": 19
         },
         {
           "utteranceId": "u2",
           "startMs": 8000,
-          "endMs": 12000,
+          "endMs": 14500,
           "charStart": 20,
           "charEnd": 38
         }
       ],
       "anchorStartMs": 8000,
-      "anchorEndMs": 12000
+      "anchorEndMs": 14500
     },
     {
       "kind": "action",
