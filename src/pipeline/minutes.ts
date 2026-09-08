@@ -20,15 +20,15 @@ const IMPERATIVE_VERBS = [
   'draft', 'share', 'set up', 'book', 'confirm', 'check', 'fix', 'add', 'remove', 'ping',
 ];
 
-const DECISION = /\b(we decided|the decision|we agreed|agreed to|let['’]s go with|we['’]ll go with|we chose|going with|we['’]re going with|finali[sz]ed|sign(ed)? off|approved|conclusion is)\b/i;
+export const DECISION = /\b(we decided|the decision|we agreed|agreed to|let['’]s go with|we['’]ll go with|we chose|going with|we['’]re going with|finali[sz]ed|sign(ed)? off|approved|conclusion is)\b/i;
 
-const DUE = /\b(today|tonight|tomorrow|this (morning|afternoon|evening|week|month)|next (week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|by (the )?(end of (the )?(day|week|month)|eod|cob|monday|tuesday|wednesday|thursday|friday|saturday|sunday|noon|\w+day)|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|in \d+ (day|days|week|weeks)|\d{1,2}(st|nd|rd|th)?( of)? (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b/i;
+export const DUE = /\b(today|tonight|tomorrow|this (morning|afternoon|evening|week|month)|next (week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|by (the )?(end of (the )?(day|week|month)|eod|cob|monday|tuesday|wednesday|thursday|friday|saturday|sunday|noon|\w+day)|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|in \d+ (day|days|week|weeks)|\d{1,2}(st|nd|rd|th)?( of)? (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b/i;
 
 const NAMED_OWNER = /\b([A-Z][a-z]{1,20})\s+(?:will|to|should|is going to|needs to|has to|can|could|please)\b/;
 
 const QUESTION_WORDS = /^(what|why|how|when|where|who|which|should we|do we|can we|are we|is it|could we|would it)\b/i;
 
-function splitSentences(text: string): string[] {
+export function splitSentences(text: string): string[] {
   return text
     .replace(/\s+/g, ' ')
     .split(/(?<=[.!?])\s+/)
@@ -36,7 +36,7 @@ function splitSentences(text: string): string[] {
     .filter(Boolean);
 }
 
-function norm(s: string): string {
+export function norm(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
@@ -45,7 +45,7 @@ function startsWithImperative(sentence: string): boolean {
   return IMPERATIVE_VERBS.some(v => first.startsWith(v + ' '));
 }
 
-function detectOwner(sentence: string, speakerName: string | null): string {
+export function detectOwner(sentence: string, speakerName: string | null): string {
   const named = sentence.match(NAMED_OWNER);
   if (named) {
     const n = named[1];
@@ -57,7 +57,7 @@ function detectOwner(sentence: string, speakerName: string | null): string {
   return 'Unassigned';
 }
 
-function isAction(sentence: string): boolean {
+export function isAction(sentence: string): boolean {
   return (
     ACTION_FIRST_PERSON.test(sentence) ||
     ACTION_ASSIGN.test(sentence) ||
@@ -66,7 +66,7 @@ function isAction(sentence: string): boolean {
   );
 }
 
-function isQuestion(sentence: string): boolean {
+export function isQuestion(sentence: string): boolean {
   const t = sentence.trim();
   return t.endsWith('?') || (QUESTION_WORDS.test(t) && t.length < 160);
 }
