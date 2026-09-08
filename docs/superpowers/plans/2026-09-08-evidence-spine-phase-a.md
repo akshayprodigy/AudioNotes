@@ -1823,10 +1823,31 @@ deep link since it was written, and has never had a number to put in it."
 > pair them. Verified: delete the user guard and the assertion still passes. It exercises the
 > vanished-row exception and never the matching one.
 >
-> **Task 6 will not compile against the corrected `Row`, and must not be "fixed" with defaults.**
-> `items()` must select `created_at` and `LEFT JOIN item_done`; `replaceItems` must write
-> `r.createdAt ?: now` and `r.genVersion ?: genVersion`. The no-default constructor is the
-> enforcement — a compile error, not a test.
+> **Task 6 will not compile against the corrected `StoredItem`, and must not be "fixed" with
+> defaults.** `items()` must select `created_at`, `LEFT JOIN item_done`, and `LEFT JOIN edits ON
+> target_kind='item' AND target_key=items.id`; `replaceItems` must write `r.createdAt ?: now` and
+> `r.genVersion ?: genVersion`.
+>
+> **An earlier version of this note claimed the no-default constructor is the enforcement — "a
+> compile error, not a test". That is only half true, and the wrong half.** Task 6 *constructs* a
+> `StoredItem`, so the missing fields are a compile error there. It only *consumes* `Row`, and
+> nothing makes it read the new fields: the plan's own `replaceItems` listing was compiled against
+> the corrected `Row` and **compiles clean while silently ignoring `createdAt` and `genVersion`** —
+> stamping today's date on every reconciled item and relabelling every user-typed row `rules@1`,
+> after which rule 1 stops protecting it on the next reprocess. Those are the exact two defects
+> this block declared closed, re-entering through the door it declared shut.
+>
+> **The enforcement has to be behavioural tests in Task 6**, not a type signature: `created_at`
+> unchanged across a reprocess, and a `user` row still reading `gen_version='user'` after two.
+
+> **"Touched" means reviewed OR ticked OR edited — and the third was specified here and not built.**
+> `edits` holds a person's hand-corrections and has a foreign key to `meetings` only, so an edited
+> item that vanishes is dropped by rule 4 and its edit row is orphaned against an id that will
+> never be re-minted. Measured. `StoredItem` needs `edited: Boolean` with no default, `items()`
+> needs the join above, and rule 4 needs `&& !old.edited`.
+>
+> This is latent today and **goes live at Task 11**, which switches `edits` to `target_kind='item'`
+> keyed on `items.id`. Nothing will fail to compile when it does.
 
 **Files:**
 - Create: `android/app/src/main/java/com/innocorelabs/verbale/pipeline/Reconciler.kt`
