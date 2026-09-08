@@ -1083,6 +1083,24 @@ construction in TypeScript - a divergence worth a characterisation test rather t
 
 ## Task 4: The JNI signature gains timings
 
+> **WRITTEN AND HOST-VERIFIED, DEVICE-UNVERIFIED — 8 September 2026.** Commits `ba4855c`,
+> `6991832`, `e9c5503`, `0b65591`. Do NOT tick this task's device steps.
+>
+> Host-verified: `itemsToJson` matches all eight goldens field-for-field; `zipTurns` and its length
+> policy; `Minutes.parseItems` against Android's own JSON implementation, not the reference one;
+> CESU-8 span stability, which turned a correctness argument into a measurement and caught a
+> mutation that would have changed minutes content, not just span numbers; the return leg modelled
+> byte-wise; 112 JVM unit tests; and an arm64 NDK link exporting the symbol.
+>
+> **Never executed:** `android/app/src/androidTest/.../EvidenceParityTest.kt`, 11 tests. What only
+> hardware can settle: positional threading of same-typed parameters (name-based JNI lookup ignores
+> the descriptor, so a reorder links cleanly and returns wrong data); the `DeleteLocalRef`
+> discipline under real ART accounting; `GetStringUTFChars` on a real transcript; and
+> `NewStringUTF` on a large payload. All four are covered by the first run **if the 2000-turn test
+> goes with it** — which is why it was added now rather than later.
+>
+> **That run is blocked on the JNI sweep above**, not only on hardware.
+
 > **The listing below carries five defects, found while implementing it. Read this before porting
 > from it.** Two would have shipped.
 >
