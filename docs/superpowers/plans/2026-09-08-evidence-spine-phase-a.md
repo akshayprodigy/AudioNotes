@@ -978,6 +978,14 @@ titles and minutes as well as utterances - so a reader trusting the mirror would
 against a table that does not exist, or would conclude the app cannot search minutes when it can.
 And `edits` being absent means the file gives no hint that user corrections exist at all.
 
+**A second reason, found when Task 5's tests were reviewed, and it is the stronger one.** The
+authoritative structural assertions now run against `src/db/schema.ts` — executing its DDL in
+`node:sqlite` and reading `PRAGMA table_info` / `foreign_key_list` / `index_info`. That file is the
+one its own header calls "NOT THE SOURCE OF TRUTH", and nothing imports it. `AudioDb.SCHEMA`, the
+schema that actually reaches a phone, is guarded only by a string-matching smoke check with known
+false passes. The two were measured to agree exactly today. **Nothing keeps them agreeing**, and
+the better-tested of the pair is the one that does not ship.
+
 **The follow-up is a guard, not a one-time fix.** Correcting the file today leaves the next
 divergence to be found by whoever it misleads. Every other convention in this repo that mattered
 ended up with a build check behind it - `check-network-egress.py`, `check-diar-constants.py`,
@@ -1441,7 +1449,7 @@ class SchemaTest {
   }
 
   @Test fun theAnchorIsIndexed() =
-    assertTrue(schema.contains("idx_item_sources_start"))
+    assertTrue(schema.contains("idx_items_meeting"))
 }
 ```
 
@@ -1485,12 +1493,11 @@ In `AudioDb.kt`, inside `private val SCHEMA = arrayOf(`, after the `minutes` tab
            ordinal INTEGER NOT NULL,
            start_ms INTEGER NOT NULL,
            end_ms INTEGER NOT NULL,
-           char_start INTEGER,
-           char_end INTEGER,
+           char_start INTEGER NOT NULL,
+           char_end INTEGER NOT NULL,
            utterance_id TEXT,
            PRIMARY KEY (item_id, ordinal));""",
-      "CREATE INDEX IF NOT EXISTS idx_item_sources_start ON item_sources(start_ms);",
-      // Replaces action_done. Keyed on the item's stable id rather than a hash of its text, so a
+          // Replaces action_done. Keyed on the item's stable id rather than a hash of its text, so a
       // tick survives a re-recognition that changes one word. Task 8 migrates the old rows.
       """CREATE TABLE IF NOT EXISTS item_done(
            meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
@@ -2218,8 +2225,8 @@ In `src/pipeline/types.ts`:
 export interface ItemSource {
   startMs: number;
   endMs: number;
-  charStart: number | null;
-  charEnd: number | null;
+  charStart: number;
+  charEnd: number;
   /** Convenience only - re-minted on every ASR run, so never depend on it across runs. */
   utteranceId: string | null;
 }
