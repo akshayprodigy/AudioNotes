@@ -35,6 +35,10 @@ const PRIORITY = [
   { text: 'Should we update the roadmap?', speakerId: 'S0' },
   // decision wins over action ("we agreed" + "need to"):
   { text: 'We agreed that we need to ship on Friday.', speakerId: 'S1' },
+  // question wins over decision: "finalized" is a DECISION trigger, and the trailing '?' makes
+  // isQuestion true regardless of QUESTION_WORDS. extractItems checks question, then decision,
+  // then action, in that order - swap the first two and this row flips from question to decision.
+  { text: 'Have we finalized the launch date?', speakerId: 'S0' },
 ];
 
 // Rule-level cases inherited from the Kotlin port's test suite (MinutesExtractorTest), moved here
@@ -185,14 +189,32 @@ const SPANS = [
   // Non-ASCII BEFORE the span, so byte offsets, code-point offsets and UTF-16 offsets are three
   // different numbers. Curly quotes and an astral emoji: the emoji is the only thing separating
   // UTF-16 units from code points, which is the mistake a UTF-8-decoding port makes and no
-  // amount of em dashes would catch. A non-breaking space inside the sentence exercises the
-  // other half - JS \s matches U+00A0 and a byte-wise C++ isspace does not, which corrupts the
-  // item TEXT and not just its span. The span still needs the collapsed scan, so the conversion
-  // is exercised on a byte offset that came out of the flatten map.
+  // amount of em dashes would catch. The span still needs the collapsed scan, so the conversion
+  // is exercised on a byte offset that came out of the flatten map. This sentence's suffix
+  // deliberately matches row 1's, so the two merge into one item and the merged item keeps row
+  // 1's already-clean text: this row pins the SPAN half of the non-breaking-space story only.
+  // Row 5 below pins the TEXT half, which this row cannot - see its comment for why.
   {
     text: 'Priya said “ship it” \u{1F680}. We agreed   to ship on\nMonday.',
     speakerId: 'S1',
   },
+  // Row 5: the non-breaking space's TEXT half. Unlike row 4, this sentence's normalized key
+  // matches nothing else in SPANS, so it becomes its own item instead of merging into an
+  // already-clean one - its own `text` field is exactly what the whitespace-collapse step
+  // produced. A byte-wise isspace that does not treat U+00A0 as whitespace leaves it uncollapsed
+  // here; norm()'s dedup key would still match either way (it strips non-alnum runs
+  // unconditionally, whitespace-ness aside), so only a direct equality check on the item's own
+  // text - not the dedup key, and not row 4's merged item - can catch it.
+  { text: 'We finalized the report early.', speakerId: 'S0' },
+  // The length filter (`sentence.length < 4`) is unconstrained by every row above: nothing there
+  // is short enough to hit it. A bare "Ok?" would otherwise unconditionally become a question -
+  // isQuestion checks endsWith('?') with no length floor of its own - so its absence from the
+  // output is proof the filter, not classification, is what excluded it.
+  { text: 'Ok?', speakerId: 'S0' },
+  // The same filter counting the wrong UNIT is invisible on ASCII. Two astral emoji plus '?' is
+  // 5 UTF-16 units but only 3 code points: correct (UTF-16) behaviour keeps it, a port that
+  // measured code points instead would wrongly drop it as "too short".
+  { text: '🚀🚀?', speakerId: 'S1' },
 ];
 
 // Pins the caps (20 decisions / 30 actions / 20 questions) the same way evidence.test.ts's
@@ -209,9 +231,12 @@ function capBusting(): { text: string; speakerId: string }[] {
 function writeEvidenceGolden(
   name: string,
   rows: { text: string; speakerId: string | null }[],
+  // Defaults to the two-speaker roster; evidence_empty passes [] explicitly so at least one
+  // golden pins the empty-container marshalling shape (distinct from a populated one) that
+  // Task 4's TimedUtt/ItemSource JNI boundary also has to cross.
+  speakers = SPEAKERS.map(s => ({ ...s, meetingId: 'm', clusterLabel: s.id })),
 ): DraftItem[] {
   const utterances = timed(rows);
-  const speakers = SPEAKERS.map(s => ({ ...s, meetingId: 'm', clusterLabel: s.id }));
   const output = extractItems(utterances as any, speakers as any);
   fs.writeFileSync(
     path.join(GOLDEN_DIR, name),
@@ -223,7 +248,7 @@ function writeEvidenceGolden(
 it('writes the evidence goldens', () => {
   const meeting = writeEvidenceGolden('evidence_meeting.json', MEETING);
   expect(fs.existsSync(path.join(GOLDEN_DIR, 'evidence_meeting.json'))).toBe(true);
-  expect(meeting.length).toBeGreaterThan(0);
+  expect(meeting.length).toBe(8); // 1 decision + 4 actions + 3 questions - exact, not just non-empty
 
   const dedup = writeEvidenceGolden('evidence_dedup.json', DEDUP);
   expect(dedup.filter(i => i.kind === 'action').length).toBe(2);
@@ -265,12 +290,39 @@ it('writes the evidence goldens', () => {
   const utf16Start = row4Source.charStart;
   const byteStart = Buffer.byteLength(turn4.slice(0, utf16Start), 'utf8');
   const codePointStart = Array.from(turn4.slice(0, utf16Start)).length;
+  // This is a fixture-health CANARY, not a guard on the port under test: it proves the fixture
+  // separates the three interpretations at this position, nothing more. byteStart/codePointStart
+  // are DERIVED from charStart, so a port that emits byte offsets as charStart still produces
+  // three distinct derived numbers here (e.g. {31, 37, 30} rather than the correct {25, 24, 31}) -
+  // still size 3, still green. The slice-content assertion right below is the real discriminator:
+  // it fails the moment charStart is wrong, in either direction. Do not delete the slice check as
+  // "redundant" with this one - it is the only thing catching that failure mode.
   expect(new Set([utf16Start, byteStart, codePointStart]).size).toBe(3);
   // ...and the slice itself must reproduce the real sentence, non-breaking space included - the
   // one detail a UTF-16-to-original conversion done on top of the collapsed scan has to survive.
   expect(turn4.slice(row4Source.charStart, row4Source.charEnd)).toBe(
     'We agreed   to ship on\nMonday.',
   );
+
+  // Row 5: the merge-proof text check. Unlike onMonday above, this item has no merge partner, so
+  // its `text` field is direct evidence the whitespace-collapse step (not just the span search)
+  // treated the non-breaking space as whitespace.
+  const finalized = decisions.find(d => d.text === 'We finalized the report early.')!;
+  expect(finalized.sources).toHaveLength(1);
+  // The turn is one sentence, so its span must cover the ORIGINAL text end to end - non-breaking
+  // space included, not collapsed away. Compared against SPANS[4].text itself, not retyped, so a
+  // stray keystroke here can't quietly turn this into a same-as-item.text tautology.
+  expect(SPANS[4].text.slice(finalized.sources[0].charStart, finalized.sources[0].charEnd)).toBe(
+    SPANS[4].text,
+  );
+
+  // The length filter: "Ok?" would otherwise unconditionally become a question (endsWith('?')),
+  // so its absence is proof the < 4 filter fired. The astral-emoji question survives because the
+  // filter counts UTF-16 units (5), not code points (3) - a code-point-counting port would drop it.
+  expect(spans.some(i => i.text === 'Ok?')).toBe(false);
+  const rocketQuestion = spans.find(i => i.text === '🚀🚀?');
+  expect(rocketQuestion).toBeDefined();
+  expect(rocketQuestion!.kind).toBe('question');
 
   const decisionDedup = writeEvidenceGolden('evidence_decision_dedup.json', DECISION_DEDUP);
   const dedupDecision = decisionDedup.find(i => i.kind === 'decision')!;
@@ -281,12 +333,17 @@ it('writes the evidence goldens', () => {
   expect(dedupDecision.anchorEndMs).toBe(8000);
 
   const priority = writeEvidenceGolden('evidence_priority.json', PRIORITY);
-  expect(priority.filter(i => i.kind === 'action').length).toBe(0); // both classified away from action
+  expect(priority.filter(i => i.kind === 'action').length).toBe(0); // all three classified away from action
+  // Question is checked before decision in extractItems; swap that order and this flips to 'decision'.
+  const launchDate = priority.find(i => i.text === 'Have we finalized the launch date?')!;
+  expect(launchDate.kind).toBe('question');
 
   const unassigned = writeEvidenceGolden('evidence_unassigned.json', UNASSIGNED);
   expect(unassigned.map(i => i.kind)).toEqual(['decision', 'action']);
 
-  const empty = writeEvidenceGolden('evidence_empty.json', []);
+  // Passes [] rather than the default two-speaker roster: zero utterances and zero output means
+  // this is the only golden where the empty-container marshalling shape is actually exercised.
+  const empty = writeEvidenceGolden('evidence_empty.json', [], []);
   expect(empty).toEqual([]);
 
   const caps = writeEvidenceGolden('evidence_caps.json', capBusting());

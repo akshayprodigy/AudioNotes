@@ -8,6 +8,10 @@
    {
     "text": "We agreed that we need to ship on Friday.",
     "speakerId": "S1"
+   },
+   {
+    "text": "Have we finalized the launch date?",
+    "speakerId": "S0"
    }
   ],
   "speakers": [
@@ -24,7 +28,7 @@
  "output": [
   {
    "kind": "summary",
-   "content": "Decided: We agreed that we need to ship on Friday. 0 action items, 1 decision, 1 open question.",
+   "content": "Decided: We agreed that we need to ship on Friday. 0 action items, 1 decision, 2 open questions.",
    "source": "rule"
   },
   {
@@ -35,6 +39,11 @@
   {
    "kind": "question",
    "content": "Should we update the roadmap?",
+   "source": "rule"
+  },
+  {
+   "kind": "question",
+   "content": "Have we finalized the launch date?",
    "source": "rule"
   }
  ]

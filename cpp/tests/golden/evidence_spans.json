@@ -32,6 +32,30 @@
         "endMs": 18500,
         "speakerId": "S1",
         "text": "Priya said “ship it” 🚀. We agreed   to ship on\nMonday."
+      },
+      {
+        "id": "u4",
+        "meetingId": "m",
+        "startMs": 18500,
+        "endMs": 22500,
+        "speakerId": "S0",
+        "text": "We finalized the report early."
+      },
+      {
+        "id": "u5",
+        "meetingId": "m",
+        "startMs": 22500,
+        "endMs": 26500,
+        "speakerId": "S0",
+        "text": "Ok?"
+      },
+      {
+        "id": "u6",
+        "meetingId": "m",
+        "startMs": 26500,
+        "endMs": 30500,
+        "speakerId": "S1",
+        "text": "🚀🚀?"
       }
     ],
     "speakers": [
@@ -95,6 +119,21 @@
       "anchorEndMs": 14500
     },
     {
+      "kind": "decision",
+      "text": "We finalized the report early.",
+      "sources": [
+        {
+          "utteranceId": "u4",
+          "startMs": 18500,
+          "endMs": 22500,
+          "charStart": 0,
+          "charEnd": 30
+        }
+      ],
+      "anchorStartMs": 18500,
+      "anchorEndMs": 22500
+    },
+    {
       "kind": "action",
       "text": "I'll send the report by Friday. — Speaker 2 (due by Friday)",
       "sources": [
@@ -115,6 +154,21 @@
       ],
       "anchorStartMs": 4000,
       "anchorEndMs": 8000
+    },
+    {
+      "kind": "question",
+      "text": "🚀🚀?",
+      "sources": [
+        {
+          "utteranceId": "u6",
+          "startMs": 26500,
+          "endMs": 30500,
+          "charStart": 0,
+          "charEnd": 5
+        }
+      ],
+      "anchorStartMs": 26500,
+      "anchorEndMs": 30500
     }
   ]
 }

@@ -16,6 +16,14 @@
         "endMs": 8000,
         "speakerId": "S1",
         "text": "We agreed that we need to ship on Friday."
+      },
+      {
+        "id": "u2",
+        "meetingId": "m",
+        "startMs": 8000,
+        "endMs": 14500,
+        "speakerId": "S0",
+        "text": "Have we finalized the launch date?"
       }
     ],
     "speakers": [
@@ -63,6 +71,21 @@
       ],
       "anchorStartMs": 0,
       "anchorEndMs": 4000
+    },
+    {
+      "kind": "question",
+      "text": "Have we finalized the launch date?",
+      "sources": [
+        {
+          "utteranceId": "u2",
+          "startMs": 8000,
+          "endMs": 14500,
+          "charStart": 0,
+          "charEnd": 34
+        }
+      ],
+      "anchorStartMs": 8000,
+      "anchorEndMs": 14500
     }
   ]
 }

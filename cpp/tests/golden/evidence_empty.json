@@ -1,20 +1,7 @@
 {
   "input": {
     "utterances": [],
-    "speakers": [
-      {
-        "id": "S0",
-        "displayName": "Speaker 1",
-        "meetingId": "m",
-        "clusterLabel": "S0"
-      },
-      {
-        "id": "S1",
-        "displayName": "Speaker 2",
-        "meetingId": "m",
-        "clusterLabel": "S1"
-      }
-    ]
+    "speakers": []
   },
   "output": []
 }
