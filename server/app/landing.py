@@ -233,19 +233,22 @@ def body(device_limit: int) -> str:
         <h3>Free</h3>
         <div class="price">&#8377;0<small> / forever</small></div>
         <ul class="feat">
-          <li><span class="tick">{TICK}</span>Record any meeting, any length</li>
+          <li><span class="tick">{TICK}</span>Meetings up to 15 minutes</li>
           <li><span class="tick">{TICK}</span>Full transcript, separated by speaker</li>
           <li><span class="tick">{TICK}</span>Decisions, actions and open questions</li>
-          <li><span class="tick">{TICK}</span>Search, export and rename</li>
+          <li><span class="tick">{TICK}</span>Export to PDF, Markdown, text and subtitles</li>
           <li><span class="tick">{TICK}</span>No account, nothing expires</li>
         </ul>
         <a class="btn btn-ghost" href="#how">See how it works</a>
       </div>
       <div class="card tier pro rise d1">
         <h3>Pro</h3>
-        <div class="price">7 days free<small> &nbsp;then a subscription</small></div>
+        <div class="price">7 days free<small> &nbsp;then &#8377;299/month or &#8377;2,499/year</small></div>
         <ul class="feat">
           <li><span class="tick">{TICK}</span>Everything in Free</li>
+          <li><span class="tick">{TICK}</span>Recordings of any length &mdash; a ninety-minute
+              meeting in one go</li>
+          <li><span class="tick">{TICK}</span>Search every word you have ever recorded</li>
           <li><span class="tick">{TICK}</span>The summary and the minutes written in plain
               English, by a model on your own phone</li>
           <li><span class="tick">{TICK}</span>A larger, more accurate transcriber for strong
@@ -282,9 +285,16 @@ def body(device_limit: int) -> str:
             "with no connection at all. Starting a Pro trial adds a larger writer model, about "
             "1.1 GB, and that one is only fetched if you ask for it.")}
       {_faq("What happens if I stop paying?",
-            "Recording, transcripts, speakers, search, export and the rule-based minutes keep "
-            "working &mdash; those are the free tier and they do not expire. Every summary "
-            "already written stays readable. You simply stop getting new ones written as prose.")}
+            "Recording, transcripts, speakers, export and the rule-based minutes keep working "
+            "&mdash; those are the free tier and they do not expire, and every meeting you have "
+            "already recorded stays exactly as it is, at whatever length it was. New recordings go "
+            "back to the fifteen-minute free limit, and search across meetings goes back to Pro.")}
+      {_faq("Why is Free limited to fifteen minutes?",
+            "Because the alternative was advertising, and an app that reads your meetings should "
+            "not also be selling your attention. Fifteen minutes is a real stand-up, so you can "
+            "see the whole thing work &mdash; transcript, speakers, minutes, export &mdash; before "
+            "deciding. A recording that reaches the limit stops there and is still transcribed in "
+            "full. Nothing you recorded is ever thrown away.")}
       {_faq("Do I need an account?",
             "No. There is nothing to sign up for. Subscribing happens in the app through Google "
             "Play, and the account that carries it between your devices is created by the "
