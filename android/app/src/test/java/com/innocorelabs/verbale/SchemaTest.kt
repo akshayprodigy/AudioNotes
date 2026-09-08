@@ -8,12 +8,14 @@ import org.junit.Test
 
 /**
  * A JVM unit test cannot open a real SQLite database, so this is a SMOKE check on the DDL text
- * only — it can prove a column name is present or absent, but it cannot prove the DDL actually
- * parses, and it does not see types, NOT NULL, defaults, foreign keys or index column lists. The
- * AUTHORITATIVE structural assertions — including whether item_done omits its FK on purpose and
- * whether char_start/char_end are really NOT NULL — live in src/db/__tests__/schema.test.ts,
- * which executes the real DDL from src/db/schema.ts in node:sqlite and reads it back with
- * PRAGMA table_info / foreign_key_list / index_list.
+ * only — it can prove a column name is present or absent, because columnsOf tracks all four of
+ * SQLite's quoting forms ('...', "...", `...` and [...]), so a paren or comma inside any of them
+ * does not desynchronise the parser. It cannot prove the DDL actually parses, and it does not see
+ * types, NOT NULL, defaults, foreign keys or index column lists. The AUTHORITATIVE structural
+ * assertions — types, the `review` default, FK delete actions, index column order, and whether
+ * item_done omits its FK on purpose — live in src/db/__tests__/schema.test.ts, which executes the
+ * real DDL from src/db/schema.ts in node:sqlite and reads it back with PRAGMA table_info /
+ * foreign_key_list / index_list.
  */
 class SchemaTest {
   private val schema = AudioDb.schemaForTest().joinToString("\n")
@@ -30,11 +32,14 @@ class SchemaTest {
 
   /**
    * Column names declared in a CREATE TABLE statement. Splits on top-level commas only — depth
-   * tracked through parentheses, and parens/commas INSIDE a single-quoted string literal do not
-   * count, so `DEFAULT '('` does not desynchronise the depth counter and swallow every column
-   * after it. (That exact case — `done_at INTEGER NOT NULL DEFAULT '(', item_key TEXT NOT
-   * NULL,` reporting only `done_at` — was a real false pass here, found by mutation-testing
-   * this parser, not by inspection.) `REFERENCES meetings(id)` and a table-level
+   * tracked through parentheses, and parens/commas INSIDE any of SQLite's FOUR quoted-literal
+   * forms do not count, so `DEFAULT '('`, `DEFAULT "("`, `` DEFAULT `(` `` and `DEFAULT [(]` all
+   * fail to desynchronise the depth counter and swallow every column after them. (The `'('` case
+   * — `done_at INTEGER NOT NULL DEFAULT '(', item_key TEXT NOT NULL,` reporting only `done_at`
+   * — was a real false pass here, found by mutation-testing this parser, not by inspection; the
+   * other three quoting forms were a second false pass found the same way.) `'` , `"` and `` ` ``
+   * escape by doubling (`''`, `""`, ` `` `) exactly as SQLite parses them; `[...]` has no escape
+   * and simply ends at the first `]`. `REFERENCES meetings(id)` and a table-level
    * `PRIMARY KEY (a, b)` do not get mistaken for column separators either, and a table-level
    * constraint clause is dropped rather than misread as a column. Deliberately NOT
    * one-column-per-line: an added column that lands on an existing line
@@ -50,24 +55,30 @@ class SchemaTest {
     val parts = mutableListOf<String>()
     val current = StringBuilder()
     var depth = 0
-    var inQuote = false
+    var quote: Char? = null // '\'', '"' or '`' while inside that quoted span; doubling escapes it
+    var inBracket = false // SQLite's fourth quoting form, [...]; no escape, ends at the first ']'
     var i = 0
     while (i < body.length) {
       val c = body[i]
       when {
-        inQuote -> {
+        inBracket -> {
           current.append(c)
-          if (c == '\'') {
-            if (i + 1 < body.length && body[i + 1] == '\'') {
-              // '' is an escaped quote inside the literal, not its end.
+          if (c == ']') inBracket = false
+        }
+        quote != null -> {
+          current.append(c)
+          if (c == quote) {
+            if (i + 1 < body.length && body[i + 1] == quote) {
+              // A doubled quote char is an escaped quote inside the literal, not its end.
               current.append(body[i + 1])
               i++
             } else {
-              inQuote = false
+              quote = null
             }
           }
         }
-        c == '\'' -> { inQuote = true; current.append(c) }
+        c == '\'' || c == '"' || c == '`' -> { quote = c; current.append(c) }
+        c == '[' -> { inBracket = true; current.append(c) }
         c == '(' -> { depth++; current.append(c) }
         c == ')' -> { depth--; current.append(c) }
         c == ',' && depth == 0 -> { parts.add(current.toString()); current.clear() }

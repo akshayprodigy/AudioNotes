@@ -91,6 +91,37 @@ describe('schema.ts evidence tables (executed in real SQLite)', () => {
     });
 
     /**
+     * anchor_start_ms is what idx_items_meeting orders by and what Task 6's items() query
+     * ORDER BYs. TEXT affinity on an INTEGER column still accepts and stores integers, so a
+     * wrong declared type here is invisible until sort order goes lexicographic — '10' before
+     * '9' — and a meeting's items come back scrambled. This is the assertion that would have
+     * caught it: nothing else in this file reads `.type`.
+     */
+    it('every column has its declared SQLite type', () => {
+      const cols = columnsOf(freshDb(), 'items');
+      const expected: Record<string, string> = {
+        id: 'TEXT', meeting_id: 'TEXT', kind: 'TEXT', item_type: 'TEXT', status: 'TEXT',
+        text: 'TEXT', owner_json: 'TEXT', date_said: 'TEXT', date_norm: 'INTEGER',
+        review: 'TEXT', gen_version: 'TEXT', anchor_start_ms: 'INTEGER',
+        anchor_end_ms: 'INTEGER', created_at: 'INTEGER',
+      };
+      for (const [name, type] of Object.entries(expected)) {
+        expect(column(cols, name).type).toBe(type);
+      }
+    });
+
+    /**
+     * Asserted directly rather than through a side effect: both behavioural tests below omit
+     * `review` from their INSERT column list, so if the default were dropped they would fail on
+     * a NOT NULL violation instead — inside a test named for something else entirely, and only
+     * until someone "completes" that column list, which would silently delete the coverage.
+     */
+    it("review defaults to 'suggested'", () => {
+      const cols = columnsOf(freshDb(), 'items');
+      expect(column(cols, 'review').dflt_value).toBe("'suggested'");
+    });
+
+    /**
      * The five Phase B columns exist now so the classifier lands as a write, not a migration —
      * nothing reads them yet, so nothing else would notice one becoming wrongly NOT NULL (which
      * would break every free-tier insert, since nothing supplies them) or silently dropped.
@@ -159,6 +190,21 @@ describe('schema.ts evidence tables (executed in real SQLite)', () => {
     });
 
     /**
+     * start_ms/end_ms/char_start/char_end are all sorted or range-compared by callers (Task 6+);
+     * TEXT affinity on any of them would be invisible until a comparison goes lexicographic.
+     */
+    it('every column has its declared SQLite type', () => {
+      const cols = columnsOf(freshDb(), 'item_sources');
+      const expected: Record<string, string> = {
+        item_id: 'TEXT', ordinal: 'INTEGER', start_ms: 'INTEGER', end_ms: 'INTEGER',
+        char_start: 'INTEGER', char_end: 'INTEGER', utterance_id: 'TEXT',
+      };
+      for (const [name, type] of Object.entries(expected)) {
+        expect(column(cols, name).type).toBe(type);
+      }
+    });
+
+    /**
      * Both producers (evidence.ts, evidence.h) always emit a span, and a source without one is
      * meaningless. Nullable here would be silently dangerous rather than absent: a missing span
      * reads back through most cursor APIs as 0, i.e. "starts at the beginning of the turn", and
@@ -216,6 +262,16 @@ describe('schema.ts evidence tables (executed in real SQLite)', () => {
       const cols = columnsOf(freshDb(), 'item_done');
       expect(column(cols, 'meeting_id').pk).toBe(1);
       expect(column(cols, 'item_id').pk).toBe(2);
+    });
+
+    it('every column has its declared SQLite type', () => {
+      const cols = columnsOf(freshDb(), 'item_done');
+      const expected: Record<string, string> = {
+        meeting_id: 'TEXT', item_id: 'TEXT', done_at: 'INTEGER',
+      };
+      for (const [name, type] of Object.entries(expected)) {
+        expect(column(cols, name).type).toBe(type);
+      }
     });
 
     /**
