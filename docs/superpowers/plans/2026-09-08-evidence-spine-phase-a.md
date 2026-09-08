@@ -390,15 +390,21 @@ A golden is only worth having if somebody has looked at it once. Slice every spa
 turn it points into and read the result:
 
 ```bash
-python3 - <<'EOF'
-import json
-d = json.load(open('cpp/tests/golden/evidence_spans.json'))
-utts = {u['id']: u['text'] for u in d['input']['utterances']}
-for item in d['output']:
-    for i, s in enumerate(item['sources']):
-        got = utts[s['utteranceId']][s['charStart']:s['charEnd']]
-        print(f"{item['kind']:9} src{i} {s['utteranceId']} [{s['charStart']:3},{s['charEnd']:3}] {got!r}")
-EOF
+# node, NOT python. `charStart`/`charEnd` are UTF-16 code units, and Python's string indexing is by
+# CODE POINT - it mis-slices any turn containing an astral character and reports a CORRECT golden
+# as broken. That happened on the first run of this very check. Node's indexing is JavaScript's,
+# which is what wrote the numbers.
+node -e '
+const fs = require("fs");
+for (const f of fs.readdirSync("cpp/tests/golden").filter(n => n.startsWith("evidence_")).sort()) {
+  const d = JSON.parse(fs.readFileSync("cpp/tests/golden/" + f, "utf8"));
+  const utts = Object.fromEntries(d.input.utterances.map(u => [u.id, u.text]));
+  console.log("=== " + f + " ===");
+  for (const item of d.output)
+    item.sources.forEach((s, i) =>
+      console.log(`  ${item.kind.padEnd(9)} src${i} ${s.utteranceId} [${s.charStart},${s.charEnd}] ` +
+                  JSON.stringify(utts[s.utteranceId].slice(s.charStart, s.charEnd))));
+}'
 ```
 
 Three things must be true in that output, and each corresponds to one row of `SPANS`:
@@ -410,6 +416,11 @@ Three things must be true in that output, and each corresponds to one row of `SP
 3. For `'We agreed  to ship. We agreed to ship.'` the **first source starts at 0**, not at 20. A
    first source starting at 20 means the direct match beat the collapsed one, and the port that
    does that is wrong in a way no other fixture would show.
+4. The row carrying curly quotes and an astral emoji has `charStart` **25**. Not 24, which means
+   the port counted code points, and not 31, which means it counted bytes. Those three numbers
+   being different is the entire reason that row exists, and a standing assertion in the test
+   checks they still are - if a later edit makes any two coincide, the row has stopped
+   discriminating and must be rebuilt rather than re-baselined.
 
 If any of the three fails, stop — the goldens would then lock in the bug rather than catch it.
 
@@ -609,6 +620,7 @@ int main(int argc, char** argv) {
   runGolden(dir, "evidence_priority.json");
   runGolden(dir, "evidence_unassigned.json");
   runGolden(dir, "evidence_empty.json");
+  runGolden(dir, "evidence_caps.json");
   if (failures) { std::fprintf(stderr, "%d failure(s)\n", failures); return 1; }
   std::printf("test_evidence: OK\n");
   return 0;
