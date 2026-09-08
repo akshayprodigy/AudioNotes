@@ -490,8 +490,14 @@ struct DraftItem {
 // A cursor is what stops the same sentence repeated inside one turn reporting the FIRST
 // occurrence's span for every repeat - whisper's repetition-loop failure mode, which this project
 // has on record from the Galaxy A07. The TypeScript keeps its cursor in UTF-16 units and this one
-// in bytes; both advance past the same match, so both find the same next occurrence, and the
-// goldens hold that equivalence.
+// in bytes; both advance past the same match, so both find the same next occurrence.
+//
+// That equivalence is an ARGUMENT, not a measurement. It held for a while that the goldens pinned
+// it; they did not - every turn in every fixture was ASCII, where the two units are the same
+// number. The UTF-16 fixture row added in Task 2 is what actually tests it, and it carries an
+// astral character on purpose: an em dash separates bytes from UTF-16 but NOT code points from
+// UTF-16, so a port that decoded UTF-8 and counted characters - the well-intentioned wrong answer
+// - passes everything else.
 //
 // A cursored search that fails is retried from 0 before the whole-turn fallback, so a sentence the
 // cursor has already passed does not silently acquire the entire turn as its span.
@@ -591,9 +597,18 @@ static void runGolden(const std::string& dir, const char* name) {
 int main(int argc, char** argv) {
   if (argc < 2) { std::fprintf(stderr, "usage: test_evidence <golden-dir>\n"); return 2; }
   const std::string dir = argv[1];
+  // This list must match exactly what src/pipeline/__tests__/minutes.golden.test.ts writes. A
+  // golden the C++ never replays is not a parity test, it is a file - and the set grew after
+  // review: cross-turn anchor widening, decision-over-action precedence, a null speakerId, an
+  // empty input and the UTF-16 row were all added because a wrong port passed without them.
+  // Check the writeEvidenceGolden calls in that file before trusting this list.
   runGolden(dir, "evidence_meeting.json");
   runGolden(dir, "evidence_dedup.json");
   runGolden(dir, "evidence_spans.json");
+  runGolden(dir, "evidence_decision_dedup.json");
+  runGolden(dir, "evidence_priority.json");
+  runGolden(dir, "evidence_unassigned.json");
+  runGolden(dir, "evidence_empty.json");
   if (failures) { std::fprintf(stderr, "%d failure(s)\n", failures); return 1; }
   std::printf("test_evidence: OK\n");
   return 0;
