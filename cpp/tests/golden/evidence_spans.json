@@ -80,6 +80,14 @@
         "endMs": 42500,
         "speakerId": "S1",
         "text": "🚀?"
+      },
+      {
+        "id": "u10",
+        "meetingId": "m",
+        "startMs": 42500,
+        "endMs": 46500,
+        "speakerId": "S0",
+        "text": "﻿We agreed to launch."
       }
     ],
     "speakers": [
@@ -184,6 +192,21 @@
       ],
       "anchorStartMs": 18500,
       "anchorEndMs": 22500
+    },
+    {
+      "kind": "decision",
+      "text": "We agreed to launch.",
+      "sources": [
+        {
+          "utteranceId": "u10",
+          "startMs": 42500,
+          "endMs": 46500,
+          "charStart": 1,
+          "charEnd": 21
+        }
+      ],
+      "anchorStartMs": 42500,
+      "anchorEndMs": 46500
     },
     {
       "kind": "action",

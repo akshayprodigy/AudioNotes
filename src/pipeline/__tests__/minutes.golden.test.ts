@@ -235,6 +235,18 @@ const SPANS = [
   // bytes (5 here) rather than UTF-16 units (3), which would keep a sentence the TypeScript
   // drops. The two rows together pin the unit from both sides - neither does it alone.
   { text: '🚀?', speakerId: 'S1' },
+  // Row 11: a THREE-byte member of /\s/. Rows 1-10 between them use exactly three of the
+  // twenty-five characters JavaScript's /\s/ matches - U+0020, U+000A and U+00A0 - and the
+  // first two are isspace() whitespace as well, so U+00A0 alone was carrying every one of the
+  // multi-byte cases. Delete the three-byte branches from the port's whitespace table and all
+  // ten rows still pass, while a turn pasted out of a document keeps its byte-order mark and
+  // the item reads '\uFEFFWe agreed to launch.' in somebody's exported minutes.
+  //
+  // A LEADING one, because that is the field case: a BOM is what arrives on the front of text
+  // copied out of Word or a .docx. It also makes the failure legible - the sentence is unique
+  // to this row, so it becomes its own item and a port that cannot see U+FEFF differs in the
+  // item's `text`, not only in a span buried in a merged source list.
+  { text: '\uFEFFWe agreed to launch.', speakerId: 'S0' },
 ];
 
 // Pins the caps (20 decisions / 30 actions / 20 questions) the same way evidence.test.ts's
@@ -375,6 +387,16 @@ it('writes the evidence goldens', () => {
   // shows and what test_evidence fails on (sources 2 != 1, and a widened anchor); this line
   // only asserts the TypeScript itself still drops it.
   expect(spans.some(i => i.text === '🚀?')).toBe(false);
+
+  // Row 11: the three-byte whitespace member. The leading U+FEFF must be gone from the item text
+  // and outside the span - charStart 1, not 0 - and the slice must reproduce the item exactly,
+  // which is the one place in this fixture where item text and sliced turn DO agree.
+  const launch = decisions.find(d => d.text === 'We agreed to launch.')!;
+  expect(launch.sources).toHaveLength(1);
+  expect(launch.sources[0].charStart).toBe(1);
+  expect(SPANS[10].text.slice(launch.sources[0].charStart, launch.sources[0].charEnd)).toBe(
+    'We agreed to launch.',
+  );
 
   const decisionDedup = writeEvidenceGolden('evidence_decision_dedup.json', DECISION_DEDUP);
   const dedupDecision = decisionDedup.find(i => i.kind === 'decision')!;

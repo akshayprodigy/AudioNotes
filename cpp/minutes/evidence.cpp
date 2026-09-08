@@ -65,12 +65,22 @@ size_t jsWhitespaceLen(const std::string& s, size_t i) {
   return 0;
 }
 
-// Every JavaScript-whitespace character replaced by one ASCII space. Runs are NOT collapsed and
-// nothing is trimmed — this is a per-character substitution, and that is the whole point:
-// splitSentences does its own collapsing, and one character in for one character out keeps every
-// UTF-16 index identical to the untouched turn. Exactly the property normalizeApostrophes has, for
-// exactly the same reason, and it is what lets the sentences be taken from the asciified copy
-// while the spans are measured against the original.
+// Every JavaScript-whitespace character replaced by one ASCII space.
+//
+// The only thing ever read out of the result is the SENTENCES rules::splitSentences finds in it.
+// Its offsets are never used — spans are measured against the untouched turn — so the property
+// this has to hold is not one-character-in-one-character-out, it is:
+//
+//     collapseWhitespace_isspace(asciifyWhitespace(x)) == collapseWhitespace_js(x)
+//
+// splitSentences collapses with isspace(), which cannot see U+00A0 and its relatives; after this
+// pass there are none left for it to miss, so its collapse produces exactly what JavaScript's
+// /\s+/g produces. That, and nothing about offsets, is why this exists.
+//
+// Runs are left uncollapsed only because splitSentences collapses them a line later, so there is
+// one collapse rather than two. Collapsing them here would satisfy the invariant above just as
+// well and change no output — a maintainer who "fixes" that is not introducing a bug, and a
+// reviewer who rejects it for breaking offset-neutrality is defending a property nothing reads.
 std::string asciifyWhitespace(const std::string& s) {
   std::string out;
   out.reserve(s.size());
@@ -163,9 +173,11 @@ std::optional<std::pair<size_t, size_t>> findFrom(const std::string& text,
   for (size_t i = from; i < text.size();) {
     const size_t w = jsWhitespaceLen(text, i);
     if (w) {
-      // The whole run collapses to one flat space, anchored at the run's FIRST byte — the same
-      // place the TypeScript anchors it, which is why a span can start on a collapsed space and
-      // still point at the right character in the original turn.
+      // One flat space per run, its map entry the run's FIRST byte, matching the TypeScript.
+      // Which byte of the run it names is NOT load-bearing: squash() trims the needle, so a match
+      // never begins or ends on a collapsed space and this entry is never read as a span boundary.
+      // What is load-bearing is that an entry is pushed at all — map.size() == flat.size() is the
+      // invariant that puts every index find() returns in bounds.
       if (!was_space && !flat.empty()) { map.push_back(i); flat += ' '; }
       was_space = true;
       i += w;
