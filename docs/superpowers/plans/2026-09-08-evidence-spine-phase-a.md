@@ -460,7 +460,7 @@ agree with either ordering, which is how the bug stayed invisible."
 **Files:**
 - Create: `cpp/minutes/evidence.h`, `cpp/minutes/evidence.cpp`
 - Create: `cpp/tests/test_evidence.cpp`
-- Modify: `cpp/cli/CMakeLists.txt`, `android/app/src/main/cpp/CMakeLists.txt`
+- Modify: `cpp/cli/CMakeLists.txt`, `cpp/CMakeLists.txt`
 
 - [ ] **Step 1: Write the header**
 
@@ -924,9 +924,9 @@ Expected: every test passes, `test_minutes` included — the `rules::` extractio
 
 - [ ] **Step 7: Add the sources to the Android build**
 
-In `android/app/src/main/cpp/CMakeLists.txt`, add `${CORE}/minutes/evidence.cpp` to the same source list that already names `minutes/minutes_extractor.cpp`.
+In `cpp/CMakeLists.txt` — **not** `android/app/src/main/cpp/CMakeLists.txt`, which does not exist; an earlier draft of this plan named it. `cpp/CMakeLists.txt` is the Android build's source list, and `android/app/src/main/jni/CMakeLists.txt` is the React Native autolinking file, which carries no core sources.
 
-Run: `grep -n "minutes_extractor.cpp" android/app/src/main/cpp/CMakeLists.txt`
+Run: `grep -n "minutes_extractor.cpp" cpp/CMakeLists.txt`
 Expected: the line is found; add `evidence.cpp` next to it.
 
 - [ ] **Step 8: Commit**
@@ -950,6 +950,37 @@ and holding pointers looks equivalent and is not: sentences per utterance is
 unbounded, so one long turn overflows any reservation, reallocates, and
 dangles every pointer. That is silent UB no golden can catch."
 ```
+
+---
+
+## Discovered during Task 3: two pre-existing parity bugs in the shipped C++ rules
+
+Neither was introduced by this work and neither is in Phase A's scope. Recorded here because they
+are real, they affect what the device produces, and no golden catches either — every minutes
+fixture is ASCII, which is the same blind spot the evidence goldens had until Task 2 closed it.
+
+| | `src/pipeline/minutes.ts` | `cpp/minutes/minutes_extractor.cpp` |
+|---|---|---|
+| Sentence length filter | `sentence.length < 4` — UTF-16 units | `sentence.size() < 4` — **bytes**, line 386 |
+| Question length cap | `t.length < 160` — UTF-16 units | `t.size() < 160` — **bytes**, line 199 |
+
+A sentence of one to three UTF-16 units occupying four or more bytes — `"🚀?"` is the clean case —
+is dropped by the TypeScript and kept by the C++. A question between 120 and 160 UTF-16 units that
+runs past 160 bytes, which any Devanagari or em-dash-heavy line does, is classified as a question
+by the TypeScript and not by the C++.
+
+**Not fixed here, deliberately.** Both change `extractMinutes`, which is shipped and whose output
+is a free user's exported document, and neither has a golden that would show the change was
+correct. The honest sequence is a fixture first, then the fix — which is a small task of its own,
+not a rider on this one. `extractItems` takes the TypeScript's reading for the length filter, so
+the new code is right and the old code is knowingly left wrong until then.
+
+**A third one WAS fixed, because a golden forced it.** `evidence_spans.json` carries a
+non-breaking space, and the needle comes from `rules::splitSentences`, so there was no way to make
+the port pass without teaching the shared splitter that JavaScript's `/\s/` includes U+00A0 and
+its relatives. That changes `extractMinutes` on Unicode-whitespace input — toward the TypeScript,
+which `minutes_extractor.cpp`'s own header says is the contract ("match the JS exactly, oddities
+included"). No existing fixture moved, because they are all ASCII.
 
 ---
 
