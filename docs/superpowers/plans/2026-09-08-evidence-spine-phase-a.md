@@ -678,7 +678,11 @@ std::string squash(const std::string& s) {
 std::pair<int32_t, int32_t> sentenceSpan(const std::string& text, const std::string& sentence,
                                          size_t from, size_t* next_from) {
   auto finish = [&](size_t byte_start, size_t byte_end) {
-    if (next_from) *next_from = byte_end;
+    // std::max, not a bare assignment: the retry-from-0 below can legitimately return a span that
+    // starts BEFORE the incoming cursor, and letting that pull the cursor backward would let the
+    // next sentence re-scan territory already claimed. The TypeScript does the same, in its own
+    // units, and the goldens would diverge on a thrice-repeated sentence if only one of them did.
+    if (next_from) *next_from = std::max(from, byte_end);
     return std::make_pair(utf16Units(text, byte_start), utf16Units(text, byte_end));
   };
 
