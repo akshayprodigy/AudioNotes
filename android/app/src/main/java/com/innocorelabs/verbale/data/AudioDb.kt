@@ -942,6 +942,59 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
            id TEXT PRIMARY KEY,
            meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
            kind TEXT NOT NULL, content_json TEXT NOT NULL, source TEXT NOT NULL);""",
+      // Typed items with their provenance. `minutes` keeps prose only — summary, narrative and
+      // headline — and every decision, action and question lives here instead.
+      //
+      // item_type, status, owner_json, date_said and date_norm are NULL for a free user and stay
+      // NULL: they are written by the Pro classifier in Phase B. The column exists now so Phase B
+      // is a write, not a migration.
+      """CREATE TABLE IF NOT EXISTS items(
+           id TEXT PRIMARY KEY,
+           meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+           kind TEXT NOT NULL,
+           item_type TEXT,
+           status TEXT,
+           text TEXT NOT NULL,
+           owner_json TEXT,
+           date_said TEXT,
+           date_norm INTEGER,
+           review TEXT NOT NULL DEFAULT 'suggested',
+           gen_version TEXT NOT NULL,
+           anchor_start_ms INTEGER NOT NULL,
+           anchor_end_ms INTEGER NOT NULL,
+           created_at INTEGER NOT NULL);""",
+      "CREATE INDEX IF NOT EXISTS idx_items_meeting ON items(meeting_id, anchor_start_ms);",
+      // The evidence. start_ms/end_ms/char_start/char_end are the anchor and the identity;
+      // utterance_id is a convenience re-resolved on every run, because
+      // AudioDb.replaceUtterancesJson mints fresh UUIDs each time and the old ones point at
+      // nothing. Do not "normalise" utterance_id into a foreign key: the millisecond/char-offset
+      // columns are what survives a re-ASR, a text edit and a speaker merge, and the utterance id
+      // does not.
+      //
+      // WARNING for anything that reconstructs item text from these offsets: in the C++ port, an
+      // item's text is NOT turn.substr(char_start, char_end - char_start). The text comes from a
+      // normalised copy of the turn (U+2019 folded to ', JS-whitespace collapsed) while
+      // char_start/char_end index the ORIGINAL recorded turn. The two agree in TypeScript, where
+      // this is asserted, but not in C++. Slicing the transcript with these offsets will be wrong
+      // on every meeting containing a curly apostrophe — which is most of them.
+      """CREATE TABLE IF NOT EXISTS item_sources(
+           item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+           ordinal INTEGER NOT NULL,
+           start_ms INTEGER NOT NULL,
+           end_ms INTEGER NOT NULL,
+           char_start INTEGER,
+           char_end INTEGER,
+           utterance_id TEXT,
+           PRIMARY KEY (item_id, ordinal));""",
+      "CREATE INDEX IF NOT EXISTS idx_item_sources_start ON item_sources(start_ms);",
+      // Replaces action_done. Keyed on the item's stable id rather than a hash of its text, so a
+      // tick survives a re-recognition that changes one word. Task 8 migrates the old rows;
+      // action_done itself stays (do not delete it) so a rolled-back build still finds its ticks.
+      """CREATE TABLE IF NOT EXISTS item_done(
+           meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+           item_id TEXT NOT NULL,
+           done_at INTEGER NOT NULL,
+           PRIMARY KEY (meeting_id, item_id));""",
       """CREATE TABLE IF NOT EXISTS segments(
            meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
            start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL);""",
