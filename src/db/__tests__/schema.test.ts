@@ -1,115 +1,264 @@
+import { DatabaseSync } from 'node:sqlite';
 import { SCHEMA } from '../schema';
 
 /**
- * Column-level pins for the three evidence-spine tables (items, item_sources, item_done) in the
- * READABLE MIRROR, src/db/schema.ts. AudioDb.kt is the schema that actually runs; this file exists
- * only because it is kept in step "by hand" per its own header comment, and hand-keeping has
- * already drifted once (asr_cache, edits, tags and search_fts exist in AudioDb.kt and not here;
- * this file still has the meetings_fts that AudioDb.kt replaced). These tests do not stop the two
- * files drifting from EACH OTHER — nothing here reads AudioDb.kt — they only stop this file
- * drifting internally, silently, the way the assertions below were shown to catch.
+ * Executes the REAL DDL for the evidence-spine tables from src/db/schema.ts in an in-memory
+ * SQLite database and reads the result back with PRAGMA introspection.
+ *
+ * This replaces an earlier version of this file that parsed the CREATE TABLE strings with a
+ * hand-rolled comma splitter. That approach had a real false pass: an unbalanced paren inside a
+ * string literal (`DEFAULT '('`, valid SQLite) desynchronised its depth counter and swallowed
+ * every column after it, so a test asserting item_done does NOT contain item_key passed while
+ * item_key was in the table. It also could not see types, NOT NULL, defaults, foreign keys and
+ * their delete actions, primary-key composition, or index column order — and it could not prove
+ * the DDL parses at all, which is the failure (e.g. a trailing comma before a closing paren) that
+ * would stop the app opening its database on every device. Real SQLite execution closes all of
+ * that. See SchemaTest.kt for the JVM-side smoke check, which cannot run SQLite and says so.
+ *
+ * Only meetings + the three new tables are executed, not the whole of SCHEMA: node:sqlite's
+ * bundled engine has no fts5 module, and meetings_fts (see the schema-drift note below) would
+ * fail to create and take every test in this file down with it.
  */
+function freshDb(): DatabaseSync {
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA foreign_keys = ON;');
+  db.exec(ddlFor('meetings'));
+  db.exec(ddlFor('items'));
+  db.exec(indexDdlFor('idx_items_meeting'));
+  db.exec(ddlFor('item_sources'));
+  db.exec(ddlFor('item_done'));
+  return db;
+}
 
-/**
- * The single `CREATE TABLE IF NOT EXISTS <table> (...)` statement for `table`, scoped away from
- * the rest of SCHEMA. A plain substring check against the whole joined schema would let `text` or
- * `meeting_id` pass because a NEIGHBOURING table has that column — a test that cannot fail on the
- * thing it claims to check.
- */
 function ddlFor(table: string): string {
   const stmt = SCHEMA.find(s => s.trimStart().startsWith(`CREATE TABLE IF NOT EXISTS ${table} (`));
   if (!stmt) throw new Error(`no CREATE TABLE IF NOT EXISTS ${table} in SCHEMA`);
   return stmt;
 }
 
-/**
- * Column names out of a CREATE TABLE statement. Strips trailing `-- comment` text first (this
- * file's comments contain commas of their own, e.g. "hidden, restorable", which would otherwise
- * be misread as column separators), then splits on top-level commas only — depth tracked through
- * parentheses — so `REFERENCES meetings(id)` and a table-level `PRIMARY KEY (a, b)` are not
- * mistaken for column boundaries. Deliberately NOT one-column-per-line: a column added onto an
- * existing line is exactly the kind of change this must still catch, and a mutation test proved
- * a line-based version misses it (see the Kotlin SchemaTest for the same finding).
- */
-function columnsOf(ddl: string): string[] {
-  const noComments = ddl.replace(/--[^\n]*/g, '');
-  const body = noComments.slice(noComments.indexOf('(') + 1, noComments.lastIndexOf(')'));
-  const parts: string[] = [];
-  let depth = 0;
-  let current = '';
-  for (const c of body) {
-    if (c === '(') {
-      depth++;
-      current += c;
-    } else if (c === ')') {
-      depth--;
-      current += c;
-    } else if (c === ',' && depth === 0) {
-      parts.push(current);
-      current = '';
-    } else {
-      current += c;
-    }
-  }
-  if (current.trim()) parts.push(current);
-  return parts
-    .map(s => s.trim())
-    .filter(s => s.length > 0 && !/^(PRIMARY KEY|FOREIGN KEY|UNIQUE|CHECK|CONSTRAINT)/.test(s))
-    .map(s => s.split(/\s+/)[0]);
+function indexDdlFor(name: string): string {
+  const stmt = SCHEMA.find(s => s.includes(`CREATE INDEX IF NOT EXISTS ${name} `));
+  if (!stmt) throw new Error(`no CREATE INDEX IF NOT EXISTS ${name} in SCHEMA`);
+  return stmt;
 }
 
-describe('schema.ts evidence tables', () => {
-  /**
-   * All fourteen columns, including the five Phase B leaves NULL (item_type, status, owner_json,
-   * date_said, date_norm). Those exist now specifically so the classifier lands as a write rather
-   * than a migration — nothing reads them yet, so nothing else would notice one being dropped.
-   */
-  it('items has the expected columns', () => {
-    const expected = [
-      'id', 'meeting_id', 'kind', 'item_type', 'status', 'text', 'owner_json',
-      'date_said', 'date_norm', 'review', 'gen_version', 'anchor_start_ms',
-      'anchor_end_ms', 'created_at',
-    ];
-    const actual = columnsOf(ddlFor('items'));
-    expect(actual).toEqual(expect.arrayContaining(expected));
-    expect(actual).toHaveLength(expected.length); // catches an extra column too
+interface ColumnInfo {
+  name: string;
+  type: string;
+  notnull: 0 | 1;
+  dflt_value: unknown;
+  pk: number; // 0 = not in the PK; otherwise its 1-based position in a composite key
+}
+
+interface ForeignKeyInfo {
+  table: string;
+  from: string;
+  to: string;
+  on_delete: string;
+}
+
+function columnsOf(db: DatabaseSync, table: string): ColumnInfo[] {
+  return db.prepare(`PRAGMA table_info(${table})`).all() as unknown as ColumnInfo[];
+}
+
+function foreignKeysOf(db: DatabaseSync, table: string): ForeignKeyInfo[] {
+  return db.prepare(`PRAGMA foreign_key_list(${table})`).all() as unknown as ForeignKeyInfo[];
+}
+
+function column(cols: ColumnInfo[], name: string): ColumnInfo {
+  const c = cols.find(x => x.name === name);
+  if (!c) throw new Error(`no column ${name}`);
+  return c;
+}
+
+describe('schema.ts evidence tables (executed in real SQLite)', () => {
+  it('the DDL parses and every statement executes', () => {
+    // freshDb() throwing IS the failure this test exists to catch — invalid DDL that would stop
+    // the app opening its database on every device, which a string-based parser cannot see.
+    expect(() => freshDb()).not.toThrow();
   });
 
-  /**
-   * start_ms/end_ms/char_start/char_end are the anchor and the identity; utterance_id and
-   * ordinal ride along. Losing any offset column would silently degrade the evidence to
-   * utterance-id-only — the identity that does NOT survive a re-ASR.
-   */
-  it('item_sources has the expected columns', () => {
-    const expected = [
-      'item_id', 'ordinal', 'start_ms', 'end_ms', 'char_start', 'char_end', 'utterance_id',
-    ];
-    const actual = columnsOf(ddlFor('item_sources'));
-    expect(actual).toEqual(expect.arrayContaining(expected));
-    expect(actual).toHaveLength(expected.length);
+  describe('items', () => {
+    it('has exactly the fourteen expected columns', () => {
+      const cols = columnsOf(freshDb(), 'items').map(c => c.name).sort();
+      expect(cols).toEqual(
+        [
+          'id', 'meeting_id', 'kind', 'item_type', 'status', 'text', 'owner_json',
+          'date_said', 'date_norm', 'review', 'gen_version', 'anchor_start_ms',
+          'anchor_end_ms', 'created_at',
+        ].sort(),
+      );
+    });
+
+    /**
+     * The five Phase B columns exist now so the classifier lands as a write, not a migration —
+     * nothing reads them yet, so nothing else would notice one becoming wrongly NOT NULL (which
+     * would break every free-tier insert, since nothing supplies them) or silently dropped.
+     */
+    it('the five Phase B columns are nullable', () => {
+      const cols = columnsOf(freshDb(), 'items');
+      for (const name of ['item_type', 'status', 'owner_json', 'date_said', 'date_norm']) {
+        expect(column(cols, name).notnull).toBe(0);
+      }
+    });
+
+    it('id, meeting_id, kind, text, review, gen_version and the anchors are NOT NULL', () => {
+      const cols = columnsOf(freshDb(), 'items');
+      for (const name of [
+        'id', 'meeting_id', 'kind', 'text', 'review', 'gen_version',
+        'anchor_start_ms', 'anchor_end_ms', 'created_at',
+      ]) {
+        expect(column(cols, name).notnull).toBe(1);
+      }
+    });
+
+    /**
+     * SQLite's TEXT PRIMARY KEY allows NULL unless said explicitly — only INTEGER PRIMARY KEY
+     * implies NOT NULL. Without it, two NULL-id items would not even collide with each other.
+     */
+    it('id is NOT NULL, closing SQLite\'s TEXT PRIMARY KEY NULL quirk', () => {
+      const db = freshDb();
+      const idCol = column(columnsOf(db, 'items'), 'id');
+      expect(idCol.pk).toBe(1);
+      expect(idCol.notnull).toBe(1);
+      db.exec("INSERT INTO meetings(id, title, created_at) VALUES ('m1','Standup',0)");
+      expect(() =>
+        db
+          .prepare(
+            `INSERT INTO items(id, meeting_id, kind, text, gen_version, anchor_start_ms,
+               anchor_end_ms, created_at) VALUES (NULL, ?, 'action', 't', 'rules@1', 0, 0, 0)`,
+          )
+          .run('m1'),
+      ).toThrow(/NOT NULL/);
+    });
+
+    it('meeting_id references meetings, cascading on delete', () => {
+      const fk = foreignKeysOf(freshDb(), 'items')[0];
+      expect(fk).toMatchObject({ table: 'meetings', from: 'meeting_id', to: 'id', on_delete: 'CASCADE' });
+    });
+
+    it('idx_items_meeting covers (meeting_id, anchor_start_ms), in that order', () => {
+      const db = freshDb();
+      const names = (db.prepare("PRAGMA index_list('items')").all() as Array<{ name: string }>).map(
+        i => i.name,
+      );
+      expect(names).toContain('idx_items_meeting');
+      const idxCols = (
+        db.prepare("PRAGMA index_info('idx_items_meeting')").all() as Array<{ name: string }>
+      ).map(i => i.name);
+      expect(idxCols).toEqual(['meeting_id', 'anchor_start_ms']);
+    });
   });
 
-  it('item_done has the expected columns', () => {
-    const expected = ['meeting_id', 'item_id', 'done_at'];
-    const actual = columnsOf(ddlFor('item_done'));
-    expect(actual).toEqual(expect.arrayContaining(expected));
-    expect(actual).toHaveLength(expected.length);
+  describe('item_sources', () => {
+    it('has exactly the seven expected columns', () => {
+      const cols = columnsOf(freshDb(), 'item_sources').map(c => c.name).sort();
+      expect(cols).toEqual(
+        ['item_id', 'ordinal', 'start_ms', 'end_ms', 'char_start', 'char_end', 'utterance_id'].sort(),
+      );
+    });
+
+    /**
+     * Both producers (evidence.ts, evidence.h) always emit a span, and a source without one is
+     * meaningless. Nullable here would be silently dangerous rather than absent: a missing span
+     * reads back through most cursor APIs as 0, i.e. "starts at the beginning of the turn", and
+     * Task 10's provenance UI would highlight the wrong text instead of visibly failing.
+     */
+    it('char_start and char_end are NOT NULL', () => {
+      const cols = columnsOf(freshDb(), 'item_sources');
+      expect(column(cols, 'char_start').notnull).toBe(1);
+      expect(column(cols, 'char_end').notnull).toBe(1);
+    });
+
+    it('start_ms, end_ms, item_id and ordinal are NOT NULL; utterance_id is nullable', () => {
+      const cols = columnsOf(freshDb(), 'item_sources');
+      for (const name of ['item_id', 'ordinal', 'start_ms', 'end_ms']) {
+        expect(column(cols, name).notnull).toBe(1);
+      }
+      expect(column(cols, 'utterance_id').notnull).toBe(0);
+    });
+
+    it('the primary key is the (item_id, ordinal) composite, not a surrogate', () => {
+      const cols = columnsOf(freshDb(), 'item_sources');
+      expect(column(cols, 'item_id').pk).toBe(1);
+      expect(column(cols, 'ordinal').pk).toBe(2);
+    });
+
+    it('item_id references items, cascading on delete', () => {
+      const fk = foreignKeysOf(freshDb(), 'item_sources')[0];
+      expect(fk).toMatchObject({ table: 'items', from: 'item_id', to: 'id', on_delete: 'CASCADE' });
+    });
+
+    /**
+     * idx_item_sources_start was removed: every item_sources read is
+     * `WHERE item_id IN (...) ORDER BY item_id, ordinal`, already served by the composite
+     * PRIMARY KEY's autoindex, so a separate index on start_ms was pure write amplification on
+     * every source row of every reprocess with no reader anywhere in Tasks 6-13. Adding one back
+     * later is cheap — CREATE INDEX IF NOT EXISTS runs on every open, not only on fresh installs.
+     */
+    it('has no index beyond the composite primary key\'s autoindex', () => {
+      const names = (
+        db => (db.prepare("PRAGMA index_list('item_sources')").all() as Array<{ name: string }>).map(i => i.name)
+      )(freshDb());
+      expect(names).not.toContain('idx_item_sources_start');
+      expect(names).toHaveLength(1); // just the PK's autoindex
+    });
   });
 
-  /**
-   * item_done exists to replace action_done's item_key (a hash of the item's text) with a
-   * stable id, because re-recognising a single word changes the hash and silently unticks a
-   * confirmed item. item_done sits right next to action_done in this file and is otherwise
-   * near-identical in shape — exactly the condition under which a column gets copy-pasted back
-   * in without anyone noticing. This pins the design decision the table exists for, not a
-   * spelling.
-   */
-  it('item_done does not reintroduce action_done\'s text-hash key', () => {
-    expect(columnsOf(ddlFor('item_done'))).not.toContain('item_key');
-  });
+  describe('item_done', () => {
+    it('has exactly meeting_id, item_id and done_at — not item_key', () => {
+      const names = columnsOf(freshDb(), 'item_done').map(c => c.name);
+      expect(names.sort()).toEqual(['meeting_id', 'item_id', 'done_at'].sort());
+      expect(names).not.toContain('item_key');
+    });
 
-  it('both new indexes are declared', () => {
-    expect(SCHEMA.some(s => s.includes('idx_items_meeting'))).toBe(true);
-    expect(SCHEMA.some(s => s.includes('idx_item_sources_start'))).toBe(true);
+    it('the primary key is the (meeting_id, item_id) composite', () => {
+      const cols = columnsOf(freshDb(), 'item_done');
+      expect(column(cols, 'meeting_id').pk).toBe(1);
+      expect(column(cols, 'item_id').pk).toBe(2);
+    });
+
+    /**
+     * The design decision this table exists for, proved rather than merely commented: item_id
+     * has NO foreign key to items(id), so deleting/replacing an item does not touch its tick.
+     * Task 6's replaceItems deletes and re-inserts every item row on every reprocess — an
+     * ON DELETE CASCADE here would wipe every tick on every reprocess, the exact failure
+     * item_done exists to end. If someone "fixes" the missing FK, this is the test that catches
+     * it, both structurally and behaviourally.
+     */
+    it('has no foreign key to items — deleting an item leaves its tick standing', () => {
+      const db = freshDb();
+      const fkTables = foreignKeysOf(db, 'item_done').map(fk => fk.table);
+      expect(fkTables).not.toContain('items');
+      expect(fkTables).toEqual(['meetings']);
+
+      db.exec("INSERT INTO meetings(id, title, created_at) VALUES ('m1','Standup',0)");
+      db.exec(
+        `INSERT INTO items(id, meeting_id, kind, text, gen_version, anchor_start_ms,
+           anchor_end_ms, created_at) VALUES ('i1','m1','action','Send it','rules@1',0,0,0)`,
+      );
+      db.exec("INSERT INTO item_done(meeting_id, item_id, done_at) VALUES ('m1','i1',123)");
+
+      db.exec("DELETE FROM items WHERE id='i1'");
+
+      expect(
+        db.prepare("SELECT * FROM item_done WHERE meeting_id='m1' AND item_id='i1'").all(),
+      ).toHaveLength(1);
+    });
+
+    it('meeting_id still cascades from meetings — deleting a meeting deletes its ticks', () => {
+      const db = freshDb();
+      db.exec("INSERT INTO meetings(id, title, created_at) VALUES ('m1','Standup',0)");
+      db.exec(
+        `INSERT INTO items(id, meeting_id, kind, text, gen_version, anchor_start_ms,
+           anchor_end_ms, created_at) VALUES ('i1','m1','action','Send it','rules@1',0,0,0)`,
+      );
+      db.exec("INSERT INTO item_done(meeting_id, item_id, done_at) VALUES ('m1','i1',123)");
+
+      db.exec("DELETE FROM meetings WHERE id='m1'");
+
+      expect(db.prepare('SELECT * FROM item_done').all()).toHaveLength(0);
+      expect(db.prepare('SELECT * FROM items').all()).toHaveLength(0);
+    });
   });
 });

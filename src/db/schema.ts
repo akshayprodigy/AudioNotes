@@ -56,8 +56,11 @@ export const SCHEMA = [
   // item_type, status, owner_json, date_said and date_norm are NULL for a free user and stay
   // NULL: they are written by the Pro classifier in Phase B. The column exists now so Phase B
   // is a write, not a migration.
+  //
+  // id is NOT NULL explicitly: SQLite's TEXT PRIMARY KEY allows NULL unless said so (only
+  // INTEGER PRIMARY KEY implies it), and two NULL-id rows would not even collide.
   `CREATE TABLE IF NOT EXISTS items (
-     id TEXT PRIMARY KEY,
+     id TEXT PRIMARY KEY NOT NULL,
      meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
      kind TEXT NOT NULL,            -- decision | action | question
      item_type TEXT,                -- Phase B: the classifier's finer type
@@ -79,26 +82,37 @@ export const SCHEMA = [
   // utterance_id into a foreign key: the millisecond/char-offset columns are what survives a
   // re-ASR, a text edit and a speaker merge, and the utterance id does not.
   //
-  // WARNING for anything that reconstructs item text from these offsets: in the C++ port, an
-  // item's text is NOT turn.substr(char_start, char_end - char_start). The text comes from a
-  // normalised copy of the turn (U+2019 folded to ', JS-whitespace collapsed) while
-  // char_start/char_end index the ORIGINAL recorded turn. The two agree in TypeScript, where this
-  // is asserted, but not in C++. Slicing the transcript with these offsets will be wrong on every
-  // meeting containing a curly apostrophe — which is most of them.
+  // char_start/char_end are NOT NULL: both producers (evidence.ts, evidence.h) always emit a
+  // span, and a source without one is meaningless. Nullable here would be silently dangerous
+  // rather than absent — a missing span would read back as "starts at the beginning of the turn"
+  // and Task 10's provenance UI would highlight the wrong text instead of visibly failing.
+  //
+  // WARNING for anything that reconstructs item text from these offsets: this is NOT
+  // turn.substr(char_start, char_end - char_start) in general, in EITHER language. The item's
+  // text can differ from that slice whenever the turn's whitespace needed collapsing to find the
+  // sentence (extra spaces, tabs, newlines) — src/pipeline/__tests__/evidence.test.ts:145 is the
+  // TypeScript counterexample: the slice keeps a double space and a newline the item text does
+  // not. The C++ port diverges more often still, because the extractor also folds U+2019 to a
+  // plain apostrophe before matching, so the slice differs on every turn with a curly apostrophe
+  // too — most meetings. Read the item's own text field; do not reconstruct it by slicing the
+  // transcript, in either language.
   `CREATE TABLE IF NOT EXISTS item_sources (
      item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
      ordinal INTEGER NOT NULL,
      start_ms INTEGER NOT NULL,
      end_ms INTEGER NOT NULL,
-     char_start INTEGER,
-     char_end INTEGER,
+     char_start INTEGER NOT NULL,
+     char_end INTEGER NOT NULL,
      utterance_id TEXT,
      PRIMARY KEY (item_id, ordinal)
    );`,
-  `CREATE INDEX IF NOT EXISTS idx_item_sources_start ON item_sources(start_ms);`,
   // Replaces action_done. Keyed on the item's stable id rather than a hash of its text, so a tick
   // survives a re-recognition that changes one word. Task 8 migrates the old rows; action_done
   // itself stays (do not delete it) so a rolled-back build still finds its ticks.
+  //
+  // Deliberately NO REFERENCES items(id): Task 6's replaceItems deletes and re-inserts every item
+  // row on every reprocess, so an ON DELETE CASCADE here would wipe every tick on every
+  // reprocess — the exact failure this table exists to end. Do not "fix" this later.
   `CREATE TABLE IF NOT EXISTS item_done (
      meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
      item_id TEXT NOT NULL,

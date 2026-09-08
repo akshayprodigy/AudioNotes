@@ -6,6 +6,15 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/**
+ * A JVM unit test cannot open a real SQLite database, so this is a SMOKE check on the DDL text
+ * only — it can prove a column name is present or absent, but it cannot prove the DDL actually
+ * parses, and it does not see types, NOT NULL, defaults, foreign keys or index column lists. The
+ * AUTHORITATIVE structural assertions — including whether item_done omits its FK on purpose and
+ * whether char_start/char_end are really NOT NULL — live in src/db/__tests__/schema.test.ts,
+ * which executes the real DDL from src/db/schema.ts in node:sqlite and reads it back with
+ * PRAGMA table_info / foreign_key_list / index_list.
+ */
 class SchemaTest {
   private val schema = AudioDb.schemaForTest().joinToString("\n")
 
@@ -21,24 +30,50 @@ class SchemaTest {
 
   /**
    * Column names declared in a CREATE TABLE statement. Splits on top-level commas only — depth
-   * tracked through parentheses — so `REFERENCES meetings(id)` and a table-level
-   * `PRIMARY KEY (a, b)` do not get mistaken for column separators, and a table-level constraint
-   * clause is dropped rather than misread as a column. Deliberately NOT one-column-per-line: an
-   * added column that lands on an existing line (`item_id TEXT NOT NULL, item_key TEXT NOT NULL,`)
-   * is exactly the kind of change this must still catch.
+   * tracked through parentheses, and parens/commas INSIDE a single-quoted string literal do not
+   * count, so `DEFAULT '('` does not desynchronise the depth counter and swallow every column
+   * after it. (That exact case — `done_at INTEGER NOT NULL DEFAULT '(', item_key TEXT NOT
+   * NULL,` reporting only `done_at` — was a real false pass here, found by mutation-testing
+   * this parser, not by inspection.) `REFERENCES meetings(id)` and a table-level
+   * `PRIMARY KEY (a, b)` do not get mistaken for column separators either, and a table-level
+   * constraint clause is dropped rather than misread as a column. Deliberately NOT
+   * one-column-per-line: an added column that lands on an existing line
+   * (`item_id TEXT NOT NULL, item_key TEXT NOT NULL,`) is exactly the kind of change this must
+   * still catch.
+   *
+   * What this still cannot catch: a trailing comma before the closing paren, which is invalid
+   * SQLite DDL and would stop the app opening its database on every device. Only real SQLite
+   * execution proves the statement parses — see schema.test.ts.
    */
   private fun columnsOf(ddl: String): List<String> {
     val body = ddl.substringAfter('(').let { it.substring(0, it.lastIndexOf(')')) }
     val parts = mutableListOf<String>()
     val current = StringBuilder()
     var depth = 0
-    for (c in body) {
+    var inQuote = false
+    var i = 0
+    while (i < body.length) {
+      val c = body[i]
       when {
+        inQuote -> {
+          current.append(c)
+          if (c == '\'') {
+            if (i + 1 < body.length && body[i + 1] == '\'') {
+              // '' is an escaped quote inside the literal, not its end.
+              current.append(body[i + 1])
+              i++
+            } else {
+              inQuote = false
+            }
+          }
+        }
+        c == '\'' -> { inQuote = true; current.append(c) }
         c == '(' -> { depth++; current.append(c) }
         c == ')' -> { depth--; current.append(c) }
         c == ',' && depth == 0 -> { parts.add(current.toString()); current.clear() }
         else -> current.append(c)
       }
+      i++
     }
     if (current.isNotBlank()) parts.add(current.toString())
     return parts
@@ -117,11 +152,15 @@ class SchemaTest {
     assertFalse(tables.contains("item_done"))
   }
 
-  @Test fun theAnchorIsIndexed() =
-    assertTrue(schema.contains("idx_item_sources_start"))
-
-  /** Not in the plan's listing of tests, added to match its own SCHEMA listing: idx_items_meeting
-   * is the index a meeting-scoped items query (every caller in Task 6+) actually uses. */
+  /**
+   * idx_items_meeting is the index a meeting-scoped items query (every caller in Task 6+)
+   * actually uses. item_sources has no equivalent index: every read is
+   * `WHERE item_id IN (...) ORDER BY item_id, ordinal`, already served by the composite
+   * PRIMARY KEY's autoindex, so an idx_item_sources_start would be pure write amplification on
+   * every source row of every reprocess with no reader anywhere in Tasks 6-13. Adding one later
+   * is cheap — CREATE INDEX IF NOT EXISTS runs on every open, not just fresh installs — so it is
+   * deliberately absent rather than spent speculatively.
+   */
   @Test fun theItemsAnchorIsIndexed() =
     assertTrue(schema.contains("idx_items_meeting"))
 }
