@@ -357,6 +357,10 @@ const SPANS = [
   // occurrence's. This is whisper's repetition-loop failure mode, which this project has on
   // record from the Galaxy A07.
   { text: "Right. I'll send the report by Friday. I'll send the report by Friday.", speakerId: 'S1' },
+  // The ordering case, and the one no ordinary fixture shows: the FIRST copy carries the internal
+  // run, so a naive text.indexOf returns the SECOND copy and both sources end up sharing its span.
+  // Any port that tries the direct match before the collapsed one fails on exactly this row.
+  { text: 'We agreed  to ship. We agreed to ship.', speakerId: 'S0' },
 ];
 
 function writeEvidenceGolden(name: string, rows: { text: string; speakerId: string }[]) {
@@ -380,10 +384,13 @@ it('writes the evidence goldens', () => {
 });
 ```
 
-`SPANS` exercises the two things nothing else does: a whitespace run **inside** a sentence, which
+`SPANS` exercises the three things nothing else does: a whitespace run **inside** a sentence, which
 is the only way into `sentenceSpan`'s fallback, and the same sentence twice in one turn, which is
-the only way to catch a source carrying the wrong span. Verify the second one by hand after
-generating - the two sources must have DIFFERENT `charStart` values.
+the only way to catch a source carrying the wrong span; and a repeat whose FIRST copy holds the
+run, which is the only way to catch a port that resolves the two scans in the wrong order.
+
+Verify by hand after generating: in rows two and three the two sources must have DIFFERENT
+`charStart` values, and in row three the first source must start at 0 - not at the second copy.
 
 - [ ] **Step 2: Generate them**
 
@@ -635,6 +642,7 @@ Then create `cpp/minutes/evidence.cpp`:
 
 #include <algorithm>
 #include <cctype>
+#include <optional>
 #include <unordered_map>
 
 namespace audionotes {
@@ -675,24 +683,41 @@ std::string squash(const std::string& s) {
 
 }  // namespace
 
-std::pair<int32_t, int32_t> sentenceSpan(const std::string& text, const std::string& sentence,
-                                         size_t from, size_t* next_from) {
-  auto finish = [&](size_t byte_start, size_t byte_end) {
-    // std::max, not a bare assignment: the retry-from-0 below can legitimately return a span that
-    // starts BEFORE the incoming cursor, and letting that pull the cursor backward would let the
-    // next sentence re-scan territory already claimed. The TypeScript does the same, in its own
-    // units, and the goldens would diverge on a thrice-repeated sentence if only one of them did.
-    if (next_from) *next_from = std::max(from, byte_end);
-    return std::make_pair(utf16Units(text, byte_start), utf16Units(text, byte_end));
-  };
+namespace {
 
-  size_t direct = text.find(sentence, from);
-  // Retried from 0 rather than falling through: a sentence the cursor has already passed must not
-  // silently acquire the whole turn as its span.
-  if (direct == std::string::npos && from > 0) direct = text.find(sentence);
-  if (direct != std::string::npos) return finish(direct, direct + sentence.size());
+// Mirrors the /\s\s|[^\S ]/ pre-check in the TypeScript: a run of two whitespace characters, or
+// any whitespace that is not a plain space. Either is something squash() would collapse.
+bool hasCollapsibleRun(const std::string& text, size_t begin, size_t end) {
+  bool prev_space = false;
+  for (size_t i = begin; i < end && i < text.size(); ++i) {
+    const bool sp = isSpace(text[i]);
+    if (sp && (prev_space || text[i] != ' ')) return true;
+    prev_space = sp;
+  }
+  return false;
+}
 
-  // Whitespace-insensitive: build the collapsed form alongside a map back to byte offsets.
+// The EARLIEST occurrence of `sentence` at or after byte `from`, as a byte range, or nullopt.
+//
+// Mirrors findFrom() in src/pipeline/evidence.ts and must keep its ordering: both a direct match
+// and a whitespace-collapsed match are considered, and the one that STARTS EARLIER wins.
+//
+// Treating the direct hit as authoritative is wrong, and wrong in a way no ordinary fixture shows.
+// A copy of the sentence carrying an internal whitespace run sits earlier in the turn, and only
+// the collapsed scan can see it - so find() returns the LATER copy and two sources end up sharing
+// one span. Measured on 'We agreed  to ship. We agreed to ship.' (two spaces in the first copy):
+// the naive version anchors BOTH sources on the second occurrence.
+std::optional<std::pair<size_t, size_t>> findFrom(const std::string& text,
+                                                  const std::string& sentence, size_t from) {
+  const size_t direct = text.find(sentence, from);
+
+  // Fast path: no collapsible run anywhere in the region find() scanned, so nothing earlier can be
+  // hiding behind a collapse and the direct hit is provably the earliest. Ordinary text takes this.
+  if (direct != std::string::npos && !hasCollapsibleRun(text, from, direct + sentence.size())) {
+    return std::make_pair(direct, direct + sentence.size());
+  }
+
+  // Collapsed scan: the squashed form alongside a map back to byte offsets.
   std::vector<size_t> map;
   std::string flat;
   bool was_space = false;
@@ -706,24 +731,53 @@ std::pair<int32_t, int32_t> sentenceSpan(const std::string& text, const std::str
       flat += text[i];
     }
   }
-  // The cursor is a byte offset into `text`; translate it into an offset into `flat` by counting
-  // how many mapped positions precede it.
+  // `from` is a byte offset into `text`; translate it into an offset into `flat`.
   size_t flat_from = 0;
   while (flat_from < map.size() && map[flat_from] < from) ++flat_from;
 
   const std::string needle = squash(sentence);
-  size_t at = flat.find(needle, flat_from);
-  if (at == std::string::npos && flat_from > 0) at = flat.find(needle);
+  const size_t at = flat.find(needle, flat_from);
+
+  // No bounds guards on `map`, deliberately. map.size() == flat.size() by construction: every
+  // branch that appends to `flat` pushes exactly one entry to `map`, and nothing else touches
+  // either - so any index find() returns is in bounds. `needle` is never empty here because
+  // extractItems drops sentences shorter than four characters. The TypeScript deleted its
+  // equivalent guards after a 60,000-case fuzz confirmed the invariant; keeping them in one
+  // language only is how a port acquires code that looks meaningful and is not.
   if (at == std::string::npos) {
-    // Found nowhere at all. A slightly wide anchor is honest; a missing one is not. The cursor is
-    // deliberately NOT advanced here - there is no match to advance past.
-    if (next_from) *next_from = from;
-    return {0, utf16Units(text, text.size())};
+    if (direct != std::string::npos) return std::make_pair(direct, direct + sentence.size());
+    return std::nullopt;
   }
-  const size_t end = at + needle.size();
-  const size_t byte_start = at < map.size() ? map[at] : 0;
-  const size_t byte_end = (end - 1) < map.size() ? map[end - 1] + 1 : text.size();
-  return finish(byte_start, byte_end);
+  const std::pair<size_t, size_t> collapsed{map[at], map[at + needle.size() - 1] + 1};
+  if (direct != std::string::npos && direct <= collapsed.first) {
+    return std::make_pair(direct, direct + sentence.size());
+  }
+  return collapsed;
+}
+
+}  // namespace
+
+std::pair<int32_t, int32_t> sentenceSpan(const std::string& text, const std::string& sentence,
+                                         size_t from, size_t* next_from) {
+  auto finish = [&](size_t byte_start, size_t byte_end) {
+    // std::max rather than a bare assignment, so an external caller cannot drive the cursor
+    // backwards. Now that findFrom returns the EARLIEST match, extractItems can no longer overshoot
+    // a findable sentence and the retry below is unreachable from it - so this is hygiene on an
+    // exported function, not a correctness fix. The TypeScript says the same. Do not restate it as
+    // preventing a re-scan of claimed ground: measured over 60,000 random turns, max and a bare
+    // assignment differ on 2,610 of them and neither is reliably closer to the truth.
+    if (next_from) *next_from = std::max(from, byte_end);
+    return std::make_pair(utf16Units(text, byte_start), utf16Units(text, byte_end));
+  };
+
+  if (auto hit = findFrom(text, sentence, from)) return finish(hit->first, hit->second);
+  // Retried from 0 rather than falling straight through: a sentence the cursor has already passed
+  // must not silently acquire the whole turn as its span.
+  if (from > 0) {
+    if (auto hit = findFrom(text, sentence, 0)) return finish(hit->first, hit->second);
+  }
+  // Found nowhere at all. A slightly wide anchor is honest; a missing one is not.
+  return finish(0, text.size());
 }
 
 std::vector<DraftItem> extractItems(const std::vector<TimedUtt>& utterances,
