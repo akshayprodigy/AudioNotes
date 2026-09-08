@@ -77,6 +77,36 @@ static void runGolden(const std::string& dir, const char* name) {
   }
 }
 
+// The exported surface, called directly rather than through extractItems.
+//
+// extractItems only ever hands sentenceSpan a trimmed, non-empty sentence found in the turn it
+// came from, so the goldens cannot reach any of these. sentenceSpan is declared in evidence.h and
+// ships in libaudionotes.so, and the all-whitespace case below was a heap read at map[SIZE_MAX]
+// until the guard in findFrom went in: an empty needle makes find() return 0 rather than npos,
+// and `at + needle.size() - 1` underflows. Run this under ASan; that is where it was caught.
+static void runEdgeCases() {
+  using audionotes::sentenceSpan;
+  auto eq = [](std::pair<int32_t, int32_t> got, int32_t a, int32_t b, const char* what) {
+    CHECK(got.first == a && got.second == b, "edge %s: (%d,%d) != (%d,%d)", what, got.first,
+          got.second, a, b);
+  };
+  // Whitespace-only needle: the precondition violation. The whole-turn span, not a crash.
+  eq(sentenceSpan("   ", "   "), 0, 3, "all-whitespace needle");
+  // ...and again from a cursor, so BOTH the cursored search and the retry-from-0 return nullopt.
+  eq(sentenceSpan("  x  ", "   ", 3), 0, 5, "all-whitespace needle, cursored");
+  // Empty everything. The direct find of "" in "" succeeds at 0, so this never reaches the guard.
+  eq(sentenceSpan("", ""), 0, 0, "empty text and needle");
+  // Text that flattens to nothing: `map` is empty, and only the npos branch may touch it.
+  eq(sentenceSpan("   ", "abc"), 0, 3, "unfindable needle, empty map");
+  // A cursor past the end of the text: the retry from 0 is what finds it.
+  size_t next = 0;
+  eq(sentenceSpan("abc", "abc", 99, &next), 0, 3, "cursor past end");
+  CHECK(next == 99, "edge cursor past end: next_from %zu != 99", next);
+  // The collapsed scan across a non-breaking space, which is not isspace() whitespace: three
+  // UTF-16 units over four bytes, so this also pins the unit conversion on the collapsed path.
+  eq(sentenceSpan("a\xC2\xA0" "b", "a b"), 0, 3, "U+00A0 collapsed match");
+}
+
 int main(int argc, char** argv) {
   if (argc < 2) { std::fprintf(stderr, "usage: test_evidence <golden-dir>\n"); return 2; }
   const std::string dir = argv[1];
@@ -93,6 +123,7 @@ int main(int argc, char** argv) {
   runGolden(dir, "evidence_unassigned.json");
   runGolden(dir, "evidence_empty.json");
   runGolden(dir, "evidence_caps.json");
+  runEdgeCases();
   if (failures) { std::fprintf(stderr, "%d failure(s)\n", failures); return 1; }
   std::printf("test_evidence: OK\n");
   return 0;

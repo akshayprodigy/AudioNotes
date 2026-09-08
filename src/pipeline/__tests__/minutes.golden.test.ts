@@ -215,6 +215,26 @@ const SPANS = [
   // 5 UTF-16 units but only 3 code points: correct (UTF-16) behaviour keeps it, a port that
   // measured code points instead would wrongly drop it as "too short".
   { text: '🚀🚀?', speakerId: 'S1' },
+  // Row 8: the collapsed-scan WINDOW. Rows 1 and 3 both reach the collapsed path on their FIRST
+  // sentence, where a window built from 0 and a window built from the cursor are the same window -
+  // so neither of them tests the anchoring at all. Here the third sentence is a repeat that also
+  // needs the collapsed path (its own copy carries the double space), and by then the cursor is
+  // at 33. A port that rebuilds the flattened window from 0 finds the FIRST copy again and
+  // reports [0, 19] for both sources. The middle sentence is inert on purpose: it matches no
+  // rule, so its only job is to put distance between the two copies.
+  { text: 'We agreed  to ship. Yeah ok fine. We agreed  to ship.', speakerId: 'S0' },
+  // Row 9: the non-breaking space's third half - hasCollapsibleRun. Rows 4 and 5 prove the SPAN
+  // and the TEXT survive one, but both reach the collapsed scan because the direct search misses
+  // outright. Here the direct search HITS - on the second, clean copy - so the only thing that
+  // sends the first sentence down the collapsed path is the pre-check noticing the U+00A0 between
+  // 'agreed' and 'to'. A pre-check using isspace() sees no run, takes the direct hit, and hands
+  // both sources the second copy's span.
+  { text: 'We agreed\u00A0to ship. We agreed to ship.', speakerId: 'S0' },
+  // Row 10: the length filter counting BYTES. Row 7 catches a port counting code points (it
+  // keeps a sentence such a port would drop); this catches the opposite error, a port counting
+  // bytes (5 here) rather than UTF-16 units (3), which would keep a sentence the TypeScript
+  // drops. The two rows together pin the unit from both sides - neither does it alone.
+  { text: '🚀?', speakerId: 'S1' },
 ];
 
 // Pins the caps (20 decisions / 30 actions / 20 questions) the same way evidence.test.ts's
@@ -263,11 +283,26 @@ it('writes the evidence goldens', () => {
   // mean both sources point at the same occurrence.
   expect(new Set(action.sources.map(s => s.charStart)).size).toBe(2);
 
+  // Rows 3, 8 and 9 all say 'We agreed to ship.', so they merge into ONE item and its sources are
+  // read per turn. Merging is not incidental here: it is the same normalized key reached from
+  // three different search paths, and keeping them in one item means a port that gets any of the
+  // three wrong changes this one array.
+  const ordering = decisions.find(d => d.text === 'We agreed to ship.')!;
+  const orderingIn = (id: string) =>
+    ordering.sources.filter(s => s.utteranceId === id).map(s => s.charStart);
+
   // Row 3: the FIRST copy carries the whitespace run, so the earliest match must win. A
   // charStart of 20 for the FIRST source would mean the direct match beat the collapsed one -
   // the exact bug this row exists to catch.
-  const ordering = decisions.find(d => d.text === 'We agreed to ship.')!;
-  expect(ordering.sources.map(s => s.charStart)).toEqual([0, 20]);
+  expect(orderingIn('u2')).toEqual([0, 20]);
+
+  // Row 8: the second copy is found by the collapsed scan in a window anchored at the cursor.
+  // [0, 0] means the window was rebuilt from 0 and matched the first copy twice.
+  expect(orderingIn('u7')).toEqual([0, 34]);
+
+  // Row 9: the first copy is reached only because hasCollapsibleRun saw the U+00A0. [19, 19]
+  // means it did not, and the direct hit on the clean second copy won both times.
+  expect(orderingIn('u8')).toEqual([0, 19]);
 
   // Rows 1 and 4 share the collapsed sentence "We agreed to ship on Monday." (row 4 only adds a
   // new prefix; its suffix deliberately matches row 1's), so they land in ONE decision item with
@@ -329,6 +364,17 @@ it('writes the evidence goldens', () => {
   const rocketQuestion = spans.find(i => i.text === '🚀🚀?');
   expect(rocketQuestion).toBeDefined();
   expect(rocketQuestion!.kind).toBe('question');
+  // Row 10, the other side of the same filter: 3 UTF-16 units but 5 bytes, so a byte-counting
+  // port keeps what the TypeScript drops. Together with the row above the unit is pinned from
+  // both directions - too short and too long are both wrong, for different reasons.
+  //
+  // A fixture-health check, like the three-way canary above, and worth being exact about what
+  // catches the port: norm() strips every non-alphanumeric run, so BOTH emoji sentences
+  // normalize to the empty key and a byte-counting port does not produce a second ITEM - it
+  // merges this turn into the '🚀🚀?' question as a second SOURCE. That is what the golden
+  // shows and what test_evidence fails on (sources 2 != 1, and a widened anchor); this line
+  // only asserts the TypeScript itself still drops it.
+  expect(spans.some(i => i.text === '🚀?')).toBe(false);
 
   const decisionDedup = writeEvidenceGolden('evidence_decision_dedup.json', DECISION_DEDUP);
   const dedupDecision = decisionDedup.find(i => i.kind === 'decision')!;

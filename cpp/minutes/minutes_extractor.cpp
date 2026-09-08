@@ -49,19 +49,26 @@ const char* IMPERATIVE_VERBS[] = {
     "draft", "share", "set up", "book", "confirm", "check", "fix", "add", "remove", "ping",
 };
 
-// JS: s.trim(), which strips exactly the characters /\s/ matches — so this walks forward with
-// rules::jsWhitespaceLen rather than scanning back over bytes, which cannot tell the tail of a
-// multi-byte space from the tail of a multi-byte letter.
-std::string trim(const std::string& s) {
-  size_t first = std::string::npos, last_end = 0;
-  for (size_t i = 0; i < s.size();) {
-    const size_t w = rules::jsWhitespaceLen(s, i);
-    if (w) { i += w; continue; }
-    if (first == std::string::npos) first = i;
-    last_end = ++i;
+std::string collapseWhitespace(const std::string& s) {
+  std::string out;
+  bool in_ws = false;
+  for (char c : s) {
+    if (std::isspace(static_cast<unsigned char>(c))) {
+      in_ws = true;
+    } else {
+      if (in_ws && !out.empty()) out += ' ';
+      in_ws = false;
+      out += c;
+    }
   }
-  if (first == std::string::npos) return "";
-  return s.substr(first, last_end - first);
+  return out;
+}
+
+std::string trim(const std::string& s) {
+  size_t a = 0, b = s.size();
+  while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
+  while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) --b;
+  return s.substr(a, b - a);
 }
 
 bool startsWithImperative(const std::string& sentence) {
@@ -79,46 +86,6 @@ bool startsWithImperative(const std::string& sentence) {
 // to the same rules instead of restating them — a second copy of these would be a second
 // thing to keep in step with minutes.ts. Declared in the header; see the note there.
 namespace rules {
-
-// The JavaScript /\s/ set, as UTF-8. See the header for why isspace() is not it.
-//   ASCII: \t \n \v \f \r and space
-//   U+00A0 U+1680 U+2000-U+200A U+2028 U+2029 U+202F U+205F U+3000 U+FEFF
-// No continuation byte (0x80-0xBF) can start any of these sequences, so a caller may advance one
-// byte at a time through non-whitespace without ever matching the interior of another character.
-size_t jsWhitespaceLen(const std::string& s, size_t i) {
-  if (i >= s.size()) return 0;
-  const unsigned char a = static_cast<unsigned char>(s[i]);
-  if (a == 0x20 || (a >= 0x09 && a <= 0x0D)) return 1;
-  if (a < 0x80) return 0;
-  const unsigned char b = (i + 1 < s.size()) ? static_cast<unsigned char>(s[i + 1]) : 0;
-  if (a == 0xC2 && b == 0xA0) return 2;  // U+00A0 no-break space
-  const unsigned char c = (i + 2 < s.size()) ? static_cast<unsigned char>(s[i + 2]) : 0;
-  if (a == 0xE1 && b == 0x9A && c == 0x80) return 3;  // U+1680 ogham space mark
-  // U+2000-U+200A en/em/thin/hair spaces, U+2028 line sep, U+2029 para sep, U+202F narrow nbsp.
-  // NOT U+200B-U+200F: the zero-width characters sit just past the range /\s/ covers.
-  if (a == 0xE2 && b == 0x80 &&
-      ((c >= 0x80 && c <= 0x8A) || c == 0xA8 || c == 0xA9 || c == 0xAF)) return 3;
-  if (a == 0xE2 && b == 0x81 && c == 0x9F) return 3;  // U+205F medium mathematical space
-  if (a == 0xE3 && b == 0x80 && c == 0x80) return 3;  // U+3000 ideographic space
-  if (a == 0xEF && b == 0xBB && c == 0xBF) return 3;  // U+FEFF zero-width no-break space (BOM)
-  return 0;
-}
-
-// JS: s.replace(/\s+/g, ' ').trim(). Every run of whitespace, whatever it was made of, becomes one
-// ASCII space; a leading or trailing run becomes nothing.
-std::string collapseWhitespace(const std::string& s) {
-  std::string out;
-  bool in_ws = false;
-  for (size_t i = 0; i < s.size();) {
-    const size_t w = jsWhitespaceLen(s, i);
-    if (w) { in_ws = true; i += w; continue; }
-    if (in_ws && !out.empty()) out += ' ';
-    in_ws = false;
-    out += s[i];
-    ++i;
-  }
-  return out;
-}
 
 // U+2019 (\xE2\x80\x99) -> ' so the patterns above can use plain apostrophes.
 std::string normalizeApostrophes(const std::string& s) {
@@ -277,7 +244,7 @@ std::string clipUtf16(const std::string& s, size_t units) {
 
 /** JS: t.replace(/\s+/g,' ').trim(), clip on a word boundary, then strip trailing [.;,]+ */
 std::string leadItem(const std::string& text) {
-  std::string t = rules::collapseWhitespace(text);  // == JS replace(/\s+/g,' ').trim()
+  std::string t = collapseWhitespace(text);  // == replace(/\s+/g,' ').trim() for ASCII whitespace
   if (utf16Length(t) > LEAD_ITEM_CHARS) {
     t = clipUtf16(t, LEAD_ITEM_CHARS);
     // JS: replace(/\s+\S*$/, '') — drop the trailing partial word AND the space run before it.

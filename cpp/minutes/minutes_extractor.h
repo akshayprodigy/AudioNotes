@@ -2,7 +2,6 @@
 // C++ parity port of src/pipeline/minutes.ts (same discipline as MinutesExtractor.kt: match the
 // JS exactly, oddities included — see the golden tests in cpp/tests/test_minutes.cpp).
 #pragma once
-#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -38,22 +37,12 @@ std::string composeSummary(const std::vector<std::string>& decisions,
 //
 // Everything here is byte-oriented and expects text that normalizeApostrophes has already been
 // through: the patterns behind isAction/isDecision/... are std::regex over bytes and were written
-// with a plain ASCII apostrophe, so a turn still carrying U+2019 matches nothing.
+// with a plain ASCII apostrophe, so a turn still carrying U+2019 matches nothing. splitSentences
+// carries the matching limitation for whitespace — its collapse step is isspace(), which does not
+// see U+00A0 and the rest of JavaScript's /\s/ — so a caller that needs JS-identical sentences
+// must asciify those first. evidence.cpp does; extractMinutes does not, and that divergence from
+// minutes.ts is tracked as its own task rather than fixed here without a fixture to pin it.
 namespace rules {
-// Byte length of the whitespace character starting at s[i], or 0 if there is not one there.
-//
-// "Whitespace" is JavaScript's /\s/, not C's isspace: it includes U+00A0, U+1680, U+2000-U+200A,
-// U+2028, U+2029, U+202F, U+205F, U+3000 and U+FEFF. A byte-wise isspace() sees none of them, so a
-// turn carrying a non-breaking space — the shape you get from text pasted out of a document —
-// keeps it through splitSentences, and the resulting item text differs from the TypeScript's by
-// one invisible character. cpp/tests/golden/evidence_spans.json has a row that catches exactly
-// that.
-std::size_t jsWhitespaceLen(const std::string& s, std::size_t i);
-
-// JS: s.replace(/\s+/g, ' ').trim(). The needle-flattening in evidence.cpp must be the same
-// function the sentence splitter used, or the two disagree about what a sentence looks like.
-std::string collapseWhitespace(const std::string& s);
-
 std::vector<std::string> splitSentences(const std::string& text);
 std::string normalizeApostrophes(const std::string& s);
 std::string norm(const std::string& s);
