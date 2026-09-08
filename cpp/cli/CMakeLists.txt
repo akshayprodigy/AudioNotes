@@ -238,6 +238,12 @@ audionotes_add_test(test_minutes
   ${CORE}/tests/test_minutes.cpp
   ${CORE}/minutes/minutes_extractor.cpp)
 
+# The provenance half of the same rules: replays the evidence_*.json goldens the TypeScript wrote.
+audionotes_add_test(test_evidence
+  ${CORE}/tests/test_evidence.cpp
+  ${CORE}/minutes/evidence.cpp
+  ${CORE}/minutes/minutes_extractor.cpp)
+
 audionotes_add_test(test_llm_minutes
   ${CORE}/tests/test_llm_minutes.cpp
   ${CORE}/minutes/llm_minutes.cpp

@@ -49,6 +49,77 @@ const char* IMPERATIVE_VERBS[] = {
     "draft", "share", "set up", "book", "confirm", "check", "fix", "add", "remove", "ping",
 };
 
+// JS: s.trim(), which strips exactly the characters /\s/ matches — so this walks forward with
+// rules::jsWhitespaceLen rather than scanning back over bytes, which cannot tell the tail of a
+// multi-byte space from the tail of a multi-byte letter.
+std::string trim(const std::string& s) {
+  size_t first = std::string::npos, last_end = 0;
+  for (size_t i = 0; i < s.size();) {
+    const size_t w = rules::jsWhitespaceLen(s, i);
+    if (w) { i += w; continue; }
+    if (first == std::string::npos) first = i;
+    last_end = ++i;
+  }
+  if (first == std::string::npos) return "";
+  return s.substr(first, last_end - first);
+}
+
+bool startsWithImperative(const std::string& sentence) {
+  std::string first = trim(sentence);
+  for (char& c : first) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  for (const char* v : IMPERATIVE_VERBS) {
+    if (first.rfind(std::string(v) + " ", 0) == 0) return true;
+  }
+  return false;
+}
+
+}  // namespace
+
+// The rules themselves. Named rather than file-private so evidence.cpp can add provenance
+// to the same rules instead of restating them — a second copy of these would be a second
+// thing to keep in step with minutes.ts. Declared in the header; see the note there.
+namespace rules {
+
+// The JavaScript /\s/ set, as UTF-8. See the header for why isspace() is not it.
+//   ASCII: \t \n \v \f \r and space
+//   U+00A0 U+1680 U+2000-U+200A U+2028 U+2029 U+202F U+205F U+3000 U+FEFF
+// No continuation byte (0x80-0xBF) can start any of these sequences, so a caller may advance one
+// byte at a time through non-whitespace without ever matching the interior of another character.
+size_t jsWhitespaceLen(const std::string& s, size_t i) {
+  if (i >= s.size()) return 0;
+  const unsigned char a = static_cast<unsigned char>(s[i]);
+  if (a == 0x20 || (a >= 0x09 && a <= 0x0D)) return 1;
+  if (a < 0x80) return 0;
+  const unsigned char b = (i + 1 < s.size()) ? static_cast<unsigned char>(s[i + 1]) : 0;
+  if (a == 0xC2 && b == 0xA0) return 2;  // U+00A0 no-break space
+  const unsigned char c = (i + 2 < s.size()) ? static_cast<unsigned char>(s[i + 2]) : 0;
+  if (a == 0xE1 && b == 0x9A && c == 0x80) return 3;  // U+1680 ogham space mark
+  // U+2000-U+200A en/em/thin/hair spaces, U+2028 line sep, U+2029 para sep, U+202F narrow nbsp.
+  // NOT U+200B-U+200F: the zero-width characters sit just past the range /\s/ covers.
+  if (a == 0xE2 && b == 0x80 &&
+      ((c >= 0x80 && c <= 0x8A) || c == 0xA8 || c == 0xA9 || c == 0xAF)) return 3;
+  if (a == 0xE2 && b == 0x81 && c == 0x9F) return 3;  // U+205F medium mathematical space
+  if (a == 0xE3 && b == 0x80 && c == 0x80) return 3;  // U+3000 ideographic space
+  if (a == 0xEF && b == 0xBB && c == 0xBF) return 3;  // U+FEFF zero-width no-break space (BOM)
+  return 0;
+}
+
+// JS: s.replace(/\s+/g, ' ').trim(). Every run of whitespace, whatever it was made of, becomes one
+// ASCII space; a leading or trailing run becomes nothing.
+std::string collapseWhitespace(const std::string& s) {
+  std::string out;
+  bool in_ws = false;
+  for (size_t i = 0; i < s.size();) {
+    const size_t w = jsWhitespaceLen(s, i);
+    if (w) { in_ws = true; i += w; continue; }
+    if (in_ws && !out.empty()) out += ' ';
+    in_ws = false;
+    out += s[i];
+    ++i;
+  }
+  return out;
+}
+
 // U+2019 (\xE2\x80\x99) -> ' so the patterns above can use plain apostrophes.
 std::string normalizeApostrophes(const std::string& s) {
   std::string out;
@@ -64,28 +135,6 @@ std::string normalizeApostrophes(const std::string& s) {
     }
   }
   return out;
-}
-
-std::string collapseWhitespace(const std::string& s) {
-  std::string out;
-  bool in_ws = false;
-  for (char c : s) {
-    if (std::isspace(static_cast<unsigned char>(c))) {
-      in_ws = true;
-    } else {
-      if (in_ws && !out.empty()) out += ' ';
-      in_ws = false;
-      out += c;
-    }
-  }
-  return out;
-}
-
-std::string trim(const std::string& s) {
-  size_t a = 0, b = s.size();
-  while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
-  while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) --b;
-  return s.substr(a, b - a);
 }
 
 // JS: text.replace(/\s+/g,' ').split(/(?<=[.!?])\s+/).map(trim).filter(Boolean)
@@ -127,15 +176,6 @@ std::string norm(const std::string& s) {
   return trim(out);
 }
 
-bool startsWithImperative(const std::string& sentence) {
-  std::string first = trim(sentence);
-  for (char& c : first) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-  for (const char* v : IMPERATIVE_VERBS) {
-    if (first.rfind(std::string(v) + " ", 0) == 0) return true;
-  }
-  return false;
-}
-
 std::string detectOwner(const std::string& sentence, const std::string& speaker_name) {
   std::smatch m;
   if (std::regex_search(sentence, m, NAMED_OWNER)) {
@@ -158,6 +198,24 @@ bool isQuestion(const std::string& sentence) {
   if (!t.empty() && t.back() == '?') return true;
   return std::regex_search(t, QUESTION_WORDS) && t.size() < 160;
 }
+
+// JS: DECISION.test(sentence) at the extractMinutes/extractItems call site. A wrapper, not a
+// second copy of the pattern: DECISION itself stays private to this file so there is exactly one
+// place it can drift.
+bool isDecision(const std::string& sentence) { return std::regex_search(sentence, DECISION); }
+
+// JS: sentence.match(DUE) — `*out` receives match[0], the whole matched phrase, which is what
+// both extractors interpolate into "(due ...)".
+bool matchDue(const std::string& sentence, std::string* out) {
+  std::smatch m;
+  if (!std::regex_search(sentence, m, DUE)) return false;
+  if (out) *out = m[0].str();
+  return true;
+}
+
+}  // namespace rules
+
+namespace {
 
 // ---- The free-tier summary ------------------------------------------------------------------
 //
@@ -219,7 +277,7 @@ std::string clipUtf16(const std::string& s, size_t units) {
 
 /** JS: t.replace(/\s+/g,' ').trim(), clip on a word boundary, then strip trailing [.;,]+ */
 std::string leadItem(const std::string& text) {
-  std::string t = collapseWhitespace(text);  // == replace(/\s+/g,' ').trim() for ASCII whitespace
+  std::string t = rules::collapseWhitespace(text);  // == JS replace(/\s+/g,' ').trim()
   if (utf16Length(t) > LEAD_ITEM_CHARS) {
     t = clipUtf16(t, LEAD_ITEM_CHARS);
     // JS: replace(/\s+\S*$/, '') — drop the trailing partial word AND the space run before it.
@@ -301,10 +359,6 @@ std::string composeSummary(const std::vector<std::string>& decisions,
   return out;
 }
 
-namespace {
-
-}  // namespace
-
 std::vector<DraftMinute> extractMinutes(const std::vector<MinuteUtt>& utterances,
                                         const std::vector<MinuteSpk>& speakers) {
   std::unordered_map<std::string, std::string> name_by_id;
@@ -315,7 +369,7 @@ std::vector<DraftMinute> extractMinutes(const std::vector<MinuteUtt>& utterances
 
   auto add = [&seen](std::vector<DraftMinute>& arr, const std::string& kind,
                      const std::string& content) {
-    const std::string key = kind + "|" + norm(content);
+    const std::string key = kind + "|" + rules::norm(content);
     if (content.empty() || seen.count(key)) return;
     seen.insert(key);
     arr.push_back({kind, content, "rule"});
@@ -328,22 +382,22 @@ std::vector<DraftMinute> extractMinutes(const std::vector<MinuteUtt>& utterances
       if (it != name_by_id.end()) speaker_name = it->second;
     }
 
-    for (const auto& sentence : splitSentences(normalizeApostrophes(u.text))) {
+    for (const auto& sentence : rules::splitSentences(rules::normalizeApostrophes(u.text))) {
       if (sentence.size() < 4) continue;
 
-      if (isQuestion(sentence)) {
+      if (rules::isQuestion(sentence)) {
         add(questions, "question", sentence);
         continue;  // a question is not also an action
       }
-      if (std::regex_search(sentence, DECISION)) {
+      if (rules::isDecision(sentence)) {
         add(decisions, "decision", sentence);
         continue;
       }
-      if (isAction(sentence)) {
-        const std::string owner = detectOwner(sentence, speaker_name);
-        std::smatch due;
+      if (rules::isAction(sentence)) {
+        const std::string owner = rules::detectOwner(sentence, speaker_name);
+        std::string due;
         std::string content = sentence + " \xE2\x80\x94 " + owner;  // " — <owner>"
-        if (std::regex_search(sentence, due, DUE)) content += " (due " + due[0].str() + ")";
+        if (rules::matchDue(sentence, &due)) content += " (due " + due + ")";
         add(actions, "action", content);
       }
     }
