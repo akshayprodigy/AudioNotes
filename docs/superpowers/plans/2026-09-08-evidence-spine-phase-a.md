@@ -963,6 +963,33 @@ dangles every pointer. That is silent UB no golden can catch."
 
 ---
 
+## Discovered during Task 5: the schema mirror is five tables wrong
+
+`src/db/schema.ts` calls itself "NOT THE SOURCE OF TRUTH... the readable copy - change both", and
+`AudioDb.SCHEMA` is what actually runs. Hand-keeping has failed. Measured:
+
+| | |
+|---|---|
+| In `AudioDb.SCHEMA`, **absent** from `schema.ts` | `asr_cache`, `edits`, `search_fts`, `tags` |
+| In `schema.ts`, **no longer in Kotlin** | `meetings_fts` |
+
+The stale entry is the worse half. `meetings_fts` was replaced by `search_fts`, which indexes
+titles and minutes as well as utterances - so a reader trusting the mirror would write a query
+against a table that does not exist, or would conclude the app cannot search minutes when it can.
+And `edits` being absent means the file gives no hint that user corrections exist at all.
+
+**The follow-up is a guard, not a one-time fix.** Correcting the file today leaves the next
+divergence to be found by whoever it misleads. Every other convention in this repo that mattered
+ended up with a build check behind it - `check-network-egress.py`, `check-diar-constants.py`,
+`check-engine-encapsulation.py`, `check-live-transcript.py`, `check-prompt-fencing.py` - each added
+after someone concluded a comment was not enough. `scripts/check-schema-mirror.py`, comparing table
+and column names across the two files and failing the build on a difference, is the same shape.
+
+Its own task, with the drift above as its first fixture: the check must fail on today's tree before
+the tree is corrected, or there is no evidence it works.
+
+---
+
 ## Discovered during Task 4: an illegal JNI pattern at twelve sites
 
 `cpp/jni/audionotes_jni.cpp` catches, calls `throwRuntime(env, ...)`, and then calls a JNI
