@@ -105,6 +105,29 @@ struct DraftItem {
 std::pair<int32_t, int32_t> sentenceSpan(const std::string& text, const std::string& sentence,
                                          size_t from = 0, size_t* next_from = nullptr);
 
+// The five parallel arrays the JNI boundary carries, zipped into turns.
+//
+// This exists so that "which array feeds which field" is host-testable. In the JNI function it was
+// five subscripts inside a loop that no test on this machine could reach, and a transposition
+// there — texts into speaker_id, ends into starts — compiles, runs, and produces plausible
+// nonsense. Here a test can simply call it.
+//
+// ALL FIVE must be the same length; a mismatch throws std::invalid_argument. That is a deliberate
+// change from tolerating a short array with a default. Every read was already bounds-guarded, so
+// the old behaviour was never a bad access — it was worse than that: a short `starts_ms` anchored
+// those items at 0, and an item said forty minutes in would send the player to the top of the
+// meeting with nothing anywhere reporting a problem. The caller builds all five from one list, so
+// a mismatch is a programming error and should say so.
+//
+// The speaker arrays are deliberately NOT held to this. A short spk_names costs an owner name —
+// "Unassigned" instead of "Ana" — which is visibly wrong in the item text itself, and no amount of
+// it can point a seek at the wrong second.
+std::vector<TimedUtt> zipTurns(const std::vector<std::string>& ids,
+                               const std::vector<int64_t>& starts_ms,
+                               const std::vector<int64_t>& ends_ms,
+                               const std::vector<std::string>& speaker_ids,
+                               const std::vector<std::string>& texts);
+
 std::vector<DraftItem> extractItems(const std::vector<TimedUtt>& utterances,
                                     const std::vector<MinuteSpk>& speakers = {});
 

@@ -164,34 +164,54 @@ class EvidenceParityTest {
   /**
    * The timings, on their own and away from the goldens.
    *
-   * The goldens all carry ascending, distinct startMs and endMs, so a boundary that swapped the two
-   * jlongArrays would still produce plausible-looking output there. Here the anchor is checked
-   * against values chosen so that a swap, a truncation to int, or an off-by-one index cannot
-   * survive: the second turn's END is what the anchor of a repeated item must take.
+   * Every golden carries ascending, distinct startMs and endMs, so a boundary that swapped the two
+   * jlongArrays would still produce plausible-looking output there. This checks the anchors
+   * directly instead.
    *
-   * The expected strings and numbers were produced by running audionotes::extractItems over these
-   * exact inputs on the host, so a failure is the marshalling and not a rules change.
+   * The third turn sits ABOVE 2^31. That is deliberate and the first two turns cannot replace it:
+   * 0, 4000 and 8000 all fit in an int, so an `(int)` cast anywhere on the timing path would
+   * preserve them exactly and this test would pass while a 25-day-long value silently wrapped.
+   * 4,000,000,000 does not fit, and jlong -> int64_t is the only conversion that keeps it.
+   *
+   * Every expected string and number here was produced by running audionotes::extractItems over
+   * these exact inputs on the host, so a failure is the marshalling and not a rules change.
    */
   @Test fun anchors_survive_the_boundary() {
     ensureCore()
     val items = Minutes.extractItems(
-      ids = arrayOf("u0", "u1"),
-      startsMs = longArrayOf(0L, 4000L),
-      endsMs = longArrayOf(4000L, 8000L),
-      texts = arrayOf("We agreed to ship on Monday.", "I'll send the report by Friday."),
-      speakerIds = arrayOf("S0", "S0"),
+      ids = arrayOf("u0", "u1", "u2"),
+      startsMs = longArrayOf(0L, 4000L, 4_000_000_000L),
+      endsMs = longArrayOf(4000L, 8000L, 4_000_004_000L),
+      texts = arrayOf(
+        "We agreed to ship on Monday.",
+        "I'll send the report by Friday.",
+        "We decided to postpone the launch.",
+      ),
+      speakerIds = arrayOf("S0", "S0", "S0"),
       spkIds = arrayOf("S0"),
       spkNames = arrayOf("Speaker 1"),
     )
 
-    val decision = items.first { it.kind == "decision" }
-    assertEquals("We agreed to ship on Monday.", decision.text)
-    assertEquals(0L, decision.anchorStartMs)
-    assertEquals(4000L, decision.anchorEndMs)
-    assertEquals(1, decision.sources.size)
-    assertEquals("u0", decision.sources[0].utteranceId)
-    assertEquals(0, decision.sources[0].charStart)
-    assertEquals(28, decision.sources[0].charEnd)
+    // Decisions come first and in transcript order, then actions — so u2's decision is items[1],
+    // not the last element.
+    val decisions = items.filter { it.kind == "decision" }
+    assertEquals(2, decisions.size)
+
+    assertEquals("We agreed to ship on Monday.", decisions[0].text)
+    assertEquals(0L, decisions[0].anchorStartMs)
+    assertEquals(4000L, decisions[0].anchorEndMs)
+    assertEquals(1, decisions[0].sources.size)
+    assertEquals("u0", decisions[0].sources[0].utteranceId)
+    assertEquals(0, decisions[0].sources[0].charStart)
+    assertEquals(28, decisions[0].sources[0].charEnd)
+
+    // The one an int cannot hold. 4_000_000_000 truncates to -294967296.
+    assertEquals("We decided to postpone the launch.", decisions[1].text)
+    assertEquals(4_000_000_000L, decisions[1].anchorStartMs)
+    assertEquals(4_000_004_000L, decisions[1].anchorEndMs)
+    assertEquals("u2", decisions[1].sources[0].utteranceId)
+    assertEquals(4_000_000_000L, decisions[1].sources[0].startMs)
+    assertEquals(4_000_004_000L, decisions[1].sources[0].endMs)
 
     val action = items.first { it.kind == "action" }
     assertEquals("I'll send the report by Friday. — Speaker 1 (due by Friday)", action.text)
@@ -201,6 +221,43 @@ class EvidenceParityTest {
     assertEquals(4000L, action.sources[0].startMs)
     assertEquals(8000L, action.sources[0].endMs)
     assertEquals(31, action.sources[0].charEnd)
+  }
+
+  /**
+   * The local reference table, which is the one thing here that no host check can see.
+   *
+   * nativeItems reads its string arrays through jstrArray, which deletes each local reference as
+   * it goes. Inlining GetObjectArrayElement back into the loop — the obvious-looking edit, and
+   * what the original plan listed — leaves one live local reference per turn against a table that
+   * caps at 512, and ART aborts the PROCESS. Every test in this repo would still pass: the largest
+   * golden is 85 turns.
+   *
+   * 2000 turns is comfortably past that cliff, and the run costs about 30 ms on the host core. It
+   * also pushes a ~4 KB payload through NewStringUTF, two orders of magnitude larger than any
+   * golden, which is the only place the return leg is exercised at size.
+   *
+   * The expectation is the decisions cap: 2000 distinct decisions truncate to 20.
+   */
+  @Test fun a_long_meeting_does_not_exhaust_the_local_reference_table() {
+    ensureCore()
+    val n = 2000
+    val items = Minutes.extractItems(
+      ids = Array(n) { "u$it" },
+      startsMs = LongArray(n) { it * 4000L },
+      endsMs = LongArray(n) { it * 4000L + 4000L },
+      texts = Array(n) { "We agreed to ship on Monday number $it." },
+      speakerIds = Array(n) { "S0" },
+      spkIds = arrayOf("S0"),
+      spkNames = arrayOf("Speaker 1"),
+    )
+    assertEquals(20, items.size)
+    // Not just the count: the first and last surviving decisions, so a truncation that kept the
+    // wrong twenty is caught too.
+    assertEquals("We agreed to ship on Monday number 0.", items.first().text)
+    assertEquals(0L, items.first().anchorStartMs)
+    assertEquals("We agreed to ship on Monday number 19.", items.last().text)
+    assertEquals(76_000L, items.last().anchorStartMs)
+    assertEquals(80_000L, items.last().anchorEndMs)
   }
 
   /**

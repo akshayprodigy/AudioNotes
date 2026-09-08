@@ -415,8 +415,11 @@ dependencies {
     // this, any test that parses JSON off the JNI boundary would have to be an instrumentation
     // test and would need a device — which is the exact split Minutes.parseItems exists to avoid.
     //
-    // This is the reference implementation, not Android's Harmony-derived one. They agree on
-    // well-formed input, which is all that crosses this boundary; the tests deliberately assert
-    // nothing that depends on the two disagreeing (coercions, duplicate keys, lenient syntax).
-    testImplementation("org.json:json:20240303")
+    // ANDROID'S implementation, not org.json:json. This artifact is the AOSP/Harmony source
+    // published to Maven Central, so ItemsJsonTest exercises the parser the app actually runs.
+    // The two are not interchangeable: they agree on well-formed input, which is all itemsToJson
+    // emits, but they diverge on number-to-string coercion, JSON null becoming the string "null",
+    // duplicate keys, octal and hex integer literals, and raw newlines inside strings. Testing
+    // against the reference implementation would have left every one of those device-only.
+    testImplementation("com.vaadin.external.google:android-json:0.0.20131108.vaadin1")
 }

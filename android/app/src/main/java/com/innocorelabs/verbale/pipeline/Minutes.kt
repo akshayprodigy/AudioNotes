@@ -101,8 +101,23 @@ object Minutes {
     speakerIds: Array<String>,
     spkIds: Array<String>,
     spkNames: Array<String>,
-  ): List<Item> =
-    parseItems(NativeBridge.nativeItems(ids, startsMs, endsMs, texts, speakerIds, spkIds, spkNames))
+  ): List<Item> {
+    // Checked HERE as well as in zipTurns on the far side, because this one runs before the native
+    // call and is therefore testable without a device. A mismatch is a programming error: the
+    // caller builds all five from one list. It is worth failing loudly because the quiet version is
+    // nasty — surplus turns would anchor at 0, and an item said forty minutes in would send the
+    // player to the top of the meeting with nothing reporting a problem.
+    require(
+      ids.size == texts.size && startsMs.size == texts.size && endsMs.size == texts.size &&
+        speakerIds.size == texts.size,
+    ) {
+      "extractItems: parallel arrays disagree — ids=${ids.size} startsMs=${startsMs.size} " +
+        "endsMs=${endsMs.size} speakerIds=${speakerIds.size} texts=${texts.size}"
+    }
+    return parseItems(
+      NativeBridge.nativeItems(ids, startsMs, endsMs, texts, speakerIds, spkIds, spkNames),
+    )
+  }
 
   /**
    * The parse, split out of [extractItems] so it can be tested on the JVM with a literal string and
@@ -110,9 +125,16 @@ object Minutes {
    * `audionotes::itemsToJson` emits for the goldens. What is left needing a phone is then the JNI
    * marshalling alone, which is where this project has broken silently before.
    *
-   * Strict on purpose: a missing or mistyped field throws rather than defaulting. Anything wrong
-   * here means the boundary is broken, and a quietly empty item list would look exactly like a
-   * meeting with nothing in it.
+   * What this actually guarantees, which is narrower than "strict": a MISSING field throws, so a
+   * truncated or renamed payload cannot become a quietly empty item list that looks exactly like a
+   * meeting with nothing in it. A MISTYPED field does NOT throw. Android's org.json is
+   * Harmony-derived and coerces — `"kind": 42` arrives as "42", a JSON null as the four characters
+   * "null" — where the reference implementation would reject both.
+   *
+   * Neither is reachable from `itemsToJson`, which writes a string for every string field, so this
+   * is a property of the parser rather than a hole. It is written down because the two
+   * implementations differ and the unit tests run against Android's; see
+   * androidsParserCoercesWhereTheReferenceImplementationThrows in ItemsJsonTest.
    */
   internal fun parseItems(json: String): List<Item> {
     val arr = JSONArray(json)

@@ -29,6 +29,33 @@ static json load(const std::string& dir, const char* name) {
   return json::parse(f);
 }
 
+// True when `s` violates NewStringUTF's precondition, which is MODIFIED UTF-8 — not standard
+// UTF-8. Three things are illegal in it and legal in the standard encoding: a four-byte sequence
+// (an astral character must be a CESU-8 surrogate pair), a raw NUL byte (U+0000 must be C0 80),
+// and any malformed or truncated sequence.
+//
+// This is the return leg. runCesu8 proves the SPANS survive the encoding the boundary delivers;
+// this proves the JSON built from that same input is a string ART will accept. Handing
+// NewStringUTF a byte sequence it does not accept is undefined — in practice a JNI abort or a
+// mangled string — and no test that feeds four-byte UTF-8 can see it.
+static bool badModifiedUtf8(const std::string& s) {
+  for (size_t i = 0; i < s.size();) {
+    const unsigned char c = static_cast<unsigned char>(s[i]);
+    if (c == 0x00) return true;              // must have been encoded C0 80
+    if (c < 0x80) { ++i; continue; }
+    if (c >= 0xF0) return true;              // a four-byte sequence: standard UTF-8, not modified
+    if (c < 0xC0) return true;               // a continuation byte where a lead belongs
+    const size_t need = (c >= 0xE0) ? 2 : 1;
+    if (i + need >= s.size()) return true;   // truncated
+    for (size_t k = 1; k <= need; ++k) {
+      const unsigned char cc = static_cast<unsigned char>(s[i + k]);
+      if (cc < 0x80 || cc > 0xBF) return true;
+    }
+    i += need + 1;
+  }
+  return false;
+}
+
 static void runGolden(const std::string& dir, const char* name) {
   json g = load(dir, name);
   std::vector<audionotes::TimedUtt> utts;
@@ -142,6 +169,14 @@ static void runJsonEscaping() {
   // The em dash and the astral emoji must survive as themselves, not as \u escapes of the bytes.
   CHECK(dumped.find("\xE2\x80\x94") != std::string::npos, "escaping: em dash was mangled");
   CHECK(dumped.find("\xF0\x9F\x9A\x80") != std::string::npos, "escaping: astral char was mangled");
+
+  // ...and this payload is deliberately NOT valid modified UTF-8, which is what makes the check in
+  // runCesu8 mean something. The text above is hand-built with a FOUR-byte astral character and a
+  // raw control byte — an encoding that cannot arrive from GetStringUTFChars. If badModifiedUtf8
+  // returned false here it would be returning false for everything, and the return-leg assertion
+  // would be decorative.
+  CHECK(badModifiedUtf8(dumped),
+        "escaping: badModifiedUtf8 accepted four-byte UTF-8, so it proves nothing elsewhere");
 }
 
 // Re-encode every astral character as a CESU-8 surrogate pair: the 4-byte UTF-8 sequence becomes
@@ -179,6 +214,49 @@ static std::string toCesu8(const std::string& in) {
   return out;
 }
 
+// The inverse: fold CESU-8 surrogate pairs back into four-byte UTF-8.
+//
+// This models what NewStringUTF DOES. The payload that crosses the boundary is CESU-8 bytes, and
+// those bytes are never parsed as bytes by anything: ART decodes them into a Java String, where a
+// surrogate pair is simply an astral character again, and Android's JSON parser is handed that
+// String. So the right question is not "are these bytes valid UTF-8 JSON" — they are not, and
+// nlohmann rejects them, correctly — but "is the STRING they decode to valid JSON". fromCesu8 is
+// how the test asks that.
+static std::string fromCesu8(const std::string& in) {
+  std::string out;
+  out.reserve(in.size());
+  for (size_t i = 0; i < in.size();) {
+    const unsigned char c = static_cast<unsigned char>(in[i]);
+    const bool pair =
+        c == 0xED && i + 5 < in.size() &&
+        static_cast<unsigned char>(in[i + 1]) >= 0xA0 &&
+        static_cast<unsigned char>(in[i + 1]) <= 0xAF &&           // high surrogate
+        static_cast<unsigned char>(in[i + 3]) == 0xED &&
+        static_cast<unsigned char>(in[i + 4]) >= 0xB0 &&
+        static_cast<unsigned char>(in[i + 4]) <= 0xBF;             // low surrogate
+    if (!pair) {
+      size_t adv = 1;
+      if (c >= 0xF0) adv = 4;
+      else if (c >= 0xE0) adv = 3;
+      else if (c >= 0xC0) adv = 2;
+      out.append(in, i, adv);
+      i += adv;
+      continue;
+    }
+    const uint32_t hi = 0xD000u | ((static_cast<unsigned char>(in[i + 1]) & 0x3Fu) << 6) |
+                        (static_cast<unsigned char>(in[i + 2]) & 0x3Fu);
+    const uint32_t lo = 0xD000u | ((static_cast<unsigned char>(in[i + 4]) & 0x3Fu) << 6) |
+                        (static_cast<unsigned char>(in[i + 5]) & 0x3Fu);
+    const uint32_t cp = 0x10000u + ((hi - 0xD800u) << 10) + (lo - 0xDC00u);
+    out += static_cast<char>(0xF0u | (cp >> 18));
+    out += static_cast<char>(0x80u | ((cp >> 12) & 0x3Fu));
+    out += static_cast<char>(0x80u | ((cp >> 6) & 0x3Fu));
+    out += static_cast<char>(0x80u | (cp & 0x3Fu));
+    i += 6;
+  }
+  return out;
+}
+
 // The JNI boundary hands C++ MODIFIED UTF-8, not standard UTF-8: GetStringUTFChars encodes an
 // astral character as a CESU-8 surrogate pair, six bytes, never the four a UTF-8 encoder writes.
 // Every golden is produced by Node and read by nlohmann, so every fixture in this file feeds the
@@ -204,6 +282,10 @@ static void runCesu8(const std::string& dir, const char* name) {
   CHECK(toCesu8("Priya said \xE2\x80\x9Cship it\xE2\x80\x9D.") ==
             "Priya said \xE2\x80\x9Cship it\xE2\x80\x9D.",
         "toCesu8 disturbed a BMP-only string");
+  // fromCesu8 must undo toCesu8 exactly, or the return-leg check below proves nothing.
+  for (const char* t : {"\xF0\x9F\x9A\x80", "a\xF0\x9F\x9A\x80" "b\xF0\x9F\x9A\x80",
+                        "Priya said \xE2\x80\x9Cship it\xE2\x80\x9D \xF0\x9F\x9A\x80.", "plain ascii", ""})
+    CHECK(fromCesu8(toCesu8(t)) == std::string(t), "fromCesu8(toCesu8()) is not the identity on %s", t);
 
   json g = load(dir, name);
   std::vector<audionotes::TimedUtt> utts;
@@ -216,9 +298,31 @@ static void runCesu8(const std::string& dir, const char* name) {
                     toCesu8(u["text"].get<std::string>())});
   std::vector<audionotes::MinuteSpk> spks;
   for (const auto& s : g["input"]["speakers"])
-    spks.push_back({s["id"].get<std::string>(), s["displayName"].get<std::string>()});
+    // Display names are transcoded too: detectOwner puts a speaker's name into an action's TEXT,
+    // so a CESU-8 name reaches the payload by a route the text array never takes. No fixture here
+    // has a non-ASCII speaker name — toCesu8 is the identity on all of them — so this guards the
+    // path rather than exercising it. runCesu8Owner below is what exercises it.
+    spks.push_back({s["id"].get<std::string>(), toCesu8(s["displayName"].get<std::string>())});
 
   auto got = audionotes::extractItems(utts, spks);
+
+  // The return leg, in two parts, and they are different questions.
+  //
+  // First: the bytes must satisfy NewStringUTF, which wants modified UTF-8. Second: the STRING
+  // those bytes decode to must be valid JSON, because that is what Android's parser is handed —
+  // never the bytes. Parsing `dumped` directly would be the wrong test and fails: nlohmann is a
+  // standard-UTF-8 parser and a surrogate half is ill-formed UTF-8 to it, correctly.
+  const std::string dumped = audionotes::itemsToJson(got);
+  CHECK(!badModifiedUtf8(dumped), "cesu8 %s: itemsToJson output is not modified UTF-8, so "
+                                  "NewStringUTF's precondition is violated", name);
+  try {
+    const json reparsed = json::parse(fromCesu8(dumped));
+    CHECK(reparsed.size() == got.size(), "cesu8 %s: decoded payload has %zu items, not %zu", name,
+          reparsed.size(), got.size());
+  } catch (const std::exception& e) {
+    CHECK(false, "cesu8 %s: the decoded payload is not valid JSON: %s", name, e.what());
+  }
+
   const auto& want = g["output"];
   CHECK(got.size() == want.size(), "cesu8 %s: size %zu != %zu", name, got.size(), want.size());
   for (size_t i = 0; i < got.size() && i < want.size(); ++i) {
@@ -259,6 +363,89 @@ static void runCesu8(const std::string& dir, const char* name) {
 static void runJsonEmpty() {
   CHECK(audionotes::itemsToJson({}) == "[]", "empty: '%s' != '[]'",
         audionotes::itemsToJson({}).c_str());
+}
+
+// A CESU-8 speaker name reaching item TEXT through detectOwner.
+//
+// runCesu8 transcodes display names but no fixture has a non-ASCII one, so this is the case that
+// actually walks that route: an action with no named owner takes the speaker's name, and the name
+// lands in the item's text where the turn's own bytes never appear. The span is measured against
+// the TURN, which has no astral character in it, so char_start/char_end must be untouched while
+// the text carries six bytes of surrogate pair.
+static void runCesu8Owner() {
+  std::vector<audionotes::TimedUtt> utts = {
+      {"u0", 0, 4000, "S0", "I'll send the report by Friday."}};
+  std::vector<audionotes::MinuteSpk> spks = {{"S0", toCesu8("Ana \xF0\x9F\x9A\x80")}};
+
+  auto got = audionotes::extractItems(utts, spks);
+  CHECK(got.size() == 1, "cesu8 owner: %zu items", got.size());
+  if (got.size() != 1) return;
+  CHECK(got[0].text == toCesu8("I'll send the report by Friday. \xE2\x80\x94 Ana \xF0\x9F\x9A\x80 (due by Friday)"),
+        "cesu8 owner: text\n  got: %s", got[0].text.c_str());
+  CHECK(got[0].sources.size() == 1 && got[0].sources[0].char_start == 0 &&
+            got[0].sources[0].char_end == 31,
+        "cesu8 owner: the span must describe the TURN, which has no astral character");
+
+  const std::string dumped = audionotes::itemsToJson(got);
+  CHECK(!badModifiedUtf8(dumped), "cesu8 owner: itemsToJson output is not modified UTF-8");
+  json parsed;
+  try {
+    parsed = json::parse(fromCesu8(dumped));
+  } catch (const std::exception& e) {
+    CHECK(false, "cesu8 owner: the decoded payload is not valid JSON: %s", e.what());
+    return;
+  }
+  // Decoded, the name is the astral character again — which is what a Kotlin caller will see.
+  CHECK(parsed[0]["text"].get<std::string>() ==
+            "I'll send the report by Friday. \xE2\x80\x94 Ana \xF0\x9F\x9A\x80 (due by Friday)",
+        "cesu8 owner: text did not survive the round trip\n  got: %s",
+        parsed[0]["text"].get<std::string>().c_str());
+}
+
+// zipTurns: the field mapping and the length policy, both of which used to live inside the JNI
+// function where nothing on this machine could reach them.
+static void runZipTurns() {
+  using audionotes::zipTurns;
+  const std::vector<std::string> ids = {"a", "b"};
+  const std::vector<int64_t> starts = {10, 30};
+  const std::vector<int64_t> ends = {20, 40};
+  const std::vector<std::string> spk = {"S0", ""};
+  const std::vector<std::string> txt = {"one", "two"};
+
+  const auto got = zipTurns(ids, starts, ends, spk, txt);
+  CHECK(got.size() == 2, "zipTurns: %zu turns", got.size());
+  if (got.size() != 2) return;
+  // Every field of every turn, so a transposition cannot hide behind a matching type. id and
+  // speaker_id and text are all std::string; starts and ends are both int64_t.
+  CHECK(got[0].id == "a" && got[0].start_ms == 10 && got[0].end_ms == 20 &&
+            got[0].speaker_id == "S0" && got[0].text == "one",
+        "zipTurns[0] mapped wrong: id=%s start=%lld end=%lld spk=%s text=%s", got[0].id.c_str(),
+        (long long)got[0].start_ms, (long long)got[0].end_ms, got[0].speaker_id.c_str(),
+        got[0].text.c_str());
+  CHECK(got[1].id == "b" && got[1].start_ms == 30 && got[1].end_ms == 40 &&
+            got[1].speaker_id.empty() && got[1].text == "two",
+        "zipTurns[1] mapped wrong");
+
+  // Timestamps above 2^31, which is the whole reason these are int64_t. A truncation to int
+  // anywhere on this path turns a 68-minute meeting into a negative offset.
+  const auto big = zipTurns({"a"}, {4000000000LL}, {4000004000LL}, {"S0"}, {"t"});
+  CHECK(big.size() == 1 && big[0].start_ms == 4000000000LL && big[0].end_ms == 4000004000LL,
+        "zipTurns: a timestamp above 2^31 did not survive");
+
+  // A short array throws rather than anchoring the surplus turns at 0. Silently answering 0 is
+  // what sends a player to the top of the meeting for something said forty minutes in.
+  auto throws = [](const char* what, auto&& fn) {
+    bool threw = false;
+    try { fn(); } catch (const std::invalid_argument&) { threw = true; }
+    CHECK(threw, "zipTurns: %s did not throw", what);
+  };
+  throws("short starts", [&] { zipTurns(ids, {10}, ends, spk, txt); });
+  throws("short ends", [&] { zipTurns(ids, starts, {20}, spk, txt); });
+  throws("short ids", [&] { zipTurns({"a"}, starts, ends, spk, txt); });
+  throws("short speakerIds", [&] { zipTurns(ids, starts, ends, {"S0"}, txt); });
+  throws("long texts", [&] { zipTurns(ids, starts, ends, spk, {"one", "two", "three"}); });
+  // All empty is the empty meeting, not an error.
+  CHECK(zipTurns({}, {}, {}, {}, {}).empty(), "zipTurns: the empty meeting must not throw");
 }
 
 // The exported surface, called directly rather than through extractItems.
@@ -327,6 +514,8 @@ int main(int argc, char** argv) {
   // evidence_meeting is the control, where toCesu8 is the identity and the run must be unchanged.
   runCesu8(dir, "evidence_spans.json");
   runCesu8(dir, "evidence_meeting.json");
+  runCesu8Owner();
+  runZipTurns();
   if (failures) { std::fprintf(stderr, "%d failure(s)\n", failures); return 1; }
   std::printf("test_evidence: OK\n");
   return 0;

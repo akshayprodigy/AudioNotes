@@ -661,23 +661,14 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeItems(
     // leave one local reference per turn alive for the whole call, and the local reference table
     // is 512 entries. A meeting long enough to matter would abort the process, on a device, with
     // nothing on the host able to see it.
-    std::vector<int64_t> starts = jlongVec(env, jStartsMs);
-    std::vector<int64_t> ends = jlongVec(env, jEndsMs);
+    const std::vector<int64_t> starts = jlongVec(env, jStartsMs);
+    const std::vector<int64_t> ends = jlongVec(env, jEndsMs);
 
-    std::vector<audionotes::TimedUtt> utts;
-    utts.reserve(texts.size());
-    for (size_t i = 0; i < texts.size(); ++i) {
-      // Every array is read defensively at its own length. Kotlin builds all five from the same
-      // list so they agree, but a shorter timing array here would be an out-of-bounds read rather
-      // than a wrong answer, and this boundary is one no host test can reach.
-      utts.push_back({i < ids.size() ? ids[i] : std::string(),
-                      i < starts.size() ? starts[i] : 0,
-                      i < ends.size() ? ends[i] : 0,
-                      // "" is how an unassigned speaker crosses this boundary; Kotlin cannot pass
-                      // null through Array<String>. extractItems already treats an empty id as
-                      // unassigned, which is what evidence_unassigned.json pins.
-                      i < speaker_ids.size() ? speaker_ids[i] : std::string(), texts[i]});
-    }
+    // The field mapping and the length policy live in evidence.cpp, where a host test can reach
+    // them: a transposition here — ends into starts, texts into speaker_id — compiles and returns
+    // plausible nonsense, and nothing on this side of the boundary could catch it. zipTurns throws
+    // if the five arrays disagree rather than anchoring the surplus turns at 0.
+    const auto utts = audionotes::zipTurns(ids, starts, ends, speaker_ids, texts);
 
     std::vector<audionotes::MinuteSpk> spks;
     spks.reserve(spk_ids.size());
@@ -688,7 +679,12 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeItems(
     json = audionotes::itemsToJson(audionotes::extractItems(utts, spks));
   } catch (const std::exception& e) {
     throwRuntime(env, e.what());
-    return env->NewStringUTF("[]");
+    // nullptr, NOT NewStringUTF("[]"). Only a short list of JNI calls is legal with an exception
+    // pending and NewStringUTF is not one of them; under CheckJNI — on by default on the emulators
+    // where connectedDebugAndroidTest usually runs — ART aborts the process with "JNI
+    // NewStringUTF called with pending exception". Kotlin never sees the return value anyway: the
+    // pending exception is thrown at the call site the moment this returns.
+    return nullptr;
   }
   return env->NewStringUTF(json.c_str());
 }

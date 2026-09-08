@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <cstdio>
 #include <optional>
+#include <stdexcept>
+#include <string>
 #include <unordered_map>
 
 namespace audionotes {
@@ -229,6 +231,31 @@ std::pair<int32_t, int32_t> sentenceSpan(const std::string& text, const std::str
   // Found nowhere at all, or the precondition was violated. A slightly wide anchor is honest; a
   // missing one is not.
   return finish(0, text.size());
+}
+
+std::vector<TimedUtt> zipTurns(const std::vector<std::string>& ids,
+                               const std::vector<int64_t>& starts_ms,
+                               const std::vector<int64_t>& ends_ms,
+                               const std::vector<std::string>& speaker_ids,
+                               const std::vector<std::string>& texts) {
+  const size_t n = texts.size();
+  if (ids.size() != n || starts_ms.size() != n || ends_ms.size() != n ||
+      speaker_ids.size() != n) {
+    throw std::invalid_argument(
+        "zipTurns: parallel arrays disagree — ids=" + std::to_string(ids.size()) +
+        " starts=" + std::to_string(starts_ms.size()) +
+        " ends=" + std::to_string(ends_ms.size()) +
+        " speakerIds=" + std::to_string(speaker_ids.size()) +
+        " texts=" + std::to_string(n));
+  }
+  std::vector<TimedUtt> out;
+  out.reserve(n);
+  for (size_t i = 0; i < n; ++i) {
+    // speaker_ids[i] is "" for an unassigned turn: an Array<String> cannot carry a null, and
+    // extractItems treats an empty id exactly as the TypeScript treats null.
+    out.push_back({ids[i], starts_ms[i], ends_ms[i], speaker_ids[i], texts[i]});
+  }
+  return out;
 }
 
 std::vector<DraftItem> extractItems(const std::vector<TimedUtt>& utterances,

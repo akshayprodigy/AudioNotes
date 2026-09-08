@@ -1,6 +1,7 @@
 package com.innocorelabs.verbale.pipeline
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -76,6 +77,70 @@ class ItemsJsonTest {
     assertEquals(0, items[0].sources[0].charStart)
     assertEquals(32, items[0].sources[1].charStart)
     assertEquals(63, items[0].sources[1].charEnd)
+  }
+
+  /**
+   * The length guard, which is testable here precisely because it runs BEFORE the native call.
+   *
+   * Nothing else about `extractItems` can be reached on the JVM — the next statement is a JNI call
+   * that would throw UnsatisfiedLinkError — and that is the point: the check is placed where a
+   * machine with no phone attached can still prove it fires. `zipTurns` repeats it on the far side
+   * for callers that are not this one.
+   *
+   * The failure it prevents is quiet, not loud: every read in the native layer is bounds-guarded,
+   * so a short array was never a bad access. It anchored the surplus turns at 0, which is a seek
+   * to the top of the meeting for something said forty minutes in, with nothing reporting a fault.
+   */
+  @Test fun mismatchedArrayLengthsAreRejectedBeforeTheNativeCall() {
+    val bothIds = arrayOf("u0", "u1")
+    val texts = arrayOf("a", "b")
+    val spk = arrayOf("S0", "S0")
+    fun call(startsMs: LongArray, endsMs: LongArray, ids: Array<String> = bothIds) =
+      Minutes.extractItems(ids, startsMs, endsMs, texts, spk, arrayOf("S0"), arrayOf("Speaker 1"))
+
+    // Each array short in turn. IllegalArgumentException, never UnsatisfiedLinkError — the latter
+    // would mean the guard ran too late and the native call had already been made.
+    for (case in listOf<() -> Unit>(
+      { call(longArrayOf(0L), longArrayOf(1L, 2L)) },
+      { call(longArrayOf(0L, 1L), longArrayOf(2L)) },
+      { call(longArrayOf(0L, 1L), longArrayOf(2L, 3L), ids = arrayOf("u0")) },
+    )) {
+      val thrown = try {
+        case(); null
+      } catch (e: Throwable) { e }
+      assertNotNull("a mismatched call did not throw at all", thrown)
+      assertTrue(
+        "expected IllegalArgumentException, got ${thrown!!::class.java.name}: ${thrown.message}",
+        thrown is IllegalArgumentException,
+      )
+    }
+  }
+
+  /**
+   * What the parse actually guarantees on a device, asserted rather than assumed.
+   *
+   * Android's org.json is Harmony-derived and COERCES where the reference implementation throws.
+   * `parseItems` is therefore not "strict" in the sense of rejecting a mistyped field — a numeric
+   * `kind` arrives as its decimal string, and a JSON null arrives as the four characters "null".
+   * Neither is reachable from `itemsToJson`, which only ever writes strings for those fields, so
+   * this is a statement about the parser and not a defect.
+   *
+   * It is also the check that this test is running against ANDROID'S parser at all: every
+   * assertion below throws a JSONException under org.json:json, so if the dependency in
+   * build.gradle is ever swapped back, this fails immediately instead of quietly testing the wrong
+   * implementation.
+   */
+  @Test fun androidsParserCoercesWhereTheReferenceImplementationThrows() {
+    val coerced = Minutes.parseItems(
+      """[{"kind":42,"text":"t","sources":[],"anchorStartMs":"7","anchorEndMs":9}]""",
+    ).single()
+    assertEquals("42", coerced.kind)      // a number read as a String
+    assertEquals(7L, coerced.anchorStartMs)  // a String read as a Long
+
+    val nulled = Minutes.parseItems(
+      """[{"kind":"decision","text":null,"sources":[],"anchorStartMs":0,"anchorEndMs":0}]""",
+    ).single()
+    assertEquals("null", nulled.text)     // JSON null, not a Kotlin null and not an exception
   }
 
   @Test fun anEmptyMeetingIsAnEmptyList() {
