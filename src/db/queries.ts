@@ -186,9 +186,9 @@ export const db = {
    *
    * A meeting recorded before items existed has none here until db.ensureItems has run for it.
    *
-   * No caller yet: the meeting tabs that render items are Task 10's, and this is the read waiting
-   * for them. Said out loud because an unread query is the mirror of the uncalled migration this
-   * plan already shipped once, and the mirror is just as quiet.
+   * Read by MeetingScreen, which hands the rows to the MOM and Actions tabs (Task 10). Those tabs
+   * still merge in two populations that are not in this table — see toItemRows in
+   * src/screens/meeting/shared.tsx, which is the one place that merge is decided.
    *
    * WHAT THIS DELIBERATELY DOES NOT RETURN, and what to do about it. `touched` — whether a person
    * has engaged with an item — is not a column and is not derivable from anything above. It spans
@@ -281,6 +281,13 @@ export const db = {
    * Minutes rows are deleted and re-inserted whenever a meeting is reprocessed or its speakers are
    * merged, so a row-id key would silently uncheck everything the user had worked through. Keying
    * on the normalised text means a tick survives anything that does not change the wording.
+   *
+   * WHAT STILL READS THIS, since Task 10 moved the meeting's Actions tab onto `item_done`. The two
+   * populations that have no item to key on: a row somebody TYPED (`minutes` with source='user',
+   * moved across by Task 12) and every row of a meeting whose item migration has not run yet. The
+   * tab reads both stores and asks each row's own identity which one it lives in — see
+   * ActionsTab.tsx. It is also still where every tick lives that a rolled-back build would have to
+   * find, which is the other reason none of this is deleted.
    */
   doneActions: async (meetingId: string): Promise<Set<string>> => {
     const rows = await run<{ itemKey: string }>(
@@ -303,16 +310,41 @@ export const db = {
    * Tick or untick one item, keyed on the item's stable id.
    *
    * WHICH STORE THIS IS. `item_done`, not `action_done` — a different table from setActionDone
-   * above, which the meeting's own Actions tab still writes and reads (src/screens/meeting/
-   * ActionsTab.tsx, moved onto items by Task 10). Until then the two stores do not see each
-   * other: an item ticked in the cross-meeting worklist is not ticked in that meeting's tab, and
-   * the reverse. Ticks made before this build are in both, because Task 8's migration wrote both.
+   * above. Both writers are now here: the cross-meeting worklist (src/screens/ActionsScreen.tsx)
+   * and the meeting's own Actions tab (src/screens/meeting/ActionsTab.tsx), which Task 10 moved
+   * across. Between Task 9 and Task 10 they were separate stores and a tick made in one did not
+   * show in the other; that gap was accepted, recorded, and is closed.
    *
-   * Bridging them by writing to both would be worse than the gap. Nothing ever deletes an
-   * `action_done` row, so an item unticked here and re-ticked there would come back ticked on the
-   * next reprocess, permanently — which is the same reason AudioDb.ensureItems does not run its
-   * tick carry unconditionally.
+   * What is left in `action_done` is the two populations with no item id to key on — a row
+   * somebody typed, and any meeting whose migration has not run — plus every tick a rolled-back
+   * build would need to find. Bridging the two by writing BOTH stores would still be wrong:
+   * nothing sweeps `action_done` on an untick from elsewhere, so an item unticked here and
+   * re-ticked there would come back ticked on the next reprocess, permanently — the same reason
+   * AudioDb.ensureItems does not run its tick carry unconditionally.
    */
+  /**
+   * This meeting's ticked item ids.
+   *
+   * The per-meeting twin of `doneItemIds` below, and the JavaScript mirror of
+   * `AudioDb.doneItemIds(meetingId)`, which has had exactly this shape since Task 8 and no caller
+   * on this side until the Actions tab moved onto items.
+   *
+   * Why not the library-wide read the worklist uses: that one returns every tick in the library, a
+   * set that grows with the library, flattened into `meetingId\u0000itemId` strings a per-meeting
+   * screen would only have to reassemble to ask about the meeting it is already looking at. The
+   * worklist wants the wide read because it draws every meeting at once. This does not.
+   *
+   * NARROWER than the native `touched` predicate for the same reason `doneItemIds` is: it reads
+   * `item_done` and nothing else. See the note there.
+   */
+  doneItems: async (meetingId: string): Promise<Set<string>> => {
+    const rows = await run<{ itemId: string }>(
+      'SELECT item_id AS itemId FROM item_done WHERE meeting_id = ?',
+      [meetingId],
+    );
+    return new Set(rows.map(r => r.itemId));
+  },
+
   setItemDone: (meetingId: string, itemId: string, done: boolean) =>
     done
       ? run('INSERT OR REPLACE INTO item_done(meeting_id, item_id, done_at) VALUES(?,?,?)', [
@@ -603,11 +635,13 @@ export const db = {
   /**
    * Every ticked action key in the library, as `meetingId\u0000itemKey`.
    *
-   * NO CALLER as of this build. The worklist was the only one and it reads doneItemIds now; the
-   * per-meeting Actions tab reads `doneActions` for one meeting, not this. Kept rather than
-   * deleted because `action_done` still holds every tick that has not been migrated yet and this
-   * is the only library-wide way to see them — but it is dead weight the moment Task 10 moves that
-   * tab onto items, and it should go with it rather than quietly outliving the table it reads.
+   * STILL NO CALLER. The worklist reads doneItemIds; the per-meeting Actions tab reads `doneItems`
+   * for its items and `doneActions` for the rows that have none. Task 10 was named as the point at
+   * which this could go, and it was left in place on purpose: `action_done` is not empty and is
+   * not emptied — it holds every tick of every hand-typed row, every unmigrated meeting, and the
+   * rollback path — and this is the only library-wide way to see them. Deleting a dead READ of a
+   * live table is a different job from moving a screen, and it should be argued on the table's
+   * lifetime rather than smuggled into a screen commit.
    */
   doneKeys: async (): Promise<Set<string>> => {
     const rows = await run<{ meetingId: string; itemKey: string }>(

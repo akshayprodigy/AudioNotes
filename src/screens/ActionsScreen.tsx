@@ -73,10 +73,10 @@ function group(items: ActionRow[], prefix: string): Row[] {
  * A tick written here is keyed on the ITEM's id (see actionsData), so it survives a reprocess or a
  * speaker merge — including one that re-words the sentence, which the old text hash could not.
  *
- * It is not, for the moment, the same tick the meeting's own Actions tab shows. That tab still
- * reads `action_done` keyed on hashed text and moves onto items in Task 10, so between this build
- * and that one the two screens keep separate answers for the same item. Ticks made before this
- * build are in both stores, because Task 8's migration wrote both.
+ * It is the same tick the meeting's own Actions tab shows. That tab wrote `action_done`, keyed on
+ * hashed text, between Task 9 and Task 10, and the two screens held separate answers for one item
+ * for exactly that long; Task 10 moved it onto `item_done` and the answers are one again. Ticks
+ * made before either build are in both stores, because Task 8's migration wrote both.
  */
 export default function ActionsScreen({ navigation }: Props) {
   const { colors } = useTheme();
@@ -97,8 +97,8 @@ export default function ActionsScreen({ navigation }: Props) {
       // Re-read on every focus, because coming back from a meeting is when this list changes:
       // OPENING that meeting is what migrates it, so it may have gained every item it has while
       // the user was in there, and a reprocess re-words items under ids this list already holds.
-      // NOT to pick up ticks made in that meeting's Actions tab — those go to `action_done`, which
-      // this list no longer reads, until Task 10 moves that tab onto items.
+      // AND to pick up ticks made in that meeting's own Actions tab, which writes the same
+      // `item_done` rows this list reads. That was not true between Task 9 and Task 10.
       refresh().catch(() => setLoaded(true));
     }, [refresh]),
   );

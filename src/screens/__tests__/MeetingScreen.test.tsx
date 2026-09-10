@@ -42,6 +42,7 @@ beforeEach(() => {
     audioRetained: 1,
   });
   (db.minutes as jest.Mock).mockResolvedValue([minute]);
+  (db.items as jest.Mock).mockResolvedValue([]);
   (db.utterances as jest.Mock).mockResolvedValue([]);
   (db.segments as jest.Mock).mockResolvedValue([]);
   (db.speakers as jest.Mock).mockResolvedValue([]);

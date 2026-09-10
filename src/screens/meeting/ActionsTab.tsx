@@ -3,7 +3,7 @@ import { LayoutAnimation, Pressable, ScrollView, StyleSheet, View } from 'react-
 import Icon from '../../components/Icon';
 import { Raised, Txt } from '../../components/ui';
 import { radius, s, useTheme, type Colors } from '../../theme';
-import type { Minute, MinuteKind } from '../../pipeline/types';
+import type { Item, Minute, MinuteKind } from '../../pipeline/types';
 import { db } from '../../db/queries';
 import {
   Empty,
@@ -13,12 +13,13 @@ import {
   ToolButton,
   editedText,
   isEdited,
-  itemKey,
-  minuteText,
   sentenceCase,
   splitAction,
+  toItemRows,
   type EditMap,
+  type ItemRow,
 } from './shared';
+import { ProvenanceButton } from './ItemProvenance';
 
 /**
  * Re-exported, not reimplemented.
@@ -27,12 +28,14 @@ import {
  * three. Every copy is a chance for a tick to silently detach from the item it belongs to, and
  * `edits` now hangs off the same key, so a drift would lose a person's correction as well as
  * their tick. The test imports it from here because that is where it first lived.
+ *
+ * The TICK no longer hangs off it for a row that is in `items` — see [ActionsTab] — but the EDIT
+ * still does, for every row, until Task 11 moves the edits key onto item ids.
  */
 export { itemKey } from './shared';
 
 /** One row of the worklist. */
 function Item({
-  m,
   on,
   onToggle,
   colors,
@@ -42,21 +45,23 @@ function Item({
   onEdit,
   onRevert,
   onRemove,
+  provenance,
 }: {
-  m: Minute;
   on: boolean;
   onToggle: () => void;
   colors: Colors;
-  /** What to show — the user's correction where there is one. Never what the tick is keyed on. */
-  content?: string;
+  /** What to show — the user's correction where there is one. Never what a key is computed on. */
+  content: string;
   edited?: boolean;
   mine?: boolean;
   onEdit?: () => void;
   onRevert?: () => void;
   onRemove?: () => void;
+  /** The way back to the moment it was said. Absent on a row that never claimed one. */
+  provenance?: React.ReactNode;
 }) {
   const st = React.useMemo(() => makeStyles(colors), [colors]);
-  const { text, owner, due } = splitAction(content ?? minuteText(m));
+  const { text, owner, due } = splitAction(content);
   return (
     <Pressable
       accessibilityRole="checkbox"
@@ -88,8 +93,9 @@ function Item({
             </Txt>
             {/* Owner and due date are fields the extractor mashed into the text. Shown as what
                 they are, and shown at all only when there is something to say — most owners
-                resolve to "Unassigned", which is not information. */}
-            {(owner || due) && !on ? (
+                resolve to "Unassigned", which is not information. The timestamp rides in the same
+                row: it is the same class of thing, a fact about the item rather than the item. */}
+            {(owner || due || provenance) && !on ? (
               <View style={st.tags}>
                 {owner ? (
                   <View style={[st.tag, { backgroundColor: colors.primarySoft }]}>
@@ -107,6 +113,7 @@ function Item({
                     </Txt>
                   </View>
                 ) : null}
+                {provenance}
               </View>
             ) : null}
             {/* Not shown on a ticked row: a finished item is proof of work, and the marks belong
@@ -130,70 +137,74 @@ function Item({
  * measured invented=0 across four AMI fixtures. That is why the LLM's prose does not feed this tab:
  * on the same recording the rules found 7 actions with quotes and the model returned 2, with a
  * due-date field reading "After uploading the file".
+ *
+ * WHICH TICK STORE THIS IS, and the gap it closes. A row that is in `items` is ticked in
+ * `item_done`, keyed on the item's id — the SAME store and the same key the cross-meeting worklist
+ * writes (src/screens/actionsData.ts). Between Task 9 and this one they were different stores: a
+ * tick made in the worklist did not show here and a tick made here did not show there. That gap
+ * was accepted deliberately and this is the task that ends it.
+ *
+ * The text hash is NOT gone, because one population still has no item to key on: a row somebody
+ * typed, and every row of a meeting whose migration has not run (see [toItemRows]). Those keep
+ * `action_done` exactly as they always had it, which is what makes this an id-keyed tick for
+ * everything that can have one rather than a migration that drops the ticks it cannot move. Task
+ * 12 moves the typed rows across; nothing has to move the unmigrated ones, because opening the
+ * meeting is what migrates them.
+ *
+ * `db.doneItems(meetingId)` rather than the library-wide `db.doneItemIds()`: this screen is one
+ * meeting, and the wide read returns every tick in the library — a set that grows with the library
+ * — flattened into `meetingId\u0000itemId` strings this tab would only have to take apart again to
+ * ask about the meeting it is already looking at.
  */
 export default function ActionsTab({
   meetingId,
+  items,
   minutes,
   edits,
   onEditItem,
   onRevertItem,
   onRemoveItem,
   onAdd,
+  onOpenProvenance,
+  canPlay,
 }: {
   meetingId: string;
+  items: Item[];
   minutes: Minute[];
   edits?: EditMap;
-  onEditItem?: (m: Minute) => void;
+  onEditItem?: (row: ItemRow) => void;
   onRevertItem?: (key: string) => void;
   onRemoveItem?: (id: string) => void;
   onAdd?: (kind: MinuteKind) => void;
+  /** Open the transcript at a moment, and play from it where there is still audio to play. */
+  onOpenProvenance?: (ms: number) => void;
+  /** False once the recording has been discarded. The links stay; only playback goes. */
+  canPlay?: boolean;
 }) {
   const { colors } = useTheme();
   const st = React.useMemo(() => makeStyles(colors), [colors]);
-  const [done, setDone] = React.useState<Set<string>>(new Set());
+  const [doneIds, setDoneIds] = React.useState<Set<string>>(new Set());
+  const [doneTexts, setDoneTexts] = React.useState<Set<string>>(new Set());
   const [showDone, setShowDone] = React.useState(false);
-  const ed: EditMap = edits ?? new Map();
+  // Memoised, unlike the plain `edits ?? new Map()` this used to be. Every callback below closes
+  // over it, so a fresh Map on each render rebuilt all of them on each render — and the lint rule
+  // that says so was previously silenced rather than answered.
+  const ed = React.useMemo<EditMap>(() => edits ?? new Map(), [edits]);
 
-  /**
-   * One row, wired for correction.
-   *
-   * The tick key comes from the STORED text and never from the correction. That is the whole
-   * reason edits live in a side table: rewriting a minute in place would change its hash and
-   * silently untick it, so fixing a typo in an item you had already done would undo it.
-   */
-  const row = React.useCallback(
-    (m: Minute, on: boolean, fallbackKey: string) => {
-      // itemKey(m.content), not itemKey(displayed): the tick above and the export renderer in
-      // Kotlin both hash the stored column, and three keys for one item is how a correction goes
-      // missing from the document somebody sends out.
-      const key = itemKey(m.content);
-      return (
-        <Item
-          key={m.id ?? fallbackKey}
-          m={m}
-          on={on}
-          onToggle={() => toggle(m.content)}
-          colors={colors}
-          content={editedText(ed, 'minute', key, minuteText(m))}
-          edited={isEdited(ed, 'minute', key)}
-          mine={m.source === 'user'}
-          onEdit={onEditItem ? () => onEditItem(m) : undefined}
-          onRevert={onRevertItem ? () => onRevertItem(key) : undefined}
-          onRemove={
-            onRemoveItem && m.source === 'user' && m.id ? () => onRemoveItem(m.id) : undefined
-          }
-        />
-      );
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ed, colors, onEditItem, onRevertItem, onRemoveItem],
-  );
+  const rows = React.useMemo(() => toItemRows(items, minutes), [items, minutes]);
 
   React.useEffect(() => {
     let alive = true;
-    db.doneActions(meetingId)
-      .then(d => {
-        if (alive) setDone(d);
+    // Both stores, because both populations are on this screen. They cannot collide on a row that
+    // has an item id — that row is never looked up by text — so the only way a tick lands on the
+    // wrong row is a TYPED row whose wording is character-for-character an extracted row that was
+    // ticked before this meeting was migrated. It shows as ticked; it is one hash, it is the same
+    // sentence, and Task 12 removes the population it can happen to.
+    Promise.all([db.doneItems(meetingId), db.doneActions(meetingId)])
+      .then(([ids, texts]) => {
+        if (!alive) return;
+        setDoneIds(ids);
+        setDoneTexts(texts);
       })
       .catch(() => {});
     return () => {
@@ -201,37 +212,110 @@ export default function ActionsTab({
     };
   }, [meetingId]);
 
-  const actions = minutes.filter(m => m.kind === 'action');
-  const decisions = minutes.filter(m => m.kind === 'decision');
-  const questions = minutes.filter(m => m.kind === 'question');
-
-  const toggle = React.useCallback(
-    (content: string) => {
-      const key = itemKey(content);
-      // A ticked item leaves the list for the Done section. Without an animation it teleports.
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setDone(prev => {
-        const next = new Set(prev);
-        const on = !next.has(key);
-        if (on) next.add(key);
-        else next.delete(key);
-        // Optimistic: the tick should land on the next frame, not after a database round trip.
-        // A failed write costs a tick, not the item.
-        db.setActionDone(meetingId, key, on).catch(() => {});
-        return next;
-      });
-    },
-    [meetingId],
+  /** Ticked, asked of whichever store this row's identity lives in. */
+  const isDone = React.useCallback(
+    (r: ItemRow) => (r.itemId ? doneIds.has(r.itemId) : doneTexts.has(r.editKey)),
+    [doneIds, doneTexts],
   );
 
-  /** The text to display for a read-only row: the correction where there is one. */
-  const shown = (m: Minute) =>
-    editedText(ed, 'minute', itemKey(m.content), minuteText(m)) ?? minuteText(m);
+  /**
+   * Tick or untick.
+   *
+   * Optimistic, exactly as the cross-meeting worklist is: the tick belongs on the next frame, not
+   * after a database round trip, and a failed write costs a tick rather than the item. `on` is
+   * computed OUTSIDE the state updater so the write happens once — a React updater is allowed to
+   * run twice, and the second run would issue a second write.
+   */
+  const toggle = React.useCallback(
+    (r: ItemRow) => {
+      const on = !isDone(r);
+      // A ticked item leaves the list for the Done section. Without an animation it teleports.
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      const flip = (prev: Set<string>, key: string) => {
+        const next = new Set(prev);
+        if (on) next.add(key);
+        else next.delete(key);
+        return next;
+      };
+      if (r.itemId) {
+        const id = r.itemId;
+        setDoneIds(prev => flip(prev, id));
+        db.setItemDone(meetingId, id, on).catch(() => {});
+      } else {
+        const key = r.editKey;
+        setDoneTexts(prev => flip(prev, key));
+        db.setActionDone(meetingId, key, on).catch(() => {});
+      }
+    },
+    [isDone, meetingId],
+  );
+
+  /** The text to display: the correction where there is one, the stored text otherwise. */
+  const shown = React.useCallback(
+    (r: ItemRow) => editedText(ed, 'minute', r.editKey, r.text) ?? r.text,
+    [ed],
+  );
+
+  /** The way back to the moment. Nothing for a row that never claimed to have been said. */
+  const provenanceFor = React.useCallback(
+    (r: ItemRow) =>
+      onOpenProvenance && r.anchorStartMs !== null ? (
+        <ProvenanceButton
+          anchorStartMs={r.anchorStartMs}
+          onOpen={onOpenProvenance}
+          canPlay={canPlay ?? false}
+        />
+      ) : undefined,
+    [onOpenProvenance, canPlay],
+  );
+
+  /**
+   * One row, wired for correction.
+   *
+   * The edit key comes from the STORED text and never from the correction. That is the whole
+   * reason edits live in a side table: rewriting a minute in place would change its hash and
+   * silently detach the correction from the line it corrects.
+   */
+  const row = React.useCallback(
+    (r: ItemRow, on: boolean) => (
+      <Item
+        key={r.key}
+        on={on}
+        onToggle={() => toggle(r)}
+        colors={colors}
+        content={shown(r)}
+        edited={isEdited(ed, 'minute', r.editKey)}
+        mine={r.mine}
+        onEdit={onEditItem ? () => onEditItem(r) : undefined}
+        onRevert={onRevertItem ? () => onRevertItem(r.editKey) : undefined}
+        onRemove={onRemoveItem && r.mine && r.minuteId ? () => onRemoveItem(r.minuteId!) : undefined}
+        provenance={provenanceFor(r)}
+      />
+    ),
+    [ed, colors, onEditItem, onRevertItem, onRemoveItem, provenanceFor, shown, toggle],
+  );
+
+  const actions = rows.filter(r => r.kind === 'action');
+  const decisions = rows.filter(r => r.kind === 'decision');
+  const questions = rows.filter(r => r.kind === 'question');
 
   const nothing = actions.length === 0 && decisions.length === 0 && questions.length === 0;
-  const todo = actions.filter(m => !done.has(itemKey(m.content)));
-  const finished = actions.filter(m => done.has(itemKey(m.content)));
+  const todo = actions.filter(r => !isDone(r));
+  const finished = actions.filter(r => isDone(r));
   const pct = actions.length ? finished.length / actions.length : 0;
+
+  /** A decision or an open question: read-only, and still checkable against the recording. */
+  const plain = (r: ItemRow, tone: string) => (
+    <Raised key={r.key} edge={colors.line} fill={colors.card} rad={radius.xl} depth={4}>
+      <View style={st.plain}>
+        <View style={[st.rule, { backgroundColor: tone }]} />
+        <View style={st.flex}>
+          <Txt variant="prose">{sentenceCase(splitAction(shown(r)).text)}</Txt>
+          {provenanceFor(r)}
+        </View>
+      </View>
+    </Raised>
+  );
 
   return (
     <ScrollView contentContainerStyle={st.pad} showsVerticalScrollIndicator={false}>
@@ -268,7 +352,7 @@ export default function ActionsTab({
           </View>
 
           {todo.length > 0 ? (
-            <View style={st.list}>{todo.map((m, i) => row(m, false, `t${i}`))}</View>
+            <View style={st.list}>{todo.map(r => row(r, false))}</View>
           ) : (
             <Empty text="Everything here is done." colors={colors} />
           )}
@@ -296,7 +380,7 @@ export default function ActionsTab({
                 </View>
               </Pressable>
               {showDone ? (
-                <View style={st.list}>{finished.map((m, i) => row(m, true, `d${i}`))}</View>
+                <View style={st.list}>{finished.map(r => row(r, true))}</View>
               ) : null}
             </>
           ) : null}
@@ -306,18 +390,7 @@ export default function ActionsTab({
       {decisions.length > 0 ? (
         <>
           <SectionHead label="DECIDED" count={decisions.length} colors={colors} style={st.heading} />
-          <View style={st.list}>
-            {decisions.map((m, i) => (
-              <Raised key={m.id ?? i} edge={colors.line} fill={colors.card} rad={radius.xl} depth={4}>
-                <View style={st.plain}>
-                  <View style={[st.rule, { backgroundColor: colors.primary }]} />
-                  <Txt variant="prose" style={st.flex}>
-                    {sentenceCase(splitAction(shown(m)).text)}
-                  </Txt>
-                </View>
-              </Raised>
-            ))}
-          </View>
+          <View style={st.list}>{decisions.map(r => plain(r, colors.primary))}</View>
         </>
       ) : null}
 
@@ -329,18 +402,7 @@ export default function ActionsTab({
             colors={colors}
             style={st.heading}
           />
-          <View style={st.list}>
-            {questions.map((m, i) => (
-              <Raised key={m.id ?? i} edge={colors.line} fill={colors.card} rad={radius.xl} depth={4}>
-                <View style={st.plain}>
-                  <View style={[st.rule, { backgroundColor: colors.success }]} />
-                  <Txt variant="prose" style={st.flex}>
-                    {sentenceCase(splitAction(shown(m)).text)}
-                  </Txt>
-                </View>
-              </Raised>
-            ))}
-          </View>
+          <View style={st.list}>{questions.map(r => plain(r, colors.success))}</View>
         </>
       ) : null}
     </ScrollView>
@@ -369,7 +431,7 @@ function makeStyles(c: Colors) {
       marginTop: s(2),
     },
     struck: { textDecorationLine: 'line-through' },
-    tags: { flexDirection: 'row', flexWrap: 'wrap', gap: s(6), marginTop: s(8) },
+    tags: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: s(6), marginTop: s(8) },
     tag: {
       flexDirection: 'row',
       alignItems: 'center',

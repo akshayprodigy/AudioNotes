@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { MeetingTab, RootStackParamList } from '../navigation/RootNavigator';
+import type { RootStackParamList } from '../navigation/RootNavigator';
 import { db } from '../db/queries';
 import { PipelineController } from '../pipeline/PipelineController';
 import { shouldOfferPaywall } from '../billing/trial';
@@ -40,14 +40,21 @@ import ActionsTab from './meeting/ActionsTab';
 import TranscriptTab from './meeting/TranscriptTab';
 import PlayerBar from './meeting/PlayerBar';
 import { usePlayer } from './meeting/usePlayer';
-import type { EditTarget, Meeting, Minute, MinuteKind, Speaker, Utterance } from '../pipeline/types';
+import type {
+  EditTarget,
+  Item,
+  Meeting,
+  Minute,
+  MinuteKind,
+  Speaker,
+  Utterance,
+} from '../pipeline/types';
 import {
   DOC_KEY,
   composeAction,
-  itemKey,
-  minuteText,
   toEditMap,
   type EditMap,
+  type ItemRow,
 } from './meeting/shared';
 import { radius, s, sv, useTheme, type Colors } from '../theme';
 import { STAGES, progressFor } from './progress';
@@ -70,6 +77,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
 
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [minutes, setMinutes] = useState<Minute[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
   const [utterances, setUtterances] = useState<Utterance[]>([]);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
   const [speechMs, setSpeechMs] = useState(0);
@@ -82,6 +90,17 @@ export default function MeetingScreen({ route, navigation }: Props) {
   // tapping two meetings in a row and landing on different screens reads as a bug rather than a
   // convenience. A search hit is different — it knows where it is sending you, and why.
   const [tab, setTab] = useState<string>(initialTab ?? 'summary');
+
+  /**
+   * The moment the transcript has been asked to show, and WHICH ASKING it is.
+   *
+   * The sequence number is the whole reason this is an object. TranscriptTab's scroll effect is
+   * keyed on the millisecond it is given, so asking twice for the same millisecond is not a change
+   * and the second tap does nothing — and tapping the same item twice is the ordinary case, as is
+   * tapping two items the rules pulled out of one turn. Bumping a counter on every request makes
+   * every request distinct without pretending the moment moved.
+   */
+  const [scrollTo, setScrollTo] = useState<{ ms: number; seq: number } | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
   const [tagging, setTagging] = useState(false);
@@ -150,6 +169,10 @@ export default function MeetingScreen({ route, navigation }: Props) {
   // result: it takes audio focus, and it fails outright while a recording is running, so opening
   // a hit mid-meeting would raise an error about playback nobody had asked for. The line is on
   // screen and one tap plays it, which is the whole of what the hit promised.
+  //
+  // `openProvenance` below DOES play, and that is not an inconsistency. Arriving from a search
+  // hit is not a request to hear anything; pressing the play-and-timestamp on an item is nothing
+  // else, and it cannot arrive mid-recording because it needs a meeting already open on screen.
 
   /**
    * Give this meeting its items, before anything reads them.
@@ -200,9 +223,13 @@ export default function MeetingScreen({ route, navigation }: Props) {
 
   const refresh = useCallback(async () => {
     await migrate();
-    const [mtg, mins, utts, segs, spk, eds, tgs] = await Promise.all([
+    const [mtg, mins, its, utts, segs, spk, eds, tgs] = await Promise.all([
       db.getMeeting(meetingId),
       db.minutes(meetingId),
+      // After `migrate()`, so a meeting recorded before items existed has been given them. A
+      // failure there is swallowed on purpose and leaves this empty, which the tabs handle by
+      // falling back to the minutes — see toItemRows.
+      db.items(meetingId).catch(() => []),
       db.utterances(meetingId),
       db.segments(meetingId),
       db.speakers(meetingId),
@@ -211,6 +238,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
     ]);
     setMeeting(mtg ?? null);
     setMinutes(mins);
+    setItems(its);
     setUtterances(utts);
     setSpeakers(spk);
     setEdits(toEditMap(eds));
@@ -401,22 +429,47 @@ export default function MeetingScreen({ route, navigation }: Props) {
     [meetingId, refresh],
   );
 
-  /** Open the prompt on a minute — the correction path shared by the MOM and Actions tabs. */
-  const onEditMinute = useCallback(
-    (m: Minute) => {
-      // Keyed on the STORED content, never on what is displayed. The export renderer computes
-      // the same key in Kotlin (ItemKey.of) straight from the database column, so a key derived
-      // from the display text would write an edit the exported document could never find.
-      const key = itemKey(m.content);
+  /**
+   * Open the prompt on one item — the correction path shared by the MOM and Actions tabs.
+   *
+   * Keyed on `row.editKey`, which is [itemKey] of the STORED string and never of what is
+   * displayed: the export renderer computes the same key in Kotlin (ItemKey.of) straight from the
+   * database column, so a key derived from the display text would write an edit the exported
+   * document could never find. The rows are `items` now and the key still hashes text, because
+   * moving `edits` onto item ids is Task 11's job, not this one's — see toItemRows for why an
+   * item's text reproduces the key its minute already had.
+   */
+  const onEditRow = useCallback(
+    (row: ItemRow) => {
       setEditing({
         title: 'Correct this line',
         hint: 'Your wording replaces what the app wrote. The original is kept, and you can put it back.',
-        initial: edits.get(`minute/${key}`) ?? minuteText(m),
+        initial: edits.get(`minute/${row.editKey}`) ?? row.text,
         multiline: true,
-        target: { kind: 'minute', key },
+        target: { kind: 'minute', key: row.editKey },
       });
     },
     [edits],
+  );
+
+  /**
+   * Open an item's evidence: switch to the transcript, scroll to the anchor, play from it.
+   *
+   * The tab switch and the scroll are NOT guarded on `player.available` and the play call is. A
+   * meeting whose recording has been discarded keeps its transcript and its item anchors — the
+   * rule pass runs over stored text and needs no audio at all — so the checkable half of this
+   * feature survives retention, and only the listening half goes. Hiding the link then would
+   * punish somebody for a setting they chose.
+   *
+   * The sequence bump is what makes tapping the same item twice work; see `scrollTo` above.
+   */
+  const openProvenance = useCallback(
+    (ms: number) => {
+      setTab('transcript');
+      setScrollTo(prev => ({ ms, seq: (prev?.seq ?? 0) + 1 }));
+      if (player.available) player.playFrom(ms);
+    },
+    [player],
   );
 
   const onAddMinute = useCallback((kind: MinuteKind) => {
@@ -881,14 +934,17 @@ export default function MeetingScreen({ route, navigation }: Props) {
               />
             ) : tab === 'mom' ? (
               <MinutesTab
+                items={items}
                 minutes={minutes}
                 onExport={onExport}
                 onCopy={onCopy}
                 edits={edits}
-                onEditItem={onEditMinute}
+                onEditItem={onEditRow}
                 onRevertItem={key => onRevertEdit('minute', key)}
                 onRemoveItem={onRemoveMinute}
                 onAdd={onAddMinute}
+                onOpenProvenance={openProvenance}
+                canPlay={player.available}
                 onEditNarrative={initial =>
                   setEditing({
                     title: 'Correct the minutes',
@@ -906,7 +962,11 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 speakers={speakers}
                 positionMs={player.positionMs}
                 onPlayTurn={player.available ? player.playFrom : undefined}
-                scrollToMs={atMs}
+                // Two sources, one prop. `atMs` is where a search hit sent us and is fixed for the
+                // life of the screen; `scrollTo` is somewhere an item on another tab asked for, and
+                // it wins from the moment it exists because it is the later request of the two.
+                scrollToMs={scrollTo ? scrollTo.ms : atMs}
+                scrollSeq={scrollTo?.seq}
                 onCopy={() => copyDoc('transcript', 'Transcript')}
                 edits={edits}
                 onEditLine={(id, initial) =>
@@ -923,12 +983,15 @@ export default function MeetingScreen({ route, navigation }: Props) {
             ) : (
               <ActionsTab
                 meetingId={meetingId}
+                items={items}
                 minutes={minutes}
                 edits={edits}
-                onEditItem={onEditMinute}
+                onEditItem={onEditRow}
                 onRevertItem={key => onRevertEdit('minute', key)}
                 onRemoveItem={onRemoveMinute}
                 onAdd={onAddMinute}
+                onOpenProvenance={openProvenance}
+                canPlay={player.available}
               />
             )}
           </View>

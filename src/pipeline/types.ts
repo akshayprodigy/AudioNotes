@@ -203,9 +203,14 @@ export interface ActionRow {
   /** Where the row came from, derived from `items.gen_version`. See db.allActions. */
   source: MinuteSource;
   /**
-   * When it was said. No reader yet: Task 10 is what opens the meeting at that moment, and it is
-   * carried now because the worklist is the one list that can send you to a claim you do not
-   * remember — the row is worthless without the sentence it came from being findable.
+   * When it was said. STILL no reader on this type, and Task 10 is not it.
+   *
+   * Task 10 built the tap-to-the-moment gesture inside a meeting, off `items.anchor_start_ms`
+   * directly (src/screens/meeting/ItemProvenance.tsx). Sending the WORKLIST to that moment needs
+   * `Meeting`'s route params to carry an item's position rather than only a transcript hit's, and
+   * `ActionsScreen` has no entry point wired to it at all — see "Discovered during Task 9". It is
+   * carried anyway because the worklist is the one list that can send you to a claim you do not
+   * remember, and the row is worthless without the sentence it came from being findable.
    */
   anchorStartMs: number;
   done: boolean;

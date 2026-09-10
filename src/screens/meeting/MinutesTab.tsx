@@ -2,7 +2,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Raised, SoftButton, Txt } from '../../components/ui';
 import { radius, s, useTheme, type Colors } from '../../theme';
-import type { Minute, MinuteKind } from '../../pipeline/types';
+import type { Item, Minute, MinuteKind } from '../../pipeline/types';
 import {
   DOC_KEY,
   DocItem,
@@ -12,10 +12,11 @@ import {
   ToolButton,
   editedText,
   isEdited,
-  itemKey,
-  minuteText,
+  toItemRows,
   type EditMap,
+  type ItemRow,
 } from './shared';
+import { ProvenanceButton } from './ItemProvenance';
 
 /**
  * MOM — the document you would send someone.
@@ -26,8 +27,14 @@ import {
  * The narrative is prose written by the on-device model. The decisions and actions beneath it come
  * from rule extraction, so every one of them quotes something that was actually said — the two
  * halves are doing different jobs and the tab shows both.
+ *
+ * The narrative comes from `minutes`, which is where the model's prose lives and stays. The
+ * decisions and actions come from `items`, which is what carries the moment each one was said —
+ * see [toItemRows] for the two populations still read out of `minutes` alongside them, and for
+ * which task removes each.
  */
 export default function MinutesTab({
+  items,
   minutes,
   onExport,
   onCopy,
@@ -38,18 +45,25 @@ export default function MinutesTab({
   onAdd,
   onEditNarrative,
   onRevertNarrative,
+  onOpenProvenance,
+  canPlay,
 }: {
+  items: Item[];
   minutes: Minute[];
   onExport: () => void;
   /** The whole write-up on the clipboard — the same document Export would have shared. */
   onCopy?: () => void;
   edits?: EditMap;
-  onEditItem?: (m: Minute) => void;
+  onEditItem?: (row: ItemRow) => void;
   onRevertItem?: (key: string) => void;
   onRemoveItem?: (id: string) => void;
   onAdd?: (kind: MinuteKind) => void;
   onEditNarrative?: (initial: string) => void;
   onRevertNarrative?: () => void;
+  /** Open the transcript at a moment, and play from it where there is still audio to play. */
+  onOpenProvenance?: (ms: number) => void;
+  /** False once the recording has been discarded. The links stay; only playback goes. */
+  canPlay?: boolean;
 }) {
   const { colors } = useTheme();
   const st = React.useMemo(() => makeStyles(colors), [colors]);
@@ -61,27 +75,37 @@ export default function MinutesTab({
   // would be absurd.
   const narrative = editedText(ed, 'narrative', DOC_KEY, written);
   const narrativeEdited = isEdited(ed, 'narrative', DOC_KEY);
-  const decisions = minutes.filter(m => m.kind === 'decision');
-  const actions = minutes.filter(m => m.kind === 'action');
+  const rows = React.useMemo(() => toItemRows(items, minutes), [items, minutes]);
+  const decisions = rows.filter(r => r.kind === 'decision');
+  const actions = rows.filter(r => r.kind === 'action');
 
   /** One item, with the user's correction over it and their own rows marked as theirs. */
-  const item = (m: Minute, i: number) => {
-    // The key is the stored column, the text is what reads well — see onEditMinute.
-    const key = itemKey(m.content);
-    return (
-      <DocItem
-        key={m.id ?? i}
-        m={m}
-        colors={colors}
-        content={editedText(ed, 'minute', key, minuteText(m))}
-        edited={isEdited(ed, 'minute', key)}
-        mine={m.source === 'user'}
-        onEdit={onEditItem ? () => onEditItem(m) : undefined}
-        onRevert={onRevertItem ? () => onRevertItem(key) : undefined}
-        onRemove={onRemoveItem && m.source === 'user' && m.id ? () => onRemoveItem(m.id) : undefined}
-      />
-    );
-  };
+  const item = (r: ItemRow) => (
+    <DocItem
+      key={r.key}
+      kind={r.kind}
+      colors={colors}
+      // r.editKey is hashed from the STORED string and r.text is what reads well; the two are not
+      // interchangeable, and toItemRows is where the difference is written down.
+      content={editedText(ed, 'minute', r.editKey, r.text) ?? r.text}
+      edited={isEdited(ed, 'minute', r.editKey)}
+      mine={r.mine}
+      onEdit={onEditItem ? () => onEditItem(r) : undefined}
+      onRevert={onRevertItem ? () => onRevertItem(r.editKey) : undefined}
+      onRemove={onRemoveItem && r.mine && r.minuteId ? () => onRemoveItem(r.minuteId!) : undefined}
+      provenance={
+        // No anchor, no button. A row somebody typed never claimed to have been said at any
+        // particular moment, and offering to "play from 0:00" would be inventing one.
+        onOpenProvenance && r.anchorStartMs !== null ? (
+          <ProvenanceButton
+            anchorStartMs={r.anchorStartMs}
+            onOpen={onOpenProvenance}
+            canPlay={canPlay ?? false}
+          />
+        ) : undefined
+      }
+    />
+  );
 
   return (
     <ScrollView contentContainerStyle={st.pad} showsVerticalScrollIndicator={false}>

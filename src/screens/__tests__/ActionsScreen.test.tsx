@@ -62,8 +62,9 @@ test('ticking an item writes the item id', async () => {
   });
 
   expect(db.setItemDone).toHaveBeenCalledWith('m1', 'item-1', true);
-  // Not both stores. The per-meeting Actions tab still reads action_done until Task 10 moves it,
-  // and writing to both would resurrect a tick the other screen had taken back.
+  // Not both stores. The per-meeting Actions tab writes `item_done` too since Task 10, and writing
+  // to both would resurrect a tick the other screen had taken back: nothing sweeps `action_done`
+  // on an untick made elsewhere.
   expect(db.setActionDone).not.toHaveBeenCalled();
   await act(async () => tree.unmount());
 });

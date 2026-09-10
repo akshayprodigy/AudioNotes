@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Icon, { type IconName } from '../../components/Icon';
 import { Raised, Txt } from '../../components/ui';
 import { radius, s, type Colors } from '../../theme';
-import type { Edit, EditTarget, Minute } from '../../pipeline/types';
+import type { Edit, EditTarget, Item, Minute } from '../../pipeline/types';
 
 /**
  * Pieces shared by more than one meeting tab. Moved out of MeetingScreen when it split —
@@ -89,6 +89,117 @@ export function minuteText(m: Minute): string {
     }
   }
   return raw;
+}
+
+// ---------------------------------------------------------------------------------------------
+// What the item tabs actually render
+// ---------------------------------------------------------------------------------------------
+
+/** The three kinds a decision/action/question tab renders. `summary`/`narrative` are documents. */
+export type ItemRowKind = 'decision' | 'action' | 'question';
+
+const ITEM_KINDS: readonly string[] = ['decision', 'action', 'question'];
+
+/**
+ * One line on the MOM or Actions tab, from whichever table currently holds it.
+ *
+ * The tabs used to render `minutes` rows, which carry no id a tick can survive a reprocess on and
+ * no timestamp at all. They render `items` now — that is what makes the provenance button
+ * possible, and what puts this tab's ticks in the same store as the cross-meeting worklist's. Two
+ * populations are not in `items` yet, so this type is what lets one renderer show both:
+ *
+ *  - a row somebody TYPED (`minutes` with source='user'), which Task 12 moves across;
+ *  - every row of a meeting whose item migration has not run — see [toItemRows].
+ *
+ * `itemId` is the whole difference. A row that has one is ticked in `item_done` by its id; a row
+ * that has none has no id worth keying on and keeps the text hash it has always had. Read
+ * `itemId === null` as "this row is not in `items` yet", never as "this row is the user's" —
+ * `mine` says that, and after Task 12 a user row will have both.
+ */
+export type ItemRow = {
+  /** React key. Namespaced by table, because the two id spaces are unrelated. */
+  key: string;
+  kind: ItemRowKind;
+  /** What to show, and what an edit prompt starts from. Never what a key is computed on. */
+  text: string;
+  /** The `edits` key: [itemKey] of the STORED string. See [toItemRows] for why they can differ. */
+  editKey: string;
+  /** The `items` row id, or null for a row that is still only a minute. */
+  itemId: string | null;
+  /** The `minutes` row id, or null. Removal needs it, and only a source='user' row has removal. */
+  minuteId: string | null;
+  /** Typed by a person rather than pulled out of the transcript. */
+  mine: boolean;
+  /** When it was said, or null for a row that never claimed to have been said at all. */
+  anchorStartMs: number | null;
+};
+
+/**
+ * Merge the two tables into one list of rows, items first.
+ *
+ * **The merge is transitional and Task 12 removes the second half of it.** Until then a decision
+ * or action a person typed lives in `minutes` with source='user' and has no item, so a tab that
+ * rendered items alone would make a hand-typed row vanish from the very screen it was typed on —
+ * a worse failure than any this conversion fixes.
+ *
+ * **The empty-items fallback is transitional too, and it goes when nothing can render an
+ * unmigrated meeting.** `db.ensureItems` is what gives a pre-items meeting its items, it needs the
+ * native core, and MeetingScreen deliberately swallows the failure so the meeting still opens. It
+ * opens onto its `minutes`, which is what a person has always seen there; rendering items alone
+ * would draw an empty MOM tab under a Summary tab still counting "7 actions". So: when a meeting
+ * has NO items at all, its rule-extracted rows are shown from `minutes` exactly as before. It
+ * costs a boolean, it is self-healing on the next open, and the alternative is showing somebody
+ * nothing.
+ *
+ * Both fallbacks give the row a null `anchorStartMs` and no `itemId`, which is the honest answer
+ * rather than a placeholder: a row with no evidence gets no provenance button — Task 12's rule,
+ * "an item with no sources is not a failure to find evidence; it is an item that never claimed
+ * any" — and a row with no stable id keeps the tick key it already has.
+ *
+ * WHY AN EXISTING CORRECTION STILL RESOLVES. Corrections are keyed `target_kind='minute'`,
+ * `target_key=itemKey(<the stored minutes content>)`, and Task 11 — not this — is what moves them
+ * onto item ids. They keep resolving because `itemKey(item.text)` reproduces
+ * `itemKey(minute.content)` for a rule-extracted row: `Minutes.extract` and `Minutes.extractItems`
+ * are the same rules over the same turns, which is the property `AudioDb.backfillItems` already
+ * bets every existing tick in every existing library on. The two strings are not always identical
+ * — the item path asciifies non-breaking spaces before splitting sentences and the minutes path
+ * does not — but `itemKey` collapses every whitespace run to one space before hashing, so the
+ * difference cannot reach the key. Verified against the paired C++ goldens as well as argued; see
+ * ItemProvenance.test.tsx.
+ */
+export function toItemRows(items: Item[], minutes: Minute[]): ItemRow[] {
+  const rows: ItemRow[] = items.map(it => ({
+    key: `i:${it.id}`,
+    kind: it.kind,
+    text: it.text,
+    editKey: itemKey(it.text),
+    itemId: it.id,
+    minuteId: null,
+    // Nothing writes 'user' into `items.gen_version` yet; Task 12 is what does, and this is the
+    // read side of it, spelled the same way db.allActions spells it.
+    mine: it.genVersion === 'user',
+    anchorStartMs: it.anchorStartMs,
+  }));
+
+  const unmigrated = items.length === 0;
+  for (const m of minutes) {
+    if (!ITEM_KINDS.includes(m.kind)) continue;
+    if (m.source !== 'user' && !unmigrated) continue;
+    rows.push({
+      key: `m:${m.id}`,
+      kind: m.kind as ItemRowKind,
+      // minuteText for the display, m.content for the key. They differ only for a hand-written row
+      // added on the one build that JSON-encoded them (see minuteText), and the key has to stay on
+      // the raw column because the export renderer hashes that column in Kotlin.
+      text: minuteText(m),
+      editKey: itemKey(m.content),
+      itemId: null,
+      minuteId: m.id,
+      mine: m.source === 'user',
+      anchorStartMs: null,
+    });
+  }
+  return rows;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -383,7 +494,7 @@ export function Prose({
  * anyone who cannot make a long-press.
  */
 export function DocItem({
-  m,
+  kind,
   colors,
   content,
   edited,
@@ -391,30 +502,38 @@ export function DocItem({
   onEdit,
   onRevert,
   onRemove,
+  provenance,
 }: {
-  m: Minute;
+  kind: string;
   colors: Colors;
-  /** The text to show — the user's correction where there is one. Defaults to what is stored. */
-  content?: string;
+  /** The text to show — the user's correction where there is one. */
+  content: string;
   edited?: boolean;
   /** This row was typed by the user rather than pulled out of the transcript. */
   mine?: boolean;
   onEdit?: () => void;
   onRevert?: () => void;
   onRemove?: () => void;
+  /** The way back to the moment it was said. Absent on a row that never claimed one. */
+  provenance?: React.ReactNode;
 }) {
   const st = React.useMemo(() => makeStyles(colors), [colors]);
-  const meta = kindMeta(m.kind, colors);
-  const { text, owner, due } = splitAction(content ?? minuteText(m));
+  const meta = kindMeta(kind, colors);
+  const { text, owner, due } = splitAction(content);
   const body = (
     <View style={st.docRow}>
       <View style={[st.rule, { backgroundColor: meta.color }]} />
       <View style={st.flex}>
         <Txt variant="prose">{sentenceCase(text)}</Txt>
-        {owner || due ? (
-          <Txt variant="chipSoft" color={colors.inkDim} style={st.meta}>
-            {[owner, due].filter(Boolean).join(' · ')}
-          </Txt>
+        {owner || due || provenance ? (
+          <View style={st.metaRow}>
+            {owner || due ? (
+              <Txt variant="chipSoft" color={colors.inkDim}>
+                {[owner, due].filter(Boolean).join(' · ')}
+              </Txt>
+            ) : null}
+            {provenance}
+          </View>
         ) : null}
         {/* At most one of the two: a hand-written row has no original to revert TO, so the mark
             it carries is "you added this", with removal rather than revert behind it. */}
@@ -537,7 +656,13 @@ function makeStyles(_c: Colors) {
     dot: { width: s(6), height: s(6), borderRadius: s(3), marginTop: s(10) },
     docRow: { flexDirection: 'row', gap: s(12), alignItems: 'stretch' },
     rule: { width: s(3), borderRadius: s(2) },
-    meta: { marginTop: s(4) },
+    metaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: s(10),
+      marginTop: s(4),
+    },
     head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     empty: { padding: s(22), alignItems: 'center', gap: s(8) },
     emptyText: { textAlign: 'center' },

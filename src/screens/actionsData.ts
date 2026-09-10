@@ -20,10 +20,16 @@ import type { ActionRow } from '../pipeline/types';
  * Both callers (ActionsScreen and the library's counts) therefore see only the meetings the item
  * migration has reached — see db.allActions, which is where that is written down in full.
  *
- * WHICH TICK STORE THIS IS. `item_done`, keyed on item ids. The meeting's own Actions tab still
- * reads and writes `action_done`, keyed on hashed text, until Task 10 moves it — so between this
- * build and that one, an item ticked here is not ticked there, and the reverse. Ticks made before
- * this build are in both, because Task 8's migration wrote both.
+ * WHICH TICK STORE THIS IS. `item_done`, keyed on item ids — and since Task 10 the meeting's own
+ * Actions tab writes the same store with the same key, so a tick made in either place is the same
+ * tick. Between Task 9 and Task 10 it was not: that tab read `action_done`, keyed on hashed text,
+ * and the two screens held separate answers for one item. The gap was accepted, recorded, and is
+ * closed.
+ *
+ * What `action_done` still holds, and why this list cannot see it: the rows with no item id to key
+ * on — an action somebody TYPED into a meeting (Task 12 moves those) and any meeting the item
+ * migration has not reached. Neither is in `items`, so neither is in `allActions` either, and this
+ * list is consistent with itself rather than half-informed.
  */
 
 /** The full worklist, newest meeting first, with each item's tick resolved. */

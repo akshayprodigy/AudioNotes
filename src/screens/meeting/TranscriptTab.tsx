@@ -127,6 +127,7 @@ export default function TranscriptTab({
   positionMs = 0,
   onPlayTurn,
   scrollToMs,
+  scrollSeq,
   onCopy,
   edits,
   onEditLine,
@@ -140,6 +141,16 @@ export default function TranscriptTab({
   onPlayTurn?: (ms: number) => void;
   /** A moment to jump to on arrival — a search hit opening the meeting at the phrase it matched. */
   scrollToMs?: number;
+  /**
+   * Which REQUEST this is, bumped by the caller on every one.
+   *
+   * `scrollToMs` alone cannot express "the same moment, again". Two items extracted from the same
+   * turn share an anchor, and tapping the same item twice is the ordinary case — you scrolled away
+   * and want it back. The effect below keys on the pair, so an unchanged millisecond still scrolls
+   * when the request number moves. Left undefined by a caller that only ever asks once, such as
+   * the `atMs` route param a search hit arrives with.
+   */
+  scrollSeq?: number;
   /** Copy the record itself: attributed, no minutes above it, no subtitle timings in it. */
   onCopy?: () => void;
   edits?: EditMap;
@@ -163,11 +174,16 @@ export default function TranscriptTab({
   const active = onPlayTurn ? activeTurn(turns, positionMs) : -1;
 
   /**
-   * Jump to the turn a search hit named, once.
+   * Jump to the moment somebody asked for.
    *
    * Keyed on scrollToMs rather than run on mount: the transcript can arrive after the screen does
    * (the meeting is still being polled while it processes), and scrolling on mount would land on
    * an empty list and then never try again.
+   *
+   * `scrollSeq` is in the dependency list and deliberately not read in the body. It is what makes
+   * the SECOND tap on the same item scroll: without it the effect is keyed on a millisecond, and
+   * asking again for a millisecond it already has is not a change, so nothing happens and the tap
+   * looks dropped. See MeetingScreen.openProvenance for the other half.
    */
   React.useEffect(() => {
     if (scrollToMs === undefined || turns.length === 0) return;
@@ -178,7 +194,7 @@ export default function TranscriptTab({
       120,
     );
     return () => clearTimeout(t);
-  }, [scrollToMs, turns]);
+  }, [scrollToMs, scrollSeq, turns]);
 
   return (
     <FlatList

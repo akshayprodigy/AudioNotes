@@ -276,8 +276,10 @@ export default function SearchScreen({ navigation }: Props) {
         //
         // An `item` hit ALSO carries a real moment — it is indexed at its anchor, not at 0 like
         // title/minute/summary — so this condition is narrower than "the kinds that have a
-        // timestamp". Landing on the moment an item was said needs the MOM tab to accept a
-        // position first, which is Task 10; until then an item hit opens the tab that shows it.
+        // timestamp". Task 10 gave every item on the MOM and Actions tabs a timestamp that opens
+        // the transcript there, so the moment is now one tap away; routing the hit STRAIGHT at it
+        // would mean telling the MOM tab which of its rows to open, which it still cannot be told.
+        // An item hit opens the tab that shows it, and the row carries the rest of the way.
         ...(hit.kind === 'utterance' ? { atMs: hit.startMs } : null),
       });
     },
