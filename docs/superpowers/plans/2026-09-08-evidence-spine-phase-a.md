@@ -2831,6 +2831,51 @@ used to be impossible because SQLite could not reproduce the hash."
 
 ## Task 10: Tap an item, land on the moment it was said
 
+> **SHIPPED 10 September 2026** — commits `e29a044`, `246ae57`, `6f469f7`. 319 jest across 36
+> suites, up from 298/35; typecheck clean. No device run: JavaScript only, and the Kotlin it reads
+> was device-verified in Tasks 6-8b.
+>
+> **The listing understates the task.** It says "render a `<ProvenanceButton>` beside each item,
+> reading `item.anchorStartMs`" — but `MinutesTab` and `ActionsTab` rendered `Minute` rows, and
+> `Minute` has no anchor. The work is converting both tabs to render **items**; the button is what
+> that conversion is for. Three things ride on it, and each has its own trap.
+>
+> **Ticks converted, and the Task 9 gap is closed.** A tick made in the worklist and a tick made in
+> the meeting's own Actions tab are one tick again. The comments Task 9 planted naming Task 10 as
+> the closer were updated in the same commit rather than left to go stale — three files, comment
+> changes only, zero code lines.
+>
+> **Two transitional states remain, both deliberate and both documented.** Hand-typed rows still
+> live in `minutes` until **Task 12**, so the tabs render a merged list; and corrections are still
+> keyed `target_kind='minute'` on a text hash until **Task 11**. A third was added on the
+> implementer's judgement: a meeting whose migration has not run renders its rule `minutes` as a
+> whole-list fallback, because `ensureItems` can fail (its failure is swallowed on purpose) and an
+> items-only tab would draw an empty MOM under a `SummaryTab` still counting actions from `minutes`.
+>
+> **The edit-key identity was verified, and the reason the brief gave for it was wrong.** The claim
+> was that a rule-extracted item's text is byte-identical to its minutes row's content. It is not:
+> `extractItems` splits sentences out of `asciifyWhitespace(normalized)` and `extractMinutes` does
+> not, so a non-breaking space survives in the minute and becomes a plain space in the item. The key
+> still matches — but because `itemKey` collapses whitespace runs before hashing, and because
+> JavaScript's `\s` already includes U+00A0. Replayed over all six paired C++ goldens with zero
+> misses, and pinned by a test. Had the identity rested on the strings being equal, the first
+> curly quote or non-breaking space would have silently orphaned somebody's correction.
+>
+> **The bug the review found, and why it survived.** The metadata row was gated on `!on` — a gate
+> written for the owner and due chips, on the reasoning that a finished item is proof of work. The
+> provenance button was folded into that same gate, so **a ticked action lost its timestamp** and
+> the entire "Done" disclosure had no evidence links: precisely the section a person returning to
+> check a list is reading. No test touched that path before or after, and the reviewer proved it by
+> writing a throwaway test rather than reading it off the source. The lesson is now in the fixed
+> test's docstring, because it generalises: **a gate can only be wrong about a state something
+> actually enters, and nothing in the test tree ever rendered a finished row.**
+>
+> Also fixed: a doc comment that ended up over the wrong function. Inserting `doneItems` between
+> `setItemDone` and its comment left the "which tick store this is" paragraph sitting above a plain
+> SELECT, and `setItemDone` — the half that actually carries the two-store trade-off — undocumented.
+> In a file where the comments are the only thing keeping two live tick stores straight, a
+> misattributed comment is worse than a missing one.
+
 **Files:**
 - Create: `src/screens/meeting/ItemProvenance.tsx`
 - Modify: `src/screens/MeetingScreen.tsx`, `src/screens/meeting/MinutesTab.tsx`, `src/screens/meeting/ActionsTab.tsx`, `src/screens/meeting/TranscriptTab.tsx`
