@@ -2,6 +2,8 @@ package com.innocorelabs.verbale.data
 
 import android.content.Context
 import com.innocorelabs.verbale.pipeline.DraftMinute
+import com.innocorelabs.verbale.pipeline.Minutes
+import com.innocorelabs.verbale.pipeline.Reconciler
 import com.innocorelabs.verbale.pipeline.ResumePlan
 import com.innocorelabs.verbale.pipeline.Spk
 import com.innocorelabs.verbale.pipeline.Utt
@@ -134,6 +136,25 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
   }
 
   /**
+   * Re-index the meeting's items, each at the moment it was said.
+   *
+   * `start_ms` is the item's anchor, so a search hit on an item opens the meeting where it was
+   * said. Minutes rows are indexed at 0 and a hit therefore opens at the beginning; `SearchHit` has
+   * always carried a `startMs` field with nothing to put in it.
+   */
+  fun indexItems(meetingId: String) {
+    indexDelete(meetingId, "item")
+    db.rawQuery(
+      "SELECT id, anchor_start_ms, text FROM items WHERE meeting_id=? ORDER BY anchor_start_ms",
+      arrayOf(meetingId),
+    ).use { c ->
+      while (c.moveToNext()) {
+        indexInsert(meetingId, "item", c.getString(0), c.getLong(1), c.getString(2))
+      }
+    }
+  }
+
+  /**
    * Minute content is stored as JSON — sometimes a bare string, sometimes an object or array.
    * Indexing the raw JSON would make every hit match on braces and key names, so it is flattened
    * to the string leaves before it reaches the index.
@@ -163,6 +184,10 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     indexTitle(meetingId)
     indexMinutes(meetingId)
     indexSummary(meetingId)
+    // Items belong here and not only in replaceItems: reindexMeeting deletes every index row for
+    // the meeting first, and it runs on the backlog sweep, after a speaker merge and after every
+    // hand edit. Left out, an item's search hits disappear the first time anybody corrects a word.
+    indexItems(meetingId)
   }
 
   /** Rebuild every index row for one meeting, transcript included. */
@@ -934,31 +959,79 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
   )
 
   /**
+   * The `items.review` vocabulary, defined once.
+   *
+   * Two files decide things with these strings — [items], which decides what counts as a person
+   * having engaged with a row, and `Reconciler`, which decides what survives a reprocess — and they
+   * compare them as plain text. Two copies would therefore drift in silence: a typo or a fifth
+   * state added on one side only fails no build, throws nothing, and shows nobody anything; it
+   * just stops protecting an item.
+   *
+   * It lives here rather than in `Reconciler` because this is the column's own file — the schema
+   * below defaults `review` to [SUGGESTED], and [items] is where a state turns into a decision
+   * about somebody's work. `Reconciler` already imports [StoredItem] from here, so this adds no
+   * dependency that was not already there.
+   *
+   * [CONFIRMED] has no writer yet: confirming an item is Phase C. It is defined now because
+   * [BY_A_PERSON] is meaningless without it, and because the alternative — a bare `'confirmed'`
+   * appearing in one query when Phase C lands — is how the second copy gets born.
+   */
+  object Review {
+    /** Extracted by the rules; nobody has said anything about it. The column's default. */
+    const val SUGGESTED = "suggested"
+
+    /**
+     * The MACHINE is unsure. `Reconciler` writes this itself whenever a match is ambiguous, so it
+     * says nothing whatever about a person — see [BY_A_PERSON].
+     */
+    const val NEEDS_REVIEW = "needs_review"
+
+    /** A person said yes. */
+    const val CONFIRMED = "confirmed"
+
+    /** A person said no, and it sticks: see `Reconciler` rule 4. */
+    const val REJECTED = "rejected"
+
+    /**
+     * The states a PERSON put there. The other two are the machine talking to itself, and counting
+     * them as engagement makes the reconciler's own flag enough to keep a row alive forever —
+     * measured across five reprocesses, an item nobody ever touched becomes permanent clutter in
+     * the one list that has to stay worth reading.
+     */
+    val BY_A_PERSON = setOf(CONFIRMED, REJECTED)
+  }
+
+  /**
    * A row of `items` as it stands on disk, with its evidence and the two facts the reconciler
    * cannot see any other way.
    *
-   * [createdAt] and [done] are carried deliberately, and neither has a default:
+   * [createdAt] and [touched] are carried deliberately, and neither has a default:
    *
    *  - [createdAt] because `Reconciler` has to hand it back for a matched row. Stamping `now` on
    *    every reconciled row would make an item a person confirmed in March show today's date after
    *    any reprocess, and the original is then unrecoverable from anywhere.
-   *  - [done] because ticking an item writes `item_done` and never touches `review`. An item can
-   *    be finished and still `suggested`, so "review == suggested" does NOT mean "nobody has
-   *    touched this" — and treating it that way deletes the tick when the item stops being
-   *    extracted. Read it with a LEFT JOIN on `item_done`; a default of `false` here would let a
-   *    caller that forgot the join silently throw ticks away, which is the exact class of bug this
-   *    whole area exists to end.
-   *  - [edited] for the same reason in its third form. Hand-correcting an item's text writes
-   *    `edits` and touches neither `review` nor `item_done`, so a rewritten item also reads
-   *    `suggested`/not-done and would be dropped as "nobody cared" — discarding the one version of
-   *    the text a person actually wrote. Read it with a LEFT JOIN on `edits` where
-   *    `target_kind='item'` and `target_key = items.id`.
+   *  - [touched] because whether a person has engaged with an item is recorded in FOUR tables and
+   *    not one of them writes back to this row. A review a person set lives in `items.review`; the
+   *    tick lives in `item_done`; the tick every shipped build has actually written lives in
+   *    `action_done`, keyed on a hash of the item's TEXT; a hand correction lives in `edits`. A
+   *    finished item and a rewritten item both still read `review='suggested'`, so "review ==
+   *    suggested" does NOT mean "nobody has touched this" — and `Reconciler` rule 4 deletes an
+   *    untouched row that stopped being extracted, taking the tick or the person's own words with
+   *    it, with no error and nothing on screen to notice.
+   *
+   * ONE field, and assembled in ONE place — [items], next to the SQL that has to change anyway when
+   * a fifth signal appears (a snooze, a reassignment, a comment). Rule 4 asks `!touched` and
+   * nothing else. This mistake has been made three times in this sub-project — `review` alone, then
+   * `review || done`, then the edit case — and not one of the three failed to compile: two flags a
+   * caller has to remember to OR together is the trap, and a caller that forgets one is invisible
+   * until somebody's tick is gone. A screen that later needs to tell a tick from an edit adds that
+   * field HERE, beside the query; it does not re-derive the predicate at the call site.
    *
    * `edits` carries a foreign key to `meetings` only — none to `items` — and nothing anywhere
-   * cleans up orphans, so an edit row outlives an item id that will never be re-minted. That is
-   * latent today because Task 11 is what starts writing `target_kind='item'`, and no compile error
-   * will catch it there: the query simply returns no rows and every edited item looks untouched.
-   * Whoever implements that join owns this note.
+   * cleans up orphans, so an edit row outlives an item id that will never be re-minted. The join in
+   * [items] is latent for the same reason it is correct: Task 11 is what starts writing
+   * `target_kind='item'`, so it returns nothing today, on purpose, and no compile error would say
+   * otherwise. Whoever implements that write owns this note.
    */
   data class StoredItem(
     val id: String,
@@ -970,9 +1043,139 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     val anchorEndMs: Long,
     val sources: List<StoredSource>,
     val createdAt: Long,
-    val done: Boolean,
-    val edited: Boolean,
+    val touched: Boolean,
   )
+
+  /**
+   * Every stored item for a meeting, in the order the meeting said them, with its evidence and the
+   * one thing no query anywhere else computes: [StoredItem.touched].
+   *
+   * This is the boundary. Four tables can say a person engaged with an item and three of them are
+   * somewhere else entirely, so the predicate is assembled here, once, and every caller — the
+   * reconciler above all — is handed the answer rather than the ingredients. See
+   * [StoredItem.touched] for what happens when a caller assembles it instead.
+   */
+  fun items(meetingId: String): List<StoredItem> {
+    val sources = HashMap<String, MutableList<StoredSource>>()
+    db.rawQuery(
+      "SELECT item_id,start_ms,end_ms,char_start,char_end,utterance_id FROM item_sources " +
+        "WHERE item_id IN (SELECT id FROM items WHERE meeting_id=?) ORDER BY item_id, ordinal",
+      arrayOf(meetingId),
+    ).use { c ->
+      while (c.moveToNext()) {
+        sources.getOrPut(c.getString(0)) { ArrayList() }.add(
+          StoredSource(
+            c.getLong(1), c.getLong(2), c.getInt(3), c.getInt(4),
+            if (c.isNull(5)) null else c.getString(5),
+          ),
+        )
+      }
+    }
+
+    // The fourth signal, and the only one that cannot be a join: `action_done`'s key is a hash of
+    // the item's TEXT computed in JavaScript, which SQL cannot reproduce — [ItemKey] is the mirror
+    // of it, and src/db/queries.ts:413 resolves `done` in its caller for exactly this reason. It
+    // has to be consulted because `item_done` has no writer yet: every tick on every phone in the
+    // field today is here, and until Task 8's migration has run for a meeting a `touched` that
+    // joins `item_done` alone reads a fully worked-through library as untouched.
+    val tickedByText = HashSet<String>()
+    db.rawQuery(
+      "SELECT item_key FROM action_done WHERE meeting_id=?", arrayOf(meetingId),
+    ).use { c ->
+      while (c.moveToNext()) tickedByText.add(c.getString(0))
+    }
+
+    val out = ArrayList<StoredItem>()
+    db.rawQuery(
+      "SELECT i.id,i.kind,i.text,i.review,i.gen_version,i.anchor_start_ms,i.anchor_end_ms," +
+        "i.created_at,d.item_id IS NOT NULL,e.target_key IS NOT NULL " +
+        "FROM items i " +
+        // Both joins are on a primary key, so neither can multiply the rows.
+        "LEFT JOIN item_done d ON d.meeting_id=i.meeting_id AND d.item_id=i.id " +
+        // Latent until Task 11 writes the first target_kind='item' row, and correct as it stands.
+        "LEFT JOIN edits e ON e.meeting_id=i.meeting_id AND e.target_kind='item' " +
+        "AND e.target_key=i.id " +
+        "WHERE i.meeting_id=? ORDER BY i.anchor_start_ms, i.rowid",
+      arrayOf(meetingId),
+    ).use { c ->
+      while (c.moveToNext()) {
+        val id = c.getString(0)
+        val text = c.getString(2)
+        val review = c.getString(3)
+        out.add(
+          StoredItem(
+            id, c.getString(1), text, review, c.getString(4), c.getLong(5), c.getLong(6),
+            sources[id] ?: emptyList(), c.getLong(7),
+            // The whole predicate, and the only copy of it. A fifth signal is added HERE.
+            touched = review in Review.BY_A_PERSON ||  // a person said yes or no
+              c.getInt(8) != 0 ||                      // ticked, by item id
+              tickedByText.contains(ItemKey.of(text)) ||  // ticked before Task 8 migrated it
+              c.getInt(9) != 0,                        // rewritten by hand
+          ),
+        )
+      }
+    }
+    return out
+  }
+
+  /**
+   * Write a meeting's items, preserving the identity of everything that is still the same item.
+   *
+   * [Reconciler] decides what "the same item" means and returns the id to reuse; this method only
+   * persists the answer. Splitting it that way is what makes the matching testable without a
+   * database at all — see ReconcilerTest, which runs the whole matrix on the JVM.
+   *
+   * Every item row for the meeting is deleted and re-inserted, which is why `item_done`
+   * deliberately has no foreign key to `items`: a cascade there would wipe every tick on every
+   * reprocess.
+   */
+  fun replaceItems(meetingId: String, genVersion: String, incoming: List<Minutes.Item>) {
+    db.beginTransaction()
+    try {
+      val plan = Reconciler.reconcile(items(meetingId), incoming)
+
+      // item_sources goes with them, by ON DELETE CASCADE (PRAGMA foreign_keys is ON at open).
+      db.execSQL("DELETE FROM items WHERE meeting_id=?", arrayOf<Any?>(meetingId))
+
+      val now = System.currentTimeMillis()
+      for (r in plan.rows) {
+        db.execSQL(
+          "INSERT INTO items(id,meeting_id,kind,text,review,gen_version," +
+            "anchor_start_ms,anchor_end_ms,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+          arrayOf<Any?>(
+            r.id, meetingId, r.item.kind, r.item.text, r.review,
+            // Null means "this content came from this run, stamp it". Non-null means the content
+            // was preserved from disk and so is its history: writing the run's version over a
+            // person's own item would relabel it `rules@N`, after which rule 1 stops protecting it
+            // on the NEXT reprocess. Same for created_at, which is otherwise unrecoverable.
+            r.genVersion ?: genVersion,
+            r.item.anchorStartMs, r.item.anchorEndMs,
+            r.createdAt ?: now,
+          ),
+        )
+        r.item.sources.forEachIndexed { i, s ->
+          db.execSQL(
+            "INSERT INTO item_sources(item_id,ordinal,start_ms,end_ms,char_start,char_end," +
+              "utterance_id) VALUES(?,?,?,?,?,?,?)",
+            arrayOf<Any?>(r.id, i, s.startMs, s.endMs, s.charStart, s.charEnd, s.utteranceId),
+          )
+        }
+      }
+      indexItems(meetingId)
+
+      // Ticks whose item is gone: drop them, or they accumulate forever against nothing. This is
+      // also the line that makes a wrongly dropped row destructive rather than merely annoying,
+      // which is what rule 4 and [StoredItem.touched] exist to prevent.
+      db.execSQL(
+        "DELETE FROM item_done WHERE meeting_id=? AND item_id NOT IN " +
+          "(SELECT id FROM items WHERE meeting_id=?)",
+        arrayOf<Any?>(meetingId, meetingId),
+      )
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
+  }
 
   companion object {
     @Volatile private var instance: AudioDb? = null

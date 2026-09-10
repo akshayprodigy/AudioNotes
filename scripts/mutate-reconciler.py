@@ -52,26 +52,33 @@ MUTATIONS = [
      "      rows.add(Row(old.id, incoming[i], review, old.createdAt, null))",
      "      rows.add(Row(old.id, incoming[i], review, null, null))"),
     ("ambiguous match leaves review untouched",
-     "      val review = if (confident) old.review else NEEDS_REVIEW",
+     "      val review = if (confident) old.review else Review.NEEDS_REVIEW",
      "      val review = old.review"),
     ("preserved rows are relabelled with the run's gen_version",
      "      rows.add(Row(old.id, preserved, review, old.createdAt, old.genVersion))",
      "      rows.add(Row(old.id, preserved, review, old.createdAt, null))"),
     ("vanished-but-confirmed is dropped",
-     "        else -> NEEDS_REVIEW\n      }",
+     "        else -> Review.NEEDS_REVIEW\n      }",
      "        else -> continue\n      }"),
     ("vanished-and-untouched is retained",
-     "        old.review == SUGGESTED && !old.done && !old.edited -> continue",
-     "        old.review == SUGGESTED && !old.done && !old.edited -> NEEDS_REVIEW"),
-    ("a ticked but unreviewed vanished item is dropped",
-     "        old.review == SUGGESTED && !old.done && !old.edited -> continue",
-     "        old.review == SUGGESTED && !old.edited -> continue"),
-    ("a hand-edited but unreviewed vanished item is dropped",
-     "        old.review == SUGGESTED && !old.done && !old.edited -> continue",
-     "        old.review == SUGGESTED && !old.done -> continue"),
+     "        !old.touched -> continue",
+     "        !old.touched -> Review.NEEDS_REVIEW"),
+    # The three engagement signals used to be ORed together on this line, and there was one
+    # mutation per signal. They now arrive as the single `touched` field that AudioDb.items()
+    # computes, so from here the only thing that can go wrong is asking the wrong question — this
+    # mutation asks the one the code asked before, and the ticked and hand-edited cases must both
+    # notice. Whether items() FINDS each signal is a database question and lives in ItemsDbTest.
+    ("the touched predicate is reduced to the review column",
+     "        !old.touched -> continue",
+     "        old.review == Review.SUGGESTED -> continue"),
+    # ...and the mirror image: `needs_review` is this file's own output, so treating it as
+    # engagement lets our own guess keep a row nobody ever touched alive forever.
+    ("the machine's own needs_review flag counts as engagement",
+     "        !old.touched -> continue",
+     "        old.review == Review.SUGGESTED && !old.touched -> continue"),
     ("a rejected vanished item is re-flagged for review",
-     "        old.review == REJECTED -> REJECTED",
-     "        old.review == REJECTED -> NEEDS_REVIEW"),
+     "        old.review == Review.REJECTED -> Review.REJECTED",
+     "        old.review == Review.REJECTED -> Review.NEEDS_REVIEW"),
     ("a preserved source writes \"\" instead of a null utterance id",
      "          Minutes.Source(it.utteranceId, it.startMs, it.endMs, it.charStart, it.charEnd)",
      "          Minutes.Source(it.utteranceId ?: \"\", it.startMs, it.endMs, it.charStart,"

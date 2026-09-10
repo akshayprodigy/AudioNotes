@@ -41,12 +41,23 @@ class ReconcilerTest {
     kind: String = "action",
     genVersion: String = "rules@1",
     createdAt: Long = LONG_AGO,
-    done: Boolean = false,
-    edited: Boolean = false,
+    // One flag, not three. WHICH table said a person engaged with this row — the review column, a
+    // tick in item_done, the older tick in action_done, a hand correction in edits — is decided by
+    // AudioDb.items() and pinned on a real database by ItemsDbTest. Reconciler is told the answer
+    // and must never assemble it, because the next signal will arrive in a fifth table and will
+    // not fail to compile here.
+    //
+    // The default follows the review because AudioDb.items() computes it that way: a row whose
+    // review a PERSON set is touched by definition, and a fixture saying otherwise would describe
+    // a state no database can hold — a test that passes against an impossible row proves nothing.
+    // Pass it explicitly for the interesting cases: a `suggested` row that a person ticked or
+    // rewrote (touched anyway), or a `needs_review` row nobody has been near (not touched, because
+    // the machine set that flag itself).
+    touched: Boolean = review in AudioDb.Review.BY_A_PERSON,
   ) = AudioDb.StoredItem(
     id, kind, text, review, genVersion, start, end,
     listOf(AudioDb.StoredSource(start, end, 0, text.length, "u-old")),
-    createdAt, done, edited,
+    createdAt, touched,
   )
 
   private fun incoming(text: String, start: Long, end: Long, kind: String = "action") =
@@ -300,21 +311,50 @@ class ReconcilerTest {
     assertNotEquals("id-1", plan.rows[0].id)
   }
 
+  /**
+   * ...and a flag the RECONCILER set does not make it undroppable.
+   *
+   * `needs_review` is this class's own output: rule 3 writes it whenever a match is ambiguous, so
+   * an item can be flagged by five consecutive reprocesses without a person ever having seen it.
+   * Counting that as engagement is a loop — the machine flags a row, the flag makes the row
+   * permanent, and the queue a person is supposed to work through fills with items nobody ever
+   * touched, which is precisely how a review queue stops being read.
+   *
+   * `suggested` and `needs_review` are what the machine says; `confirmed` and `rejected` are what a
+   * person says. Only the second pair is engagement, and [AudioDb.StoredItem.touched] is where that
+   * distinction is drawn.
+   */
+  @Test fun aVanishedItemTheMachineFlaggedButNobodyTouchedIsAlsoDropped() {
+    val plan = Reconciler.reconcile(
+      listOf(stored("id-1", "Send the report — Unassigned", 5000, 9000, "needs_review")),
+      listOf(incoming("Book the venue — Unassigned", 3_600_000, 3_604_000)),
+    )
+    assertEquals(1, plan.rows.size)
+    assertNotEquals("id-1", plan.rows[0].id)
+  }
+
   // ---------------------------------------------------------------------------------------------
   // Beyond the plan's matrix.
   // ---------------------------------------------------------------------------------------------
 
   /**
-   * A tick is not a review: ticking writes item_done and never touches `review`, so an item can be
-   * done and still `suggested`. Dropping it because it is "untouched" throws the tick away.
+   * A tick is not a review: ticking writes item_done (or, before Task 8's migration, action_done)
+   * and never touches `review`, so an item can be done and still `suggested`. Dropping it because
+   * `review` says "suggested" throws the tick away.
    *
    * Lost: the tick on work a person actually finished. This is the same silent loss as the
    * text-hash defect, arriving by a different road — `review == "suggested"` is not a synonym for
    * "nobody cared about this row".
+   *
+   * The fixture is `touched = true` because that is all this class is told; which of the four
+   * tables the tick came from is AudioDb.items()' problem, and ItemsDbTest is where each of them is
+   * pinned against a real database.
    */
   @Test fun aVanishedButTickedItemIsRetainedEvenThoughItWasNeverReviewed() {
     val plan = Reconciler.reconcile(
-      listOf(stored("id-1", "Send the report — Unassigned", 5000, 9000, "suggested", done = true)),
+      listOf(
+        stored("id-1", "Send the report — Unassigned", 5000, 9000, "suggested", touched = true),
+      ),
       listOf(incoming("Book the venue — Unassigned", 3_600_000, 3_604_000)),
     )
     assertEquals(2, plan.rows.size)
@@ -326,9 +366,10 @@ class ReconcilerTest {
   /**
    * A hand-edited item is touched, even though nothing in its own row says so.
    *
-   * The fixture is deliberately the invisible state: `review = "suggested"`, `done = false`,
-   * `edited = true`. A person rewrote the text by hand; that writes `edits` and touches neither
-   * `review` nor `item_done`, so the row looks exactly like one nobody ever cared about.
+   * The fixture is deliberately the invisible state: `review = "suggested"` and the only reason
+   * `touched` is true is a row in `edits`. A person rewrote the text by hand; that writes `edits`
+   * and touches neither `review` nor `item_done`, so the row's own columns look exactly like one
+   * nobody ever cared about.
    *
    * Lost: the person's own words. The third form of the tick bug, in the code written to end that
    * bug class — and the one with no compile error behind it, because `edits` has no foreign key to
@@ -337,7 +378,9 @@ class ReconcilerTest {
    */
   @Test fun aVanishedButHandEditedItemIsRetainedEvenThoughItWasNeverReviewedOrTicked() {
     val plan = Reconciler.reconcile(
-      listOf(stored("id-1", "Book the venue — Unassigned", 5000, 9000, "suggested", edited = true)),
+      listOf(
+        stored("id-1", "Book the venue — Unassigned", 5000, 9000, "suggested", touched = true),
+      ),
       listOf(incoming("Send the report — Unassigned", 3_600_000, 3_604_000)),
     )
     assertEquals(2, plan.rows.size)
@@ -377,7 +420,7 @@ class ReconcilerTest {
   @Test fun aUserWrittenItemIsNeverMatchedReplacedOrFlagged() {
     val user = AudioDb.StoredItem(
       "u-1", "action", "Send the report — Unassigned", "confirmed", "user", 5000, 9000,
-      emptyList(), LONG_AGO, false, false,
+      emptyList(), LONG_AGO, true,
     )
     val plan = Reconciler.reconcile(
       listOf(user),
@@ -573,7 +616,7 @@ class ReconcilerTest {
   @Test fun aPreservedSourceKeepsANullUtteranceIdNull() {
     val stored = AudioDb.StoredItem(
       "id-1", "action", "Send the report — Unassigned", "confirmed", "rules@1", 5000, 9000,
-      listOf(AudioDb.StoredSource(5000, 9000, 0, 27, null)), LONG_AGO, false, false,
+      listOf(AudioDb.StoredSource(5000, 9000, 0, 27, null)), LONG_AGO, true,
     )
     val plan = Reconciler.reconcile(
       listOf(stored),

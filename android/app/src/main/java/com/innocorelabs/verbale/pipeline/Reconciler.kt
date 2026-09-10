@@ -1,6 +1,7 @@
 package com.innocorelabs.verbale.pipeline
 
 import com.innocorelabs.verbale.data.AudioDb
+import com.innocorelabs.verbale.data.AudioDb.Review
 import java.util.UUID
 import kotlin.math.max
 import kotlin.math.min
@@ -137,9 +138,9 @@ object Reconciler {
   /** `gen_version` of an item a person typed. See rule 1. */
   private const val USER_GEN = "user"
 
-  private const val SUGGESTED = "suggested"
-  private const val NEEDS_REVIEW = "needs_review"
-  private const val REJECTED = "rejected"
+  // The review vocabulary lives in AudioDb.Review and is deliberately NOT re-declared here. These
+  // states are compared as plain strings, and AudioDb.items() decides with the same four, so a
+  // second copy would drift from the first without failing a build or raising anything.
 
   /** A scored (incoming, stored) pair, sorted best-first in [reconcile]. */
   private data class Pairing(val incomingIndex: Int, val storedIndex: Int, val score: Double)
@@ -197,7 +198,7 @@ object Reconciler {
     for (i in incoming.indices) {
       val old = matched[i]
       if (old == null) {
-        rows.add(Row(UUID.randomUUID().toString(), incoming[i], SUGGESTED, null, null))
+        rows.add(Row(UUID.randomUUID().toString(), incoming[i], Review.SUGGESTED, null, null))
         continue
       }
       reusedIds.add(old.id)
@@ -214,7 +215,7 @@ object Reconciler {
       val confident = matchedScore[i] >= CONFIDENT_SIMILARITY &&
         !negationChanged(old.text, incoming[i].text) &&
         !tied[i]
-      val review = if (confident) old.review else NEEDS_REVIEW
+      val review = if (confident) old.review else Review.NEEDS_REVIEW
       rows.add(Row(old.id, incoming[i], review, old.createdAt, null))
     }
 
@@ -242,16 +243,17 @@ object Reconciler {
         // again every reprocess is how a review queue turns into noise; dropping it would let the
         // next recogniser improvement re-suggest it as brand new. Keeping the "no" is what makes
         // it stick.
-        old.review == REJECTED -> REJECTED
-        // Untouched by anyone and no longer extracted: genuinely gone. "Touched" is reviewed OR
-        // ticked OR edited, and only `review` is visible in this row's own table: a tick lives in
-        // item_done and a hand correction lives in edits, and NEITHER changes `review`. So a
-        // finished item and a rewritten item both still read `suggested`, and dropping them
-        // deletes the tick and the person's own words respectively.
-        old.review == SUGGESTED && !old.done && !old.edited -> continue
+        old.review == Review.REJECTED -> Review.REJECTED
+        // Untouched by anyone and no longer extracted: genuinely gone. What counts as touched is
+        // decided in AudioDb.items() and NOWHERE else — it spans four tables, three of which never
+        // write to this row, and a fifth signal will arrive one day in a table this file has never
+        // heard of and will not fail to compile here. Ask the one field; do not rebuild the
+        // predicate. Note that `needs_review` is not engagement: this class writes that flag
+        // itself, so counting it would make our own guess enough to keep a row forever.
+        !old.touched -> continue
         // Confirmed, edited, or ticked, and the rules no longer find it. This row is now the only
         // record of it, so it is kept and flagged rather than deleted.
-        else -> NEEDS_REVIEW
+        else -> Review.NEEDS_REVIEW
       }
       rows.add(Row(old.id, preserved, review, old.createdAt, old.genVersion))
     }
