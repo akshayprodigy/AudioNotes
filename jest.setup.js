@@ -35,6 +35,9 @@ const mockNativeModules = {
     query: jest.fn(async () => '[]'),
     search: jest.fn(async () => '[]'),
     reindex: jest.fn(async () => {}),
+    // The meeting screen awaits this before its first read; a missing stub is an unhandled
+    // rejection inside a component, not a clear error.
+    ensureItems: jest.fn(async () => {}),
     backfillSearch: jest.fn(async () => 0),
   },
   ModelManager: {

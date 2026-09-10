@@ -4,6 +4,8 @@ import type {
   ActionRow,
   Edit,
   EditTarget,
+  Item,
+  ItemSource,
   Meeting,
   Minute,
   MinuteKind,
@@ -170,6 +172,48 @@ export const db = {
     ),
 
   /**
+   * A meeting's items with their evidence, in the order they were said.
+   *
+   * Two queries and a group rather than one join, because a join would repeat every item once per
+   * source and the screen would have to undo that. The grouping is keyed on the item id: handing
+   * every item the same list is the failure this shape has already produced once, on the Kotlin
+   * side, where it went unnoticed because only one test read `.sources` at all and its meeting had
+   * a single item.
+   *
+   * Both ORDER BYs are the contract callers read — `anchor_start_ms, rowid` for the items,
+   * `ordinal` for each item's evidence — and neither is decorative: evidence read back out of
+   * order is the wrong moment shown against a person's item.
+   *
+   * A meeting recorded before items existed has none here until db.ensureItems has run for it.
+   *
+   * No caller yet: the meeting tabs that render items are Task 10's, and this is the read waiting
+   * for them. Said out loud because an unread query is the mirror of the uncalled migration this
+   * plan already shipped once, and the mirror is just as quiet.
+   */
+  items: async (meetingId: string): Promise<Item[]> => {
+    const rows = await run<Omit<Item, 'sources'>>(
+      'SELECT id, meeting_id AS meetingId, kind, text, review, gen_version AS genVersion, ' +
+        'anchor_start_ms AS anchorStartMs, anchor_end_ms AS anchorEndMs ' +
+        'FROM items WHERE meeting_id = ? ORDER BY anchor_start_ms, rowid',
+      [meetingId],
+    );
+    const srcs = await run<ItemSource & { itemId: string }>(
+      'SELECT item_id AS itemId, start_ms AS startMs, end_ms AS endMs, ' +
+        'char_start AS charStart, char_end AS charEnd, utterance_id AS utteranceId ' +
+        'FROM item_sources WHERE item_id IN (SELECT id FROM items WHERE meeting_id = ?) ' +
+        'ORDER BY item_id, ordinal',
+      [meetingId],
+    );
+    const byItem = new Map<string, ItemSource[]>();
+    for (const { itemId, ...s } of srcs) {
+      const list = byItem.get(itemId);
+      if (list) list.push(s);
+      else byItem.set(itemId, [s]);
+    }
+    return rows.map(r => ({ ...r, sources: byItem.get(r.id) ?? [] }));
+  },
+
+  /**
    * Replace the RULE-based minutes for a meeting, leaving the LLM prose alone.
    *
    * Scoped to source='rule' deliberately, mirroring AudioDb.replaceMinutes. Deleting every row
@@ -246,6 +290,29 @@ export const db = {
         ])
       : run('DELETE FROM action_done WHERE meeting_id = ? AND item_key = ?', [meetingId, itemKey]),
 
+  /**
+   * Tick or untick one item, keyed on the item's stable id.
+   *
+   * WHICH STORE THIS IS. `item_done`, not `action_done` — a different table from setActionDone
+   * above, which the meeting's own Actions tab still writes and reads (src/screens/meeting/
+   * ActionsTab.tsx, moved onto items by Task 10). Until then the two stores do not see each
+   * other: an item ticked in the cross-meeting worklist is not ticked in that meeting's tab, and
+   * the reverse. Ticks made before this build are in both, because Task 8's migration wrote both.
+   *
+   * Bridging them by writing to both would be worse than the gap. Nothing ever deletes an
+   * `action_done` row, so an item unticked here and re-ticked there would come back ticked on the
+   * next reprocess, permanently — which is the same reason AudioDb.ensureItems does not run its
+   * tick carry unconditionally.
+   */
+  setItemDone: (meetingId: string, itemId: string, done: boolean) =>
+    done
+      ? run('INSERT OR REPLACE INTO item_done(meeting_id, item_id, done_at) VALUES(?,?,?)', [
+          meetingId,
+          itemId,
+          Date.now(),
+        ])
+      : run('DELETE FROM item_done WHERE meeting_id = ? AND item_id = ?', [meetingId, itemId]),
+
   setStatus: (meetingId: string, status: string) =>
     run('UPDATE meetings SET status = ? WHERE id = ?', [status, meetingId]),
 
@@ -316,6 +383,21 @@ export const db = {
 
   /** Index meetings recorded before the index covered more than the transcript. Returns the backlog. */
   backfillSearch: (limit = 25) => Storage.backfillSearch(limit),
+
+  /**
+   * Give one meeting its items if it was recorded before items existed.
+   *
+   * Per-meeting and lazy, unlike backfillSearch's chunked sweep, and AudioDb.ensureItems says why:
+   * opening a meeting IS the trigger, there is no library-wide pass, and the native side works out
+   * whether a meeting has been migrated from the data rather than from a flag — so a failed
+   * attempt costs nothing but a retry on the next open. The one caller is the meeting screen's
+   * read (MeetingScreen.refresh), which has to await it before reading.
+   *
+   * It can reject on a phone that has not finished downloading libonnxruntime.so, because the
+   * migration re-runs the rule pass through the native core. That is deliberate on the Kotlin side
+   * and must never be fatal here: a meeting is readable whether or not it has been migrated yet.
+   */
+  ensureItems: (meetingId: string) => Storage.ensureItems(meetingId),
 
   // ---- Tags -------------------------------------------------------------------------------
 
@@ -408,23 +490,80 @@ export const db = {
   // ---- Cross-meeting worklist --------------------------------------------------------------
 
   /**
-   * Every action item across every live meeting, newest meeting first, with its tick state.
+   * Every action item across every live meeting, newest meeting first, with its identity.
    *
-   * The join is on `action_done`, whose key is a hash of the item text computed in JS
-   * (ActionsTab.itemKey) — SQL cannot reproduce that hash, so `done` is resolved by the caller
-   * from `doneKeys` below rather than here. Archived meetings are excluded: they are hidden from
-   * the library and their actions should not resurface in a worklist.
+   * Reads `items`, not `minutes`. Those hold the same sentences for now — `replaceMinutes` still
+   * writes the item kinds, because a meeting nobody has opened has not been migrated and its
+   * `minutes` rows are all it has — and the worklist reads the one that carries an id a tick can
+   * be keyed on.
+   *
+   * WHAT THAT COSTS, AND WHY IT IS STILL RIGHT. A meeting gains items when somebody OPENS it (see
+   * db.ensureItems); there is no library-wide sweep, and Task 8 rejected one as over-building on
+   * top of a single process-wide connection shared with the recording service. So the first run of
+   * this build shows a worklist covering only the meetings that have been opened since, and it
+   * fills back in one meeting at a time as they are. Nothing is lost while that happens: the
+   * `minutes` rows and every `action_done` tick stay exactly where they were, and a meeting's own
+   * Actions tab still reads both.
+   *
+   * The other consequence, until Task 12 moves hand-written items across: an action somebody TYPED
+   * into a meeting is a `minutes` row with source='user' and no item, so it shows on that meeting's
+   * own Actions tab and not here — a migrated meeting included.
+   *
+   * `items` has no `source` column; `gen_version` records what wrote the row, and 'user' is the
+   * value Task 12 will write there. Archived meetings are excluded because they are hidden from
+   * the library, and their actions resurfacing in a worklist is what would make archiving useless.
+   *
+   * `done` is still resolved by the caller (src/screens/actionsData.ts) rather than joined here —
+   * see doneItemIds below for the reason, which is no longer that SQL cannot reproduce the key.
+   *
+   * SECOND CALLER, and it does not want the ticks: SearchScreen's "only meetings with actions"
+   * filter reads this for the meeting ids alone. Reading `items` narrows that filter to meetings
+   * the migration has reached, so a meeting nobody has opened since updating drops out of it until
+   * they do. It heals one meeting at a time, on the same trigger everything else here does.
    */
   allActions: () =>
-    run<Omit<ActionRow, 'itemKey' | 'done'>>(
-      'SELECT m.meeting_id AS meetingId, mt.title AS meetingTitle, mt.created_at AS createdAt, ' +
-        'm.content_json AS content, m.source AS source ' +
-        'FROM minutes m JOIN meetings mt ON mt.id = m.meeting_id ' +
-        "WHERE m.kind = 'action' AND mt.archived_at IS NULL " +
-        'ORDER BY mt.created_at DESC, m.rowid',
+    run<Omit<ActionRow, 'done'>>(
+      'SELECT i.id AS id, i.meeting_id AS meetingId, mt.title AS meetingTitle, ' +
+        'mt.created_at AS createdAt, i.text AS content, i.anchor_start_ms AS anchorStartMs, ' +
+        "CASE WHEN i.gen_version = 'user' THEN 'user' ELSE 'rule' END AS source " +
+        'FROM items i JOIN meetings mt ON mt.id = i.meeting_id ' +
+        "WHERE i.kind = 'action' AND mt.archived_at IS NULL " +
+        'ORDER BY mt.created_at DESC, i.anchor_start_ms, i.rowid',
     ),
 
-  /** Every ticked action key in the library, as `meetingId\u0000itemKey`. */
+  /**
+   * Every ticked item in the library, as `meetingId\u0000itemId`.
+   *
+   * The id is what makes this safe to key on. `doneKeys` below is keyed on a hash of the item's
+   * TEXT, so re-recognising one word unticked it; `Reconciler` (pipeline/Reconciler.kt) carries an
+   * item's id across a reprocess and flags rather than guesses when it is unsure, which is the
+   * thing that hash was standing in for.
+   *
+   * The pair is flattened into one string because a Set of tuples cannot be looked up by value.
+   * The separator is a NUL for the same reason it is in `doneKeys` — it cannot occur in either
+   * half, and any character that can lets one meeting's tick land on another meeting's item.
+   *
+   * NARROWER than the native `touched` predicate, deliberately: this reads `item_done` and nothing
+   * else, so a meeting whose ticks are still in `action_done` because ensureItems' guard never
+   * fired for it (see AudioDb.ensureItems) draws its items unticked here while still being fully
+   * protected from deletion there.
+   */
+  doneItemIds: async (): Promise<Set<string>> => {
+    const rows = await run<{ meetingId: string; itemId: string }>(
+      'SELECT meeting_id AS meetingId, item_id AS itemId FROM item_done',
+    );
+    return new Set(rows.map(r => `${r.meetingId}\u0000${r.itemId}`));
+  },
+
+  /**
+   * Every ticked action key in the library, as `meetingId\u0000itemKey`.
+   *
+   * NO CALLER as of this build. The worklist was the only one and it reads doneItemIds now; the
+   * per-meeting Actions tab reads `doneActions` for one meeting, not this. Kept rather than
+   * deleted because `action_done` still holds every tick that has not been migrated yet and this
+   * is the only library-wide way to see them — but it is dead weight the moment Task 10 moves that
+   * tab onto items, and it should go with it rather than quietly outliving the table it reads.
+   */
   doneKeys: async (): Promise<Set<string>> => {
     const rows = await run<{ meetingId: string; itemKey: string }>(
       'SELECT meeting_id AS meetingId, item_key AS itemKey FROM action_done',

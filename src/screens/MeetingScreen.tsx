@@ -151,7 +151,37 @@ export default function MeetingScreen({ route, navigation }: Props) {
   // a hit mid-meeting would raise an error about playback nobody had asked for. The line is on
   // screen and one tap plays it, which is the whole of what the hit promised.
 
+  /**
+   * Give this meeting its items, before anything reads them.
+   *
+   * A meeting recorded before the items table existed has none until `ensureItems` re-runs the
+   * rule pass over its stored transcript, and the trigger is per-meeting and lazy on purpose (see
+   * AudioDb.ensureItems): opening a meeting IS the migration, and there is no library-wide sweep.
+   * So the call belongs here, and it has to finish BEFORE the read below — a just-migrated meeting
+   * whose items land after the first render draws a screen from data that was not there yet.
+   *
+   * Once per opening, not once per refresh, and the difference matters for exactly the meeting
+   * that needs watching: `refresh` is also a two-second poll while a meeting is being processed,
+   * and `ensureItems`' guard is "has utterances, has no items" — the state every meeting is in
+   * between ASR finishing and the pipeline writing its items. A call per poll would re-run the
+   * rule pass over a half-written transcript, over and over, on a phone already busy writing the
+   * real one.
+   *
+   * A failure is swallowed and not retried here. What fails is loading the native core — a phone
+   * still downloading libonnxruntime.so — and a meeting is readable whether or not it has been
+   * migrated. `ensureItems` works out whether a meeting still needs migrating from the data rather
+   * than from a flag, so the next open simply tries again.
+   */
+  const migration = useRef<{ meetingId: string; done: Promise<void> } | null>(null);
+  const migrate = useCallback(() => {
+    if (migration.current?.meetingId !== meetingId) {
+      migration.current = { meetingId, done: db.ensureItems(meetingId).catch(() => {}) };
+    }
+    return migration.current.done;
+  }, [meetingId]);
+
   const refresh = useCallback(async () => {
+    await migrate();
     const [mtg, mins, utts, segs, spk, eds, tgs] = await Promise.all([
       db.getMeeting(meetingId),
       db.minutes(meetingId),
@@ -169,7 +199,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
     setTags(tgs);
     setSpeechMs(segs.reduce((a, x) => a + (x.end_ms - x.start_ms), 0));
     return mins.length;
-  }, [meetingId]);
+  }, [meetingId, migrate]);
 
   useEffect(() => {
     let cancelled = false;

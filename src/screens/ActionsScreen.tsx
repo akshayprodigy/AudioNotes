@@ -68,9 +68,13 @@ function group(items: ActionRow[], prefix: string): Row[] {
  * screen it answers the question people actually open a notes app to ask — what did I promise, and
  * have I done it — which is what turns a recorder into something opened daily.
  *
- * Ticks written here are the same ticks the meeting's own Actions tab reads: both key on a hash of
- * the item's normalised text (see actionsData), so an item ticked here is ticked there, and stays
- * ticked through a reprocess or a speaker merge.
+ * A tick written here is keyed on the ITEM's id (see actionsData), so it survives a reprocess or a
+ * speaker merge — including one that re-words the sentence, which the old text hash could not.
+ *
+ * It is not, for the moment, the same tick the meeting's own Actions tab shows. That tab still
+ * reads `action_done` keyed on hashed text and moves onto items in Task 10, so between this build
+ * and that one the two screens keep separate answers for the same item. Ticks made before this
+ * build are in both stores, because Task 8's migration wrote both.
  */
 export default function ActionsScreen({ navigation }: Props) {
   const { colors } = useTheme();
@@ -98,19 +102,18 @@ export default function ActionsScreen({ navigation }: Props) {
    * Tick or untick.
    *
    * Optimistic, exactly as the meeting's own tab is: the tick belongs on the next frame, not after
-   * a database round trip, and a failed write costs a tick rather than the item. Every row sharing
-   * the key within that meeting moves together, because the key IS the item as far as storage is
-   * concerned — one text, one tick.
+   * a database round trip, and a failed write costs a tick rather than the item.
+   *
+   * Matched on the item's id, and the id is what is written. The row it moves is now exactly one:
+   * under the old text hash, two meetings that produced the same sentence shared a key, so the
+   * optimistic pass had to match on meeting AND key and still moved every duplicate inside that
+   * meeting together. An id is the item, so there is nothing to fan out to.
    */
   const toggle = useCallback((item: ActionRow) => {
     const next = !item.done;
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setRows(prev =>
-      prev.map(r =>
-        r.meetingId === item.meetingId && r.itemKey === item.itemKey ? { ...r, done: next } : r,
-      ),
-    );
-    db.setActionDone(item.meetingId, item.itemKey, next).catch(() => {});
+    setRows(prev => prev.map(r => (r.id === item.id ? { ...r, done: next } : r)));
+    db.setItemDone(item.meetingId, item.id, next).catch(() => {});
   }, []);
 
   const open = useCallback(

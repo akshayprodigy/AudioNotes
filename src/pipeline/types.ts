@@ -140,14 +140,55 @@ export interface SearchHit {
   score: number;
 }
 
-/** An action item lifted out of its meeting, for the cross-meeting worklist. */
+/**
+ * One passage of the recording supporting an item, as it comes back OUT of the database.
+ *
+ * The near-twin in src/pipeline/evidence.ts is the same thing on the way IN — what the extractor
+ * produces before anything is persisted — and the difference between them is the whole reason
+ * both exist: `utteranceId` is always known at extraction and is nullable in storage, because
+ * AudioDb.replaceUtterancesJson mints fresh utterance ids on every ASR run and a stored id can be
+ * pointing at nothing by the time it is read back. `startMs` is the anchor and the identity; the
+ * utterance id is a convenience, so never depend on it across runs.
+ */
+export interface ItemSource {
+  startMs: number;
+  endMs: number;
+  /** UTF-16 code units into the turn's text, matching JavaScript's own string indices. */
+  charStart: number;
+  charEnd: number;
+  utteranceId: string | null;
+}
+
+/** A decision, action or question, with the evidence behind it. */
+export interface Item {
+  id: string;
+  meetingId: string;
+  kind: 'decision' | 'action' | 'question';
+  text: string;
+  /** `suggested` until a person looks at it. Phase B is what writes `needs_review`. */
+  review: 'suggested' | 'needs_review' | 'confirmed' | 'rejected';
+  genVersion: string;
+  anchorStartMs: number;
+  anchorEndMs: number;
+  sources: ItemSource[];
+}
+
+/**
+ * An action item lifted out of its meeting, for the cross-meeting worklist.
+ *
+ * `id` is the item's id, and it is what the tick is keyed on. It replaced an `itemKey` field
+ * holding a hash of `content`, which moved whenever the wording did — so re-recognising a single
+ * word in a reprocessed meeting unticked work somebody had already done.
+ */
 export interface ActionRow {
   meetingId: string;
   meetingTitle: string;
   createdAt: number;
+  id: string;
   content: string;
+  /** Where the row came from, derived from `items.gen_version`. See db.allActions. */
   source: MinuteSource;
-  itemKey: string;
+  anchorStartMs: number;
   done: boolean;
 }
 
