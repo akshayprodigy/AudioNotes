@@ -270,9 +270,21 @@ class ProcessingEngine(
         val speakers = db.speakers(meetingId)
         val minutes = Minutes.extract(utts, speakers)
         db.replaceMinutes(meetingId, "rule", minutes)
+
+        // The same rules again, this time keeping the provenance `extract` throws away: which turn
+        // said it, when, and where in that turn. `replaceMinutes` still runs and is not redundant
+        // — `minutes` keeps the summary row, which is the free tier's overview paragraph and which
+        // the export renderer reads.
+        //
+        // Both reads are of `utts`, which already carries the ids and timings for exactly this:
+        // a second query over the same rows is a second chance for the two to be a row apart, and
+        // that produces no error, only items anchored at the wrong moment.
+        val items = Minutes.extractItems(utts, speakers)
+        db.replaceItems(meetingId, Minutes.RULES_GEN, items)
+
         retitleFromTranscript(meetingId, utts)
         listener.onStage("minutes", 1, 1)
-        Log.i(TAG, "Minutes produced ${minutes.size} items for $meetingId")
+        Log.i(TAG, "Minutes produced ${minutes.size} rows and ${items.size} items for $meetingId")
 
         // ---- Narration (on-device LLM): the summary, the MOM prose, the library one-liner ----
         //

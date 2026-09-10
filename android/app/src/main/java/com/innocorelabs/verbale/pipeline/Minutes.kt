@@ -5,8 +5,29 @@ import org.json.JSONArray
 /** Mirrors src/pipeline/minutes.ts DraftMinute. kind in: summary|decision|action|question. */
 data class DraftMinute(val kind: String, val content: String, val source: String = "rule")
 
-/** The minimal utterance/speaker fields the extractor needs (subset of the DB rows). */
-data class Utt(val text: String, val speakerId: String?)
+/**
+ * One turn of the transcript, in the shape both extractors read it.
+ *
+ * [text] and [speakerId] are all the rules themselves need — [Minutes.extract] ignores the rest —
+ * but [Minutes.extractItems] has to say WHERE each item was said, and the only place that answer
+ * exists is the row the turn came from. Carrying the identity and the clock on the same object is
+ * what stops the two being assembled separately and drifting a row apart; see the `require` in
+ * [Minutes.extractItems] for what that looks like when it happens.
+ *
+ * Deliberately no defaults on [id], [startMs] and [endMs]. A default would let a caller build a
+ * turn with no clock, and the result of that is not an error anywhere — it is an item anchored at
+ * 0, which sends the player to the top of the meeting for something said forty minutes in.
+ *
+ * The field list now mirrors `db.utterances()` in src/db/queries.ts, which has always selected
+ * `id, startMs, endMs, speakerId, text`; the Kotlin side was the narrower of the two.
+ */
+data class Utt(
+  val id: String,
+  val startMs: Long,
+  val endMs: Long,
+  val text: String,
+  val speakerId: String?,
+)
 data class Spk(val id: String, val displayName: String?)
 
 /**
@@ -22,6 +43,17 @@ data class Spk(val id: String, val displayName: String?)
  * PipelineController.enhanceMinutes.
  */
 object Minutes {
+  /**
+   * What produced an item, written to `items.gen_version` by everything that runs these rules.
+   *
+   * One constant because two writers exist — the pipeline and AudioDb.backfillItems — and the
+   * string is not decoration: `Reconciler` rule 1 asks whether a row is `"user"` and leaves it
+   * alone if it is, so the vocabulary decides whether somebody's own item survives a reprocess.
+   * Bump it here when the rules change, in the file where the change lands, so the two writers
+   * cannot disagree about which rules a stored item came from.
+   */
+  const val RULES_GEN = "rules@1"
+
   /** Requires NativeBridge.ensureLoaded() to have run (ProcessingEngine does it first thing). */
   fun extract(utterances: List<Utt>, speakers: List<Spk> = emptyList()): List<DraftMinute> {
     val flat = NativeBridge.nativeMinutes(
@@ -92,6 +124,33 @@ object Minutes {
 
   /**
    * The same rules as [extract], plus the provenance it discards.
+   *
+   * Takes the turns as [Utt] rows because that is how both real callers have them — the pipeline
+   * from `db.utterances`, the library backfill from the same query — and because it is the only
+   * shape in which the five parallel arrays below CANNOT disagree: built from one list, they are
+   * the same length by construction. Both callers were otherwise going to assemble them
+   * independently, and the failure that follows from getting one of them a row short is not an
+   * error anywhere; see the `require` in the array overload for what it looks like instead.
+   *
+   * Requires NativeBridge.ensureLoaded() to have run.
+   */
+  fun extractItems(turns: List<Utt>, speakers: List<Spk> = emptyList()): List<Item> = extractItems(
+    Array(turns.size) { turns[it].id },
+    LongArray(turns.size) { turns[it].startMs },
+    LongArray(turns.size) { turns[it].endMs },
+    Array(turns.size) { turns[it].text },
+    // "" for an unassigned turn: Kotlin cannot put a null in an Array<String>, and the C++ treats
+    // an empty id exactly as the TypeScript treats null.
+    Array(turns.size) { turns[it].speakerId ?: "" },
+    Array(speakers.size) { speakers[it].id },
+    Array(speakers.size) { speakers[it].displayName ?: "" },
+  )
+
+  /**
+   * [extractItems] over parallel arrays — the form that crosses JNI.
+   *
+   * Public because the goldens drive it directly with recorded input that never was a database
+   * row. Everything reading real turns should use the [List] overload above.
    *
    * The arrays are parallel and in transcript order: `ids[i]`, `startsMs[i]`, `endsMs[i]`,
    * `texts[i]` and `speakerIds[i]` describe one turn. `speakerIds[i]` is "" for an unassigned turn

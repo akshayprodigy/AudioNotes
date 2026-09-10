@@ -64,16 +64,25 @@ const plain = (snippet: string) => snippet.replace(/[\u0002\u0003]/g, '');
 /**
  * What was matched, and where tapping it should land.
  *
- * The index covers four different kinds of text and they are not interchangeable to a reader: a
+ * The index covers five different kinds of text and they are not interchangeable to a reader: a
  * phrase found in the transcript is something somebody said, and the same phrase found in the
  * minutes is something the meeting decided. Labelling the difference is most of what makes a
  * results list readable, and the destination follows from it — a transcript hit opens the
  * transcript at the moment it was spoken, a minute hit opens the minutes.
+ *
+ * `item` is a decision, action or question with provenance — one of the three, and the hit does
+ * not say which, so the label names the class rather than guessing at the member and the tab is
+ * the one that shows all three. It gets its own `case` because the `default` below is a trap: an
+ * unhandled kind is not a type error, it is silently labelled "TITLE" and sent to the summary tab,
+ * which is exactly what item hits did between the day AudioDb started indexing them and the day
+ * the pipeline started producing them for real meetings.
  */
-function kindMeta(kind: SearchHit['kind'], c: Colors) {
+export function kindMeta(kind: SearchHit['kind'], c: Colors) {
   switch (kind) {
     case 'utterance':
       return { label: 'SAID', color: c.primary, soft: c.primarySoft, tab: 'transcript' as MeetingTab };
+    case 'item':
+      return { label: 'ITEM', color: c.warning, soft: c.warningSoft, tab: 'mom' as MeetingTab };
     case 'minute':
       return { label: 'MINUTES', color: c.warning, soft: c.warningSoft, tab: 'mom' as MeetingTab };
     case 'summary':
@@ -263,7 +272,12 @@ export default function SearchScreen({ navigation }: Props) {
         meetingId: hit.meetingId,
         tab,
         // Utterance timings are anchored to the original recording's timeline, so this lands on
-        // the exact turn rather than somewhere near it. Only meaningful for a transcript hit.
+        // the exact turn rather than somewhere near it.
+        //
+        // An `item` hit ALSO carries a real moment — it is indexed at its anchor, not at 0 like
+        // title/minute/summary — so this condition is narrower than "the kinds that have a
+        // timestamp". Landing on the moment an item was said needs the MOM tab to accept a
+        // position first, which is Task 10; until then an item hit opens the tab that shows it.
         ...(hit.kind === 'utterance' ? { atMs: hit.startMs } : null),
       });
     },

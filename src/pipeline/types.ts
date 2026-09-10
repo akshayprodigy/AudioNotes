@@ -120,10 +120,20 @@ export interface Edit {
  * transcript hit was spoken so tapping it can open the meeting at that point. The snippet arrives
  * with matched terms wrapped in U+0002/U+0003 — control characters chosen because no transcript
  * will ever contain them, so splitting on them cannot corrupt real text.
+ *
+ * `'item'` is a decision, action or question with its own provenance, indexed by AudioDb at the
+ * moment it was said — so it is the SECOND kind whose `startMs` means something. `'title'`,
+ * `'minute'` and `'summary'` are all indexed at 0, and any code that treats a zero here as "this
+ * kind has no moment" is now wrong for one of the five.
+ *
+ * Adding a member to this union does NOT fail a build on its own: SearchScreen's `kindMeta`
+ * switches on it with a `default` branch, which swallows an unhandled kind and labels it "TITLE".
+ * A new member needs its own `case` there, by hand — and src/screens/__tests__/searchKinds.test.ts
+ * is what turns the omission back into a compile error, because the `default` branch cannot.
  */
 export interface SearchHit {
   meetingId: string;
-  kind: 'utterance' | 'title' | 'minute' | 'summary';
+  kind: 'utterance' | 'title' | 'minute' | 'summary' | 'item';
   refId: string | null;
   startMs: number;
   snippet: string;

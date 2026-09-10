@@ -552,6 +552,27 @@ class NativePipelineTest {
       // to prevent: narration writing over the items it cannot itself produce reliably.
       assertTrue("the rule minutes were destroyed by narration", rule.isNotEmpty())
 
+      // ...and the pipeline's other product: ITEMS, with the provenance `minutes` throws away.
+      //
+      // This is the only place the wiring is exercised at all. Delete the replaceItems call from
+      // ProcessingEngine and nothing else in the suite notices: the meeting still processes, still
+      // narrates, still exports, and every item's evidence simply never comes into existence —
+      // which is Task 10's playback and Task 11's timestamped export gone, with no error anywhere.
+      val items = db.items(id)
+      println("HEADLESS items: ${items.size}, first=${items.firstOrNull()?.text}")
+      assertTrue("the pipeline produced minutes but no items", items.isNotEmpty())
+      assertTrue(
+        "items were written with no evidence — the sources are the whole point of an item",
+        items.all { it.sources.isNotEmpty() },
+      )
+      // The seeded turns start at 0, 5000, 10000...; an item extracted from any turn but the first
+      // must anchor past zero. All-zero anchors is what passing the wrong arrays to extractItems
+      // looks like, and it is not an error anywhere — just a player that always seeks to the top.
+      assertTrue(
+        "every item anchored at 0: the turns' timings never reached extractItems",
+        items.any { it.anchorStartMs > 0 },
+      )
+
       // Re-running must NOT re-narrate: ResumePlan sees the summary row and skips the stage.
       val second = ArrayList<String>()
       ProcessingEngine(ctx, id, "base", object : ProcessingEngine.Listener {

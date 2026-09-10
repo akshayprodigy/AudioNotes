@@ -678,17 +678,41 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
 
   /**
    * Utterances for a meeting in the shape [com.innocorelabs.verbale.pipeline.Minutes] consumes.
-   * Mirrors the `text, speakerId` projection of db.utterances() in src/db/queries.ts.
+   * Mirrors the `id, startMs, endMs, speakerId, text` projection of db.utterances() in
+   * src/db/queries.ts, which has always selected all five.
+   *
+   * The id and the timings are here rather than in a second query because
+   * [com.innocorelabs.verbale.pipeline.Minutes.extractItems] needs to say WHERE each item was
+   * said, and a second read of the same rows is a second chance for the two to be a row apart —
+   * which produces no error, only items anchored at the wrong moment. `Minutes.extract` ignores
+   * them; ORDER BY start_ms already made this the transcript order both extractors assume.
    */
   fun utterances(meetingId: String): List<Utt> {
     val out = ArrayList<Utt>()
     db.rawQuery(
-      "SELECT text, speaker_id FROM utterances WHERE meeting_id=? ORDER BY start_ms",
+      "SELECT id, start_ms, end_ms, text, speaker_id FROM utterances WHERE meeting_id=? " +
+        "ORDER BY start_ms",
       arrayOf(meetingId),
     ).use { c ->
-      while (c.moveToNext()) out.add(Utt(c.getString(0), c.getString(1)))
+      while (c.moveToNext()) {
+        out.add(Utt(c.getString(0), c.getLong(1), c.getLong(2), c.getString(3), c.getString(4)))
+      }
     }
     return out
+  }
+
+  /**
+   * Whether a meeting has any transcript at all.
+   *
+   * Same shape as the EXISTS in [unindexedMeetings], and for the same reason: the question is
+   * "is there anything to work from", and counting rows to answer it reads the whole table for a
+   * meeting whose transcript can run to thousands of turns.
+   */
+  fun hasUtterances(meetingId: String): Boolean {
+    db.rawQuery(
+      "SELECT EXISTS(SELECT 1 FROM utterances WHERE meeting_id=?)",
+      arrayOf(meetingId),
+    ).use { c -> return c.moveToFirst() && c.getInt(0) != 0 }
   }
 
   /**
@@ -1213,6 +1237,146 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       db.setTransactionSuccessful()
     } finally {
       db.endTransaction()
+    }
+  }
+
+  /**
+   * Give a meeting recorded before this feature its items, and move its ticks onto them.
+   *
+   * The rule pass runs over the STORED utterances — pure text, no ASR, no diarization, no audio at
+   * all — which is what makes migrating a whole library affordable and what lets a meeting whose
+   * recording was deleted still gain its transcript links. It simply cannot play them.
+   *
+   * Ticks move by computing the SAME hash the old worklist used ([ItemKey]) against the text the
+   * rules produce now. That works because `Minutes.extract` and `Minutes.extractItems` are the
+   * same rules over the same turns, so the minute a shipped build stored and the item extracted
+   * today are the same string — a property of the C++ core rather than a contract anybody wrote
+   * down, which is why `BackfillTest` ticks a minute produced by the OLD path rather than a
+   * literal. If the two ever diverge, every tick in every existing library is lost, silently.
+   *
+   * What it CANNOT do, and no later code can either: a tick whose text drifted between the shipped
+   * minute and the item extracted now is unreachable, because the key moved with the text. That is
+   * the population `item_done` exists to end, and this migration is the last chance to catch a
+   * tick rather than a way to recover one already lost.
+   *
+   * `action_done` is NOT dropped afterwards. A build that has to be rolled back must still find
+   * the ticks where it left them, and [items] still reads that table for a meeting this has not
+   * run on yet — see the schema comment at `item_done`, which says the same thing. Do not tidy it.
+   *
+   * @return how many items the rules produced. Zero for a meeting with no transcript, and the
+   *   early return that produces it is load-bearing: `replaceItems` handed an empty list deletes
+   *   every item the meeting has, and a meeting can legitimately have items and no utterances.
+   */
+  fun backfillItems(meetingId: String): Int {
+    val turns = utterances(meetingId)
+    if (turns.isEmpty()) return 0
+
+    val incoming = Minutes.extractItems(turns, speakers(meetingId))
+
+    // The items and the ticks land together or neither does, and that is not tidiness. The guard
+    // in [ensureItems] is "does this meeting have items yet", so a process killed between the two
+    // writes would leave a meeting that HAS items and therefore never migrates again — with every
+    // tick still sitting in `action_done`, unreachable, and nothing anywhere reporting it. The
+    // nested transaction inside `replaceItems` joins this one rather than opening a second.
+    db.beginTransaction()
+    try {
+      replaceItems(meetingId, Minutes.RULES_GEN, incoming)
+
+      // done_at comes across with the tick. Stamping `now` instead would tell somebody they
+      // finished this morning something they crossed off in March, and the original is then
+      // recoverable from nowhere — the same loss `replaceItems` carries `created_at` to avoid.
+      val tickedAt = HashMap<String, Long>()
+      db.rawQuery(
+        "SELECT item_key, done_at FROM action_done WHERE meeting_id=?", arrayOf(meetingId),
+      ).use { c -> while (c.moveToNext()) tickedAt[c.getString(0)] = c.getLong(1) }
+
+      if (tickedAt.isNotEmpty()) {
+        // Every item, not just the ones this run extracted: `replaceItems` also carries forward
+        // rows the reconciler retained, and a tick against one of those is as real as any other.
+        for (item in items(meetingId)) {
+          val at = tickedAt[ItemKey.of(item.text)] ?: continue
+          db.execSQL(
+            "INSERT OR REPLACE INTO item_done(meeting_id,item_id,done_at) VALUES(?,?,?)",
+            arrayOf<Any?>(meetingId, item.id, at),
+          )
+        }
+      }
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
+    return incoming.size
+  }
+
+  /**
+   * Run [backfillItems] for a meeting that has never had it, and for no other.
+   *
+   * Deliberately not called from [items]: a read is reached from write paths — `replaceItems`
+   * calls it to hand the reconciler what is on disk — and a write that can start a migration is a
+   * reprocess that silently re-extracts a meeting mid-write.
+   *
+   * "Has it been migrated" is derived from the DATA rather than from a flag in `settings`, for the
+   * reason [unindexedMeetings] spells out: that table travels inside a backup, so a flag would
+   * arrive from the donor phone already set and the restored meetings would never migrate. The
+   * cost is that a meeting whose transcript genuinely yields no items re-runs the rules on every
+   * open — milliseconds of pure text, against a flag that would be wrong on a restore forever.
+   *
+   * Re-running on a meeting that HAS items would not be free, though, and that is what
+   * `items().isEmpty()` is for: `replaceItems` runs the reconciler, which deletes an untouched row
+   * the rules no longer produce, so a second pass is a reprocess and not a no-op.
+   *
+   * [hasUtterances] is a short-circuit and NOT a guard, and the difference was measured rather than
+   * assumed: [backfillItems] returns before it writes anything when there is no transcript, so
+   * deleting this half changes no outcome and no test can be written that fails on its absence.
+   * What it buys is not running [items] — two queries and a hash per row — every time a meeting
+   * with no transcript is opened. The protection lives in [backfillItems]' own early return, where
+   * it covers every caller rather than this one.
+   *
+   * NOTHING IN JAVASCRIPT CALLS THIS YET. Task 9 is "the JavaScript side reads items" and the call
+   * belongs on the meeting screen's read path, where `StorageModule.ensureItems` is waiting for
+   * it. An uncalled migration is the same shape as the trap this plan already hit once —
+   * `item_done` had no writer, so Task 6's join saw nothing a real user had done — so it is said
+   * here rather than left to be discovered.
+   *
+   * @return how many items the migration produced; 0 when there was nothing to do.
+   */
+  fun ensureItems(meetingId: String): Int =
+    if (hasUtterances(meetingId) && items(meetingId).isEmpty()) backfillItems(meetingId) else 0
+
+  /**
+   * The ids of this meeting's ticked items. Keyed on the item, so a re-worded item stays ticked.
+   *
+   * No production caller yet: the worklist that reads it is Task 9's. [backfillItems] is what
+   * fills the table, and `BackfillTest` is what reads it back.
+   */
+  fun doneItemIds(meetingId: String): Set<String> {
+    val out = HashSet<String>()
+    db.rawQuery("SELECT item_id FROM item_done WHERE meeting_id=?", arrayOf(meetingId))
+      .use { c -> while (c.moveToNext()) out.add(c.getString(0)) }
+    return out
+  }
+
+  /**
+   * Tick or untick one item, now.
+   *
+   * `item_done` is keyed on (meeting_id, item_id) and carries no foreign key to `items` on
+   * purpose, so this survives every reprocess — see the schema comment there before adding one.
+   *
+   * Deliberately NOT what [backfillItems] uses: a migrated tick keeps the day it was actually
+   * ticked, and this stamps the day it is called. No production caller yet — the tick gesture is
+   * Task 9's, and this is the writer waiting for it.
+   */
+  fun setItemDone(meetingId: String, itemId: String, done: Boolean) {
+    if (done) {
+      db.execSQL(
+        "INSERT OR REPLACE INTO item_done(meeting_id,item_id,done_at) VALUES(?,?,?)",
+        arrayOf<Any?>(meetingId, itemId, System.currentTimeMillis()),
+      )
+    } else {
+      db.execSQL(
+        "DELETE FROM item_done WHERE meeting_id=? AND item_id=?",
+        arrayOf<Any?>(meetingId, itemId),
+      )
     }
   }
 

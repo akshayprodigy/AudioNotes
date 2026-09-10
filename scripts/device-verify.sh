@@ -33,6 +33,9 @@ CLASSES=(
   # The `touched` predicate spans four tables and SQLite is the only thing that can answer it, so
   # this one cannot be a JVM test. A class missing from this list does not fail — it never runs.
   com.innocorelabs.verbale.ItemsDbTest
+  # The library migration: rule pass over stored utterances, and the ticks moved off action_done.
+  # Both halves are SQLite plus the native rules, so neither can be a JVM test.
+  com.innocorelabs.verbale.BackfillTest
 )
 
 if ! "$ADB" devices | grep -qE "device$"; then

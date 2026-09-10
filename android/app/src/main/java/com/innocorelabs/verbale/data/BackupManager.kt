@@ -44,11 +44,23 @@ object BackupManager {
    * mid-narration checkpoints that are meaningless once the run they belong to is over.
    */
   private val TABLES = listOf(
-    // "meetings" must stay FIRST. Import is INSERT OR REPLACE, which deletes a conflicting
-    // meetings row before inserting the new one — cascading that meeting's children away. Any
-    // child table listed before it would be imported and then immediately destroyed.
-    "meetings", "segments", "utterances", "speakers", "minutes", "action_done", "edits", "tags",
-    "settings",
+    // ORDER IS THE CONTRACT, not tidiness. Import is INSERT OR REPLACE, which DELETES a
+    // conflicting row before inserting the new one and cascades that row's children away. So a
+    // child listed before its parent is imported and then immediately destroyed, and the only
+    // symptom is rows quietly missing from a restore. "meetings" is first because everything below
+    // hangs off it; "items" before "item_sources" for the same reason (item_sources REFERENCES
+    // items ON DELETE CASCADE). "item_done" references meetings only, so it needs no more than
+    // being after "meetings" — but it is kept beside its siblings so the group reads as one thing.
+    //
+    // items/item_sources/item_done were missing here until the pipeline started producing items,
+    // and their absence was a REGRESSION rather than a gap: "action_done" is carried, so a tick
+    // recorded by an older build survived a restore and a tick recorded by this one would not.
+    //
+    // A backup written before these tables existed has no columns to intersect for them, so the
+    // per-table catch in [import] logs one line and the rest of the restore proceeds — which is
+    // the same path an older backup already takes for a column added since.
+    "meetings", "segments", "utterances", "speakers", "minutes", "items", "item_sources",
+    "item_done", "action_done", "edits", "tags", "settings",
   )
 
   /**

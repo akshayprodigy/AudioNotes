@@ -46,6 +46,32 @@ class StorageModule(private val ctx: ReactApplicationContext) :
   }
 
   /**
+   * Give one meeting its items if it was recorded before items existed.
+   *
+   * Shaped like [reindex] and per-meeting for the same reason: this is a few milliseconds of pure
+   * text over stored utterances, so it belongs on the path that opens a meeting rather than in a
+   * library-wide sweep. [backfillSearch] is chunked and JS-driven because a full-library index
+   * build would ANR the main thread on a Quick Settings cold start; none of that applies here, and
+   * copying the chunked shape would only add a migration nobody can tell has finished.
+   *
+   * NOTHING CALLS THIS YET, and that is expected rather than an oversight: Task 9 is "the
+   * JavaScript side reads items", and the call belongs beside that read. It is declared now so the
+   * API is real and typed on both sides (see src/native/NativeStorage.ts) instead of arriving
+   * half-built with the screen that needs it. An uncalled migration is the same shape as the trap
+   * this sub-project already hit once — `item_done` had no writer, so a join that looked correct
+   * saw nothing a real user had done — so it is written down rather than left to be discovered.
+   */
+  @ReactMethod
+  fun ensureItems(meetingId: String, promise: Promise) {
+    try {
+      AudioDb.get(ctx).ensureItems(meetingId)
+      promise.resolve(null)
+    } catch (e: Throwable) {
+      promise.reject("db_ensure_items", e)
+    }
+  }
+
+  /**
    * Index meetings recorded before the search index covered anything but the transcript.
    *
    * Chunked, and driven from JS rather than run inside AudioDb.open(): there is one process-wide
