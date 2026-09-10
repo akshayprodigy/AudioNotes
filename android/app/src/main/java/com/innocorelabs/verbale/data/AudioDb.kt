@@ -1057,6 +1057,13 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    */
   fun items(meetingId: String): List<StoredItem> {
     val sources = HashMap<String, MutableList<StoredSource>>()
+    // `ORDER BY item_id, ordinal` is a contract, not a plan detail, and which it is was measured
+    // rather than assumed: on a device, DELETING it changes nothing, because the (item_id, ordinal)
+    // primary key serves the IN lookup and hands the rows back that way regardless. So no test can
+    // fail on its absence — ItemsDbTest pins the order that ARRIVES, which catches a reversal and
+    // catches the day a query shape or an index stops agreeing. Keep the clause: evidence read back
+    // out of order is the wrong moment shown against a person's item, and rule 4 writes whatever it
+    // reads straight back to disk.
     db.rawQuery(
       "SELECT item_id,start_ms,end_ms,char_start,char_end,utterance_id FROM item_sources " +
         "WHERE item_id IN (SELECT id FROM items WHERE meeting_id=?) ORDER BY item_id, ordinal",
@@ -1078,6 +1085,18 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     // has to be consulted because `item_done` has no writer yet: every tick on every phone in the
     // field today is here, and until Task 8's migration has run for a meeting a `touched` that
     // joins `item_done` alone reads a fully worked-through library as untouched.
+    //
+    // WHEN THIS READ MAY GO, because a shim with no removal condition is a permanent one: delete
+    // it — the read, NOT the table, which the schema says to keep for a rolled-back build — once
+    // Task 8's migration runs unconditionally at open AND the oldest install still supported has
+    // been through it. The table outliving the read is the expected end state, so its existence
+    // is not the signal; the migration having run everywhere is.
+    //
+    // What it does NOT recover, which matters because it is the population this sub-project was
+    // started for: it matches only while the item's text still hashes the same. A tick whose text
+    // DRIFTED between the shipped minute and the item extracted now is invisible here, because
+    // the hash moved with the text. Only Task 8's id-keyed backfill recovers those, and nothing
+    // before it does.
     val tickedByText = HashSet<String>()
     db.rawQuery(
       "SELECT item_key FROM action_done WHERE meeting_id=?", arrayOf(meetingId),
@@ -1088,13 +1107,19 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     val out = ArrayList<StoredItem>()
     db.rawQuery(
       "SELECT i.id,i.kind,i.text,i.review,i.gen_version,i.anchor_start_ms,i.anchor_end_ms," +
-        "i.created_at,d.item_id IS NOT NULL,e.target_key IS NOT NULL " +
+        // Named, not because SQL needs it but because the two locals below are read positionally
+        // and this is where a reader checks the count. APPEND a fifth signal's column; inserting
+        // one anywhere above silently re-points both flags one column left, with no compile error.
+        "i.created_at,d.item_id IS NOT NULL AS ticked,e.target_key IS NOT NULL AS edited " +
         "FROM items i " +
         // Both joins are on a primary key, so neither can multiply the rows.
         "LEFT JOIN item_done d ON d.meeting_id=i.meeting_id AND d.item_id=i.id " +
         // Latent until Task 11 writes the first target_kind='item' row, and correct as it stands.
         "LEFT JOIN edits e ON e.meeting_id=i.meeting_id AND e.target_kind='item' " +
         "AND e.target_key=i.id " +
+        // The order this method's KDoc promises, and the one Reconciler's tie-break is stated in.
+        // Same measurement as the evidence query above: idx_items_meeting already returns rows
+        // this way, so deleting the clause is invisible to any test — a reversal is not.
         "WHERE i.meeting_id=? ORDER BY i.anchor_start_ms, i.rowid",
       arrayOf(meetingId),
     ).use { c ->
@@ -1102,15 +1127,17 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
         val id = c.getString(0)
         val text = c.getString(2)
         val review = c.getString(3)
+        val ticked = c.getInt(8) != 0   // `ticked` in the projection above: a row in item_done
+        val edited = c.getInt(9) != 0   // `edited`: a row in edits for this item id
         out.add(
           StoredItem(
             id, c.getString(1), text, review, c.getString(4), c.getLong(5), c.getLong(6),
             sources[id] ?: emptyList(), c.getLong(7),
             // The whole predicate, and the only copy of it. A fifth signal is added HERE.
-            touched = review in Review.BY_A_PERSON ||  // a person said yes or no
-              c.getInt(8) != 0 ||                      // ticked, by item id
+            touched = review in Review.BY_A_PERSON ||     // a person said yes or no
+              ticked ||                                   // ticked, by the item's id
               tickedByText.contains(ItemKey.of(text)) ||  // ticked before Task 8 migrated it
-              c.getInt(9) != 0,                        // rewritten by hand
+              edited,                                     // rewritten by hand
           ),
         )
       }
@@ -1168,6 +1195,11 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
           )
         }
       }
+      // Inside the transaction, where replaceMinutes above deliberately indexes outside it, and
+      // the difference is real: that one re-reads rows another statement already committed, this
+      // one rebuilds the index FROM the rows this transaction is still writing. Moving it out
+      // would let a rollback — or a kill — between the two leave search hits for items that never
+      // landed, which is a hit that opens onto nothing. Both land or neither does.
       indexItems(meetingId)
 
       // Ticks whose item is gone: drop them, or they accumulate forever against nothing. This is
@@ -1226,7 +1258,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
            owner_json TEXT,
            date_said TEXT,
            date_norm INTEGER,
-           review TEXT NOT NULL DEFAULT 'suggested',
+           review TEXT NOT NULL DEFAULT '${Review.SUGGESTED}',
            gen_version TEXT NOT NULL,
            anchor_start_ms INTEGER NOT NULL,
            anchor_end_ms INTEGER NOT NULL,

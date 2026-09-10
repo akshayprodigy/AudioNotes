@@ -107,6 +107,14 @@ class ItemsDbTest {
     return survived
   }
 
+  /**
+   * Bound DML, through the path JS already uses.
+   *
+   * `AudioDb.exec` is the narrower name and would read better, but it takes no bind arguments, and
+   * an item id interpolated into SQL is a test that breaks on the first id with a quote in it.
+   * `rawQueryJson` routes anything that is not a SELECT to `execSQL` with its arguments bound —
+   * chosen for that, not stumbled into.
+   */
   private fun exec(sql: String, vararg args: String) = db.rawQueryJson(sql, arrayOf<String?>(*args))
 
   // ---- The four signals ------------------------------------------------------------------
@@ -323,6 +331,77 @@ class ItemsDbTest {
           db.items(m).firstOrNull { it.id == id },
         )
       }
+    }
+  }
+
+  /**
+   * Two items, two sources each: every source on the item that actually said it.
+   *
+   * The only other test that touches `.sources` has one item with one source, and a meeting like
+   * that cannot tell a correct grouping from one that hands every item the same list — nor can any
+   * of the tests that end up with two items, because they assert id, text and review and never the
+   * evidence. So the whole of `items()`'s source handling was unpinned in both directions.
+   *
+   * Why that is worse here than a getter returning the wrong list: `Reconciler` rule 4 reads
+   * `old.sources` off a retained row and writes it STRAIGHT BACK to disk. A mis-keyed grouping does
+   * not merely draw the wrong evidence on a screen, it persists another item's moments onto the
+   * item a person kept — the one item in the meeting whose provenance somebody is relying on — and
+   * says nothing. That is this sub-project's own failure shape, in the place nothing was looking.
+   *
+   * Item ORDER is asserted for the same reason: [AudioDb.items] promises the order the meeting said
+   * them, and `Reconciler` breaks scoring ties on stored position, so the promise is load-bearing
+   * rather than cosmetic. The two items are written in the wrong order deliberately — the action is
+   * five minutes later and goes in first — so the assertion is about the query rather than about
+   * the order they happened to be inserted in.
+   *
+   * What the two ordering assertions can and cannot catch, because the difference was measured
+   * rather than assumed: on a phone, DELETING either `ORDER BY` changes nothing at all. An index
+   * already returns the rows that way — the (item_id, ordinal) primary key for the evidence,
+   * idx_items_meeting for the items — so a deleted clause is invisible here, and would be to any
+   * test. REVERSING either fails immediately. So what is pinned is the order that ARRIVES, which is
+   * the contract every caller reads, and the day a query shape or an index stops agreeing with the
+   * clause is the day this catches it.
+   */
+  @Test fun eachItemComesBackWithItsOwnSourcesInOrder() {
+    inAMeeting { m ->
+      val decision = Minutes.Item(
+        "decision", "We agreed to ship on Monday",
+        listOf(
+          Minutes.Source("u1", 61_000L, 64_000L, 0, 27),
+          Minutes.Source("u4", 120_000L, 123_000L, 5, 32),
+        ),
+        61_000L, 123_000L,
+      )
+      val action = Minutes.Item(
+        "action", "Send the report — Priya",
+        listOf(
+          Minutes.Source("u9", 300_000L, 304_000L, 0, 23),
+          Minutes.Source("u11", 420_000L, 424_000L, 8, 31),
+        ),
+        300_000L, 424_000L,
+      )
+      db.replaceItems(m, "rules@1", listOf(action, decision))
+
+      val items = db.items(m)
+      assertEquals(2, items.size)
+      assertEquals(
+        "the later item came back first: anchor order is not insertion order",
+        "We agreed to ship on Monday", items[0].text,
+      )
+      assertEquals("Send the report — Priya", items[1].text)
+
+      assertEquals(
+        "the decision was handed the wrong item's evidence",
+        listOf("u1", "u4"), items[0].sources.map { it.utteranceId },
+      )
+      assertEquals(listOf(61_000L, 120_000L), items[0].sources.map { it.startMs })
+      assertEquals(listOf(0, 5), items[0].sources.map { it.charStart })
+      assertEquals(
+        "the action was handed the wrong item's evidence",
+        listOf("u9", "u11"), items[1].sources.map { it.utteranceId },
+      )
+      assertEquals(listOf(300_000L, 420_000L), items[1].sources.map { it.startMs })
+      assertEquals(listOf(304_000L, 424_000L), items[1].sources.map { it.endMs })
     }
   }
 

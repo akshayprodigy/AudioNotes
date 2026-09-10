@@ -283,7 +283,10 @@ class ReconcilerTest {
    */
   @Test fun aVanishedConfirmedItemIsRetained() {
     val plan = Reconciler.reconcile(
-      listOf(stored("id-1", "Send the report — Unassigned", 5000, 9000, "confirmed")),
+      // touched spelled out rather than left to the default: this test's name says CONFIRMED, and
+      // what rule 4 actually reads is touched. Both are true of a confirmed row; only one is what
+      // is being pinned here.
+      listOf(stored("id-1", "Send the report — Unassigned", 5000, 9000, "confirmed", touched = true)),
       listOf(incoming("Book the venue — Unassigned", 3_600_000, 3_604_000)),
     )
     assertEquals(2, plan.rows.size)
@@ -326,7 +329,11 @@ class ReconcilerTest {
    */
   @Test fun aVanishedItemTheMachineFlaggedButNobodyTouchedIsAlsoDropped() {
     val plan = Reconciler.reconcile(
-      listOf(stored("id-1", "Send the report — Unassigned", 5000, 9000, "needs_review")),
+      // "NobodyTouched" is half the name, so it is written down rather than inferred from the
+      // default: flagged by the machine, and not touched by anyone.
+      listOf(
+        stored("id-1", "Send the report — Unassigned", 5000, 9000, "needs_review", touched = false),
+      ),
       listOf(incoming("Book the venue — Unassigned", 3_600_000, 3_604_000)),
     )
     assertEquals(1, plan.rows.size)
