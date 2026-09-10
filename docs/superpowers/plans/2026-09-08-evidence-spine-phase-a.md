@@ -963,6 +963,44 @@ dangles every pointer. That is silent UB no golden can catch."
 
 ---
 
+## Discovered during Task 6: four silences, three of them outside this plan
+
+None of these is a Task 6 defect and none is fixed there. All four are the same shape as the bug
+class Task 6 exists to close — a loss that produces no error, no crash and no compile failure — so
+they are recorded where the task that owns each will read it.
+
+**1. A restored backup loses every item and every tick.** `BackupManager.kt:46-52` carries
+`meetings, segments, utterances, speakers, minutes, action_done, edits, tags, settings` and does
+not carry `items`, `item_sources` or `item_done`. This plan never mentions `BackupManager` anywhere,
+in any task. So the sub-project that gives an item a stable identity currently gives it one that
+does not survive a phone. It becomes user-visible at **Task 8**, which is where items first reach a
+real library, and it should be closed there rather than after. Note `action_done` IS carried, so
+today's ticks survive a restore and tomorrow's would not — a regression, not a gap.
+
+**2. An item search hit will render as a title and open the wrong tab.** `SearchHit['kind']` in
+`src/pipeline/types.ts` has no `'item'` member, and `SearchScreen.kindMeta`'s `default` branch
+labels an unknown kind "TITLE" and opens the summary tab. Latent exactly until something calls
+`replaceItems`, which is **Task 8** — the same task, and it will not fail to compile in the language
+where the union lives either, because the `default` branch swallows it.
+
+**3. `replaceItems` drops five columns on every reprocess.** It re-inserts 9 of `items`' 14 columns;
+`item_type`, `status`, `owner_json`, `date_said` and `date_norm` are not among them. All five are
+NULL until **Phase B**'s classifier writes them, so nothing is wrong today — and on the day Phase B
+writes them, nothing will fail to compile and every reprocess will quietly erase the classification.
+Inherited from this plan's own listing, not introduced by the implementation. A warning sits at the
+INSERT, which is the line a Phase B author has to touch anyway.
+
+**4. Three instrumentation classes have never run.** `scripts/device-verify.sh`'s `CLASSES` array
+held only `NativePipelineTest` and `MinutesParityTest`; `EvidenceParityTest`, `MinutesSourceTest`
+and `CaptureStateTest` were absent, so a phone on the cable ran none of them and the script exited
+0. `ItemsDbTest` was added in `32e85c7`. The other three are still absent — `EvidenceParityTest` is
+Task 4's eleven, and **its device run is now blocked only on the JNI sweep, no longer on hardware**.
+The script's own comment already warned about this failure in its other form ("every run reported
+OK (0 tests) — a pass, for having run nothing"); the list going stale by omission is the same bug
+as the list going stale by rename.
+
+---
+
 ## Discovered during Task 7: the match threshold is unvalidated, and Jaccard is meaning-blind
 
 `CONFIDENT_SIMILARITY = 0.6` was a guess in this plan. Measured on realistic pairs (Jaccard over
@@ -1604,6 +1642,58 @@ normally on every open."
 ---
 
 ## Task 6: Writing items, and indexing them at the moment they were said
+
+> **SHIPPED 10 September 2026** — commits `8c34cce`, `32e85c7`, `c430295`. 149 Kotlin unit tests,
+> 31/31 reconciler mutations, and **12 instrumentation tests green on hardware with zero skips** —
+> the first task in this sub-project to close its own device gate rather than ship host-verified.
+> Rounds 1 and 2 ran on the Pixel 7 Pro, round 3 on the **Galaxy A07**, which is the cheaper and
+> more informative of the two.
+>
+> **The listing below is superseded.** It ignores both nullables on `Reconciler.Row` — it writes
+> `now` and this run's `genVersion` unconditionally — which silently discards the original date of
+> an item a person confirmed in March, and relabels a person's own item `rules@N`, after which
+> rule 1 stops protecting it on the next reprocess. The shipped code writes `r.createdAt ?: now`
+> and `r.genVersion ?: genVersion`. Do not port from the listing.
+>
+> **`done` and `edited` are gone from `StoredItem`.** One `touched` field replaces them, computed
+> in `items()` from four places — the `review` column, `item_done`, `edits`, and `action_done` by
+> the `ItemKey.of` text hash, which SQL cannot compute and which is therefore a Kotlin-side set
+> test. Rule 4 asks `!old.touched` and nothing else. The review vocabulary moved to `AudioDb.Review`
+> so it has one definition; `BY_A_PERSON` names the distinction that was got wrong twice, which is
+> *who* put the state there rather than what the state is.
+>
+> **Behaviour change, deliberate:** a `needs_review` row nobody touched is now dropped. It was
+> previously undroppable, so the reconciler's own flag made rows permanent — measured over five
+> reprocesses. No existing test asserted the old behaviour; the new one is the sole catcher of its
+> mutation.
+>
+> **What the two reviews cost, and what they found.** Both found real defects, and both found them
+> in the enforcement half rather than the code:
+>
+>  - **`ItemsDbTest` was not wired to any runner.** `scripts/device-verify.sh` runs only the classes
+>    in its `CLASSES` array, so `npm run test:device` — the command Steps 2 and 4 tell you to run —
+>    ran everything except the file this task's enforcement rests on, and exited 0. Cut
+>    `review in Review.BY_A_PERSON ||` from the predicate and the JVM suite still reported 149/0 and
+>    the mutation harness 31/31. The repo already carried `9ccf566 fix(tooling): device-verify ran
+>    nothing, and said it passed`; this was that failure re-opening from the other end.
+>  - **The `created_at` test could pass against its own defect.** Capture-and-compare across two
+>    writes succeeds whenever both land in the same millisecond. Pinned at a literal now.
+>  - **The `gen_version='user'` test did not exist.** `ReconcilerTest` pinned that *`Reconciler`*
+>    returns the right value; the persistence half had nothing. It takes **two** reprocesses to see:
+>    one watches the damage and calls it a pass.
+>  - **The source grouping could not fail.** An `items()` that ignored the key and handed every item
+>    the same source list passed all 11 tests. That is not an ordinary getter gap: rule 4 reads
+>    `old.sources` and writes them **back to disk** on a retained row, so mis-keyed grouping
+>    persists the wrong moments onto an item a person confirmed, silently — the exact failure this
+>    sub-project exists to end, in the one place nothing looked.
+>
+> **A measurement that corrected the review that asked for it.** The new test was written believing
+> a deleted `ORDER BY` would be caught. It is not: deleting **either** clause changes nothing on
+> device, because an index already returns the rows in that order — `item_sources`' `(item_id,
+> ordinal)` primary key serves the evidence lookup, and `idx_items_meeting` serves the items query.
+> Reversal is caught instantly; deletion is invisible to any test that could be written. The clauses
+> stay, because they are the contract and not a plan detail, and the comments now say so instead of
+> implying a test stands behind them.
 
 > **Design decision taken after Task 7, and it is the fix for a bug class rather than a bug.**
 >
