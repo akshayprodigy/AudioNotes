@@ -189,6 +189,15 @@ export const db = {
    * No caller yet: the meeting tabs that render items are Task 10's, and this is the read waiting
    * for them. Said out loud because an unread query is the mirror of the uncalled migration this
    * plan already shipped once, and the mirror is just as quiet.
+   *
+   * WHAT THIS DELIBERATELY DOES NOT RETURN, and what to do about it. `touched` — whether a person
+   * has engaged with an item — is not a column and is not derivable from anything above. It spans
+   * four tables (`items.review`, `item_done`, `action_done` for every meeting the migration has
+   * not reached, and `edits`), three of which never write to the item row, and AudioDb.items()
+   * assembles it at that boundary as the ONE copy of the predicate. A screen that needs it adds
+   * the column HERE, next to this SQL and next to that comment, so the two boundaries stay in step
+   * — not by OR-ing `review` and a tick at the call site. That reassembly is the mistake this
+   * sub-project has now made three times, and not one of the three failed to compile.
    */
   items: async (meetingId: string): Promise<Item[]> => {
     const rows = await run<Omit<Item, 'sources'>>(
@@ -513,6 +522,12 @@ export const db = {
    * value Task 12 will write there. Archived meetings are excluded because they are hidden from
    * the library, and their actions resurfacing in a worklist is what would make archiving useless.
    *
+   * Rejected items are excluded for a reason that has not happened yet, which is exactly why the
+   * clause is here now. Nothing writes `review='rejected'` today, and `Reconciler` rule 4 keeps a
+   * rejected row in `items` FOREVER once something does — "keeping the no is what makes it stick"
+   * — so the day a reject gesture ships, every dismissed action would return as outstanding work
+   * with nothing failing to compile. A rejected action is by definition not outstanding.
+   *
    * `done` is still resolved by the caller (src/screens/actionsData.ts) rather than joined here —
    * see doneItemIds below for the reason, which is no longer that SQL cannot reproduce the key.
    *
@@ -525,10 +540,21 @@ export const db = {
     run<Omit<ActionRow, 'done'>>(
       'SELECT i.id AS id, i.meeting_id AS meetingId, mt.title AS meetingTitle, ' +
         'mt.created_at AS createdAt, i.text AS content, i.anchor_start_ms AS anchorStartMs, ' +
+        // 'user' is Reconciler.USER_GEN's value, spelled here in another language on the read
+        // side, and the ELSE is lossy. If Task 12 ever writes a VERSIONED user gen — `user@1`, the
+        // convention `rules@1` already sets — this line silently reports every hand-typed action
+        // as 'rule' and rule 1's `genVersion != USER_GEN` stops protecting it. The two change
+        // together or not at all.
         "CASE WHEN i.gen_version = 'user' THEN 'user' ELSE 'rule' END AS source " +
         'FROM items i JOIN meetings mt ON mt.id = i.meeting_id ' +
-        "WHERE i.kind = 'action' AND mt.archived_at IS NULL " +
-        'ORDER BY mt.created_at DESC, i.anchor_start_ms, i.rowid',
+        "WHERE i.kind = 'action' AND i.review <> 'rejected' AND mt.archived_at IS NULL " +
+        // meeting_id is in here for the grouper, not for the eye: ActionsScreen.group() is a
+        // RUN-LENGTH grouper, so a meeting whose rows are interrupted by another's emits two
+        // headers with the count split between them. Two meetings created in the same millisecond
+        // — an import, a restore, two taps — would interleave DETERMINISTICALLY without it, not
+        // rarely, because every meeting's anchors start near 0. Identical output whenever
+        // created_at is distinct, which is every other case.
+        'ORDER BY mt.created_at DESC, i.meeting_id, i.anchor_start_ms, i.rowid',
     ),
 
   /**

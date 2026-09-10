@@ -54,8 +54,9 @@ class StorageModule(private val ctx: ReactApplicationContext) :
    * build would ANR the main thread on a Quick Settings cold start; none of that applies here, and
    * copying the chunked shape would only add a migration nobody can tell has finished.
    *
-   * Nothing calls this yet — Task 9 owns the call site. See AudioDb.ensureItems for why an
-   * uncalled migration is written down rather than left to be noticed.
+   * The caller is `MeetingScreen.refresh` in JavaScript, which awaits this before it reads the
+   * meeting and memoises it per opening. There is exactly ONE, and see [AudioDb.ensureItems] for
+   * why a second would be worse than none.
    */
   @ReactMethod
   fun ensureItems(meetingId: String, promise: Promise) {

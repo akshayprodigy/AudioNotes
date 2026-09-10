@@ -98,6 +98,27 @@ test('a meeting still opens when the migration fails', async () => {
  * its items. One call per poll would re-run the rule pass over a half-written transcript, again
  * and again, on the phone that is busy writing the real one.
  */
+/**
+ * Nothing sets `getId` on this screen, so `navigate('Meeting', …)` reuses the mounted one and
+ * changes its params — a "Notes ready" notification for another meeting, tapped while this one is
+ * open, arrives exactly this way. The memo is keyed on the meeting id because of it: a ref that
+ * only remembered "already migrated" would have the read wait on the previous meeting's migration.
+ */
+test('a param change migrates the meeting now on screen', async () => {
+  const tree = await render();
+  expect(db.ensureItems).toHaveBeenCalledWith('m1');
+
+  await act(async () => {
+    tree.update(
+      <MeetingScreen navigation={nav} route={{ ...route, params: { meetingId: 'm2' } } as any} />,
+    );
+  });
+
+  expect(db.ensureItems).toHaveBeenCalledWith('m2');
+  expect(db.ensureItems).toHaveBeenCalledTimes(2);
+  await act(async () => tree.unmount());
+});
+
 test('the migration is attempted once per opening, not once per poll', async () => {
   jest.useFakeTimers();
   try {

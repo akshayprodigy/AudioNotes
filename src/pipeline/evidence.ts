@@ -14,8 +14,16 @@ import {
 } from './minutes';
 import type { Utterance, Speaker, MinuteKind } from './types';
 
-/** One passage of the recording that supports an item. */
-export interface ItemSource {
+/**
+ * One passage of the recording that supports an item, on the way IN.
+ *
+ * `Draft` for the same reason `DraftItem` is: this is what the extractor produces, before anything
+ * is persisted. The stored twin is `ItemSource` in ./types, which db.items() reads back, and the
+ * one difference is the one that matters — `utteranceId` is always known here and is NULLABLE
+ * there, because AudioDb.replaceUtterancesJson mints fresh utterance ids on every ASR run. Naming
+ * them apart is what stops a `null` from storage being typed as a `string` with no compile error.
+ */
+export interface DraftItemSource {
   /** Convenience only: re-minted on every ASR run, so never the identity. */
   utteranceId: string;
   /** The anchor. Same audio, same clock — survives re-ASR, edits and speaker merges. */
@@ -35,7 +43,7 @@ export interface ItemSource {
 export interface DraftItem {
   kind: Exclude<MinuteKind, 'summary' | 'narrative' | 'headline'>;
   text: string;
-  sources: ItemSource[];
+  sources: DraftItemSource[];
   /**
    * The time range spanned by every source: earliest start to latest end. It is an envelope for
    * ordering the list and drawing a range on the transcript — NOT a play range. An item said at
@@ -165,7 +173,7 @@ export function extractItems(
     arr: DraftItem[],
     kind: DraftItem['kind'],
     text: string,
-    source: ItemSource,
+    source: DraftItemSource,
   ) => {
     if (!text) return;
     const key = kind + '|' + norm(text);
@@ -208,7 +216,7 @@ export function extractItems(
       // exported function whose contract (never let the cursor run backward) should hold even if
       // a future change to findFrom reopens the case where it doesn't hold on its own.
       cursor = Math.max(cursor, charEnd);
-      const source: ItemSource = {
+      const source: DraftItemSource = {
         utteranceId: u.id,
         startMs: u.startMs,
         endMs: u.endMs,

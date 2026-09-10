@@ -1374,11 +1374,12 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    * next reprocess, permanently. Closing it properly means a real migrated marker, and that is a
    * schema decision rather than a line here.
    *
-   * NOTHING IN JAVASCRIPT CALLS THIS YET. Task 9 is "the JavaScript side reads items" and the call
-   * belongs on the meeting screen's read path, where `StorageModule.ensureItems` is waiting for
-   * it. An uncalled migration is the same shape as the trap this plan already hit once —
-   * `item_done` had no writer, so Task 6's join saw nothing a real user had done — so it is said
-   * here rather than left to be discovered.
+   * EXACTLY ONE CALLER, and that is the design. `MeetingScreen.refresh` (JavaScript) awaits this
+   * before it reads a meeting and memoises it per opening, so opening a meeting is the migration
+   * and nothing else triggers one. Resist a second: the guard above cannot tell an unmigrated
+   * meeting from one the pipeline is part-way through — both have utterances and no items — so a
+   * Library card or a sweep would re-run the rule pass over half-written transcripts on a phone
+   * already busy writing the real ones, and per meeting rather than once.
    *
    * @return how many items the migration produced; 0 when there was nothing to do.
    */

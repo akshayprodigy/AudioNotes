@@ -143,11 +143,12 @@ export interface SearchHit {
 /**
  * One passage of the recording supporting an item, as it comes back OUT of the database.
  *
- * The near-twin in src/pipeline/evidence.ts is the same thing on the way IN — what the extractor
- * produces before anything is persisted — and the difference between them is the whole reason
- * both exist: `utteranceId` is always known at extraction and is nullable in storage, because
+ * `DraftItemSource` in src/pipeline/evidence.ts is the same thing on the way IN — what the
+ * extractor produces before anything is persisted — and the difference between them is the whole
+ * reason both exist: `utteranceId` is always known at extraction and is NULLABLE here, because
  * AudioDb.replaceUtterancesJson mints fresh utterance ids on every ASR run and a stored id can be
- * pointing at nothing by the time it is read back. `startMs` is the anchor and the identity; the
+ * pointing at nothing by the time it is read back. They carried the same name until the two were
+ * one import away from typing that null as a string. `startMs` is the anchor and the identity; the
  * utterance id is a convenience, so never depend on it across runs.
  */
 export interface ItemSource {
@@ -165,7 +166,20 @@ export interface Item {
   meetingId: string;
   kind: 'decision' | 'action' | 'question';
   text: string;
-  /** `suggested` until a person looks at it. Phase B is what writes `needs_review`. */
+  /**
+   * What the REVIEW COLUMN says, which is much less than "has anybody engaged with this".
+   *
+   * `confirmed` and `rejected` are the only two a person put there (AudioDb.Review.BY_A_PERSON).
+   * `needs_review` is the machine flagging ITSELF: Reconciler writes it on every ambiguous match,
+   * so it says nothing whatever about a person. And `suggested` is not "nobody has looked" — a
+   * ticked item still reads `suggested`, because the tick is a row in `item_done`, and so does a
+   * hand-corrected one, because the correction is a row in `edits`.
+   *
+   * So `review === 'suggested'` does NOT mean untouched, and the whole predicate exists in exactly
+   * one place: AudioDb.items()' `touched`, assembled at that boundary across four tables. Ask for
+   * the answer, never rebuild it from the ingredients — see db.items() for what that means on this
+   * side, and for why this type does not carry it.
+   */
   review: 'suggested' | 'needs_review' | 'confirmed' | 'rejected';
   genVersion: string;
   anchorStartMs: number;
@@ -188,6 +202,11 @@ export interface ActionRow {
   content: string;
   /** Where the row came from, derived from `items.gen_version`. See db.allActions. */
   source: MinuteSource;
+  /**
+   * When it was said. No reader yet: Task 10 is what opens the meeting at that moment, and it is
+   * carried now because the worklist is the one list that can send you to a claim you do not
+   * remember — the row is worthless without the sentence it came from being findable.
+   */
   anchorStartMs: number;
   done: boolean;
 }

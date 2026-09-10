@@ -32,9 +32,11 @@ type Row =
 /**
  * Turn a flat, meeting-ordered list of items into header + item rows.
  *
- * `allActions` orders by meeting date and then by row, so a meeting's items are already
- * contiguous; filtering by tick state preserves that, so a simple "did the meeting id change"
- * test is enough and nothing has to be re-sorted.
+ * A run-length grouper, so it needs one invariant and cannot check it: every row of a meeting
+ * arrives CONTIGUOUSLY. `allActions` guarantees that by construction — it orders by meeting date
+ * and then by meeting id, so two meetings sharing a created_at still cannot interleave — and
+ * filtering by tick state preserves it. Break that ordering and nothing throws: the meeting simply
+ * renders twice, with its count split across the two headers.
  */
 function group(items: ActionRow[], prefix: string): Row[] {
   const rows: Row[] = [];
@@ -92,8 +94,11 @@ export default function ActionsScreen({ navigation }: Props) {
 
   useFocusEffect(
     useCallback(() => {
-      // Re-read on every focus: coming back from a meeting whose items were ticked there must not
-      // leave this list showing the state it had on the way out.
+      // Re-read on every focus, because coming back from a meeting is when this list changes:
+      // OPENING that meeting is what migrates it, so it may have gained every item it has while
+      // the user was in there, and a reprocess re-words items under ids this list already holds.
+      // NOT to pick up ticks made in that meeting's Actions tab — those go to `action_done`, which
+      // this list no longer reads, until Task 10 moves that tab onto items.
       refresh().catch(() => setLoaded(true));
     }, [refresh]),
   );

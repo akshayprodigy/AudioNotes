@@ -6,10 +6,16 @@ import type { ActionRow } from '../pipeline/types';
  *
  * The two halves are still fetched separately and joined here, but for a far smaller reason than
  * before: it used to be IMPOSSIBLE in SQL, because a tick was keyed on a hash of the item's TEXT
- * that SQLite could not reproduce. An id-keyed tick is one LEFT JOIN away, and the only thing
- * keeping it out of the query is that `allActions` has a second caller — SearchScreen's "meetings
- * with actions" filter — which wants those rows and not their ticks. The hash is gone from this
- * path entirely, which is the change that matters.
+ * that SQLite could not reproduce. An id-keyed tick is one LEFT JOIN away, so what keeping it out
+ * actually buys was worked out rather than assumed. The join would delete `doneItemIds` and the
+ * flattened key below. It would NOT delete this map: SQLite has no boolean, so
+ * `d.item_id IS NOT NULL AS done` comes back through AudioDb.rawQueryJson as 0 or 1
+ * (FIELD_TYPE_INTEGER -> getLong), and something here still has to walk every row to keep
+ * `ActionRow.done` a boolean rather than a number that reads as true. What is left is two queries
+ * answering two questions — what actions exist, what is ticked — against one query answering both
+ * for a second caller (SearchScreen's "meetings with actions" filter) that wants only the first.
+ * A small win either way; the change that matters is that the hash is gone from this path
+ * entirely.
  *
  * Both callers (ActionsScreen and the library's counts) therefore see only the meetings the item
  * migration has reached — see db.allActions, which is where that is written down in full.

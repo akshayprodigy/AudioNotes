@@ -16,7 +16,10 @@ export interface Spec extends TurboModule {
   // its stored transcript, plus the ticks moved off action_done onto the items that replace those
   // minutes. Pure text and milliseconds — no audio is touched and nothing is re-transcribed — so
   // it belongs on the path that opens a meeting, not in a chunked sweep like backfillSearch.
-  // Nothing calls it yet; the call site is the meeting screen's read (Task 9).
+  // ONE caller, and one is the design: MeetingScreen.refresh awaits it before its read, memoised
+  // per opening (db.ensureItems). A second call site is the thing to resist — a Library card or a
+  // sweep would run this per row against meetings mid-pipeline, which is the state its guard
+  // ("has utterances, has no items") cannot tell apart from an unmigrated one.
   ensureItems(meetingId: string): Promise<void>;
   // Index up to `limit` meetings that have never been indexed; resolves with how many are still
   // outstanding. Driven from the app's sweep so an existing library becomes searchable without a

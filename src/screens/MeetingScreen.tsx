@@ -171,6 +171,21 @@ export default function MeetingScreen({ route, navigation }: Props) {
    * still downloading libonnxruntime.so — and a meeting is readable whether or not it has been
    * migrated. `ensureItems` works out whether a meeting still needs migrating from the data rather
    * than from a flag, so the next open simply tries again.
+   *
+   * The two things a reader is likeliest to simplify, and why neither survives:
+   *
+   *  - The ref stores the `meetingId` it migrated. `useCallback` is re-created when the id
+   *    changes, but the REF is not — it outlives every re-creation — so a bare
+   *    `useRef<Promise<void> | null>` would have `refresh` await MEETING A's migration and then
+   *    read meeting B. That is a live path, not a hypothetical: nothing sets `getId` on this
+   *    screen, so `navigate('Meeting', …)` — a "Notes ready" notification for another meeting,
+   *    tapped while this one is open — reuses this mounted screen and changes its params. It
+   *    compiles either way; `a param change migrates the meeting now on screen` is the test.
+   *  - The `.catch` sits on the promise as it is STORED, not on the await. `refresh()` is called
+   *    with no handler of its own from the onComplete listener and from the floating `load()`, so
+   *    catching at creation is what makes the stored promise unable to reject for ANY caller.
+   *    `await migrate().catch(() => {})` reads as the same thing and leaves the other two callers
+   *    awaiting a rejected promise.
    */
   const migration = useRef<{ meetingId: string; done: Promise<void> } | null>(null);
   const migrate = useCallback(() => {

@@ -63,13 +63,14 @@ function item(
   text: string,
   anchorStartMs = 0,
   genVersion = 'rules@1',
+  review = 'suggested',
 ) {
   mockSqlite
     .prepare(
       'INSERT INTO items(id, meeting_id, kind, text, review, gen_version, anchor_start_ms, ' +
-        "anchor_end_ms, created_at) VALUES(?,?,?,?,'suggested',?,?,?,0)",
+        'anchor_end_ms, created_at) VALUES(?,?,?,?,?,?,?,?,0)',
     )
-    .run(id, meetingId, kind, text, genVersion, anchorStartMs, anchorStartMs + 1000);
+    .run(id, meetingId, kind, text, review, genVersion, anchorStartMs, anchorStartMs + 1000);
 }
 
 function source(itemId: string, ordinal: number, startMs: number, utteranceId: string | null) {
@@ -141,6 +142,41 @@ describe('allActions', () => {
   });
 
   /**
+   * A rejected action is by definition not outstanding, and `Reconciler` rule 4 keeps rejected
+   * rows in `items` FOREVER on purpose — "keeping the no is what makes it stick". So the day
+   * anything ships a reject gesture, every dismissed action returns as work in the one list whose
+   * job is to be believed, with nothing failing to compile. Nothing writes 'rejected' today, which
+   * is exactly why the filter goes in now rather than after somebody sees it.
+   */
+  it('leaves a rejected action out of the worklist', async () => {
+    meeting('m1', 'Standup', 1000);
+    item('i1', 'm1', 'action', 'Send the report');
+    item('i2', 'm1', 'action', 'Somebody said no to this', 1000, 'rules@1', 'rejected');
+
+    expect((await db.allActions()).map(r => r.id)).toEqual(['i1']);
+  });
+
+  /**
+   * `ActionsScreen.group()` is a run-length grouper, so a meeting whose rows are interrupted
+   * renders twice with its count split. Two meetings created in the same millisecond — an import,
+   * a restore — would interleave deterministically on `anchor_start_ms` alone, because every
+   * meeting's anchors start near 0.
+   */
+  it('keeps a meeting’s actions contiguous when two meetings share a created_at', async () => {
+    meeting('m1', 'Standup', 1000);
+    meeting('m2', 'Client call', 1000);
+    item('a1', 'm1', 'action', 'First of m1', 0);
+    item('a2', 'm1', 'action', 'Second of m1', 5000);
+    item('b1', 'm2', 'action', 'First of m2', 1000);
+    item('b2', 'm2', 'action', 'Second of m2', 6000);
+
+    const ids = (await db.allActions()).map(r => r.meetingId);
+    expect(ids.slice(0, 2).every(m => m === ids[0])).toBe(true);
+    expect(ids.slice(2).every(m => m === ids[2])).toBe(true);
+    expect(ids[0]).not.toBe(ids[2]);
+  });
+
+  /**
    * `items` has no `source` column; `gen_version` carries what wrote the row. The worklist keeps
    * the field because a hand-typed item is not something the pipeline may quietly rewrite, and
    * Task 12 is what starts writing `gen_version='user'` rows.
@@ -187,13 +223,20 @@ describe('doneItemIds', () => {
     expect(done.has(`${rows[0].meetingId}\u0000${rows[0].id}`)).toBe(true);
   });
 
-  it('does not tick the same item id in another meeting', async () => {
+  /**
+   * `item_done` deliberately has NO foreign key to `items` — a cascade there would wipe every tick
+   * on every reprocess — so two meetings each holding a tick for item id 'i1' is representable
+   * even though `items.id` is a primary key and cannot itself repeat. That is the shape a key
+   * dropping the meeting half collapses into one entry, silently.
+   */
+  it('keeps two meetings’ ticks apart when they share an item id', async () => {
     meeting('m1', 'Standup', 1000);
     meeting('m2', 'Client call', 2000);
     item('i1', 'm1', 'action', 'Send the report');
     await db.setItemDone('m1', 'i1', true);
+    await db.setItemDone('m2', 'i1', true);
 
-    expect(await db.doneItemIds()).toEqual(new Set(['m1\u0000i1']));
+    expect(await db.doneItemIds()).toEqual(new Set(['m1\u0000i1', 'm2\u0000i1']));
   });
 });
 
