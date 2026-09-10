@@ -43,6 +43,15 @@ CLASSES=(
   # core, nothing after it can tell whether the caller under test would have. Each entry here gets
   # its own `am instrument`, and so its own process — which is the whole mechanism of that test.
   com.innocorelabs.verbale.StorageItemsTest
+  # The library-wide sweep: which meetings are in the backlog, and that a meeting whose transcript
+  # legitimately yields NO items leaves it. Both halves are a real database plus the native rules,
+  # and the second cannot be a JVM test for the same reason none of the above can be.
+  com.innocorelabs.verbale.ItemSweepTest
+  # Its own class for the reason StorageItemsTest is: NativeBridge.loaded is static, so only a
+  # process that has loaded nothing can tell whether the sweep loads the core itself. One class,
+  # one `am instrument`, one process — that IS the mechanism, and ItemSweepTest cannot stand in for
+  # it because its own helper loads the core before every test.
+  com.innocorelabs.verbale.StorageSweepTest
 )
 
 if ! "$ADB" devices | grep -qE "device$"; then

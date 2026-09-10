@@ -1331,11 +1331,89 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
           )
         }
       }
+      // "We tried", stamped LAST and inside the same transaction as everything above, so a
+      // process killed half way leaves a meeting that will be migrated again rather than one that
+      // never will be. It is not "we found something": [ensureItems] and [unmigratedMeetings] both
+      // have to tell a meeting whose transcript legitimately produced no items from one nothing
+      // has run over, and no read of `items` can — both are a transcript with no rows. Under the
+      // per-meeting trigger that cost a wasted rule pass per open; under the library-wide sweep
+      // (StorageModule.backfillItems) it is the difference between a backlog that drains and one
+      // that hands the same finished meetings back on every library focus forever.
+      db.execSQL(
+        "UPDATE meetings SET items_migrated_at=? WHERE id=?",
+        arrayOf<Any?>(System.currentTimeMillis(), meetingId),
+      )
       db.setTransactionSuccessful()
     } finally {
       db.endTransaction()
     }
     return incoming.size
+  }
+
+  /**
+   * Meetings this build has never run the rules over, newest first — the sweep's backlog.
+   *
+   * The same shape as [unindexedMeetings] and driven from the DATA for the same reason, with one
+   * clause that has no counterpart there. `items_migrated_at IS NULL` is what stops a meeting whose
+   * transcript legitimately yields no decisions, actions or questions being handed back by every
+   * pass for the rest of the install's life: `unindexedMeetings` can ask "are the rows there"
+   * because every meeting with a transcript produces at least one index row, and items are exactly
+   * the case where zero is a correct and permanent answer.
+   *
+   * The `NOT EXISTS(items)` clause is the other half and is not redundant with the marker. Nothing
+   * on the pipeline's path stamps anything — `ProcessingEngine` calls `replaceItems` directly — so
+   * every meeting recorded on this build has items and no marker, and without that clause the sweep
+   * would re-run the rules over the whole library. That is not a wasted pass but a reprocess:
+   * [replaceItems] runs `Reconciler`, which deletes an untouched row the rules no longer produce.
+   *
+   * The marker travels inside a backup, with the meeting it describes (`BackupManager.TABLES`
+   * imports `meetings`), which is why it is a column here and not a flag in `settings` — see
+   * [unindexedMeetings] for what a global flag does to a restore. A restored meeting arrives
+   * carrying the answer for itself, and a restored meeting that was never migrated on the donor
+   * phone arrives with NULL and is swept here.
+   */
+  fun unmigratedMeetings(limit: Int = 25): List<String> {
+    val out = ArrayList<String>()
+    db.rawQuery(
+      "SELECT id $UNMIGRATED ORDER BY created_at DESC LIMIT ?",
+      arrayOf(limit.toString()),
+    ).use { c -> while (c.moveToNext()) out.add(c.getString(0)) }
+    return out
+  }
+
+  /**
+   * How many meetings [unmigratedMeetings] would still hand back, unbounded — the backlog.
+   *
+   * A real count, and deliberately NOT `unmigratedMeetings(1).size`, which is what the neighbouring
+   * `StorageModule.backfillSearch` resolves. The JavaScript loop stops when this reaches zero and,
+   * before that, when a pass fails to SHRINK it — so an answer that can only be 0 or 1 reads as a
+   * backlog that is not shrinking on the second pass, breaks the loop after two batches and never
+   * latches. Counting is one scan of `meetings` per pass against a migration that reads and
+   * rewrites twelve transcripts.
+   */
+  fun unmigratedCount(): Int {
+    db.rawQuery("SELECT count(*) $UNMIGRATED", null)
+      .use { c -> return if (c.moveToFirst()) c.getInt(0) else 0 }
+  }
+
+  /**
+   * The one predicate [unmigratedMeetings] and [unmigratedCount] both ask.
+   *
+   * Written once because the two are read together and answered together: a count that disagrees
+   * with the list it counts makes the sweep either stop with work outstanding or never stop at all,
+   * and two copies of a three-clause WHERE is precisely how they come to disagree.
+   */
+  private val UNMIGRATED =
+    "FROM meetings m WHERE EXISTS(SELECT 1 FROM utterances u WHERE u.meeting_id=m.id) " +
+      "AND NOT EXISTS(SELECT 1 FROM items i WHERE i.meeting_id=m.id) " +
+      "AND m.items_migrated_at IS NULL"
+
+  /** Whether [backfillItems] has ever run to completion for this meeting. */
+  private fun itemsMigrated(meetingId: String): Boolean {
+    db.rawQuery(
+      "SELECT items_migrated_at IS NOT NULL FROM meetings WHERE id=?",
+      arrayOf(meetingId),
+    ).use { c -> return c.moveToFirst() && c.getInt(0) != 0 }
   }
 
   /**
@@ -1345,46 +1423,60 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    * calls it to hand the reconciler what is on disk — and a write that can start a migration is a
    * reprocess that silently re-extracts a meeting mid-write.
    *
-   * "Has it been migrated" is derived from the DATA rather than from a flag in `settings`, for the
-   * reason [unindexedMeetings] spells out: that table travels inside a backup, so a flag would
-   * arrive from the donor phone already set and the restored meetings would never migrate. The
-   * cost is that a meeting whose transcript genuinely yields no items re-runs the rules on every
-   * open — milliseconds of pure text, against a flag that would be wrong on a restore forever.
+   * THREE CLAUSES, and each excludes a different population. Removing any one of them is a defect
+   * that compiles:
    *
-   * Re-running on a meeting that HAS items would not be free, though, and that is what
-   * `items().isEmpty()` is for: `replaceItems` runs the reconciler, which deletes an untouched row
-   * the rules no longer produce, so a second pass is a reprocess and not a no-op.
+   *  - [hasUtterances] is a SHORT-CIRCUIT rather than a guard, and the difference was measured
+   *    rather than assumed: [backfillItems] returns before it writes anything when there is no
+   *    transcript, so deleting this half changes no outcome and no test can be written that fails
+   *    on its absence. What it buys is not running the two queries below every time a meeting with
+   *    no transcript is opened. It stays FIRST for that reason. The protection lives in
+   *    [backfillItems]' own early return, where it covers every caller rather than this one.
+   *  - `items_migrated_at IS NULL` excludes a meeting the rules have already been run over that
+   *    legitimately produced NOTHING. Nothing about such a meeting can be seen in `items`, because
+   *    a meeting nothing has migrated looks identical: a transcript, and no rows. Without this the
+   *    guard is permanently true for it — a wasted rule pass on every open, which was invisible
+   *    while opening was the only trigger, and an undrainable backlog now that
+   *    `StorageModule.backfillItems` sweeps the library.
+   *  - `items().isEmpty()` excludes a meeting the current pipeline already wrote items for, which
+   *    carries no marker because nothing on that path stamps one. Re-running there would not be
+   *    free: `replaceItems` runs the reconciler, which deletes an untouched row the rules no longer
+   *    produce, so a second pass is a reprocess and not a no-op.
    *
-   * [hasUtterances] is a short-circuit and NOT a guard, and the difference was measured rather than
-   * assumed: [backfillItems] returns before it writes anything when there is no transcript, so
-   * deleting this half changes no outcome and no test can be written that fails on its absence.
-   * What it buys is not running [items] — two queries and a hash per row — every time a meeting
-   * with no transcript is opened. The protection lives in [backfillItems]' own early return, where
-   * it covers every caller rather than this one.
+   * TWO CALLERS as of Task 8b, and they migrate the same meetings for different readers.
+   * `MeetingScreen.refresh` (JavaScript) awaits this before it reads a meeting and memoises it per
+   * opening, so opening a meeting migrates it now rather than on the next sweep;
+   * `libraryStore.backfillItems` drives the batched sweep through `StorageModule`, because the
+   * worklist, the Library's outstanding-actions card and Search's "meetings with actions" filter
+   * all read ACROSS meetings and cannot wait for each one to be opened. Task 8 rejected the sweep
+   * and was wrong: under lazy-only those three describe the meetings somebody has opened since
+   * updating and report "nothing outstanding" for everything else.
    *
-   * WHAT THIS GUARD MISSES, and why it is not fixed here. `items().isEmpty()` was the right
-   * question when nothing produced items; the pipeline now does. So a meeting carrying
-   * `action_done` ticks that is REPROCESSED on this build before anybody opens it comes out with
-   * items, and therefore never migrates — its ticks stay in `action_done` forever. Nothing is
-   * deleted, because [StoredItem.touched] still reads that table, but [doneItemIds] does not, so
-   * Task 9's worklist draws those items unticked.
+   * The objection Task 8 raised against a sweep is real and is answered rather than dismissed: this
+   * guard cannot tell an unmigrated meeting from one the pipeline is part-way through, because both
+   * have utterances and no items. So the sweep re-asks it per meeting rather than trusting the
+   * batch it selected, and the window that remains — a meeting whose ASR finished between the SELECT
+   * and this call — costs one rule pass whose result the pipeline's own `replaceItems` reconciles
+   * moments later.
    *
-   * Running the tick carry unconditionally would be worse, not better: nothing ever deletes an
-   * `action_done` row, so a person who unticks a migrated item would find it ticked again on the
-   * next reprocess, permanently. Closing it properly means a real migrated marker, and that is a
-   * schema decision rather than a line here.
-   *
-   * EXACTLY ONE CALLER, and that is the design. `MeetingScreen.refresh` (JavaScript) awaits this
-   * before it reads a meeting and memoises it per opening, so opening a meeting is the migration
-   * and nothing else triggers one. Resist a second: the guard above cannot tell an unmigrated
-   * meeting from one the pipeline is part-way through — both have utterances and no items — so a
-   * Library card or a sweep would re-run the rule pass over half-written transcripts on a phone
-   * already busy writing the real ones, and per meeting rather than once.
+   * WHAT THIS GUARD STILL MISSES, and the marker does not close it. A meeting carrying `action_done`
+   * ticks that is REPROCESSED on this build before anybody opens it comes out with items, so
+   * `items().isEmpty()` excludes it before `items_migrated_at` is ever consulted, and its ticks stay
+   * in `action_done` forever. Nothing is deleted, because [StoredItem.touched] still reads that
+   * table, but [doneItemIds] does not, so the worklist draws those items unticked. The marker
+   * answers "have the rules been run", which is a different question. Carrying the ticks
+   * unconditionally is still worse — nothing ever deletes an `action_done` row, so a person who
+   * unticks a migrated item would find it ticked again on the next reprocess, permanently — but the
+   * marker does now make a ONCE-ONLY carry expressible, which it was not when this note was written.
    *
    * @return how many items the migration produced; 0 when there was nothing to do.
    */
   fun ensureItems(meetingId: String): Int =
-    if (hasUtterances(meetingId) && items(meetingId).isEmpty()) backfillItems(meetingId) else 0
+    if (hasUtterances(meetingId) && !itemsMigrated(meetingId) && items(meetingId).isEmpty()) {
+      backfillItems(meetingId)
+    } else {
+      0
+    }
 
   /**
    * The ids of this meeting's ticked items. Keyed on the item, so a re-worded item stays ticked.
@@ -1653,6 +1745,24 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       // at the time, and asking again a day later would answer a different question. Null is the
       // normal case and covers both "diarization ran" and "there was nothing to separate".
       Triple("meetings", "diar_skipped_reason", "TEXT"),
+      // When the rules were last run over this meeting's stored transcript to produce items —
+      // "we tried", not "we found something". A meeting whose transcript legitimately yields no
+      // decisions, actions or questions is a real and common case, and it is indistinguishable
+      // from an unmigrated one by looking at `items`: both have a transcript and no rows. Under
+      // the lazy trigger that cost a wasted rule pass per open; under a library-wide sweep it is
+      // fatal, because such a meeting comes back in every batch forever and the backlog never
+      // drains. Hence a stamp rather than an inference.
+      //
+      // NULL is the honest starting value and every existing row gets it, so no DEFAULT: a
+      // default would declare the whole library migrated on the ALTER, which is the one claim
+      // this column exists to stop anything making.
+      //
+      // The `settings`-flag objection that [unindexedMeetings] documents does not apply. This is
+      // per meeting and travels WITH its meeting inside a backup (BackupManager.TABLES imports
+      // `meetings`), so a restored meeting arrives carrying the answer for itself — correct if it
+      // was migrated on the donor phone, and the restore's own reindex/backfill picks it up if
+      // not. A single global flag is what would arrive already set with nothing behind it.
+      Triple("meetings", "items_migrated_at", "INTEGER"),
     )
 
     /** The schema, for a unit test that must not open an encrypted database. */

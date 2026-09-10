@@ -18,10 +18,17 @@ export const SCHEMA = [
      audio_retained INTEGER NOT NULL DEFAULT 1,
      archived_at INTEGER,          -- NULL = in the library; set = hidden, restorable
      summary_line TEXT,            -- one-line description written by the LLM; NULL until narrated
+     title_edited_at INTEGER,      -- set when a PERSON renamed it; the auto-retitle must not win
      transcribe_forced_at INTEGER, -- set when a person overruled the "not English" refusal
      forced_from_language TEXT,    -- what was heard before they did; the banner's claim
      announced_at INTEGER,         -- when the spoken disclosure finished, while the mic was live
-     diar_skipped_reason TEXT      -- why this meeting has no speakers, when the cause was memory
+     diar_skipped_reason TEXT,     -- why this meeting has no speakers, when the cause was memory
+     -- When the rule pass was last run over this meeting's stored transcript to produce items.
+     -- "We tried", NOT "we found something": a transcript can legitimately yield no decisions,
+     -- actions or questions, and such a meeting is indistinguishable from an unmigrated one by
+     -- looking at the items table. Without it a meeting comes back in every sweep batch forever
+     -- and the backlog never drains. NULL — no DEFAULT — is what every existing row starts with.
+     items_migrated_at INTEGER
    );`,
   `CREATE TABLE IF NOT EXISTS utterances (
      id TEXT PRIMARY KEY,

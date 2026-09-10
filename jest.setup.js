@@ -39,6 +39,9 @@ const mockNativeModules = {
     // rejection inside a component, not a clear error.
     ensureItems: jest.fn(async () => {}),
     backfillSearch: jest.fn(async () => 0),
+    // Resolves 0 = "nothing left to migrate", so LibraryScreen's focus sweep stops after one pass
+    // instead of looping four hundred times in every screen test that renders the library.
+    backfillItems: jest.fn(async () => 0),
   },
   ModelManager: {
     list: jest.fn(async () => '[]'),

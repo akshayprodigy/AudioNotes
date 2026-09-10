@@ -78,6 +78,45 @@ describe('schema.ts evidence tables (executed in real SQLite)', () => {
     expect(() => freshDb()).not.toThrow();
   });
 
+  /**
+   * The mirror's own table, asserted because the mirror is what drifts.
+   *
+   * `meetings` is not an evidence-spine table and was not asserted here at all, which is how
+   * `title_edited_at` came to be in AudioDb and not in this file. The list below is the UNION of
+   * AudioDb's `meetings` CREATE TABLE and every `("meetings", ...)` entry in its ADDED_COLUMNS,
+   * because on a real device those two run one after the other and the union is the shape every
+   * query actually sees. Change AudioDb, change this.
+   */
+  describe('meetings', () => {
+    it('has every column AudioDb creates or adds', () => {
+      const cols = columnsOf(freshDb(), 'meetings').map(c => c.name).sort();
+      expect(cols).toEqual(
+        [
+          'id', 'title', 'created_at', 'duration_ms', 'language', 'status', 'tier_used',
+          'audio_path', 'audio_retained', 'archived_at', 'summary_line', 'title_edited_at',
+          'transcribe_forced_at', 'forced_from_language', 'announced_at', 'diar_skipped_reason',
+          'items_migrated_at',
+        ].sort(),
+      );
+    });
+
+    /**
+     * The migration marker, and both halves of it matter.
+     *
+     * INTEGER because it is an epoch, and nullable with NO default because NULL is what every
+     * existing row starts with and is the only value that means "the rules have never been run
+     * over this meeting". A DEFAULT here would declare an entire existing library already
+     * migrated the moment the ALTER ran, and unmigratedMeetings would answer 0 forever — the
+     * confident false negative this column exists to prevent, restored by the column itself.
+     */
+    it('items_migrated_at is a nullable INTEGER with no default', () => {
+      const col = column(columnsOf(freshDb(), 'meetings'), 'items_migrated_at');
+      expect(col.type).toBe('INTEGER');
+      expect(col.notnull).toBe(0);
+      expect(col.dflt_value).toBe(null);
+    });
+  });
+
   describe('items', () => {
     it('has exactly the fourteen expected columns', () => {
       const cols = columnsOf(freshDb(), 'items').map(c => c.name).sort();

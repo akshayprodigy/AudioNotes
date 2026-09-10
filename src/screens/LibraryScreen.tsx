@@ -217,6 +217,7 @@ export default function LibraryScreen({ navigation }: Props) {
   const { meetings, refresh, sort, setSort, tag, tags, setTag } = useLibraryStore();
   const [sorting, setSorting] = useState(false);
   const backfillSearch = useLibraryStore(st2 => st2.backfillSearch);
+  const backfillItems = useLibraryStore(st2 => st2.backfillItems);
   const [sheetFor, setSheetFor] = useState<Meeting | null>(null);
   const [archived, setArchived] = useState(0);
   const [work, setWork] = useState({ total: 0, open: 0, meetings: 0 });
@@ -246,18 +247,43 @@ export default function LibraryScreen({ navigation }: Props) {
 
   useEffect(() => {
     const onFocus = () => {
-      // The search-index backfill rides on the refresh rather than on its own timer, because the
-      // count it compares against only means anything once the meetings have been loaded. It
-      // short-circuits to a single native call unless that count has actually moved, so putting
-      // it on every focus costs nothing and heals a restored backup on the very next one.
-      refresh().then(backfillSearch).catch(() => {});
+      // Both sweeps ride on the refresh rather than on a timer of their own, because the count
+      // they latch against only means anything once the meetings have been loaded. Each
+      // short-circuits to nothing unless that count has actually moved, so putting them on every
+      // focus costs nothing and heals a restored backup on the very next one.
+      //
+      // IN SEQUENCE, not concurrently, and the item migration first. There is one process-wide
+      // SQLCipher connection shared with the recording service, and both sweeps are chunked
+      // precisely so that no single native call is long enough to be the reason this transition
+      // drops frames; run together their calls interleave on that one connection, each batch waits
+      // behind the other's, and the yield between passes stops being a yield. Items lead because
+      // what they repair is a false statement — the worklist and Search's "meetings with actions"
+      // filter both read ACROSS meetings and, unmigrated, describe the meetings somebody has
+      // opened rather than the library. The search backlog costs results in a screen that already
+      // says it may be incomplete, and it has a second driver in PipelineController.sweep.
+      refresh()
+        .then(backfillItems)
+        // countActions ran below, before any of this, so on the first focus after an update it
+        // tallied a library that had not been migrated yet. `true` means native was asked and that
+        // tally may be stale; `false` is the latched case, where nothing on disk moved and
+        // re-counting would be two library-wide queries per focus, forever, for the same answer.
+        //
+        // `work` is not on screen TODAY: the tally arrived with the worklist screen (1744e1d) and
+        // the card that shows "N outstanding across M meetings" was never wired up, so nothing
+        // renders it and nothing navigates to Actions either. Both are somebody's next task, and
+        // the number they will show is computed here — a re-count that is missing on the day the
+        // card lands is a card that reads 0 over a full worklist, which is the exact failure this
+        // sweep exists to end.
+        .then(swept => { if (swept) countActions(); })
+        .then(backfillSearch)
+        .catch(() => {});
       db.archivedCount().then(setArchived).catch(() => {});
       countActions();
       PipelineController.processPending().then(refresh).catch(() => {});
     };
     onFocus();
     return navigation.addListener('focus', onFocus);
-  }, [navigation, refresh, backfillSearch, countActions]);
+  }, [navigation, refresh, backfillSearch, backfillItems, countActions]);
 
   const reload = () => {
     refresh();

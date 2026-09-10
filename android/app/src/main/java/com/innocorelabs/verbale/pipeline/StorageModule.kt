@@ -48,15 +48,16 @@ class StorageModule(private val ctx: ReactApplicationContext) :
   /**
    * Give one meeting its items if it was recorded before items existed.
    *
-   * Shaped like [reindex] and per-meeting for the same reason: this is a few milliseconds of pure
-   * text over stored utterances, so it belongs on the path that opens a meeting rather than in a
-   * library-wide sweep. [backfillSearch] is chunked and JS-driven because a full-library index
-   * build would ANR the main thread on a Quick Settings cold start; none of that applies here, and
-   * copying the chunked shape would only add a migration nobody can tell has finished.
+   * Shaped like [reindex] and per-meeting: a few milliseconds of pure text over stored utterances,
+   * on the path that opens a meeting. [backfillItems] below is the same migration driven across the
+   * library, and the two are not alternatives — this one is what migrates the meeting somebody
+   * opened straight from a notification, before its screen reads it, and it is awaited for that
+   * reason. The caller is `MeetingScreen.refresh` in JavaScript, memoised per opening.
    *
-   * The caller is `MeetingScreen.refresh` in JavaScript, which awaits this before it reads the
-   * meeting and memoises it per opening. There is exactly ONE, and see [AudioDb.ensureItems] for
-   * why a second would be worse than none.
+   * Task 8's version of this comment said a library-wide sweep "would only add a migration nobody
+   * can tell has finished", and that objection was answered rather than ignored: `items_migrated_at`
+   * is what a sweep can tell has finished, because "has this meeting got items" cannot be that
+   * signal — see [AudioDb.ensureItems].
    */
   @ReactMethod
   fun ensureItems(meetingId: String, promise: Promise) {
@@ -96,6 +97,57 @@ class StorageModule(private val ctx: ReactApplicationContext) :
       promise.resolve(db.unindexedMeetings(1).size.toDouble())
     } catch (e: Throwable) {
       promise.reject("db_backfill", e)
+    }
+  }
+
+  /**
+   * Migrate meetings recorded before items existed, a batch at a time.
+   *
+   * The library-wide half of [ensureItems], and the reason both exist is that they serve different
+   * readers. Opening a meeting can migrate that meeting; the worklist, the Library's
+   * outstanding-actions tally and Search's "meetings with actions" filter all read ACROSS meetings,
+   * so under the per-meeting trigger alone they describe the meetings somebody has opened since
+   * updating and tell everybody else they have nothing outstanding. Task 8 chose lazy-only and
+   * that was wrong — not because it under-covers, but because the three views state a number rather
+   * than showing a gap.
+   *
+   * Chunked and JS-driven for [backfillSearch]'s reasons exactly: one process-wide connection
+   * shared with the recording and processing services, and `open()` runs on the MAIN thread when a
+   * cold start comes from the Quick Settings tile. `libraryStore.backfillItems` owns the loop, the
+   * latch and the retry policy.
+   *
+   * @param limit meetings to migrate in this call.
+   * @return how many are STILL outstanding — a real count, because the loop stops both when it
+   *   reaches zero and when a pass fails to shrink it. See [AudioDb.unmigratedCount] for what
+   *   copying `backfillSearch`'s `unindexedMeetings(1).size` would do to that loop.
+   */
+  @ReactMethod
+  fun backfillItems(limit: Double, promise: Promise) {
+    try {
+      // The same requirement [ensureItems] has, and the failure it would produce here is worse.
+      // The migration re-runs the rule pass, which lives in libaudionotes.so; nothing loads that
+      // at app start, and this runs on a plain library focus — where the odds of somebody having
+      // recorded first are lower than on the path that opens a meeting. Without it the JNI call
+      // throws UnsatisfiedLinkError, the catch below turns it into a rejected promise, the store
+      // swallows that, and the library silently never migrates. Task 8 shipped exactly this bug on
+      // ensureItems; StorageSweepTest is a class of its own so this one cannot be shipped twice.
+      NativeBridge.ensureLoaded(ctx)
+      val db = AudioDb.get(ctx)
+      // ensureItems rather than backfillItems, though unmigratedMeetings has already applied that
+      // guard: the batch is a SNAPSHOT and the pipeline writes items into the same database while
+      // this drains, so a meeting selected as unmigrated can have gained items by the time its turn
+      // comes. Re-asking costs two queries per meeting and closes the window to one call.
+      //
+      // runCatching per meeting, and this is the asymmetry batching introduces: on the per-meeting
+      // path one meeting that throws affects one meeting, while here it would reject the whole
+      // promise, leave every meeting behind it in the batch untouched, and hand the same failure
+      // back on every pass — one bad transcript freezing the entire library's migration. A swallowed
+      // failure leaves that meeting unstamped, so it is retried, and the backlog simply stops
+      // shrinking, which is a state the loop already knows how to stop on.
+      for (id in db.unmigratedMeetings(limit.toInt())) runCatching { db.ensureItems(id) }
+      promise.resolve(db.unmigratedCount().toDouble())
+    } catch (e: Throwable) {
+      promise.reject("db_backfill_items", e)
     }
   }
 

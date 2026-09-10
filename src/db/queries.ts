@@ -396,17 +396,34 @@ export const db = {
   /**
    * Give one meeting its items if it was recorded before items existed.
    *
-   * Per-meeting and lazy, unlike backfillSearch's chunked sweep, and AudioDb.ensureItems says why:
-   * opening a meeting IS the trigger, there is no library-wide pass, and the native side works out
-   * whether a meeting has been migrated from the data rather than from a flag — so a failed
-   * attempt costs nothing but a retry on the next open. The one caller is the meeting screen's
-   * read (MeetingScreen.refresh), which has to await it before reading.
+   * Per-meeting, next to the chunked sweep in backfillItems below rather than instead of it: this
+   * is what migrates the meeting somebody opened from a notification, before its screen reads it,
+   * and the sweep is what migrates the rest of the library for the views that read across
+   * meetings. Both go through the same guard on the native side (AudioDb.ensureItems), which is
+   * derived from the data plus a per-meeting marker rather than a global flag — so a failed
+   * attempt costs nothing but a retry. The caller is the meeting screen's read
+   * (MeetingScreen.refresh), which has to await it before reading.
    *
    * It can reject on a phone that has not finished downloading libonnxruntime.so, because the
    * migration re-runs the rule pass through the native core. That is deliberate on the Kotlin side
    * and must never be fatal here: a meeting is readable whether or not it has been migrated yet.
    */
   ensureItems: (meetingId: string) => Storage.ensureItems(meetingId),
+
+  /**
+   * Migrate up to `limit` pre-items meetings. Returns how many are still outstanding.
+   *
+   * The library-wide half of ensureItems above, and the reason both exist is that they serve
+   * different readers. A meeting screen can migrate the one meeting being opened; the worklist,
+   * the Library's outstanding-actions tally and Search's "meetings with actions" filter all read
+   * ACROSS meetings, and under the lazy trigger alone they describe the meetings somebody has
+   * opened since updating rather than the library — reporting "nothing outstanding" to a person
+   * with a fortnight of unticked actions.
+   *
+   * Driven by libraryStore.backfillItems, which is where the batching, the latch and the retry
+   * policy live. Same rejection behaviour as ensureItems, and never fatal for the same reason.
+   */
+  backfillItems: (limit = 25) => Storage.backfillItems(limit),
 
   // ---- Tags -------------------------------------------------------------------------------
 
@@ -506,12 +523,14 @@ export const db = {
    * `minutes` rows are all it has — and the worklist reads the one that carries an id a tick can
    * be keyed on.
    *
-   * WHAT THAT COSTS, AND WHY IT IS STILL RIGHT. A meeting gains items when somebody OPENS it (see
-   * db.ensureItems); there is no library-wide sweep, and Task 8 rejected one as over-building on
-   * top of a single process-wide connection shared with the recording service. So the first run of
-   * this build shows a worklist covering only the meetings that have been opened since, and it
-   * fills back in one meeting at a time as they are. Nothing is lost while that happens: the
-   * `minutes` rows and every `action_done` tick stay exactly where they were, and a meeting's own
+   * THIS IS A CROSS-MEETING READ, which is what forced the sweep. Task 8 migrated a meeting only
+   * when somebody OPENED it and rejected a library-wide pass as over-building; under that, the
+   * first run of this build returned only the meetings opened since updating — so a person with a
+   * fortnight of unticked actions was told, by the one list whose whole job is to be believed,
+   * that they had none. A gap that states a number is not a gap. libraryStore.backfillItems now
+   * drains the backlog on a Library focus (db.backfillItems), and the Library's tally and Search's
+   * "meetings with actions" filter heal on the same pass. Nothing was lost while it did not: the
+   * `minutes` rows and every `action_done` tick stayed exactly where they were, and a meeting's own
    * Actions tab still reads both.
    *
    * The other consequence, until Task 12 moves hand-written items across: an action somebody TYPED

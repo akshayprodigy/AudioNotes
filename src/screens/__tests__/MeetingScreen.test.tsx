@@ -55,11 +55,12 @@ beforeEach(() => {
  * Opening a meeting is what migrates it.
  *
  * A meeting recorded before the items table existed has no items until `ensureItems` re-runs the
- * rule pass over its stored transcript, and there is no library-wide sweep on purpose — the
- * trigger is per-meeting and lazy. These pin the two halves of that: it has to finish before the
- * read, or a just-migrated meeting renders from data that was not there yet; and it must not be
- * able to stop the meeting opening, because the reason it fails is a native core that has not
- * finished downloading, which has nothing to do with reading a meeting.
+ * rule pass over its stored transcript. The library-wide sweep added in Task 8b does not replace
+ * this trigger — it runs on a Library focus, and a meeting opened straight from a notification has
+ * not had one — so both remain. These pin the two halves of the per-meeting call: it has to finish
+ * before the read, or a just-migrated meeting renders from data that was not there yet; and it must
+ * not be able to stop the meeting opening, because the reason it fails is a native core that has
+ * not finished downloading, which has nothing to do with reading a meeting.
  */
 test('the meeting is migrated before anything reads it', async () => {
   let migrated!: () => void;

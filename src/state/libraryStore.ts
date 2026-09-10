@@ -20,7 +20,17 @@ const BATCH = 12;
 const MAX_PASSES = 400;
 
 /**
- * Meeting count at the end of the last COMPLETED backfill, or -1 if one has never finished.
+ * How many meetings one ITEM-migration pass hands to native.
+ *
+ * The same number as [BATCH] and deliberately its own constant, because it is bounded by
+ * different work: a pass here reads a meeting's utterances, runs the C++ rule extractor over them
+ * and then the reconciler, inside one transaction. Comparable in cost to an index build today, but
+ * measuring one of the two and re-tuning it must not silently re-tune the other.
+ */
+const ITEM_BATCH = 12;
+
+/**
+ * Meeting count at the end of the last COMPLETED search backfill, or -1 if one has never finished.
  *
  * Deliberately module-level rather than store state: it is control state for the sweep, and
  * putting it in the store would re-render every subscriber each time it changed. Comparing it
@@ -28,10 +38,22 @@ const MAX_PASSES = 400;
  * of un-indexed meetings into the database and moves the count, so the very next focus sweeps
  * again without anything having to know a restore happened.
  */
-let sweptAtCount = -1;
+let searchSweptAtCount = -1;
 
 /** Guards against two focus events overlapping their loops. */
-let running = false;
+let searchRunning = false;
+
+/**
+ * The SAME two, for the item migration, and separate on purpose — see [backfillItems].
+ *
+ * One shared latch would be set by whichever sweep drained first and would then short-circuit the
+ * other's backlog until the meeting count moved, which on a library nobody is adding to is never.
+ * One shared `running` flag would let a long search backfill — a restored 4,000-meeting backup —
+ * stop the item sweep from ever starting on that focus. They are two different questions about
+ * two different tables and neither answer can stand in for the other.
+ */
+let itemsSweptAtCount = -1;
+let itemsRunning = false;
 
 interface LibraryState {
   meetings: Meeting[];
@@ -53,6 +75,8 @@ interface LibraryState {
   indexing: boolean;
   refresh: () => Promise<void>;
   backfillSearch: () => Promise<void>;
+  /** Resolves with whether native was actually asked; see the action for why that is the answer. */
+  backfillItems: () => Promise<boolean>;
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
@@ -112,11 +136,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
    * answers zero; only a genuine backlog costs more.
    */
   backfillSearch: async () => {
-    if (running) return;
+    if (searchRunning) return;
     const count = get().meetings.length;
-    if (count === sweptAtCount) return;
+    if (count === searchSweptAtCount) return;
 
-    running = true;
+    searchRunning = true;
     set({ indexing: true });
     try {
       let remaining = 0;
@@ -131,13 +155,80 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         previous = remaining;
         await new Promise<void>(resolve => setTimeout(resolve, 60));
       }
-      if (remaining <= 0) sweptAtCount = count;
+      if (remaining <= 0) searchSweptAtCount = count;
     } catch {
       // Left unlatched on purpose: an index that failed half way is exactly the case that should
       // be retried, and the only cost of retrying is one native call.
     } finally {
-      running = false;
+      searchRunning = false;
       set({ indexing: false });
     }
+  },
+
+  /**
+   * Give every meeting recorded before items existed its items, and move its ticks onto them.
+   *
+   * WHY A SWEEP AT ALL, when Task 8 shipped a per-meeting migration and rejected this shape. The
+   * lazy trigger is correct for the meeting screen and cannot serve the three CROSS-MEETING readers
+   * of `items`: the worklist (ActionsScreen), the Library's outstanding-actions tally, and Search's
+   * "meetings with actions" filter. Under lazy-only all three describe the meetings somebody has
+   * opened since updating rather than the library — so a person with a fortnight of unticked work
+   * is told they have none. That is not a visible gap, it is a confident false negative, and the
+   * list it is stated on is the one this feature exists to make believable. `backfillSearch` above
+   * is the precedent and the reason is identical: search is cross-meeting too, and lazy indexing
+   * was not enough for it either.
+   *
+   * ONE of the three is on screen today, and the order is deliberate rather than lucky. Search's
+   * filter is live and reachable. `ActionsScreen` is built and registered in RootNavigator, and
+   * nothing navigates to it; LibraryScreen tallies actions into `work` on every focus and renders
+   * none of it. Both are somebody's next task, and the data has to be there BEFORE the entry point
+   * is — shipping the screen first is how a worklist gets its first impression made by a library
+   * that has not been migrated yet.
+   *
+   * "Done" cannot be inferred from the items themselves, which is the one place this differs from
+   * the search sweep. Every meeting with a transcript produces at least one index row, so
+   * `unindexedMeetings` can ask whether the rows exist; a meeting whose transcript legitimately
+   * yields no decisions, actions or questions produces ZERO items, forever, and would come back in
+   * every batch for the rest of the install's life with the backlog never reaching zero. Native
+   * stamps `meetings.items_migrated_at` instead — see AudioDb.backfillItems.
+   *
+   * The loop is `backfillSearch`'s, for `backfillSearch`'s reasons: off the render path, one small
+   * batch at a time, yielding between passes so a long backlog never blocks a scroll; latched on
+   * the meeting count once the backlog drains so an ordinary focus costs a single native call that
+   * answers zero; stopping without latching whenever a pass fails to shrink the backlog or the
+   * call rejects, because both are states that should be retried and neither is a reason to switch
+   * the sweep off permanently.
+   *
+   * @return whether native was asked. LibraryScreen counts outstanding actions on focus, and on
+   *   the first focus after an update it does that BEFORE this has migrated anything — so `true`
+   *   means any cross-meeting count taken before now may be stale and is worth re-taking, and
+   *   `false` means the latch short-circuited this and nothing on disk moved because of it.
+   */
+  backfillItems: async () => {
+    if (itemsRunning) return false;
+    const count = get().meetings.length;
+    if (count === itemsSweptAtCount) return false;
+
+    itemsRunning = true;
+    try {
+      let remaining = 0;
+      let previous = Number.POSITIVE_INFINITY;
+      for (let pass = 0; pass < MAX_PASSES; pass++) {
+        remaining = await db.backfillItems(ITEM_BATCH);
+        if (remaining <= 0) break;
+        // A pass that did not shrink the backlog will not shrink it next time either. Stopping
+        // leaves the latch unset, so the next focus retries rather than looping here forever.
+        if (remaining >= previous) break;
+        previous = remaining;
+        await new Promise<void>(resolve => setTimeout(resolve, 60));
+      }
+      if (remaining <= 0) itemsSweptAtCount = count;
+    } catch {
+      // Left unlatched on purpose: what rejects here is loading the native core on a phone still
+      // downloading libonnxruntime.so, and a meeting reads fine unmigrated. The next focus retries.
+    } finally {
+      itemsRunning = false;
+    }
+    return true;
   },
 }));

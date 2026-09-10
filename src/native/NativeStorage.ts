@@ -16,11 +16,20 @@ export interface Spec extends TurboModule {
   // its stored transcript, plus the ticks moved off action_done onto the items that replace those
   // minutes. Pure text and milliseconds — no audio is touched and nothing is re-transcribed — so
   // it belongs on the path that opens a meeting, not in a chunked sweep like backfillSearch.
-  // ONE caller, and one is the design: MeetingScreen.refresh awaits it before its read, memoised
-  // per opening (db.ensureItems). A second call site is the thing to resist — a Library card or a
-  // sweep would run this per row against meetings mid-pipeline, which is the state its guard
-  // ("has utterances, has no items") cannot tell apart from an unmigrated one.
+  // The caller is MeetingScreen.refresh, awaited before its read and memoised per opening
+  // (db.ensureItems). It is not the only one any more — backfillItems below sweeps the same
+  // migration across the library, because three cross-meeting views cannot wait for each meeting
+  // to be opened — but it stays per-meeting and lazy, and both go through the same guard.
   ensureItems(meetingId: string): Promise<void>;
+  // Migrate up to `limit` meetings recorded before items existed, newest first; resolves with how
+  // many are still outstanding. Same shape and same reasons as backfillSearch: chunked and driven
+  // from the app's sweep rather than run at open(), which on a Quick Settings cold start is the
+  // main thread. It exists because ensureItems is per-meeting and the worklist, the Library's
+  // outstanding-actions tally and Search's "meetings with actions" filter are all CROSS-meeting —
+  // under lazy-only they show a library that has been opened rather than the library.
+  // "Outstanding" is meetings with a transcript, no items and no items_migrated_at stamp; the
+  // stamp is what stops a meeting whose transcript yields no items from being swept forever.
+  backfillItems(limit: number): Promise<number>;
   // Index up to `limit` meetings that have never been indexed; resolves with how many are still
   // outstanding. Driven from the app's sweep so an existing library becomes searchable without a
   // blocking migration at open() — which, on a Quick Settings cold start, runs on the main thread.

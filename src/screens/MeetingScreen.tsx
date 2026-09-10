@@ -155,14 +155,17 @@ export default function MeetingScreen({ route, navigation }: Props) {
    * Give this meeting its items, before anything reads them.
    *
    * A meeting recorded before the items table existed has none until `ensureItems` re-runs the
-   * rule pass over its stored transcript, and the trigger is per-meeting and lazy on purpose (see
-   * AudioDb.ensureItems): opening a meeting IS the migration, and there is no library-wide sweep.
-   * So the call belongs here, and it has to finish BEFORE the read below — a just-migrated meeting
-   * whose items land after the first render draws a screen from data that was not there yet.
+   * rule pass over its stored transcript. There IS a library-wide sweep now (Task 8b:
+   * libraryStore.backfillItems, for the three cross-meeting views that cannot wait for each
+   * meeting to be opened), and this call does not become redundant because of it: the sweep runs
+   * on a Library focus in batches, and somebody who taps straight into a meeting from a
+   * notification has not had one. So the call stays here, and it has to finish BEFORE the read
+   * below — a just-migrated meeting whose items land after the first render draws a screen from
+   * data that was not there yet.
    *
    * Once per opening, not once per refresh, and the difference matters for exactly the meeting
    * that needs watching: `refresh` is also a two-second poll while a meeting is being processed,
-   * and `ensureItems`' guard is "has utterances, has no items" — the state every meeting is in
+   * and `ensureItems`' guard includes "has utterances, has no items" — the state every meeting is in
    * between ASR finishing and the pipeline writing its items. A call per poll would re-run the
    * rule pass over a half-written transcript, over and over, on a phone already busy writing the
    * real one.

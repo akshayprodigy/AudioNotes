@@ -164,6 +164,25 @@ class SchemaTest {
   }
 
   /**
+   * The migration marker reaches an existing install through ADDED_COLUMNS, or through nothing.
+   *
+   * `meetings` exists on every phone that has ever opened this app, so `CREATE TABLE IF NOT EXISTS`
+   * has nothing to say about it and a column declared only in SCHEMA lands on fresh installs alone
+   * — which is the exact population that does NOT need it. Every query naming `items_migrated_at`
+   * would then fail on precisely the libraries the sweep exists for.
+   *
+   * INTEGER, and nullable by omission: NULL means "the rules have never been run over this
+   * meeting's transcript", and it is the value every existing row starts with. A DEFAULT would
+   * stamp the whole library as already migrated on the ALTER.
+   */
+  @Test fun theItemsMigrationMarkerIsAnAddedColumn() =
+    assertTrue(
+      "items_migrated_at is missing from ADDED_COLUMNS: no phone that already has a database " +
+        "would gain the column, and unmigratedMeetings names it in its WHERE clause",
+      AudioDb.addedColumnsForTest().contains(Triple("meetings", "items_migrated_at", "INTEGER")),
+    )
+
+  /**
    * idx_items_meeting is the index a meeting-scoped items query (every caller in Task 6+)
    * actually uses. item_sources has no equivalent index: every read is
    * `WHERE item_id IN (...) ORDER BY item_id, ordinal`, already served by the composite
