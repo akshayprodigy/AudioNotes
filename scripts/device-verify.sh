@@ -30,6 +30,9 @@ fi
 CLASSES=(
   com.innocorelabs.verbale.NativePipelineTest
   com.innocorelabs.verbale.MinutesParityTest
+  # The `touched` predicate spans four tables and SQLite is the only thing that can answer it, so
+  # this one cannot be a JVM test. A class missing from this list does not fail — it never runs.
+  com.innocorelabs.verbale.ItemsDbTest
 )
 
 if ! "$ADB" devices | grep -qE "device$"; then

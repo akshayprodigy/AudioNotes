@@ -1139,6 +1139,13 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
 
       val now = System.currentTimeMillis()
       for (r in plan.rows) {
+        // WARNING for whoever writes Phase B. This names 9 of the table's 14 columns, so
+        // item_type, status, owner_json, date_said and date_norm are DROPPED on every reprocess.
+        // Harmless today only because nothing writes them — they are the Pro classifier's, and it
+        // does not exist. The moment it does, this statement has to name them and carry them
+        // forward the way created_at and gen_version are carried, and NOTHING WILL FAIL TO
+        // COMPILE if it does not: a classified owner simply becomes NULL again after the next
+        // reprocess, which is the same silence [StoredItem.touched] exists to end.
         db.execSQL(
           "INSERT INTO items(id,meeting_id,kind,text,review,gen_version," +
             "anchor_start_ms,anchor_end_ms,created_at) VALUES(?,?,?,?,?,?,?,?,?)",

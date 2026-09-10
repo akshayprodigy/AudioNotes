@@ -9,6 +9,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -37,6 +38,12 @@ import org.junit.runner.RunWith
  * And the mirror image, which matters as much: `needs_review` is the RECONCILER's own flag, not a
  * person's, and an item nobody has touched must still be droppable however many times it has been
  * flagged. Otherwise five reprocesses turn a review queue into permanent clutter.
+ *
+ * The other half of the file is the two facts `Reconciler` computes and only `replaceItems` can
+ * keep: an item's original `created_at`, and `gen_version='user'` on a row a person typed. Both are
+ * carried by a `?:` that compiles perfectly well without being there, and both losses are invisible
+ * on the screen the day they happen — a date that reads as today, and a hand-written item that
+ * survives one reprocess and is deleted by the next.
  */
 @RunWith(AndroidJUnit4::class)
 class ItemsDbTest {
@@ -229,17 +236,93 @@ class ItemsDbTest {
     }
   }
 
-  @Test fun replacingItemsKeepsTheirIdsStableWhenNothingChanged() {
+  /**
+   * A reprocess that changed nothing keeps every id, and every row's original date.
+   *
+   * The date is forced to an impossible one rather than captured and compared, and that is the
+   * whole test. `replaceItems` writes `r.createdAt ?: now`; an implementation that ignored the
+   * plan's value and stamped `now` unconditionally would pass a capture-and-compare whenever the
+   * two writes land in the same millisecond, which on a real phone is most runs — a test that is
+   * usually incapable of failing. A row dated 1000 cannot be re-stamped by accident.
+   *
+   * Lost, if it breaks: the date an item was first raised. An item somebody confirmed in March
+   * reads as written today after any reprocess, and the original is recoverable from nowhere.
+   */
+  @Test fun replacingItemsKeepsTheirIdsAndTheirOriginalDate() {
     inAMeeting { m ->
       val rows = listOf(anAction())
       db.replaceItems(m, "rules@1", rows)
       val first = db.items(m).map { it.id }
-      val createdAt = db.items(m).single().createdAt
+      exec("UPDATE items SET created_at=1000 WHERE meeting_id=?", m)
+
       db.replaceItems(m, "rules@1", rows)
+
       assertEquals(first, db.items(m).map { it.id })
-      // The created_at of a row that continues an old one is the OLD one's: an item confirmed in
-      // March must not read as written today after a reprocess.
-      assertEquals(createdAt, db.items(m).single().createdAt)
+      assertEquals(
+        "the row was re-stamped with now instead of keeping its own created_at",
+        1000L, db.items(m).single().createdAt,
+      )
+    }
+  }
+
+  /**
+   * A person's own item is still theirs after two reprocesses.
+   *
+   * TWO, because one hides the consequence. `replaceItems` writes `r.genVersion ?: genVersion`,
+   * and an implementation that wrote the run's version unconditionally relabels a hand-written row
+   * `rules@N` on the first pass — where it still exists, still reads correctly, and looks fine. On
+   * the SECOND pass it is no longer a user row, so rule 1 no longer sets it aside, nothing extracts
+   * it, nobody has touched it, and rule 4 deletes it. A one-reprocess test watches the damage being
+   * done and calls it a pass.
+   *
+   * Lost: an item a person typed themselves, which no recogniser will ever produce again.
+   */
+  @Test fun aPersonsOwnItemIsStillTheirsAfterTwoReprocesses() {
+    inAMeeting { m ->
+      db.replaceItems(m, "rules@1", listOf(anAction()))
+      val id = db.items(m).single().id
+      // Task 12 is what gives a person a way to write one; the column is the only thing that says
+      // an item is theirs, so setting it directly is the same row that screen will produce.
+      exec("UPDATE items SET gen_version='user' WHERE id=?", id)
+
+      reprocessWithoutIt(m)
+      val afterOne = db.items(m).first { it.id == id }
+      assertEquals("relabelled as rules output by the first reprocess", "user", afterOne.genVersion)
+      // Rule 1 sets user rows aside before anything else, so an untouched one is not flagged either.
+      assertEquals("suggested", afterOne.review)
+
+      reprocessWithoutIt(m)
+      val afterTwo = db.items(m).firstOrNull { it.id == id }
+      assertNotNull("the person's own item was deleted by the second reprocess", afterTwo)
+      assertEquals("user", afterTwo!!.genVersion)
+      assertEquals(ACTION_TEXT, afterTwo.text)
+    }
+  }
+
+  /**
+   * A tick in another meeting is not a tick here.
+   *
+   * `action_done`'s key is a hash of the item's TEXT, and "Send the report — Unassigned" is the
+   * same text in every meeting that says it. The set is read per meeting for that reason; read
+   * library-wide it would mark an item touched — and so undroppable, forever — because somebody
+   * ticked a similar-sounding action in a different meeting last month.
+   */
+  @Test fun aTickInAnotherMeetingDoesNotCountAsThisOnesTick() {
+    inAMeeting { other ->
+      exec(
+        "INSERT INTO action_done(meeting_id,item_key,done_at) VALUES(?,?,?)",
+        other, ItemKey.of(ACTION_TEXT), "1",
+      )
+      inAMeeting { m ->
+        db.replaceItems(m, "rules@1", listOf(anAction()))
+        val id = db.items(m).single().id
+        assertFalse("another meeting's tick was read as this item's", db.items(m).single().touched)
+        reprocessWithoutIt(m)
+        assertNull(
+          "another meeting's tick kept this untouched item alive",
+          db.items(m).firstOrNull { it.id == id },
+        )
+      }
     }
   }
 
