@@ -69,16 +69,24 @@ describe('libraryStore.backfillItems', () => {
     expect(mockBackfillItems).toHaveBeenCalledTimes(3);
   });
 
-  it('hands native a bounded batch rather than the whole library', async () => {
+  /**
+   * The batch the store passes, not the number it happens to be.
+   *
+   * An earlier version asserted only that the limit was a small positive number, which ITEM_BATCH's
+   * own KDoc invites — re-tuning it is expected. But `db.backfillItems(limit = 25)` has a default,
+   * so "the store stopped passing a batch at all" also produced a small positive number and passed.
+   * Reading the constant back out of the module under test pins the wiring and leaves the tuning
+   * free, which is the split that was wanted.
+   */
+  it('hands native its own batch constant, not the wrapper default', async () => {
     mockBackfillItems.mockResolvedValue(0);
     const store = freshStore();
+    const { ITEM_BATCH } = require('../libraryStore');
     withMeetings(store, 4000);
 
     await store.getState().backfillItems();
 
-    const [limit] = mockBackfillItems.mock.calls[0];
-    expect(limit).toBeGreaterThan(0);
-    expect(limit).toBeLessThanOrEqual(25);
+    expect(mockBackfillItems).toHaveBeenCalledWith(ITEM_BATCH);
   });
 
   /**

@@ -47,6 +47,12 @@ import java.io.File
  * not about three seeded rows. Nothing is destroyed by it; those meetings gain exactly the items
  * the next library focus would have given them anyway.
  *
+ * It is PERMANENT, though, and that is worth saying plainly rather than leaving to be inferred:
+ * every real meeting it reaches is stamped with `meetings.items_migrated_at`, and
+ * [removeSeededMeetings] deletes only the meetings this file created, so none of that is undone
+ * when the run finishes. The same is true of `StorageSweepTest`, at a smaller scale. Running these
+ * tests migrates the phone.
+ *
  * No audio anywhere here, as in BackfillTest: the rule pass is pure text over stored utterances,
  * so this runs on a phone that has never downloaded a model. The native core still has to load,
  * which is the one thing it does need.
@@ -197,6 +203,14 @@ class ItemSweepTest {
     val quiet = aMeeting(WITHOUT_ITEMS)
     val third = aMeeting(WITH_ITEMS)
 
+    // Captured BEFORE the loop, so "it drained" is a statement about work that existed. An
+    // assertion on the loop counter cannot say that — `remaining` starts at Int.MAX_VALUE, so the
+    // body always runs once and `passes > 0` is true however little the predicate selected.
+    assertTrue(
+      "precondition: all three seeded meetings are in the backlog the loop is about to drain",
+      db.unmigratedMeetings(ALL).containsAll(listOf(ticked, quiet, third)),
+    )
+
     var remaining = Int.MAX_VALUE
     var passes = 0
     while (remaining > 0 && passes < 200) {
@@ -204,8 +218,14 @@ class ItemSweepTest {
       passes++
     }
 
-    assertEquals("the backlog never reached zero in $passes passes of twelve", 0, remaining)
-    assertTrue("nothing was swept — the backlog was reported drained without draining", passes > 0)
+    assertEquals(
+      "the backlog never reached zero in $passes passes of twelve. If this fires on a device with " +
+        "real meetings on it, suspect a per-meeting failure before the marker or the loop: " +
+        "StorageModule.backfillItems swallows a throw from one meeting on purpose, so a single " +
+        "transcript the rule pass cannot handle surfaces HERE, as a backlog that will not drain, " +
+        "and not as an error naming the meeting",
+      0, remaining,
+    )
     assertTrue("the ticked meeting gained no items", db.items(ticked).isNotEmpty())
     assertTrue("the third meeting gained no items", db.items(third).isNotEmpty())
     assertTrue("the quiet meeting was given items it cannot have", db.items(quiet).isEmpty())

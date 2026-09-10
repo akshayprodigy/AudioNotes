@@ -183,6 +183,44 @@ class SchemaTest {
     )
 
   /**
+   * The `meetings` table a real device has, asserted on THIS side of the mirror.
+   *
+   * src/db/__tests__/schema.test.ts asserts the same seventeen names by executing src/db/schema.ts
+   * in node:sqlite. That test can only catch ONE of the two directions: schema.ts losing a column
+   * fails it, and AudioDb GAINING one while schema.ts is left alone fails nothing — which is the
+   * direction that actually went wrong. `title_edited_at` was in this file and missing from
+   * schema.ts for four months, with a docstring in each saying "change both" and nothing checking.
+   * Two literal lists, one per language, each failing when its own side moves, is what makes the
+   * pair enforceable; a single list read across the boundary is not available, because no test in
+   * this repo can see both languages at once.
+   *
+   * THE UNION, not the CREATE TABLE. `addMissingColumns` runs immediately after `SCHEMA` on every
+   * open, so the table a query actually meets is the CREATE TABLE plus every `("meetings", ...)`
+   * entry in ADDED_COLUMNS — and the two overlap by three, because a column added after a release
+   * is also inlined into the CREATE TABLE for fresh installs. Comparing either half alone would
+   * assert a table that exists on no device.
+   */
+  @Test fun meetingsHasTheSameSeventeenColumnsAsTheJavaScriptMirror() {
+    val expected = listOf(
+      "id", "title", "created_at", "duration_ms", "language", "status", "tier_used",
+      "audio_path", "audio_retained", "archived_at", "summary_line", "title_edited_at",
+      "transcribe_forced_at", "forced_from_language", "announced_at", "diar_skipped_reason",
+      "items_migrated_at",
+    )
+    val actual = (
+      columnsOf(ddlFor("meetings")) +
+        AudioDb.addedColumnsForTest().filter { it.first == "meetings" }.map { it.second }
+      ).distinct()
+    assertEquals(
+      "the meetings table AudioDb builds no longer matches the one src/db/schema.ts declares. " +
+        "Add or remove the column THERE too (and in its column list in " +
+        "src/db/__tests__/schema.test.ts), or the readable copy is describing a table no device " +
+        "has — which is how title_edited_at went missing",
+      expected.sorted(), actual.sorted(),
+    )
+  }
+
+  /**
    * idx_items_meeting is the index a meeting-scoped items query (every caller in Task 6+)
    * actually uses. item_sources has no equivalent index: every read is
    * `WHERE item_id IN (...) ORDER BY item_id, ordinal`, already served by the composite

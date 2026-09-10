@@ -13,9 +13,13 @@ import type { Meeting } from '../pipeline/types';
 const BATCH = 12;
 
 /**
- * A hard stop on the loop. Twelve meetings a pass means this covers a library of ~4,800 — far
- * beyond anything real — and exists only so a native implementation that ever stopped making
- * progress could not spin the app forever.
+ * A hard stop on BOTH loops, deliberately shared, and it is a pass count rather than a meeting
+ * count — so what it covers depends on the batch beside it. At twelve a pass it reaches ~4,800
+ * meetings, far beyond anything real; halve a batch and the reach halves with it, which is the one
+ * thing to check when re-tuning [BATCH] or [ITEM_BATCH]. It is shared because it is not a tuning
+ * knob at all: it exists so a native side that stopped making progress could not spin the app
+ * forever, and that ceiling is the same for both. Neither loop is expected to come near it — the
+ * "did not shrink" break is what actually stops a stuck sweep, on its second pass.
  */
 const MAX_PASSES = 400;
 
@@ -25,9 +29,15 @@ const MAX_PASSES = 400;
  * The same number as [BATCH] and deliberately its own constant, because it is bounded by
  * different work: a pass here reads a meeting's utterances, runs the C++ rule extractor over them
  * and then the reconciler, inside one transaction. Comparable in cost to an index build today, but
- * measuring one of the two and re-tuning it must not silently re-tune the other.
+ * measuring one of the two and re-tuning it must not silently re-tune the other. Re-tuning it does
+ * move how far [MAX_PASSES] reaches — see there.
+ *
+ * Exported for its test, the way `AudioDb.addedColumnsForTest` is: the assertion that matters is
+ * that the store passes THIS value to native, and a test that pins the literal 12 would fail on
+ * every legitimate re-tune while a test that accepts any small number passes when the argument is
+ * dropped altogether — `db.backfillItems` defaults to 25.
  */
-const ITEM_BATCH = 12;
+export const ITEM_BATCH = 12;
 
 /**
  * Meeting count at the end of the last COMPLETED search backfill, or -1 if one has never finished.

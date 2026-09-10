@@ -28,6 +28,7 @@ const nav = { navigate: jest.fn(), addListener: jest.fn(() => jest.fn()) } as ne
 const route = { key: 'library', name: 'Library', params: undefined } as never;
 
 const sweepItems = jest.fn<Promise<boolean>, []>();
+const sweepSearch = jest.fn<Promise<void>, []>();
 
 async function focusTheLibrary() {
   let tree!: renderer.ReactTestRenderer;
@@ -46,11 +47,14 @@ beforeEach(() => {
   (db.allActions as jest.Mock).mockResolvedValue([]);
   (db.doneItemIds as jest.Mock).mockResolvedValue(new Set<string>());
   (db.pendingMeetings as jest.Mock).mockResolvedValue([]);
+  sweepItems.mockReset();
   sweepItems.mockResolvedValue(false);
+  sweepSearch.mockReset();
+  sweepSearch.mockResolvedValue(undefined);
   // The real actions are replaced rather than driven: the store's own tests cover the latch, the
   // batching and the retry policy, and leaving the real ones in would make this file's outcome
   // depend on a module-level latch shared with every other test in the process.
-  useLibraryStore.setState({ backfillItems: sweepItems, backfillSearch: jest.fn() });
+  useLibraryStore.setState({ backfillItems: sweepItems, backfillSearch: sweepSearch });
 });
 
 test('focusing the library sweeps the item migration', async () => {
@@ -83,11 +87,60 @@ test('re-counts outstanding actions when the sweep asked native', async () => {
  * changed.
  */
 test('does not re-count when the sweep short-circuited', async () => {
+  sweepItems.mockReset();
   sweepItems.mockResolvedValue(false);
+  sweepSearch.mockReset();
+  sweepSearch.mockResolvedValue(undefined);
 
   const tree = await focusTheLibrary();
 
   expect(db.allActions).toHaveBeenCalledTimes(1);
+
+  await act(async () => tree.unmount());
+});
+
+/**
+ * The order of the two sweeps, which ten lines of comment defend and nothing pinned.
+ *
+ * Both go through one process-wide SQLCipher connection, so running them together is not free
+ * parallelism: each batch waits behind the other's on that connection and the yield between passes
+ * stops being a yield. And items lead deliberately, because what they repair is a false statement
+ * — the worklist and Search's filter both read across meetings — while the search backlog costs
+ * results in a screen that already says it may be incomplete. Swapping the two `.then`s would keep
+ * every other test in this file green.
+ */
+test('the item sweep runs before the search sweep', async () => {
+  const tree = await focusTheLibrary();
+
+  expect(sweepItems).toHaveBeenCalledTimes(1);
+  expect(sweepSearch).toHaveBeenCalledTimes(1);
+  expect(sweepItems.mock.invocationCallOrder[0]).toBeLessThan(
+    sweepSearch.mock.invocationCallOrder[0],
+  );
+
+  await act(async () => tree.unmount());
+});
+
+/**
+ * ...and IN SEQUENCE, which the call order alone cannot show: `Promise.all` would start both in
+ * the same tick and still record the item sweep first. The item sweep is left pending, and the
+ * search sweep must not have begun.
+ */
+test('the search sweep does not start until the item sweep has settled', async () => {
+  let release!: (swept: boolean) => void;
+  sweepItems.mockImplementation(
+    () =>
+      new Promise<boolean>(resolve => {
+        release = resolve;
+      }),
+  );
+
+  const tree = await focusTheLibrary();
+  expect(sweepSearch).not.toHaveBeenCalled();
+
+  await act(async () => release(false));
+
+  expect(sweepSearch).toHaveBeenCalledTimes(1);
 
   await act(async () => tree.unmount());
 });

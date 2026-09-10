@@ -124,26 +124,34 @@ class StorageModule(private val ctx: ReactApplicationContext) :
   @ReactMethod
   fun backfillItems(limit: Double, promise: Promise) {
     try {
-      // The same requirement [ensureItems] has, and the failure it would produce here is worse.
-      // The migration re-runs the rule pass, which lives in libaudionotes.so; nothing loads that
-      // at app start, and this runs on a plain library focus — where the odds of somebody having
-      // recorded first are lower than on the path that opens a meeting. Without it the JNI call
-      // throws UnsatisfiedLinkError, the catch below turns it into a rejected promise, the store
-      // swallows that, and the library silently never migrates. Task 8 shipped exactly this bug on
-      // ensureItems; StorageSweepTest is a class of its own so this one cannot be shipped twice.
+      // The same requirement [ensureItems] has, and the failure it would produce here is quieter.
+      // The migration re-runs the rule pass, which lives in libaudionotes.so; nothing loads that at
+      // app start, and this runs on a plain library focus — where the odds of somebody having
+      // recorded first are lower than on the path that opens a meeting. Without this line the JNI
+      // call throws UnsatisfiedLinkError from inside ensureItems, where the runCatching below
+      // swallows it per meeting: the loop finishes, the promise RESOLVES with a backlog that has
+      // not moved, and the store reads that as a pass which made no progress. No rejection, no
+      // error, and a library that never migrates. Loading up front is what keeps that failure loud,
+      // because it is the only point on this path outside the per-meeting catch. Task 8 shipped
+      // exactly this bug on ensureItems; StorageSweepTest is a class of its own so it cannot ship
+      // twice.
       NativeBridge.ensureLoaded(ctx)
       val db = AudioDb.get(ctx)
-      // ensureItems rather than backfillItems, though unmigratedMeetings has already applied that
-      // guard: the batch is a SNAPSHOT and the pipeline writes items into the same database while
-      // this drains, so a meeting selected as unmigrated can have gained items by the time its turn
-      // comes. Re-asking costs two queries per meeting and closes the window to one call.
+      // [AudioDb.ensureItems] rather than [AudioDb.backfillItems] — the guarded one-meeting call,
+      // not the unguarded one; both names mean "sweep the library" at every other layer. The guard
+      // has already been applied by unmigratedMeetings, and is asked again because that batch is a
+      // SNAPSHOT: the pipeline writes items into the same database while this drains, so a meeting
+      // selected as unmigrated can have gained them by the time its turn comes. Re-asking costs two
+      // queries per meeting and closes the window to one call.
       //
-      // runCatching per meeting, and this is the asymmetry batching introduces: on the per-meeting
-      // path one meeting that throws affects one meeting, while here it would reject the whole
-      // promise, leave every meeting behind it in the batch untouched, and hand the same failure
-      // back on every pass — one bad transcript freezing the entire library's migration. A swallowed
-      // failure leaves that meeting unstamped, so it is retried, and the backlog simply stops
-      // shrinking, which is a state the loop already knows how to stop on.
+      // runCatching per meeting, the idiom [AudioDb.reindexImported] already uses for the same
+      // reason, and batching is what makes it necessary here: one meeting that throws would reject
+      // the whole promise and leave every meeting behind it in the batch untouched, on every pass —
+      // one bad transcript freezing an entire library's migration. Swallowed, that meeting is left
+      // unstamped and retried, and the backlog stops shrinking, which the loop already knows how to
+      // stop on. The cost is diagnostic and lands on the next reader: a meeting whose rule pass
+      // throws shows up as ItemSweepTest's drain test reporting a backlog that will not empty, a
+      // message that points at the marker and the loop rather than at the meeting.
       for (id in db.unmigratedMeetings(limit.toInt())) runCatching { db.ensureItems(id) }
       promise.resolve(db.unmigratedCount().toDouble())
     } catch (e: Throwable) {

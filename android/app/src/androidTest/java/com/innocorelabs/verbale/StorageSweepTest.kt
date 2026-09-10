@@ -31,9 +31,17 @@ import java.io.File
  * every other `ensureLoaded` call site records, transcribes or generates), and this one runs on a
  * plain library focus, where the odds of somebody having recorded first are lower still.
  *
- * The catch in the module turns an UnsatisfiedLinkError into a rejected promise, so the symptom on
- * a real phone is not a crash: it is a library that never migrates, a worklist that says nothing is
- * outstanding, and no error anywhere a user or a log will see.
+ * THE SYMPTOM IS QUIETER THAN A REJECTION, and quieter than it is for `ensureItems`. There, the
+ * UnsatisfiedLinkError reaches the method's own catch and arrives in JavaScript as a rejected
+ * promise. Here it is raised inside `db.ensureItems(id)`, which the sweep wraps in `runCatching`
+ * so that one bad meeting cannot freeze the whole library — so the throw is swallowed per meeting,
+ * the loop finishes, and the promise RESOLVES, reporting a backlog that has not moved. The store
+ * reads that as a pass which failed to shrink the backlog, breaks out without latching, and retries
+ * on every focus for the life of the install: nothing migrates, nothing rejects, and no error
+ * reaches a user or a log. That is an argument for calling ensureLoaded up front, not against it —
+ * it is the one place on this path where the failure can still be made loud.
+ *
+ * Which is why the load-bearing assertion below is the item count and not the promise.
  */
 @RunWith(AndroidJUnit4::class)
 class StorageSweepTest {
@@ -42,11 +50,16 @@ class StorageSweepTest {
   /**
    * A meeting recorded before items existed, migrated by the sweep on a cold process.
    *
-   * The assertion is the promise first — a rejection is what a real caller sees, and the store
-   * swallows it — and then the items, so a promise that resolved without doing anything cannot
-   * pass either. A small limit on purpose: the seeded meeting is the newest row in the database and
-   * the sweep takes newest first, so one pass of five reaches it without walking this phone's
-   * library on the way.
+   * The rejection assertion is kept and is not the one that catches a missing `ensureLoaded` (see
+   * the class note): it covers the failures that DO reach the outer catch — `AudioDb.get`, the
+   * backlog query, and a genuinely absent libonnxruntime.so, which is the module's business to
+   * report rather than this test's to pretend about. The items assertion is the one that fails when
+   * the core was never loaded.
+   *
+   * A small limit on purpose, and it is not only about cost: the seeded meeting is the newest row
+   * in the database and the sweep takes newest first, so one pass of five reaches it while stamping
+   * at most four of this phone's real meetings on the way. That write is permanent — see
+   * ItemSweepTest's note — and is the same one a Library focus would make a moment later.
    */
   @Test fun theSweepMigratesWithoutTheCallerHavingLoadedTheCore() {
     // The core still cannot load without its downloaded dependency, and that is the module's
@@ -68,13 +81,15 @@ class StorageSweepTest {
       val promise = RecordingPromise()
       StorageModule(NoReactContext(ctx)).backfillItems(5.0, promise)
 
-      assertNull(
-        "the sweep failed at the JNI boundary: nothing on this path loads libaudionotes.so, so a " +
-          "library focus on a cold start migrates nothing and reports it to no one",
-        promise.rejection,
-      )
+      assertNull("the sweep rejected instead of migrating", promise.rejection)
       assertTrue("the promise neither resolved nor rejected", promise.resolved)
-      assertTrue("the promise resolved without migrating anything", db.items(m).isNotEmpty())
+      assertTrue(
+        "the sweep resolved and migrated nothing, which is what a missing NativeBridge.ensureLoaded " +
+          "looks like from here: the UnsatisfiedLinkError is raised inside ensureItems, swallowed " +
+          "by the per-meeting runCatching, and reported as a backlog that did not move — on a real " +
+          "phone, a library that never migrates and never says so",
+        db.items(m).isNotEmpty(),
+      )
     } finally {
       db.deleteMeeting(m)
     }

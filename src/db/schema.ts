@@ -1,10 +1,24 @@
 // SQLCipher schema (encrypted at rest; key in Android Keystore).
 // Persisting `status` per meeting makes processing resumable.
 //
-// NOT THE SOURCE OF TRUTH. Nothing imports this file. StorageModule delegates every query to
-// AudioDb, so `AudioDb.SCHEMA` and `AudioDb.ADDED_COLUMNS` are the declarations that actually run
-// and a column added here alone will not exist. Kept in step with them because it is the readable
-// copy — change both.
+// NOT THE SOURCE OF TRUTH. No production code imports this file: StorageModule delegates every
+// query to AudioDb, so `AudioDb.SCHEMA` and `AudioDb.ADDED_COLUMNS` are the declarations that
+// actually run and a column added here alone will not exist on any device.
+//
+// It is not unread, though, and saying "nothing imports this" invited exactly the drift below.
+// src/db/__tests__/schema.test.ts EXECUTES the statements here in node:sqlite and reads the result
+// back with PRAGMA introspection — it is where the types, NOT NULL, defaults, foreign-key delete
+// actions and index column order of the evidence-spine tables are pinned, because the JVM side
+// cannot run SQLite. The other direction is pinned in SchemaTest.kt
+// (meetingsHasTheSameSeventeenColumnsAsTheJavaScriptMirror), which compares AudioDb's own
+// declarations against the same list: a column added to AudioDb and not to this file fails there,
+// naming this file. Change both, and change the two column lists in those tests with them.
+//
+// `meetings` below is deliberately the UNION of AudioDb's CREATE TABLE and its `("meetings", ...)`
+// ADDED_COLUMNS entries, and the two overlap. `addMissingColumns` runs straight after `SCHEMA` on
+// every open, so the table a query actually meets is that union; AudioDb's CREATE TABLE also
+// inlines three of the ALTER-added columns for fresh installs and omits the other five, so neither
+// half of it describes a real device on its own. This block does.
 export const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS meetings (
      id TEXT PRIMARY KEY,
