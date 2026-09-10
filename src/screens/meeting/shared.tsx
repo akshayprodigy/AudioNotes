@@ -152,8 +152,8 @@ export type ItemRow = {
  * nothing.
  *
  * TWO CONCERNS, ONE EXPRESSION, for whoever removes the first of them. The guard below reads
- * `m.source !== 'user' && !unmigrated`, and those conjuncts are independent: Task 12 strips
- * `m.source !== 'user' &&` and leaves `unmigrated` standing, because a meeting nobody has migrated
+ * `keep = unmigrated || m.source === 'user'`, and those disjuncts are independent: Task 12 strips
+ * `m.source === 'user' ||` and leaves `unmigrated` standing, because a meeting nobody has migrated
  * still has nothing else to show. Deleting the whole condition takes the fallback with it.
  *
  * Both fallbacks give the row a null `anchorStartMs` and no `itemId`, which is the honest answer
@@ -189,7 +189,10 @@ export function toItemRows(items: Item[], minutes: Minute[]): ItemRow[] {
   const unmigrated = items.length === 0;
   for (const m of minutes) {
     if (!ITEM_KINDS.includes(m.kind)) continue;
-    if (m.source !== 'user' && !unmigrated) continue;
+    // Stated as what is kept rather than as what is skipped: "keep this row if the meeting has no
+    // items to show instead, or if the person typed it" is the sentence above, in code.
+    const keep = unmigrated || m.source === 'user';
+    if (!keep) continue;
     rows.push({
       key: `m:${m.id}`,
       kind: m.kind as ItemRowKind,

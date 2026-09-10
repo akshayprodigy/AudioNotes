@@ -307,22 +307,6 @@ export const db = {
       : run('DELETE FROM action_done WHERE meeting_id = ? AND item_key = ?', [meetingId, itemKey]),
 
   /**
-   * Tick or untick one item, keyed on the item's stable id.
-   *
-   * WHICH STORE THIS IS. `item_done`, not `action_done` — a different table from setActionDone
-   * above. Both writers are now here: the cross-meeting worklist (src/screens/ActionsScreen.tsx)
-   * and the meeting's own Actions tab (src/screens/meeting/ActionsTab.tsx), which Task 10 moved
-   * across. Between Task 9 and Task 10 they were separate stores and a tick made in one did not
-   * show in the other; that gap was accepted, recorded, and is closed.
-   *
-   * What is left in `action_done` is the two populations with no item id to key on — a row
-   * somebody typed, and any meeting whose migration has not run — plus every tick a rolled-back
-   * build would need to find. Bridging the two by writing BOTH stores would still be wrong:
-   * nothing sweeps `action_done` on an untick from elsewhere, so an item unticked here and
-   * re-ticked there would come back ticked on the next reprocess, permanently — the same reason
-   * AudioDb.ensureItems does not run its tick carry unconditionally.
-   */
-  /**
    * This meeting's ticked item ids.
    *
    * The per-meeting twin of `doneItemIds` below, and the JavaScript mirror of
@@ -345,6 +329,22 @@ export const db = {
     return new Set(rows.map(r => r.itemId));
   },
 
+  /**
+   * Tick or untick one item, keyed on the item's stable id.
+   *
+   * WHICH STORE THIS IS. `item_done`, not `action_done` — a different table from setActionDone
+   * above. Both writers are now here: the cross-meeting worklist (src/screens/ActionsScreen.tsx)
+   * and the meeting's own Actions tab (src/screens/meeting/ActionsTab.tsx), which Task 10 moved
+   * across. Between Task 9 and Task 10 they were separate stores and a tick made in one did not
+   * show in the other; that gap was accepted, recorded, and is closed.
+   *
+   * What is left in `action_done` is the two populations with no item id to key on — a row
+   * somebody typed, and any meeting whose migration has not run — plus every tick a rolled-back
+   * build would need to find. Bridging the two by writing BOTH stores would still be wrong:
+   * nothing sweeps `action_done` on an untick from elsewhere, so an item unticked here and
+   * re-ticked there would come back ticked on the next reprocess, permanently — the same reason
+   * AudioDb.ensureItems does not run its tick carry unconditionally.
+   */
   setItemDone: (meetingId: string, itemId: string, done: boolean) =>
     done
       ? run('INSERT OR REPLACE INTO item_done(meeting_id, item_id, done_at) VALUES(?,?,?)', [
