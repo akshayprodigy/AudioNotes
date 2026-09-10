@@ -176,10 +176,18 @@ describe('the edits key survives the move from minutes to items', () => {
   });
 
   it('is blind to the one way the two extractors differ', () => {
-    // What extractMinutes stores (the non-breaking space survives its sentence split) against what
-    // extractItems produces (asciified first). Same item, same key.
-    expect(itemKey('Ana to update the roadmap')).toBe(itemKey('Ana to update the roadmap'));
-    expect(itemKey('Ana to  update')).toBe(itemKey('Ana to update'));
+    // Escaped, not typed. A literal U+00A0 in the source renders as an ordinary space in every
+    // terminal and diff, so these two lines read as a tautology and the next person deletes them.
+    // The name is what makes the assertion legible.
+    const NBSP = '\u00a0';
+    // Left: what extractMinutes stores — its sentence split uses isspace(), which cannot see a
+    // non-breaking space, so the character survives into the minute. Right: what extractItems
+    // produces, having asciified whitespace before splitting. Same item, and the key must agree.
+    expect(itemKey(`Ana to${NBSP}update the roadmap`)).toBe(itemKey('Ana to update the roadmap'));
+    expect(itemKey(`Ana to${NBSP}${NBSP}update`)).toBe(itemKey('Ana to update'));
+    // The reason it holds is a property of `itemKey` alone and not of either extractor:
+    // JavaScript's `\s` already includes U+00A0, so the fold collapses it whatever produced it.
+    expect(NBSP).toMatch(/\s/);
   });
 });
 
@@ -235,13 +243,17 @@ beforeEach(() => {
 
   // One store behind three calls, so a tick written by the tab can be read back by the tab AND by
   // the cross-meeting worklist's own loader rather than merely asserted about.
-  const flat = (meetingId: string, itemId: string) => `${meetingId} ${itemId}`;
+  //
+  // The separator is the NUL `db.doneItemIds` actually joins on, so `loadActions` matches against
+  // the real key rather than one this file invented. Written as an escape: a raw NUL in the source
+  // makes the whole file binary to grep and diff, which is how one got past review once already.
+  const flat = (meetingId: string, itemId: string) => `${meetingId}\u0000${itemId}`;
   (db.setItemDone as jest.Mock).mockImplementation(async (m: string, i: string, on: boolean) => {
     if (on) ticks.add(flat(m, i));
     else ticks.delete(flat(m, i));
   });
   (db.doneItems as jest.Mock).mockImplementation(async (m: string) =>
-    new Set([...ticks].filter(k => k.startsWith(`${m} `)).map(k => k.split(' ')[1])),
+    new Set([...ticks].filter(k => k.startsWith(`${m}\u0000`)).map(k => k.split('\u0000')[1])),
   );
   (db.doneItemIds as jest.Mock).mockImplementation(async () => new Set(ticks));
   (db.doneActions as jest.Mock).mockResolvedValue(new Set<string>());
@@ -344,6 +356,36 @@ describe('the Actions tab', () => {
       },
     ]);
     expect((await loadActions())[0].done).toBe(true);
+
+    await act(async () => tree.unmount());
+  });
+
+  /**
+   * The Done section is where somebody coming back to a list is looking, and it had no evidence
+   * links at all.
+   *
+   * The row's metadata line was gated on `!on` — written for the owner and due-date chips, which
+   * are marks of work in progress and rightly disappear when the work is finished. The timestamp
+   * is not that: checking an item off is precisely when a reader wants to verify it. Nothing
+   * rendered a finished row before this test, in this suite or any other, which is how the button
+   * came to be folded into someone else's rule without anything failing.
+   */
+  it('keeps the timestamp on a ticked action, and drops the work chips', async () => {
+    (db.doneItems as jest.Mock).mockResolvedValue(new Set(['it-action']));
+
+    const tree = await render({ tab: 'actions' });
+
+    // Nothing outstanding, so the row exists only behind the DONE disclosure.
+    expect(byLabel(tree, 'Show this in the transcript at 1:05')).toHaveLength(0);
+
+    const fold = tree.root
+      .findAllByProps({ accessibilityRole: 'button' }, { deep: false })
+      .find(b => b.props.accessibilityState?.expanded === false)!;
+    await act(async () => fold.props.onPress());
+
+    expect(byLabel(tree, 'Show this in the transcript at 1:05')).toHaveLength(1);
+    // The chips still go: "Ana" and the due date belong to working on it, and the item is done.
+    expect(JSON.stringify(tree.toJSON())).not.toContain('due Thursday');
 
     await act(async () => tree.unmount());
   });

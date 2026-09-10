@@ -151,6 +151,11 @@ export type ItemRow = {
  * costs a boolean, it is self-healing on the next open, and the alternative is showing somebody
  * nothing.
  *
+ * TWO CONCERNS, ONE EXPRESSION, for whoever removes the first of them. The guard below reads
+ * `m.source !== 'user' && !unmigrated`, and those conjuncts are independent: Task 12 strips
+ * `m.source !== 'user' &&` and leaves `unmigrated` standing, because a meeting nobody has migrated
+ * still has nothing else to show. Deleting the whole condition takes the fallback with it.
+ *
  * Both fallbacks give the row a null `anchorStartMs` and no `itemId`, which is the honest answer
  * rather than a placeholder: a row with no evidence gets no provenance button — Task 12's rule,
  * "an item with no sources is not a failure to find evidence; it is an item that never claimed

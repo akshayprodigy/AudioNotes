@@ -91,13 +91,20 @@ function Item({
               style={on ? st.struck : null}>
               {sentenceCase(text)}
             </Txt>
-            {/* Owner and due date are fields the extractor mashed into the text. Shown as what
-                they are, and shown at all only when there is something to say — most owners
-                resolve to "Unassigned", which is not information. The timestamp rides in the same
-                row: it is the same class of thing, a fact about the item rather than the item. */}
-            {(owner || due || provenance) && !on ? (
+            {/* One row, TWO rules, and the difference is the whole point of it.
+
+                Owner and due date are fields the extractor mashed into the text. They are shown
+                as what they are, only when there is something to say — most owners resolve to
+                "Unassigned", which is not information — and only while the item is still work: a
+                finished item is proof of work and these marks belong to working on it.
+
+                The timestamp is not that, and putting it inside their `!on` gate emptied the Done
+                section of every evidence link it had. Checking an item off is exactly when a
+                reader wants to verify it, and the Done disclosure is what somebody returning to a
+                list opens. It stays whether the box is ticked or not. */}
+            {(!on && (owner || due)) || provenance ? (
               <View style={st.tags}>
-                {owner ? (
+                {!on && owner ? (
                   <View style={[st.tag, { backgroundColor: colors.primarySoft }]}>
                     <Icon name="users" size={s(11)} color={colors.primary} strokeWidth={2.6} />
                     <Txt variant="chipSm" color={colors.primary}>
@@ -105,7 +112,7 @@ function Item({
                     </Txt>
                   </View>
                 ) : null}
-                {due ? (
+                {!on && due ? (
                   <View style={[st.tag, { backgroundColor: colors.warningSoft }]}>
                     <Icon name="clock" size={s(11)} color={colors.warning} strokeWidth={2.6} />
                     <Txt variant="chipSm" color={colors.warning}>
@@ -116,8 +123,8 @@ function Item({
                 {provenance}
               </View>
             ) : null}
-            {/* Not shown on a ticked row: a finished item is proof of work, and the marks belong
-                to working on it. */}
+            {/* Not shown on a ticked row, for the reason the chips above are not: these are marks
+                of work in progress. Unlike the timestamp, which is a fact about the item. */}
             {!on && mine ? (
               <MineTag colors={colors} onRemove={onRemove} />
             ) : !on && edited ? (
