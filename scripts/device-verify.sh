@@ -36,6 +36,13 @@ CLASSES=(
   # The library migration: rule pass over stored utterances, and the ticks moved off action_done.
   # Both halves are SQLite plus the native rules, so neither can be a JVM test.
   com.innocorelabs.verbale.BackfillTest
+  # A backup is only worth what comes back out of it, and BackupManager.TABLES is a private list of
+  # strings whose ORDER decides whether a restore keeps an item's evidence or cascades it away.
+  com.innocorelabs.verbale.BackupManagerTest
+  # Its own class because NativeBridge.loaded is static: once anything in a process has loaded the
+  # core, nothing after it can tell whether the caller under test would have. Each entry here gets
+  # its own `am instrument`, and so its own process — which is the whole mechanism of that test.
+  com.innocorelabs.verbale.StorageItemsTest
 )
 
 if ! "$ADB" devices | grep -qE "device$"; then

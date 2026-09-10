@@ -8,6 +8,7 @@
     "lint": "eslint .",
     "start": "react-native start",
     "test": "jest",
+    "typecheck": "tsc --noEmit",
     "test:device": "scripts/device-verify.sh",
     "check:egress": "python3 scripts/check-network-egress.py",
     "check:egress:test": "python3 -m unittest discover -s scripts/__tests__",

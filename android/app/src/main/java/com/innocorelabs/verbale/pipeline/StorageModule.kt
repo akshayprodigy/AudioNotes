@@ -54,16 +54,24 @@ class StorageModule(private val ctx: ReactApplicationContext) :
    * build would ANR the main thread on a Quick Settings cold start; none of that applies here, and
    * copying the chunked shape would only add a migration nobody can tell has finished.
    *
-   * NOTHING CALLS THIS YET, and that is expected rather than an oversight: Task 9 is "the
-   * JavaScript side reads items", and the call belongs beside that read. It is declared now so the
-   * API is real and typed on both sides (see src/native/NativeStorage.ts) instead of arriving
-   * half-built with the screen that needs it. An uncalled migration is the same shape as the trap
-   * this sub-project already hit once — `item_done` had no writer, so a join that looked correct
-   * saw nothing a real user had done — so it is written down rather than left to be discovered.
+   * Nothing calls this yet — Task 9 owns the call site. See AudioDb.ensureItems for why an
+   * uncalled migration is written down rather than left to be noticed.
    */
   @ReactMethod
   fun ensureItems(meetingId: String, promise: Promise) {
     try {
+      // The ONLY method on this module that reaches native code. The migration re-runs the rule
+      // pass, which lives in libaudionotes.so, and nothing loads that at app start —
+      // MainApplication does loadReactNative and no more, and the other four ensureLoaded call
+      // sites are all on paths that record or transcribe. So on the path this exists for, a cold
+      // start where somebody opens an old meeting without recording anything, the JNI call would
+      // throw UnsatisfiedLinkError and the catch below would turn it into a rejected promise and a
+      // meeting that silently never migrates.
+      //
+      // Rejecting is the right answer on a phone that has not finished downloading
+      // libonnxruntime.so yet: ensureLoaded fails loudly, and because ensureItems derives "has
+      // this been migrated" from the data rather than a flag, the next open simply tries again.
+      NativeBridge.ensureLoaded(ctx)
       AudioDb.get(ctx).ensureItems(meetingId)
       promise.resolve(null)
     } catch (e: Throwable) {

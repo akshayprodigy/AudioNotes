@@ -1037,7 +1037,8 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    *  - [touched] because whether a person has engaged with an item is recorded in FOUR tables and
    *    not one of them writes back to this row. A review a person set lives in `items.review`; the
    *    tick lives in `item_done`; the tick every shipped build has actually written lives in
-   *    `action_done`, keyed on a hash of the item's TEXT; a hand correction lives in `edits`. A
+   *    `action_done`, keyed on a hash of the item's TEXT, and still does for every meeting
+   *    [backfillItems] has not reached; a hand correction lives in `edits`. A
    *    finished item and a rewritten item both still read `review='suggested'`, so "review ==
    *    suggested" does NOT mean "nobody has touched this" — and `Reconciler` rule 4 deletes an
    *    untouched row that stopped being extracted, taking the tick or the person's own words with
@@ -1103,30 +1104,8 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       }
     }
 
-    // The fourth signal, and the only one that cannot be a join: `action_done`'s key is a hash of
-    // the item's TEXT computed in JavaScript, which SQL cannot reproduce — [ItemKey] is the mirror
-    // of it, and src/db/queries.ts:413 resolves `done` in its caller for exactly this reason. It
-    // has to be consulted because `item_done` has no writer yet: every tick on every phone in the
-    // field today is here, and until Task 8's migration has run for a meeting a `touched` that
-    // joins `item_done` alone reads a fully worked-through library as untouched.
-    //
-    // WHEN THIS READ MAY GO, because a shim with no removal condition is a permanent one: delete
-    // it — the read, NOT the table, which the schema says to keep for a rolled-back build — once
-    // Task 8's migration runs unconditionally at open AND the oldest install still supported has
-    // been through it. The table outliving the read is the expected end state, so its existence
-    // is not the signal; the migration having run everywhere is.
-    //
-    // What it does NOT recover, which matters because it is the population this sub-project was
-    // started for: it matches only while the item's text still hashes the same. A tick whose text
-    // DRIFTED between the shipped minute and the item extracted now is invisible here, because
-    // the hash moved with the text. Only Task 8's id-keyed backfill recovers those, and nothing
-    // before it does.
-    val tickedByText = HashSet<String>()
-    db.rawQuery(
-      "SELECT item_key FROM action_done WHERE meeting_id=?", arrayOf(meetingId),
-    ).use { c ->
-      while (c.moveToNext()) tickedByText.add(c.getString(0))
-    }
+    // The fourth signal, and the only one that cannot be a join — see [ticksKeyedOnText].
+    val tickedByText = ticksKeyedOnText(meetingId).keys
 
     val out = ArrayList<StoredItem>()
     db.rawQuery(
@@ -1241,6 +1220,43 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
   }
 
   /**
+   * Every tick a SHIPPED build recorded for this meeting, keyed the way it recorded them.
+   *
+   * `action_done`'s key is a hash of the item's TEXT computed in JavaScript, which SQL cannot
+   * reproduce — [ItemKey] is the mirror of it, and src/db/queries.ts:413 resolves `done` in its
+   * caller for exactly the same reason. So this can never be a join, in either of the two places
+   * that need it: [items], which asks only whether a key is present, and [backfillItems], which
+   * needs the date as well. One method rather than two nearly identical queries, because this file
+   * spent a commit consolidating `'suggested'` for precisely that reason and a second copy here
+   * would drift the same way — and because the removal condition below has to be satisfiable by
+   * deleting ONE thing.
+   *
+   * It has to be consulted at all because `item_done` fills one meeting at a time: [backfillItems]
+   * is its only bulk writer and it runs per meeting, on demand. So until the migration has reached
+   * a given meeting, every tick that meeting has is still here, and a `touched` that joins
+   * `item_done` alone reads a fully worked-through library as untouched.
+   *
+   * WHEN THIS READ MAY GO, because a shim with no removal condition is a permanent one: delete it
+   * — the read and its two callers' use of it, NOT the table, which the schema says to keep for a
+   * rolled-back build — once the migration runs unconditionally at open AND the oldest install
+   * still supported has been through it. The table outliving the read is the expected end state,
+   * so its existence is not the signal; the migration having run everywhere is.
+   *
+   * What it does NOT recover, which matters because it is the population this sub-project was
+   * started for: it matches only while the item's text still hashes the same. A tick whose text
+   * DRIFTED between the shipped minute and the item extracted now is invisible here, because the
+   * hash moved with the text. Only [backfillItems]' id-keyed rows recover those, and only if they
+   * were written before the drift — nothing recovers one afterwards.
+   */
+  private fun ticksKeyedOnText(meetingId: String): Map<String, Long> {
+    val out = HashMap<String, Long>()
+    db.rawQuery(
+      "SELECT item_key, done_at FROM action_done WHERE meeting_id=?", arrayOf(meetingId),
+    ).use { c -> while (c.moveToNext()) out[c.getString(0)] = c.getLong(1) }
+    return out
+  }
+
+  /**
    * Give a meeting recorded before this feature its items, and move its ticks onto them.
    *
    * The rule pass runs over the STORED utterances — pure text, no ASR, no diarization, no audio at
@@ -1263,6 +1279,11 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    * the ticks where it left them, and [items] still reads that table for a meeting this has not
    * run on yet — see the schema comment at `item_done`, which says the same thing. Do not tidy it.
    *
+   * REQUIRES `NativeBridge.ensureLoaded()` to have run, like every other entry point that reaches
+   * `Minutes`. Worth saying here rather than only there, because this is the one and only native
+   * call in a class that is otherwise pure persistence, and a caller reading AudioDb has no reason
+   * to expect one: the failure is an UnsatisfiedLinkError on a path that never records anything.
+   *
    * @return how many items the rules produced. Zero for a meeting with no transcript, and the
    *   early return that produces it is load-bearing: `replaceItems` handed an empty list deletes
    *   every item the meeting has, and a meeting can legitimately have items and no utterances.
@@ -1276,8 +1297,17 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     // The items and the ticks land together or neither does, and that is not tidiness. The guard
     // in [ensureItems] is "does this meeting have items yet", so a process killed between the two
     // writes would leave a meeting that HAS items and therefore never migrates again — with every
-    // tick still sitting in `action_done`, unreachable, and nothing anywhere reporting it. The
-    // nested transaction inside `replaceItems` joins this one rather than opening a second.
+    // tick still sitting in `action_done`, unreachable, and nothing anywhere reporting it.
+    //
+    // The only nested beginTransaction in this file, and `replaceMinutes` documents keeping its
+    // index write OUTSIDE its transaction as deliberate — so the mechanism is worth naming rather
+    // than leaving as an assertion about the outcome. SQLite has no nested transactions; the
+    // SQLiteDatabase this runs on reference-counts them, so `replaceItems`' begin/end below joins
+    // this one and commits nothing of its own, and the single commit happens when THIS block ends.
+    // A failure anywhere inside poisons the whole stack: the outer transaction rolls back even
+    // though setTransactionSuccessful was called on the inner one. That is exactly the behaviour
+    // wanted here — half a migration is worse than none, because the half that lands is the half
+    // that stops it running again.
     db.beginTransaction()
     try {
       replaceItems(meetingId, Minutes.RULES_GEN, incoming)
@@ -1285,11 +1315,11 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       // done_at comes across with the tick. Stamping `now` instead would tell somebody they
       // finished this morning something they crossed off in March, and the original is then
       // recoverable from nowhere — the same loss `replaceItems` carries `created_at` to avoid.
-      val tickedAt = HashMap<String, Long>()
-      db.rawQuery(
-        "SELECT item_key, done_at FROM action_done WHERE meeting_id=?", arrayOf(meetingId),
-      ).use { c -> while (c.moveToNext()) tickedAt[c.getString(0)] = c.getLong(1) }
+      val tickedAt = ticksKeyedOnText(meetingId)
 
+      // AFTER replaceItems, and that ordering is load-bearing rather than incidental: replaceItems
+      // ends by deleting every item_done row whose item id is no longer in `items`, so a tick
+      // written before it would be swept away as an orphan the moment it was written.
       if (tickedAt.isNotEmpty()) {
         // Every item, not just the ones this run extracted: `replaceItems` also carries forward
         // rows the reconciler retained, and a tick against one of those is as real as any other.
@@ -1332,6 +1362,18 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    * with no transcript is opened. The protection lives in [backfillItems]' own early return, where
    * it covers every caller rather than this one.
    *
+   * WHAT THIS GUARD MISSES, and why it is not fixed here. `items().isEmpty()` was the right
+   * question when nothing produced items; the pipeline now does. So a meeting carrying
+   * `action_done` ticks that is REPROCESSED on this build before anybody opens it comes out with
+   * items, and therefore never migrates — its ticks stay in `action_done` forever. Nothing is
+   * deleted, because [StoredItem.touched] still reads that table, but [doneItemIds] does not, so
+   * Task 9's worklist draws those items unticked.
+   *
+   * Running the tick carry unconditionally would be worse, not better: nothing ever deletes an
+   * `action_done` row, so a person who unticks a migrated item would find it ticked again on the
+   * next reprocess, permanently. Closing it properly means a real migrated marker, and that is a
+   * schema decision rather than a line here.
+   *
    * NOTHING IN JAVASCRIPT CALLS THIS YET. Task 9 is "the JavaScript side reads items" and the call
    * belongs on the meeting screen's read path, where `StorageModule.ensureItems` is waiting for
    * it. An uncalled migration is the same shape as the trap this plan already hit once —
@@ -1345,6 +1387,11 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
 
   /**
    * The ids of this meeting's ticked items. Keyed on the item, so a re-worded item stays ticked.
+   *
+   * Reads `item_done` and nothing else, which makes it NARROWER than [StoredItem.touched]: a
+   * meeting whose ticks are still in `action_done` because [ensureItems]' guard never fired for it
+   * — see the note there — is fully protected from deletion and still comes back from here with
+   * nothing ticked. A worklist built on this alone will draw those items unticked.
    *
    * No production caller yet: the worklist that reads it is Task 9's. [backfillItems] is what
    * fills the table, and `BackfillTest` is what reads it back.

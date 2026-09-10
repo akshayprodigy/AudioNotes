@@ -17,6 +17,11 @@ import type { SearchHit } from '../../pipeline/types';
  *     listed — the type error the `default` branch swallows, moved somewhere it cannot be.
  *  2. The labels must all be DISTINCT. A kind that is listed but has no `case` falls through to
  *     'TITLE' and collides with the real title, which is the whole failure in one assertion.
+ *
+ * Half 1 is NOT enforced by jest. This repo's jest transform is babel-based, which strips types
+ * without checking them, so a KINDS missing a member runs green here — verified, not assumed. It
+ * is `npm run typecheck` (tsc --noEmit) that fails, and half 2 is what jest runs. Both belong in
+ * the verification set; neither covers the other.
  */
 const KINDS: Record<SearchHit['kind'], true> = {
   utterance: true,

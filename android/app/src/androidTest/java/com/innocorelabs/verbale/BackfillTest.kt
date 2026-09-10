@@ -104,6 +104,9 @@ class BackfillTest {
     val minutes = Minutes.extract(db.utterances(meetingId), db.speakers(meetingId))
     val action = minutes.first { it.kind == "action" }
     db.replaceMinutes(meetingId, "rule", minutes)
+    // done_at arrives as a String because `exec` binds strings; the column's INTEGER affinity
+    // converts it. The value is a placeholder — the one test that cares what is IN this column
+    // sets it to something unmistakable of its own first.
     exec(
       "INSERT INTO action_done(meeting_id,item_key,done_at) VALUES(?,?,?)",
       meetingId, ItemKey.of(action.content), "1",
@@ -229,7 +232,7 @@ class BackfillTest {
       exec(
         "INSERT INTO action_done(meeting_id,item_key,done_at) VALUES(?,?,?)",
         m, ItemKey.of(ticked.replace("report", "summary")), "1",
-      )
+      )  // see tickAnActionTheOldWay for the "1"
 
       db.backfillItems(m)
 
@@ -329,7 +332,7 @@ class BackfillTest {
   }
 
   /** A meeting with nothing to migrate is not a failure — it is most of a fresh install. */
-  @Test fun ensureItemsOnAMeetingWithNoTranscriptDoesNothing() {
+  @Test fun ensureItemsOnAMeetingWithNoTranscriptProducesNoItems() {
     inAMeeting(withTranscript = false) { m ->
       db.ensureItems(m)
       assertTrue("items appeared for a meeting with no transcript to make them from", db.items(m).isEmpty())

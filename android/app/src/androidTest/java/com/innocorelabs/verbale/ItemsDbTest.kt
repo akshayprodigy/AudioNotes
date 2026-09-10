@@ -29,7 +29,9 @@ import org.junit.runner.RunWith
  * The signals, and why all four:
  *
  *  - `items.review` = 'confirmed' — a person said yes.
- *  - `item_done` — the tick, keyed on the item's id. Task 8's migration is what fills it.
+ *  - `item_done` — the tick, keyed on the item's id. `AudioDb.backfillItems` is what fills it in
+ *    bulk, and it does so ONE MEETING AT A TIME, on demand — which is why the next signal is still
+ *    consulted rather than retired.
  *  - `action_done` — the tick as every SHIPPED build has ever written it, keyed on a hash of the
  *    item's TEXT. Until Task 8 has run for a meeting this is the only place a real tick exists, so
  *    a `touched` that consults `item_done` alone reads every existing library as untouched.
@@ -129,20 +131,23 @@ class ItemsDbTest {
   @Test fun anItemTickedInItemDoneSurvivesAReprocessThatNoLongerExtractsIt() {
     assertTrue(
       "the tick was in item_done and the reprocess deleted the item under it",
-      survivesWith { m, id ->
-        exec("INSERT INTO item_done(meeting_id,item_id,done_at) VALUES(?,?,?)", m, id, "1")
-      },
+      // Through the real writer, not a hand-rolled copy of the statement it runs: setItemDone is
+      // the tick gesture's writer and has no other test.
+      survivesWith { m, id -> db.setItemDone(m, id, true) },
     )
   }
 
   /**
    * The tick as it exists on every phone in the field today.
    *
-   * `item_done` has no writer in the repo: every tick the shipped app has recorded went to
-   * `action_done`, keyed on a hash of the item's text. A `touched` that joins `item_done` alone is
-   * correct in a test and wrong on every existing library, which is the population this sub-project
-   * exists for. SQL cannot compute that hash — it is JS arithmetic mirrored in [ItemKey] — so this
-   * cannot be a join and the set membership has to happen in Kotlin.
+   * Every tick the shipped app has ever recorded went to `action_done`, keyed on a hash of the
+   * item's text. `item_done` does have a writer now — `AudioDb.backfillItems` — but it fills one
+   * meeting at a time, on demand, so until the migration has reached a given meeting every tick
+   * that meeting has is still in the old table. A `touched` that joins `item_done` alone is
+   * correct in a test and wrong on every library that has not been opened yet, which is the
+   * population this sub-project exists for. SQL cannot compute that hash — it is JS arithmetic
+   * mirrored in [ItemKey] — so this cannot be a join and the set membership has to happen in
+   * Kotlin.
    */
   @Test fun anItemTickedInActionDoneSurvivesAReprocessThatNoLongerExtractsIt() {
     assertTrue(

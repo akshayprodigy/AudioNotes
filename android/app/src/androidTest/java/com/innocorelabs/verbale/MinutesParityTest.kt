@@ -67,10 +67,16 @@ class MinutesParityTest {
     val utterances = input.getJSONArray("utterances").let { arr ->
       (0 until arr.length()).map { i ->
         val o = arr.getJSONObject(i)
-        // No id and no clock: the goldens are recorded MINUTES input, which never had either, and
-        // `Minutes.extract` reads neither. Anything reaching extractItems must come from a real
-        // transcript row — see the note on Utt about what a turn with no clock produces.
-        Utt("", 0L, 0L, o.getString("text"), o.optString("speakerId").ifEmpty { null })
+        // The goldens are recorded MINUTES input and never had an id or a clock; `Minutes.extract`
+        // reads neither. Named, so three blanks in a five-argument constructor cannot be misread
+        // as timings somebody meant.
+        Utt(
+          id = "",
+          startMs = 0L,
+          endMs = 0L,
+          text = o.getString("text"),
+          speakerId = o.optString("speakerId").ifEmpty { null },
+        )
       }
     }
     val speakers = input.getJSONArray("speakers").let { arr ->
