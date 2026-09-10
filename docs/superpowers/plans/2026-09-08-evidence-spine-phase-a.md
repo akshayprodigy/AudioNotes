@@ -2193,6 +2193,90 @@ runs on the JVM."
 
 ## Task 8: Wire it into the pipeline, and carry every existing tick across
 
+> **SHIPPED 10 September 2026** — commits `a74490c`, `c5cef78`. 41 instrumentation tests green on
+> the Galaxy A07 with zero skips, across six classes; 149 Kotlin unit tests; 255 jest; 31/31
+> reconciler mutations. Two new device classes, `BackupManagerTest` and `StorageItemsTest`.
+>
+> **The listing below is stale in nine places. Do not port from it.** Seven were caught before
+> implementation and two during:
+>
+>  1. **It tells you to write a fresh `itemKey` using `Regex("\\s+")`, and that would silently lose
+>     every tick in every existing install.** Kotlin's `\s` is ASCII-only where JavaScript's is not,
+>     so a transcript containing a non-breaking space hashes differently on the two sides and the
+>     tick is never found. `ItemKey.of` already exists, already spells JavaScript's whitespace class
+>     out character by character, and is already pinned against the TypeScript's own vectors. The
+>     failure this task exists to prevent, specified in the task that prevents it.
+>  2. `DraftMinute` is in `pipeline`, not on `AudioDb`. 3. `insertMeeting`'s last parameter is a
+>     non-null `String` — the same defect Task 6's listing had. 4. `db.setActionDone` does not exist
+>     in Kotlin at all; there is no Kotlin writer for `action_done`. 5. `hasUtterances` did not
+>     exist. 6. The `ProcessingEngine` block is at 271-272, not 263-275. 7. Step 5 hooks
+>     "`StorageModule`'s meeting-screen read path", which does not exist — `StorageModule` is a
+>     generic SQL bridge and JavaScript reads meetings by running SQL through `query`.
+>  8. **The listing's backfill is not atomic.** `ensureItems`' guard is "does this meeting have
+>     items yet", so a kill between writing items and moving ticks leaves a meeting that never
+>     migrates again with every tick stranded in `action_done`. It is one transaction now.
+>  9. **It stamps a migrated tick with `now`**, which would make everybody's worklist read as
+>     finished this morning after they updated. `done_at` is carried, for the same reason
+>     `replaceItems` carries `created_at`.
+>
+> **The trigger is per-meeting and has no JavaScript caller yet.** `StorageModule.ensureItems` is
+> shaped like `reindex`; a library-wide chunked sweep was rejected as over-building, and
+> `backfillSearch`'s own KDoc says why that shape exists for search and does not apply here (one
+> process-wide connection shared with the recording service, and `open()` on the main thread during
+> a Quick Settings cold start). **Task 9 owns the call site** — see the note on that task.
+>
+> **What the reviews found.** Spec review: compliant on all ten points, every deviation justified.
+> Quality review: four Important, eight Minor, and one of the four was a real bug —
+>
+>  - **The migration never loaded the code it runs.** `ensureItems` reaches `nativeItems` through
+>    four frames and nothing on that path called `NativeBridge.ensureLoaded`; nothing loads the core
+>    at app start either. On a cold start that opens an existing meeting without recording — exactly
+>    the path Task 9 wires — it throws `UnsatisfiedLinkError`, the catch turns it into a rejected
+>    promise, and the meeting silently does not migrate. **`BackfillTest` could not catch it**,
+>    because the test's own helper loads the core: the precondition was satisfied by the test and by
+>    nobody else. `StorageItemsTest` exists as a separate device class for this, because
+>    `NativeBridge.loaded` is static and `am instrument` gives each class its own process — with the
+>    fix removed it fails and `BackfillTest` still reports OK (9 tests).
+>  - The only enforcement of the pipeline wiring sat behind `assumeTrue("Qwen GGUF not installed")`,
+>    and `device-verify.sh` fails a class only when *every* test in it skips — so on a phone without
+>    the 1.1 GB model the wiring went unverified behind a printed note. It has its own model-free
+>    test now: the minutes/items block is reachable on a seeded transcript down the `audioGone`
+>    branch that exists for retention-deleted recordings.
+>  - Nothing tested `BackupManager.TABLES`, whose ordering is now load-bearing for three tables.
+>
+> **A measurement corrected the review that asked for it, and the answer is worse than the
+> question.** The two backup tests were specified as catching different defects. They do not — both
+> catch all four mutations, for different reasons: on an empty library `item_sources` before `items`
+> does not lose a cascade race, the **foreign key check rejects the statement** and `import`'s
+> per-table `Log.w` hides it; on a merge the destruction comes **first**, because
+> `INSERT OR REPLACE INTO meetings` cascades that meeting's items, sources and ticks away before
+> anything is re-imported. So a wrong `TABLES` list does not fail to add the donor's data — **it
+> removes what the phone already had.**
+>
+> **Known and deferred to Task 9: every decision, action and question is now indexed twice.**
+> `replaceMinutes` indexes them under kind `minute` and `replaceItems` under `item`,
+> byte-identically, so a search returns two cards for one sentence. Both land on the `mom` tab, so
+> the symptom is a duplicate card and not a wrong destination. The one-line fix — index only prose
+> kinds — would make decisions and actions unfindable in every meeting the migration has not
+> reached, and the migration has no caller until Task 9. A conditional variant (skip the item-kinds
+> only for a meeting that already has items) was proposed and **rejected on ordering grounds**:
+> `ProcessingEngine` calls `replaceMinutes` before `replaceItems`, so a newly recorded meeting has
+> no items when `indexMinutes` runs and duplicates anyway; `backfillItems` never re-runs
+> `indexMinutes`, so migrated meetings keep their old rows; and `Narrator` re-runs it after items
+> exist, so a narrated meeting would dedupe and a free-tier one would not.
+>
+> **Folded in from Task 6's discovered list**, because this task is what makes both real:
+> `BackupManager.TABLES` gained `items`, `item_sources` and `item_done` in parent-before-child
+> order, and `SearchHit['kind']` gained `'item'` with a `case` in `kindMeta` — previously the
+> `default` branch labelled it "TITLE" and opened the summary tab, and TypeScript could not catch it
+> because that branch swallows the new member.
+>
+> **Left undone on purpose:** a meeting that is *reprocessed* on this build before it is ever opened
+> gains items and therefore never migrates, so its ticks stay in `action_done` — `touched` still
+> sees them, so nothing is deleted, but `doneItemIds` does not, so Task 9's worklist shows them
+> unticked. Running the tick-carry unconditionally would resurrect a tick after an untick, because
+> the stale `action_done` row is never dropped. Documented at both call sites rather than fixed.
+
 **Files:**
 - Modify: `android/app/src/main/java/com/innocorelabs/verbale/pipeline/ProcessingEngine.kt:263-275`
 - Modify: `android/app/src/main/java/com/innocorelabs/verbale/data/AudioDb.kt`
@@ -2417,6 +2501,17 @@ place rather than dropped, so a rolled-back build still finds the ticks."
 ---
 
 ## Task 9: The JavaScript side reads items
+
+> **Task 8 hands this task two obligations, and neither will fail to compile.**
+>
+> 1. **`StorageModule.ensureItems` has no caller.** Until the meeting-screen read path calls it,
+>    no meeting recorded before this feature ever gains items, and this task's screens read empty.
+>    It is declared in `src/native/NativeStorage.ts` and documented as uncalled in three places.
+> 2. **Decisions, actions and questions are indexed twice** — once as `minute` by `replaceMinutes`,
+>    once as `item` by `replaceItems` — so search returns two cards for one sentence. The fix is to
+>    stop indexing the item-kinds as `minute`, and it becomes safe only once (1) is done and every
+>    meeting a search can reach has been migrated. Do them in that order, in that task, and read the
+>    rejected conditional variant in Task 8's banner before proposing one.
 
 **Files:**
 - Modify: `src/db/queries.ts`, `src/pipeline/types.ts`, `src/screens/actionsData.ts`
