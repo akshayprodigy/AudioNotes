@@ -963,6 +963,49 @@ dangles every pointer. That is silent UB no golden can catch."
 
 ---
 
+## Discovered during Task 9: a live bug in shipped search, and two dead entry points
+
+**1. `backfillSearch` does 24 meetings a focus and tells the user "1 outstanding" — shipped, not
+ours.** `StorageModule.backfillSearch` resolves `unindexedMeetings(1).size`, which `LIMIT 1` bounds
+to {0,1}. `libraryStore`'s loop reads 1, reads 1 again, concludes the backlog is not shrinking and
+breaks after **two passes**; because `remaining > 0` the latch never sets, and because the store
+pushes that number into state, SearchScreen displays a literal "1 outstanding" for the entire
+duration of any backlog, however large. Found by mirroring it for Task 8b — which deliberately did
+not copy it, hence `unmigratedCount()` as a real count. **Not fixed: it is the search half.** The
+fix is `unindexedCount()` next to `unindexedMeetings`, sharing one predicate the way `UNMIGRATED`
+does.
+
+**2. The duplicate-search-card fix has no home yet, and Task 9's banner was wrong about where it
+belongs.** Decisions, actions and questions are in `search_fts` twice — as `minute` and as `item` —
+so a search returns two cards for one sentence. Both land on the `mom` tab, so the symptom is a
+duplicate card, not a wrong destination.
+
+The obvious fix (stop indexing the item-kinds as `minute`) makes them **unfindable** in any meeting
+that has not been migrated. Task 8b's sweep makes "every meeting is eventually migrated" true, which
+is what the fix needs — but *eventually*, so a conditional is still required, and the conditional
+was already rejected once on ordering grounds: `ProcessingEngine` calls `replaceMinutes` before
+`replaceItems`, so a newly recorded meeting has no items when `indexMinutes` runs; `backfillItems`
+never re-runs `indexMinutes`; and `Narrator` re-runs it *after* items exist, so a narrated meeting
+would dedupe and a free-tier one would not.
+
+**So the real fix is a re-index-ordering change**: `indexMinutes` conditional on the meeting having
+items, AND re-run whenever items are written. That is Kotlin, it is not large, and it wants its own
+task rather than being smuggled into a screen task. It is blocked on nothing now that the sweep
+exists.
+
+**3. Two of the three cross-meeting readers are unreachable, and the sweep was approved on a premise
+that was partly wrong.** `ActionsScreen` is registered in `RootNavigator` and **nothing navigates to
+it**. LibraryScreen's `work` tally is computed on every focus and **rendered nowhere** — its own
+comment says the tally arrived with the worklist screen in `1744e1d` and is not on screen today.
+Only Search's "meetings with actions" filter is live.
+
+This argues *for* the sweep rather than against it — the data has to be right before the entry point
+lands — but the user-visible symptom used to justify it was largely hypothetical, and that is worth
+recording rather than quietly leaving in the commit messages. Wiring an entry point is a product
+decision, not a plan task.
+
+---
+
 ## Discovered during Task 6: four silences, three of them outside this plan
 
 None of these is a Task 6 defect and none is fixed there. All four are the same shape as the bug
@@ -2500,18 +2543,124 @@ place rather than dropped, so a rolled-back build still finds the ticks."
 
 ---
 
+## Task 8b: The library-wide sweep — added after Task 9, because Task 8 chose wrong
+
+> **SHIPPED 10 September 2026** — commits `15a5e69`, `f46fe24`. 48 instrumentation tests across
+> eight classes on the Galaxy A07 with zero skips; 151 Kotlin unit tests; 298 jest across 35 suites.
+> Two new device classes, `ItemSweepTest` and `StorageSweepTest`.
+>
+> **Not in the original plan.** Task 8 migrates a meeting's items lazily, when that meeting is
+> opened, and a library-wide sweep was rejected there as over-building. That was right about cost —
+> one meeting's rule pass is milliseconds — and **wrong about reach.** Three views are
+> cross-meeting: the worklist, the library's outstanding-actions tally, and Search's "meetings with
+> actions" filter. Lazy migration fills none of them. An existing user updating would open the
+> worklist and be told they had nothing outstanding: a confident false negative on the one list this
+> sub-project exists to make believable. `backfillSearch` is the precedent and the proof — it is a
+> chunked sweep precisely because search is *also* cross-meeting and lazy indexing was not enough.
+>
+> **The marker, and why "has it got items" cannot be the question.** `ensureItems`' guard was
+> `hasUtterances && items().isEmpty()`, which is **permanently true** for a meeting whose transcript
+> legitimately yields zero decisions, actions or questions. Invisible under lazy migration — a
+> wasted rule pass per open. Fatal under a sweep: those meetings return in every batch forever, the
+> backlog never drains, the latch never sets, and every library focus burns its full pass budget.
+> So `meetings.items_migrated_at` (via `ADDED_COLUMNS`, no DEFAULT — a default would declare every
+> existing library migrated on the ALTER), stamped last inside `backfillItems`' transaction, so a
+> killed process leaves a meeting that migrates again rather than one that never will.
+>
+> **What the reviews found.** Spec: compliant on all seven points. Quality: three Important, and two
+> of the three were the failure class this whole sub-project is about —
+>
+>  - **The schema-mirror test named `AudioDb` and could not see `AudioDb`.** It executed `schema.ts`
+>    and compared against a hand-typed list, so `schema.ts` losing a column failed — while `AudioDb`
+>    *gaining* one and `schema.ts` not following failed nothing. That is exactly how
+>    `title_edited_at` had gone missing, and exactly what the test claimed to close. Its docstring's
+>    remedy, "Change AudioDb, change this", was the same human instruction that had already failed
+>    once. Now asserted in `SchemaTest.kt`, which can read both sides.
+>  - **An assertion that could not fail.** `assertTrue(passes > 0)` after a loop whose counter starts
+>    at `Int.MAX_VALUE`, so the body always runs. Replaced with the backlog captured *before* the
+>    loop, which makes "the backlog drained" a statement about work that existed.
+>  - **Three comments named a failure mechanism `runCatching` prevents** — including the one
+>    justifying the `ensureLoaded` call in production. A missing load does *not* surface as a
+>    rejected promise: the error is raised inside the per-meeting `runCatching`, so the promise
+>    resolves with an unmoved backlog and the store takes its "did not shrink" branch. No latch,
+>    retried forever, migrating nothing. Quieter, worse, and a *stronger* argument for the call.
+>
+> **`ensureLoaded` is the first statement** in the new `@ReactMethod`, and the spec reviewer traced
+> every path out of the method to prove JNI cannot be reached unloaded. That bug shipped once
+> already, in Task 8's `ensureItems`, and needed its own device class to catch — `StorageSweepTest`
+> is separate for the same reason `StorageItemsTest` is: `NativeBridge.loaded` is static, so only a
+> fresh process can answer the question, and `am instrument` gives each class one.
+>
+> **A test that passed by accident, caught by its own author.** The mutation swapping
+> `unmigratedCount()` for `unmigratedMeetings(1).size` survived at first: three seeded meetings left
+> a backlog of exactly 1, the single value a 0-or-1 answer gets right by coincidence. Re-seeded to
+> four, it fails properly.
+>
+> **Two sweeps, separate latches, sequential with items first.** A shared count-latch would be set
+> by whichever drained first and suppress the other until the meeting count moved — on a library
+> nobody is adding to, never: the "0 forever" this task exists to end, reintroduced by the mechanism
+> meant to prevent it. A shared `running` flag would let a long search backfill stop the item sweep
+> starting at all.
+>
+> **Running these tests migrates the phone.** `ItemSweepTest` drains the whole device library,
+> because a sweep has no meeting-id parameter and `remaining == 0` is a claim about the database, so
+> it permanently stamps `items_migrated_at` on every real meeting. It is the same write a library
+> focus would make, and `@After` undoes none of it. Both device class KDocs say so.
+
+---
+
 ## Task 9: The JavaScript side reads items
 
-> **Task 8 hands this task two obligations, and neither will fail to compile.**
+> **SHIPPED 10 September 2026** — commits `9c74e4b`, `a6ae315`. 281 jest across 33 suites,
+> typecheck clean. No device run: JavaScript only, and the Kotlin it calls was device-verified in
+> Task 8. Task 8's first obligation is discharged — `ensureItems` is called from
+> `MeetingScreen.refresh`, awaited before the read and memoised per opening.
 >
-> 1. **`StorageModule.ensureItems` has no caller.** Until the meeting-screen read path calls it,
->    no meeting recorded before this feature ever gains items, and this task's screens read empty.
->    It is declared in `src/native/NativeStorage.ts` and documented as uncalled in three places.
-> 2. **Decisions, actions and questions are indexed twice** — once as `minute` by `replaceMinutes`,
->    once as `item` by `replaceItems` — so search returns two cards for one sentence. The fix is to
->    stop indexing the item-kinds as `minute`, and it becomes safe only once (1) is done and every
->    meeting a search can reach has been migrated. Do them in that order, in that task, and read the
->    rejected conditional variant in Task 8's banner before proposing one.
+> **The second obligation was WRONGLY FILED HERE and has been moved.** Stopping `indexMinutes` from
+> indexing the item-kinds is not safe once the call site exists, because `ensureItems` migrates
+> **lazily, per meeting, on open** — so a meeting nobody has opened has no item rows at all, and
+> removing its `minute` rows makes its decisions and actions *unfindable*. Strictly worse than a
+> duplicate card. See "Discovered during Task 9" for where it now lives.
+>
+> **The listing was broadly sound** — unusually for this plan — with two corrections. It switches
+> the tick key's separator from NUL to a space, discarding the one property the separator has (a
+> NUL cannot occur in either half; a space plausibly can). And it names three files while `itemKey`
+> has live call sites in five, keying **edits** as well as ticks — the edits half is Task 11's.
+>
+> **What the reviews found.** Spec: compliant, no out-of-scope file touched, the `ensureItems` memo
+> verified correct including navigate-away-and-back and a changing `meetingId`. Quality: three
+> Important —
+>
+>  - **The `review` field doc taught Task 10 the mistake this sub-project has made three times.** It
+>    said "`suggested` until a person looks at it. Phase B is what writes `needs_review`." Both
+>    halves false: `Reconciler` writes `needs_review` on every ambiguous reprocess in this branch,
+>    and a ticked or hand-edited item still reads `suggested` because the tick is in `item_done` and
+>    the edit in `edits`. Worse, the JS `db.items()` is the same boundary the Kotlin twin insists
+>    must hand callers the *answer* rather than the ingredients, and it carried neither `touched`
+>    nor a word saying that was deliberate. Both fixed; `db.items()` now says a screen needing
+>    `touched` adds the column there, next to the SQL.
+>  - **Three "nothing calls this yet" comments went false in the commit whose headline was closing
+>    that gap**, two of them in Kotlin that the task's own "no Kotlin" scoping had fenced off. Left
+>    standing they invite a *second* call site, which would re-run the rule pass against the
+>    half-written state `ensureItems` guards on. "No Kotlin was touched" is the right claim for
+>    code; two KDoc lines are not code.
+>  - `ActionsScreen` promised, sixty lines under a header saying the opposite, that returning from a
+>    meeting cannot leave a stale tick — which the accepted Task 10 gap suspends.
+>
+> Plus a `review <> 'rejected'` filter added to the worklist: `Reconciler` keeps rejected rows
+> forever on purpose, so the day anything ships a reject gesture every dismissed action would
+> reappear as outstanding work, with nothing failing to compile.
+>
+> **Accepted and recorded, founder's decision:** between this task and Task 10 a tick made in the
+> worklist writes `item_done` and the per-meeting Actions tab (reading `action_done`) will not show
+> it, and vice versa. Ticks made *before* this build are unaffected — Task 8's backfill wrote both.
+> Recorded at `loadActions`, at `db.setItemDone` and on `ActionsScreen`'s KDoc.
+>
+> **A review challenge answered by measurement rather than by agreeing.** The reviewer argued the
+> tick join should move into SQL, since the stated reason for keeping it in JavaScript was not a
+> real constraint. It is not — but SQLite has no boolean, so `d.item_id IS NOT NULL AS done` arrives
+> as 0/1 and something must still walk every row to keep `ActionRow.done` a boolean rather than a
+> number that merely reads as true. The join stays; the file now states the real reason.
 
 **Files:**
 - Modify: `src/db/queries.ts`, `src/pipeline/types.ts`, `src/screens/actionsData.ts`
