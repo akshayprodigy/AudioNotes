@@ -247,7 +247,14 @@ export default function MeetingScreen({ route, navigation }: Props) {
     setEdits(toEditMap(eds));
     setTags(tgs);
     setSpeechMs(segs.reduce((a, x) => a + (x.end_ms - x.start_ms), 0));
-    return mins.length;
+    // "Is there anything written about this meeting yet", which is the SAME question
+    // `nothingWritten` asks below and the poll under this hook stops on. It returned `mins.length`,
+    // and that was right only while every decision and action lived in `minutes` too: a meeting
+    // whose rules extracted nothing and that somebody typed a decision into now answers 0, so the
+    // screen re-runs all eight bridge queries every two seconds for two minutes after every open,
+    // re-setting seven pieces of state and re-running three `toItemRows` memos each time. Nothing
+    // looks wrong — `working` and `empty` read both tables — it is silent waste on the phone.
+    return mins.length + its.length;
   }, [meetingId, migrate]);
 
   useEffect(() => {

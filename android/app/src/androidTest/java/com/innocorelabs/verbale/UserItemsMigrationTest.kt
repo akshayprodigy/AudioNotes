@@ -12,6 +12,7 @@ import com.innocorelabs.verbale.pipeline.StorageModule
 import org.json.JSONArray
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -100,9 +101,20 @@ class UserItemsMigrationTest {
    * Written with raw SQL rather than through any Kotlin helper because there is no Kotlin writer
    * for it and never was — the row is JavaScript's. Plain text, not JSON: the column is called
    * `content_json` and holds a bare string everywhere, which `addUserMinute` learned the hard way.
+   *
+   * THE COUNTER IS THE FIX FOR THE FIRST THING THIS FILE'S FIRST DEVICE RUN FOUND. The id was
+   * `"$meetingId:user:$kind"`, which is unique per KIND and not per row, so the moment a fixture
+   * typed two actions into one meeting — which is exactly what a test about ticking the right one
+   * of two rows has to do — the second INSERT hit `UNIQUE constraint failed: minutes.id`. It is
+   * the same generator flaw found in `db.addUserItem` on the host last round (a bare `Date.now()`
+   * id, two rows in one millisecond), arrived at independently in the other language, and nothing
+   * off a device could reach it. A monotonic counter rather than a clock, because a clock is what
+   * produced the other one.
    */
+  private var typed = 0
+
   private fun typeAMinute(meetingId: String, kind: String, content: String): String {
-    val id = "$meetingId:user:$kind"
+    val id = "$meetingId:user:$kind:${typed++}"
     db.exec(
       "INSERT INTO minutes(id,meeting_id,kind,content_json,source) " +
         "VALUES('$id','$meetingId','$kind','${content.replace("'", "''")}','user')",
@@ -299,6 +311,21 @@ class UserItemsMigrationTest {
    * It is `carryEditsOntoItems` that does it — no new matching logic — and the only thing this
    * task had to get right is the ORDER: the rows have to become items BEFORE the carry runs, or
    * there is no item for the correction to find and it is left where it is, invisible.
+   *
+   * WHY THIS ASSERTS ON `edits` AND NOT ON [AudioDb.StoredItem.touched], which is what it did
+   * until its first device run. Both of those assertions were incapable of failing, and in
+   * opposite directions. `carryUserMinutesOntoItems` writes `review = 'confirmed'`, and `touched`
+   * is true for anything in `Review.BY_A_PERSON` — so EVERY hand-typed row reads touched whether
+   * it has a correction or not. `assertTrue(shipped.touched)` would have passed with no correction
+   * in the database at all, and `assertFalse(booked.touched)` could not pass under any
+   * circumstances; the neighbouring [aMovedRowIsConfirmedCitesNothingAndKeepsItsGenVersion]
+   * asserts the opposite of it, one screen away, and both were written in the same sitting.
+   *
+   * `touched` is the wrong instrument here because a typed row saturates it. The question this
+   * test actually asks — did the correction land on the right row — is answered by the `edits`
+   * table, where a wrong answer is visible. The signal-correlation question `touched` was reaching
+   * for is a real one and gets its own test, on rows that do not saturate it:
+   * [theEditSignalMarksOnlyTheItemItBelongsTo].
    */
   @Test fun aCorrectionOnATypedRowMovesOntoTheItemId() {
     inAMeeting { m ->
@@ -318,8 +345,90 @@ class UserItemsMigrationTest {
       assertEquals("item", edits.getJSONObject(0).getString("kind"))
       assertEquals(shipped.id, edits.getJSONObject(0).getString("key"))
       assertEquals("Ship the beta to everyone", edits.getJSONObject(0).getString("content"))
-      assertTrue("a corrected row must read as touched", shipped.touched)
-      assertFalse("every row was marked corrected, not the one that was", booked.touched)
+      // The uncorrected row exists, is a separate item, and owns no correction. Without naming
+      // `booked` at all the assertions above would hold in a meeting with one row in it.
+      assertNotEquals(shipped.id, booked.id)
+      assertEquals(
+        "the uncorrected row was given a correction of its own",
+        0,
+        json("SELECT 1 FROM edits WHERE meeting_id=? AND target_key=?", m, booked.id).length(),
+      )
+    }
+  }
+
+  /**
+   * THE EDIT SIGNAL MARKS ONE ITEM, and this is what nothing in the tree was pinning.
+   *
+   * `AudioDb.items()` reads `touched` partly from `LEFT JOIN edits e ON e.meeting_id=i.meeting_id
+   * AND e.target_kind='item' AND e.target_key=i.id`. Drop that last correlation and every item in
+   * a meeting holding ONE correction reads as touched — which is not a crash but a permanent
+   * protection racket: `Reconciler` rule 4 then keeps every row the rules stop producing, forever,
+   * and the review queue fills with clutter nobody can clear. It compiles, it throws nothing, and
+   * it is invisible in a meeting with one item.
+   *
+   * Every existing test of the edit signal has exactly one item in the meeting —
+   * `BackfillEditsTest.aCorrectedItemIsProtectedFromARuleThatNoLongerExtractsIt` and
+   * `ItemsDbTest` alike — so none of them could see it. RULE items rather than typed ones,
+   * because a typed row is `confirmed` and therefore touched by definition: it saturates the
+   * predicate and cannot tell you which signal set it.
+   */
+  @Test fun theEditSignalMarksOnlyTheItemItBelongsTo() {
+    inAMeeting { m ->
+      db.backfillItems(m)
+      val before = db.items(m)
+      assertTrue("the fixture needs at least two rule items", before.size >= 2)
+      assertTrue("a rule item was touched before anything touched it", before.none { it.touched })
+
+      db.putEdit(m, "item", before[0].id, "Corrected by hand")
+
+      val after = db.items(m)
+      assertTrue("the corrected item does not read as touched", after.first { it.id == before[0].id }.touched)
+      assertEquals(
+        "one correction marked more than one item",
+        1, after.count { it.touched },
+      )
+    }
+  }
+
+  /**
+   * TWO ROWS WITH IDENTICAL TEXT BOTH TAKE THE CORRECTION, which is documented and was unpinned.
+   *
+   * `carryEditsOntoItems` matches on `ItemKey.of(item.text)`, so two items whose text hashes to
+   * one key both receive it. Task 11 reworded that method's `@return` for exactly this — "how many
+   * ITEMS received a carried correction, not how many corrections moved" — and then nothing
+   * asserted it, which left a documented fan-out looking like a bug to whoever read the count
+   * next. It is the wanted behaviour: it is what the OLD reader did, hashing each minute of the
+   * kind separately and matching them all, and a person who corrects one of two identical lines
+   * means both.
+   *
+   * Typed rows are the cheapest way to get two items with byte-identical text, and after the
+   * generator fix above they are also two distinct rows rather than a UNIQUE violation.
+   */
+  @Test fun twoRowsWithIdenticalTextBothTakeTheCorrection() {
+    inAMeeting { m ->
+      typeAMinute(m, "action", "Book the venue — Priya")
+      typeAMinute(m, "action", "Book the venue — Priya")
+      db.putEdit(m, "minute", ItemKey.of("Book the venue — Priya"), "Book the hall — Priya")
+
+      db.carryUserMinutesOntoItems(m)
+
+      assertEquals("the fan-out is the count of ITEMS, not of corrections", 2, db.carryEditsOntoItems(m))
+
+      val moved = userItems(m)
+      assertEquals(2, moved.size)
+      val keys = json(
+        "SELECT target_key AS key FROM edits WHERE meeting_id=? AND target_kind='item' " +
+          "ORDER BY target_key", m,
+      )
+      assertEquals(2, keys.length())
+      assertEquals(
+        moved.map { it.id }.sorted(),
+        (0 until keys.length()).map { keys.getJSONObject(it).getString("key") }.sorted(),
+      )
+      // And the one minute-keyed row is gone: the DELETE is by key, so it runs once for both.
+      assertEquals(
+        0, json("SELECT 1 FROM edits WHERE meeting_id=? AND target_kind='minute'", m).length(),
+      )
     }
   }
 
@@ -345,7 +454,10 @@ class UserItemsMigrationTest {
 
       val typed = userItems(m).single()
       assertEquals("Book the venue — Priya", typed.text)
-      assertTrue("the typed row was wiped by replaceItems", db.items(m).size > 1)
+      // Rule items landed beside it. "The typed row was wiped" is what `userItems(m).single()`
+      // above already catches — it throws on an empty list — so this assertion is about the OTHER
+      // half: that the rule pass ran and its output is in the same table.
+      assertTrue("the rule pass produced no items beside the typed row", db.items(m).size > 1)
       assertTrue(db.doneItemIds(m).contains(typed.id))
       assertEquals(
         1,

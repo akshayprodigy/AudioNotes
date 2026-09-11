@@ -1745,12 +1745,22 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     try {
       replaceItems(meetingId, Minutes.RULES_GEN, incoming)
 
-      // AFTER replaceItems, which deletes and re-inserts every item row for the meeting — a typed
-      // row inserted before it would be wiped by the very call that is supposed to preserve it —
-      // and BEFORE both carries below, which match on ItemKey.of(item.text) and so pick these rows
-      // up for free, with no new matching logic. That ordering is the whole of this task's
-      // interaction with this method; get it wrong in either direction and either the typed rows
-      // vanish or they arrive with neither their tick nor their correction, and nothing reports it.
+      // BEFORE both carries below, and that half is load-bearing: they match on
+      // ItemKey.of(item.text), so a typed row that is not yet an item has nothing for a tick or a
+      // correction to land on and both are silently left where they are.
+      //
+      // AFTER replaceItems is a CHOICE, not a protection, and an earlier version of this comment
+      // claimed otherwise — "a typed row inserted before it would be wiped by the very call that
+      // is supposed to preserve it". It would not. Reconciler rule 4 iterates `existing` rather
+      // than `candidates` precisely to keep user rows, and replaceItems re-inserts every plan row;
+      // the Gen.USER branch is first in rule 4's `when`, and a migrated row is `confirmed` and so
+      // `touched` anyway, so it survives twice over. ReconcilerTest.aUserWrittenItemIsNever-
+      // MatchedReplacedOrFlagged and UserItemsMigrationTest.aMovedRowSurvivesAReprocess both
+      // assert exactly that. Running after simply saves the reconciler a pass over rows it is
+      // required to hand straight back. Stated plainly because the withdrawn claim told the next
+      // editor an ordering was guarded when nothing guards it — the same mistake as the "0 fails
+      // the other way" note at Gen.NO_ANCHOR, and worse, because this one is about a sequence
+      // somebody will want to change.
       //
       // It carries its own ticks, so the loop below finds nothing left to do for them; that is a
       // duplicate INSERT OR REPLACE of identical values, not a conflict. The duplication is

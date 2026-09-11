@@ -206,6 +206,23 @@ export interface ItemSource {
 export const USER_GEN = 'user';
 
 /**
+ * `minutes.source` for a row a person wrote — a DIFFERENT column and a different vocabulary from
+ * [USER_GEN], which happens to spell this one value the same way.
+ *
+ * [MinuteSource] is `rule | llm | user` and names WHICH PIPELINE wrote a minute; `items.gen_version`
+ * is `rules@1 | user` and VERSIONS the extractor that produced an item. Two constants because they
+ * are two facts, and because they sit twenty lines apart in `toItemRows` — `it.genVersion ===
+ * USER_GEN` for an item, `m.source === MINUTE_SOURCE_USER` for a minute — which is close enough
+ * that replacing the second with the first reads like a tidy-up. It compiles, it passes every
+ * test, and the day a versioned `user@1` gen exists it silently sets `mine = false` on every
+ * unmigrated meeting's typed row, taking its remove button with it.
+ *
+ * `AudioDb.MINUTE_SOURCE_USER` is the Kotlin twin, added for exactly this in
+ * `carryUserMinutesOntoItems`, which reads one while writing the other.
+ */
+export const MINUTE_SOURCE_USER: MinuteSource = 'user';
+
+/**
  * What `items.anchor_start_ms` / `anchor_end_ms` hold for a row that never claimed a moment.
  *
  * `anchor_start_ms` is `INTEGER NOT NULL` and SQLite cannot make a column nullable without
@@ -235,9 +252,18 @@ export const NO_ANCHOR = Number.MAX_SAFE_INTEGER;
  * in `minutes` — they are documents, one of each per meeting, with no anchor, no tick and no
  * provenance, so `items` has nothing to offer them.
  *
- * Named because four places select on exactly this set — db.addUserItem's signature,
- * `toItemRows`' merge guard, MeetingScreen's add path, and `FileExportModule.ITEM_KINDS` in
- * Kotlin — and a list written out a fourth time is a list that drifts.
+ * FIVE PLACES SELECT ON EXACTLY THIS SET, and they are listed here because this is the type the
+ * other four are named against:
+ *
+ *  - this type, and `ITEM_KINDS` in src/screens/meeting/shared.tsx, its runtime half — which
+ *    `db.addUserItem`'s signature, `toItemRows`' merge guard and MeetingScreen's add path all
+ *    share, through `isItemKind`;
+ *  - `FileExportModule.ITEM_KINDS` in Kotlin, for the export renderer;
+ *  - `AudioDb.ITEM_KINDS` in Kotlin, for `carryUserMinutesOntoItems`' `kind IN (...)`.
+ *
+ * They are mirrors and not one list, because the two languages cannot share a declaration — so the
+ * count is stated here, where somebody adding a sixth kind starts, rather than left to be
+ * discovered one file at a time.
  */
 export type ItemKind = 'decision' | 'action' | 'question';
 

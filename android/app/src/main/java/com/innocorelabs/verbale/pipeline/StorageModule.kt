@@ -86,10 +86,8 @@ class StorageModule(private val ctx: ReactApplicationContext) :
       // carry can give an item to a meeting the rules have never run over, and a guard that could
       // not tell the difference would strand it unmigrated forever.
       //
-      // [AudioDb.carryUserMinutesOntoItems] is the other half and runs FIRST, because the
-      // correction carry matches an item's text and a hand-typed row has no item until this has
-      // run. It moves every decision, action and open question a person typed out of `minutes`,
-      // where every shipped build wrote them and where nothing draws them any more.
+      // The typed-row carry runs FIRST because the correction carry matches an item's TEXT, and a
+      // hand-typed row has no item to match until this has run.
       db.carryUserMinutesOntoItems(meetingId)
       db.carryEditsOntoItems(meetingId)
       // The ONLY part of this method that reaches native code. The migration re-runs the rule

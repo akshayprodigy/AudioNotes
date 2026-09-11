@@ -826,6 +826,69 @@ describe('the Summary tab’s counters', () => {
   });
 
   /**
+   * THE SIXTH READER OF THE SAME QUESTION, and the only one whose failure is invisible on screen.
+   *
+   * `refresh()` returns "is there anything written about this meeting yet", and the effect above
+   * it polls every two seconds — up to sixty times — while that is 0, waiting for a pipeline that
+   * is still writing. It returned `mins.length`. For a meeting whose rules extracted nothing and
+   * that somebody typed a decision into, that is now 0 forever: eight bridge queries every two
+   * seconds for two minutes after every open, seven `setState` calls and three `toItemRows` memos
+   * each time, on a phone.
+   *
+   * Nothing LOOKS wrong, because `working` and `empty` were already fixed to read both tables —
+   * which is exactly why this needs a test rather than an eye. The first sign of it was jest
+   * warning that it could not exit after these Summary tests, because the timer outlived them.
+   */
+  it('stops polling for a meeting whose only content is hand-typed', async () => {
+    jest.useFakeTimers();
+    try {
+      (db.items as jest.Mock).mockResolvedValue([typedAction()]);
+      (db.minutes as jest.Mock).mockResolvedValue([]);
+
+      const tree = await render({ tab: 'summary' });
+      const afterFirstLoad = (db.minutes as jest.Mock).mock.calls.length;
+
+      // Three ticks' worth. A poll that has not stopped re-reads the meeting on every one.
+      await act(async () => {
+        jest.advanceTimersByTime(6500);
+      });
+
+      // The number of RE-READS, not `jest.getTimerCount()`: the screen has other timers of its
+      // own (the entrance animations among them), so a pending timer says nothing about the poll.
+      // What the poll does, and the only thing it does, is call `refresh` again.
+      expect((db.minutes as jest.Mock).mock.calls.length).toBe(afterFirstLoad);
+      await act(async () => tree.unmount());
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  /**
+   * ...and it still polls for a meeting that genuinely has nothing yet, which is what the poll is
+   * FOR: a recording whose pipeline is still running has no minutes and no items, and the screen
+   * has to keep looking. A fix that simply stopped polling would pass the test above.
+   */
+  it('keeps polling for a meeting that has nothing written yet', async () => {
+    jest.useFakeTimers();
+    try {
+      (db.items as jest.Mock).mockResolvedValue([]);
+      (db.minutes as jest.Mock).mockResolvedValue([]);
+
+      const tree = await render({ tab: 'summary' });
+      const afterFirstLoad = (db.minutes as jest.Mock).mock.calls.length;
+
+      await act(async () => {
+        jest.advanceTimersByTime(2500);
+      });
+
+      expect((db.minutes as jest.Mock).mock.calls.length).toBeGreaterThan(afterFirstLoad);
+      await act(async () => tree.unmount());
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  /**
    * And it counts each sentence ONCE for a meeting that holds it in both tables.
    *
    * That is the ordinary state of every migrated meeting: `replaceMinutes` still writes the item

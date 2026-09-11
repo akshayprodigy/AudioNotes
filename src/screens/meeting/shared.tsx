@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Icon, { type IconName } from '../../components/Icon';
 import { Raised, Txt } from '../../components/ui';
 import { radius, s, type Colors } from '../../theme';
-import { USER_GEN } from '../../pipeline/types';
+import { MINUTE_SOURCE_USER, USER_GEN } from '../../pipeline/types';
 import type { Edit, EditTarget, Item, ItemKind, Minute } from '../../pipeline/types';
 
 /**
@@ -236,7 +236,8 @@ export function toItemRows(items: Item[], minutes: Minute[]): ItemRow[] {
       textKey: itemKey(m.content),
       itemId: null,
       minuteId: m.id,
-      mine: m.source === 'user',
+      // MINUTE_SOURCE_USER, not USER_GEN. Two vocabularies, two constants — see the constant.
+      mine: m.source === MINUTE_SOURCE_USER,
       anchorStartMs: null,
     });
   }

@@ -110,7 +110,14 @@ class UserItemsTest {
       )
       val plan = Reconciler.reconcile(listOf(stored), listOf(incoming))
       // A match REUSES the stored id; a miss mints a fresh one and preserves the old row beside it.
-      return plan.rows.first { it.item.anchorStartMs == 0L }.id
+      //
+      // Selected on SOURCES rather than on the anchor: the stored fixture is built with
+      // `emptyList()` and the incoming item always carries one, so this names the incoming row in
+      // every leg. Selecting on `anchorStartMs == 0L` was ambiguous in the `matchedIdOf(0L, 0L)`
+      // leg — both rows have anchor 0 there — and silently depended on `Reconciler` emitting
+      // incoming rows before preserved ones, which is an ordering this test has no business
+      // resting on.
+      return plan.rows.first { it.item.sources.isNotEmpty() }.id
     }
 
     assertNotEquals(

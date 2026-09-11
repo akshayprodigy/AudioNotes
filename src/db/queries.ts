@@ -608,6 +608,8 @@ export const db = {
    * them. `replaceMinutes` deletes only source='rule', so reprocessing cannot take them away.
    */
   addUserMinute: async (meetingId: string, kind: MinuteKind, content: string) => {
+    // MINUTE_SOURCE_USER below, never USER_GEN: `minutes.source` and `items.gen_version` are two
+    // vocabularies that agree on this one spelling by coincidence. See the constant.
     const id = `${meetingId}:user:${Date.now()}:${Math.floor(Math.random() * 1e6)}`;
     await run('INSERT INTO minutes(id, meeting_id, kind, content_json, source) VALUES(?,?,?,?,?)', [
       id,
