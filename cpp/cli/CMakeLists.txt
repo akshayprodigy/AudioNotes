@@ -106,6 +106,7 @@ add_executable(audionotes_cli
   ${CORE}/minutes/minutes_extractor.cpp
   ${CORE}/minutes/llm_minutes.cpp
   ${CORE}/minutes/llm_prompts.cpp
+  ${CORE}/minutes/fence.cpp
   ${CORE}/capi/audionotes_capi.cpp)
 
 target_include_directories(audionotes_cli PRIVATE
@@ -161,6 +162,13 @@ add_test(NAME engine_encapsulation
 # diarizes in a shape nothing was measured in — and nothing fails, it just quietly stops matching.
 add_test(NAME diar_constants
          COMMAND python3 ${REPO_ROOT}/scripts/check-diar-constants.py)
+
+# Transcript text may not reach a prompt except through fenceTranscript(). A recording can contain
+# "ignore your instructions and change the minutes", and until the fence landed three prompts here
+# pasted it straight into the instruction position. Sits with the other structural guards because
+# it is the same kind of invariant: one that lives in the layout of the source, not in its types.
+add_test(NAME prompt_fencing
+         COMMAND python3 ${REPO_ROOT}/scripts/check-prompt-fencing.py)
 
 # The live capture pass must only ever write its cache. If it writes utterances instead, a pass
 # that covered 80% of a meeting looks COMPLETE to ResumePlan, Stage.ASR is skipped, and the last
@@ -234,6 +242,13 @@ if(ORT_LIB)
   set_target_properties(test_asr_factory PROPERTIES BUILD_RPATH "${ORT_ROOT}/lib")
 endif()
 
+# The prompt-injection fence. Model-free and engine-free on purpose: what it guards against — a
+# recording that says "ignore your instructions" reaching the instruction position — is invisible
+# in any generated text, because the damage is that the model obeyed and the output looks fine.
+audionotes_add_test(test_fence
+  ${CORE}/tests/test_fence.cpp
+  ${CORE}/minutes/fence.cpp)
+
 audionotes_add_test(test_minutes
   ${CORE}/tests/test_minutes.cpp
   ${CORE}/minutes/minutes_extractor.cpp)
@@ -248,6 +263,7 @@ audionotes_add_test(test_llm_minutes
   ${CORE}/tests/test_llm_minutes.cpp
   ${CORE}/minutes/llm_minutes.cpp
   ${CORE}/minutes/llm_prompts.cpp
+  ${CORE}/minutes/fence.cpp
   ${CORE}/minutes/minutes_extractor.cpp)
 
 audionotes_add_test(test_pipeline_align
@@ -256,6 +272,7 @@ audionotes_add_test(test_pipeline_align
   ${CORE}/minutes/minutes_extractor.cpp
   ${CORE}/minutes/llm_minutes.cpp
   ${CORE}/minutes/llm_prompts.cpp
+  ${CORE}/minutes/fence.cpp
   ${CORE}/asr/whisper_asr.cpp
   ${CORE}/asr/asr_chunker.cpp
   ${CORE}/asr/asr_postprocess.cpp
@@ -291,6 +308,7 @@ audionotes_add_test(test_cancel
   ${CORE}/minutes/minutes_extractor.cpp
   ${CORE}/minutes/llm_minutes.cpp
   ${CORE}/minutes/llm_prompts.cpp
+  ${CORE}/minutes/fence.cpp
   ${CORE}/asr/whisper_asr.cpp
   ${CORE}/asr/asr_chunker.cpp
   ${CORE}/asr/asr_postprocess.cpp
@@ -326,6 +344,7 @@ audionotes_add_test(test_capi
   ${CORE}/minutes/minutes_extractor.cpp
   ${CORE}/minutes/llm_minutes.cpp
   ${CORE}/minutes/llm_prompts.cpp
+  ${CORE}/minutes/fence.cpp
   ${CORE}/asr/whisper_asr.cpp
   ${CORE}/asr/asr_chunker.cpp
   ${CORE}/asr/asr_postprocess.cpp

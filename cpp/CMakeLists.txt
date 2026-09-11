@@ -39,6 +39,11 @@ add_library(audionotes SHARED
   # from Kotlin (Narrator) so it can checkpoint each chunk and honour cancellation, but it must not
   # own a word of the prompts — those live here, where the CLI and the eval harness exercise them.
   minutes/llm_prompts.cpp
+  # Transcript text may not enter a prompt except through here. Without this line the file
+  # is never compiled into libaudionotes.so, the prompt builders fail to link, and the app
+  # does not build — which is the good failure. The bad one would be a fence that exists in
+  # the tree, passes every desktop test, and is not in the binary the phone runs.
+  minutes/fence.cpp
   jni/audionotes_jni.cpp)
 
 # ---------------------------------------------------------------------------

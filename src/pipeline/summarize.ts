@@ -5,6 +5,15 @@
 // The heavy token generation happens natively (llama.cpp); this module only orchestrates:
 // chunk the text, run map/reduce prompts, and parse the result. It takes an injected `generate`
 // so it is unit-testable without the native module.
+//
+// NOT A LIVE PATH, and the prompts here are therefore NOT FENCED. Narration runs natively —
+// Narrator.kt -> NativeBridge -> cpp/minutes/llm_prompts.cpp — and nothing in src/ calls
+// `enhanceMinutes` below. What still earns its keep is `parseMinutesJson`, whose goldens the C++
+// port replays. Its C++ twin wraps every prompt that can receive recorded speech in
+// `fenceTranscript` (cpp/minutes/fence.h), because a transcript may contain "ignore your
+// instructions" and must reach a model as speech. These copies diverge there on purpose: a second
+// implementation of a security boundary, on a path with no caller, is a liability and not cover.
+// If this module ever drives a model again, port the fence first.
 import type { Utterance, Speaker, MinuteKind } from './types';
 
 export interface LlmMinute {

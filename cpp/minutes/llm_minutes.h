@@ -40,7 +40,12 @@ std::string reducePrompt(const std::string& notes);
 // field inside reducePrompt's schema, Qwen2.5-1.5B answered "No decisions were explicitly stated."
 // — commentary on its own extraction, contradicted by the two actions it listed beneath — while
 // the same weights given summaryPrompt wrote four specific, true sentences about the meeting.
-std::string narrativePrompt(const std::string& notes, const std::string& language = "en");
+//
+// `record` is named for what it holds, which is NOT always notes. For a meeting that fits one
+// prompt — most of them — narrate() hands this the dialogue itself; only a longer meeting gives it
+// digests. It was called `notes`, and that name is why a prompt taking raw transcript read as one
+// that could not. It is fenced (minutes/fence.h) for the same reason the two chunk prompts are.
+std::string narrativePrompt(const std::string& record, const std::string& language = "en");
 std::string summaryPrompt(const std::string& narrative, const std::string& language = "en");
 std::string headlinePrompt(const std::string& summary, const std::string& language = "en");
 
