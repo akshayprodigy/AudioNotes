@@ -11,6 +11,7 @@ import {
   MineTag,
   SectionHead,
   ToolButton,
+  editTargetOf,
   editedText,
   isEdited,
   sentenceCase,
@@ -180,7 +181,8 @@ export default function ActionsTab({
   minutes: Minute[];
   edits?: EditMap;
   onEditItem?: (row: ItemRow) => void;
-  onRevertItem?: (key: string) => void;
+  /** Takes the ROW, not a key: where a correction lives is editTargetOf's answer, not a tab's. */
+  onRevertItem?: (row: ItemRow) => void;
   onRemoveItem?: (id: string) => void;
   onAdd?: (kind: MinuteKind) => void;
   /** Open the transcript at a moment, and play from it where there is still audio to play. */
@@ -221,7 +223,7 @@ export default function ActionsTab({
 
   /** Ticked, asked of whichever store this row's identity lives in. */
   const isDone = React.useCallback(
-    (r: ItemRow) => (r.itemId ? doneIds.has(r.itemId) : doneTexts.has(r.editKey)),
+    (r: ItemRow) => (r.itemId ? doneIds.has(r.itemId) : doneTexts.has(r.textKey)),
     [doneIds, doneTexts],
   );
 
@@ -249,7 +251,7 @@ export default function ActionsTab({
         setDoneIds(prev => flip(prev, id));
         db.setItemDone(meetingId, id, on).catch(() => {});
       } else {
-        const key = r.editKey;
+        const key = r.textKey;
         setDoneTexts(prev => flip(prev, key));
         db.setActionDone(meetingId, key, on).catch(() => {});
       }
@@ -259,7 +261,10 @@ export default function ActionsTab({
 
   /** The text to display: the correction where there is one, the stored text otherwise. */
   const shown = React.useCallback(
-    (r: ItemRow) => editedText(ed, 'minute', r.editKey, r.text) ?? r.text,
+    (r: ItemRow) => {
+      const t = editTargetOf(r);
+      return editedText(ed, t.kind, t.key, r.text) ?? r.text;
+    },
     [ed],
   );
 
@@ -279,26 +284,29 @@ export default function ActionsTab({
   /**
    * One row, wired for correction.
    *
-   * The edit key comes from the STORED text and never from the correction. That is the whole
-   * reason edits live in a side table: rewriting a minute in place would change its hash and
-   * silently detach the correction from the line it corrects.
+   * The correction is never keyed on what is DISPLAYED — that is the whole reason edits live in a
+   * side table. It is keyed on the row's identity: its item id where it has one, and the hash of
+   * its stored text where it does not. See editTargetOf.
    */
   const row = React.useCallback(
-    (r: ItemRow, on: boolean) => (
+    (r: ItemRow, on: boolean) => {
+      const t = editTargetOf(r);
+      return (
       <Item
         key={r.key}
         on={on}
         onToggle={() => toggle(r)}
         colors={colors}
         content={shown(r)}
-        edited={isEdited(ed, 'minute', r.editKey)}
+        edited={isEdited(ed, t.kind, t.key)}
         mine={r.mine}
         onEdit={onEditItem ? () => onEditItem(r) : undefined}
-        onRevert={onRevertItem ? () => onRevertItem(r.editKey) : undefined}
+        onRevert={onRevertItem ? () => onRevertItem(r) : undefined}
         onRemove={onRemoveItem && r.mine && r.minuteId ? () => onRemoveItem(r.minuteId!) : undefined}
         provenance={provenanceFor(r)}
       />
-    ),
+      );
+    },
     [ed, colors, onEditItem, onRevertItem, onRemoveItem, provenanceFor, shown, toggle],
   );
 

@@ -36,6 +36,12 @@ CLASSES=(
   # The library migration: rule pass over stored utterances, and the ticks moved off action_done.
   # Both halves are SQLite plus the native rules, so neither can be a JVM test.
   com.innocorelabs.verbale.BackfillTest
+  # The corrections half of the same migration, and the one whose failure is total and silent:
+  # `edits` has a foreign key to `meetings` and none to `items`, so a reader switched to item ids
+  # without this simply joins to nothing — every correction in every install, no error anywhere.
+  # It needs real SQLCipher and the real ItemKey, and it seeds the string the real extractor
+  # produces, so it cannot be a JVM test.
+  com.innocorelabs.verbale.BackfillEditsTest
   # A backup is only worth what comes back out of it, and BackupManager.TABLES is a private list of
   # strings whose ORDER decides whether a restore keeps an item's evidence or cascades it away.
   com.innocorelabs.verbale.BackupManagerTest

@@ -10,6 +10,7 @@ import {
   Prose,
   SectionHead,
   ToolButton,
+  editTargetOf,
   editedText,
   isEdited,
   toItemRows,
@@ -55,7 +56,8 @@ export default function MinutesTab({
   onCopy?: () => void;
   edits?: EditMap;
   onEditItem?: (row: ItemRow) => void;
-  onRevertItem?: (key: string) => void;
+  /** Takes the ROW, not a key: where a correction lives is editTargetOf's answer, not a tab's. */
+  onRevertItem?: (row: ItemRow) => void;
   onRemoveItem?: (id: string) => void;
   onAdd?: (kind: MinuteKind) => void;
   onEditNarrative?: (initial: string) => void;
@@ -80,18 +82,21 @@ export default function MinutesTab({
   const actions = rows.filter(r => r.kind === 'action');
 
   /** One item, with the user's correction over it and their own rows marked as theirs. */
-  const item = (r: ItemRow) => (
+  const item = (r: ItemRow) => {
+    // Where this row's correction lives — on its item id where it has one, on the hash of its
+    // stored text where it does not. Asked once per row, because reading it from one place and
+    // writing it to another is the whole failure mode; see editTargetOf.
+    const t = editTargetOf(r);
+    return (
     <DocItem
       key={r.key}
       kind={r.kind}
       colors={colors}
-      // r.editKey is hashed from the STORED string and r.text is what reads well; the two are not
-      // interchangeable, and toItemRows is where the difference is written down.
-      content={editedText(ed, 'minute', r.editKey, r.text) ?? r.text}
-      edited={isEdited(ed, 'minute', r.editKey)}
+      content={editedText(ed, t.kind, t.key, r.text) ?? r.text}
+      edited={isEdited(ed, t.kind, t.key)}
       mine={r.mine}
       onEdit={onEditItem ? () => onEditItem(r) : undefined}
-      onRevert={onRevertItem ? () => onRevertItem(r.editKey) : undefined}
+      onRevert={onRevertItem ? () => onRevertItem(r) : undefined}
       onRemove={onRemoveItem && r.mine && r.minuteId ? () => onRemoveItem(r.minuteId!) : undefined}
       provenance={
         // No anchor, no button. A row somebody typed never claimed to have been said at any
@@ -105,7 +110,8 @@ export default function MinutesTab({
         ) : undefined
       }
     />
-  );
+    );
+  };
 
   return (
     <ScrollView contentContainerStyle={st.pad} showsVerticalScrollIndicator={false}>

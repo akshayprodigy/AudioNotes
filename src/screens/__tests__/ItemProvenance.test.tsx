@@ -4,7 +4,8 @@ import renderer, { act } from 'react-test-renderer';
 import MeetingScreen from '../MeetingScreen';
 import TranscriptTab from '../meeting/TranscriptTab';
 import { ProvenanceButton, provenanceLabel } from '../meeting/ItemProvenance';
-import { itemKey, toItemRows } from '../meeting/shared';
+import { editTargetOf, itemKey, toItemRows } from '../meeting/shared';
+import { TextPrompt } from '../../components/ui';
 import { loadActions } from '../actionsData';
 import { db } from '../../db/queries';
 import type { Item, Minute, Utterance } from '../../pipeline/types';
@@ -53,14 +54,34 @@ const utterance = (over: Partial<Utterance> = {}): Utterance =>
 // The label and the button
 // ------------------------------------------------------------------------------------------
 
+/**
+ * THE MIRROR. `FileExportModule.stamp` in Kotlin reproduces this function, because an exported
+ * document has to say the same time about an item as the screen it was exported from — and
+ * ExportItemsTest asserts THESE VALUES, the way ItemKeyTest asserts `itemKey`'s. Two
+ * implementations of one format are two chances to drift, and a shared table is the only thing
+ * that stops them; change a case here and change it there.
+ *
+ * The hour boundary is in the table because it is where a format like this actually breaks. An
+ * hour-long meeting is ordinary, `59:59` and `1:00:00` are one millisecond apart, and a dropped
+ * zero-pad on the middle field would read `1:0:00` for a whole hour of every long meeting.
+ */
 describe('provenanceLabel', () => {
   it('reads as a timestamp a person can find in the recording', () => {
     expect(provenanceLabel(0)).toBe('0:00');
     expect(provenanceLabel(65_000)).toBe('1:05');
+    expect(provenanceLabel(3_599_999)).toBe('59:59');
+    expect(provenanceLabel(3_600_000)).toBe('1:00:00');
     expect(provenanceLabel(3_725_000)).toBe('1:02:05');
   });
 
+  /**
+   * The clamp, with a WHOLE negative second and not just `-1`, because the two languages disagree
+   * about what `-1` even is: `Math.floor(-1 / 1000)` is `-1` here and `-1 / 1000` truncates to `0`
+   * in Kotlin, so the `-1` case exercises the clamp on this side and nothing at all on the other.
+   * Found by mutation-testing the Kotlin mirror, not by reading either.
+   */
   it('does not run backwards on a nonsense anchor', () => {
+    expect(provenanceLabel(-1_000)).toBe('0:00');
     expect(provenanceLabel(-1)).toBe('0:00');
   });
 });
@@ -155,24 +176,51 @@ describe('toItemRows', () => {
 });
 
 /**
- * THE PROPERTY THAT LETS THIS CONVERSION KEEP PEOPLE'S CORRECTIONS.
+ * WHERE A CORRECTION IS STORED, now that a row can have an id worth keying on.
  *
- * Corrections are rows in `edits` keyed `target_kind='minute'`, `target_key=itemKey(stored minute
- * content)`, and Task 11 — not this task — is what moves them onto item ids. So after the tabs
- * switch to items, an existing correction resolves only if `itemKey(item.text)` reproduces
- * `itemKey(minute.content)`.
+ * An item is corrected under `item/<items.id>`, which is what makes a correction survive the item
+ * being RE-WORDED by a reprocess — the same property `item_done` gives a tick, and one a text hash
+ * cannot have, because the hash moves with the text. A row that has no item keeps the
+ * `minute/<hash>` key it has always had, because there is nothing else to key it on.
+ *
+ * Both shapes are live at once, deliberately and transitionally, exactly as two tick stores are:
+ * `db.addUserMinute` writes a hand-typed row to `minutes` with no item until Task 12.
+ */
+describe('editTargetOf', () => {
+  it('keys an extracted item on its id, which a re-wording cannot move', () => {
+    expect(editTargetOf(toItemRows([item()], [])[0])).toEqual({ kind: 'item', key: 'it-action' });
+  });
+
+  it('keys a hand-typed row on the hash of its stored text, having nothing else', () => {
+    const typed = minute({ id: 'min-user', content: 'Call the vendor back', source: 'user' });
+    const rows = toItemRows([item()], [typed]);
+    expect(editTargetOf(rows[1])).toEqual({
+      kind: 'minute',
+      key: itemKey('Call the vendor back'),
+    });
+  });
+});
+
+/**
+ * THE PROPERTY THE MIGRATION RESTS ON.
+ *
+ * Every correction anybody has ever made is a row keyed `target_kind='minute'`,
+ * `target_key=itemKey(stored minute content)`. `AudioDb.carryEditsOntoItems` moves each one onto
+ * the item that replaced it by hashing the ITEM's text and looking for that key — so the carry
+ * finds anything at all only if `itemKey(item.text)` reproduces `itemKey(minute.content)`.
  *
  * It does, because `Minutes.extract` and `Minutes.extractItems` are the same rules over the same
  * turns — the property `AudioDb.backfillItems` already bets every tick in every existing library
  * on. The two strings are not byte-identical in every case: `extractItems` asciifies non-breaking
  * spaces before splitting sentences and `extractMinutes` does not. `itemKey` collapses every
  * whitespace run to one space before hashing, so that difference cannot reach the key, which is
- * what the second case here pins.
+ * what the second case here pins. BackfillEditsTest is the same property against real SQLCipher
+ * and the real extractors; this is the arithmetic it depends on.
  */
 describe('the edits key survives the move from minutes to items', () => {
   it('hashes an item to the key its minute already had', () => {
     expect(itemKey(item().text)).toBe(itemKey(minute().content));
-    expect(toItemRows([item()], [])[0].editKey).toBe(itemKey(minute().content));
+    expect(toItemRows([item()], [])[0].textKey).toBe(itemKey(minute().content));
   });
 
   it('is blind to the one way the two extractors differ', () => {
@@ -278,13 +326,39 @@ describe('the MOM tab', () => {
     await act(async () => tree.unmount());
   });
 
+  /** A correction, drawn against the item it belongs to. */
+  it('shows a correction written against the item', async () => {
+    (db.edits as jest.Mock).mockResolvedValue([
+      {
+        meetingId: 'm1',
+        targetKind: 'item',
+        targetKey: 'it-action',
+        content: 'Ana to update the roadmap by FRIDAY — Ana',
+        editedAt: 2,
+      },
+    ]);
+    const tree = await render({ tab: 'mom' });
+    const json = JSON.stringify(tree.toJSON());
+    expect(json).toContain('FRIDAY');
+    expect(json).toContain('EDITED BY YOU');
+    await act(async () => tree.unmount());
+  });
+
   /**
-   * The conversion's real risk. An existing correction is keyed on a hash of the MINUTE text; the
-   * row it is drawn against is now an ITEM. It renders because the two hash the same — see the
-   * key test above — and this is that property exercised through the screen rather than in the
-   * abstract, because a lost correction is silent.
+   * THE HALF THAT WOULD HAVE FAILED IN SILENCE, pinned as a deliberate consequence.
+   *
+   * A correction made by any shipped build is keyed on a hash of the MINUTE's text, and this
+   * screen no longer looks there for a row that has an item. That is not an oversight to be
+   * papered over with a fallback read: a fallback would leave the old row in place forever, and
+   * REVERT — which deletes the item-keyed row — would then appear to do nothing, because the
+   * stale minute-keyed row would come straight back.
+   *
+   * So the rows are MOVED instead, by `AudioDb.carryEditsOntoItems`, which runs before anything
+   * reads a meeting. This test is what makes the two sides one change rather than two: it fails
+   * the moment somebody switches the writer back, or adds the fallback, and BackfillEditsTest on
+   * a real database is what proves the correction is not simply lost.
    */
-  it('still shows a correction written against the minute it replaced', async () => {
+  it('does not read an item\u2019s correction off the minute key any more', async () => {
     (db.edits as jest.Mock).mockResolvedValue([
       {
         meetingId: 'm1',
@@ -295,9 +369,59 @@ describe('the MOM tab', () => {
       },
     ]);
     const tree = await render({ tab: 'mom' });
-    const json = JSON.stringify(tree.toJSON());
-    expect(json).toContain('FRIDAY');
-    expect(json).toContain('EDITED BY YOU');
+    expect(JSON.stringify(tree.toJSON())).not.toContain('FRIDAY');
+    await act(async () => tree.unmount());
+  });
+
+  /**
+   * And the writer moved with the reader.
+   *
+   * A one-sided switch is a data-loss bug in whichever direction it goes: a writer still keyed on
+   * the text hash writes corrections the exported document cannot find, and a reader switched
+   * alone finds nothing anybody has ever written. Driven through the row's own long-press so the
+   * key comes from the screen's real path rather than from a handler called directly.
+   */
+  it('writes a correction against the item id', async () => {
+    const tree = await render({ tab: 'mom' });
+    await act(async () => {
+      tree.root
+        .findByProps({ accessibilityHint: 'Long press to correct this line' })
+        .props.onLongPress();
+    });
+    const prompt = tree.root.findAllByType(TextPrompt).find(p => p.props.visible)!;
+    expect(prompt.props.initial).toBe(ACTION);
+    await act(async () => prompt.props.onSubmit('Ana to update the roadmap by FRIDAY — Ana', ''));
+    expect(db.putEdit).toHaveBeenCalledWith(
+      'm1',
+      'item',
+      'it-action',
+      'Ana to update the roadmap by FRIDAY — Ana',
+    );
+    await act(async () => tree.unmount());
+  });
+
+  /**
+   * A hand-typed row has no id, so its correction stays on the text hash — and must still resolve.
+   *
+   * The population `carryEditsOntoItems` deliberately leaves alone, and the reason the edits map
+   * has to hold both shapes until Task 12 gives these rows items of their own.
+   */
+  it('still shows a correction to a hand-typed row, keyed on its text', async () => {
+    (db.minutes as jest.Mock).mockResolvedValue([
+      minute(),
+      minute({ id: 'min-user', kind: 'decision', content: 'Ship on the 14th', source: 'user' }),
+    ]);
+    (db.edits as jest.Mock).mockResolvedValue([
+      {
+        meetingId: 'm1',
+        targetKind: 'minute',
+        targetKey: itemKey('Ship on the 14th'),
+        content: 'Ship on the 21st',
+        editedAt: 2,
+      },
+    ]);
+    const tree = await render({ tab: 'mom' });
+    expect(JSON.stringify(tree.toJSON())).toContain('Ship on the 21st');
     await act(async () => tree.unmount());
   });
 

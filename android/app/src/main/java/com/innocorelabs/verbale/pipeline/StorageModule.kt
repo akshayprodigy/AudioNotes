@@ -62,7 +62,23 @@ class StorageModule(private val ctx: ReactApplicationContext) :
   @ReactMethod
   fun ensureItems(meetingId: String, promise: Promise) {
     try {
-      // The ONLY method on this module that reaches native code. The migration re-runs the rule
+      val db = AudioDb.get(ctx)
+      // FIRST, and outside the native load below on purpose — two separate reasons, both about
+      // reaching meetings [AudioDb.backfillItems] cannot.
+      //
+      // [AudioDb.carryEditsOntoItems] moves every hand correction off the minute it was written
+      // against and onto the item that replaced it. `backfillItems` carries them too, in its own
+      // transaction, but only for a meeting it is migrating NOW — and it never runs again for a
+      // meeting the Task 8b sweep has stamped, nor for one the pipeline wrote items for directly.
+      // Those are precisely the meetings likeliest to be carrying corrections, and this is the one
+      // call every reader of a meeting passes through before reading it.
+      //
+      // Before `ensureLoaded` because the carry is pure SQL — no rules, no core — and a phone
+      // still downloading libonnxruntime.so would otherwise open every meeting with the user's own
+      // corrections missing from it. It is idempotent from the data, so running it on every open
+      // costs one indexed lookup that returns nothing.
+      db.carryEditsOntoItems(meetingId)
+      // The ONLY part of this method that reaches native code. The migration re-runs the rule
       // pass, which lives in libaudionotes.so, and nothing loads that at app start —
       // MainApplication does loadReactNative and no more, and the other four ensureLoaded call
       // sites are all on paths that record or transcribe. So on the path this exists for, a cold
@@ -74,7 +90,7 @@ class StorageModule(private val ctx: ReactApplicationContext) :
       // libonnxruntime.so yet: ensureLoaded fails loudly, and because ensureItems derives "has
       // this been migrated" from the data rather than a flag, the next open simply tries again.
       NativeBridge.ensureLoaded(ctx)
-      AudioDb.get(ctx).ensureItems(meetingId)
+      db.ensureItems(meetingId)
       promise.resolve(null)
     } catch (e: Throwable) {
       promise.reject("db_ensure_items", e)

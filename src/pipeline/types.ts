@@ -102,8 +102,21 @@ export interface Minute {
   source: MinuteSource;
 }
 
-/** What a person edited by hand, keyed to the original text the pipeline wrote. */
-export type EditTarget = 'utterance' | 'minute' | 'summary' | 'narrative';
+/**
+ * What a person edited by hand, and what the correction is keyed on.
+ *
+ * `'item'` is keyed on `items.id`, which is the only one of these that survives the text being
+ * REWRITTEN — a reprocess hands a matched item its id back, so a correction outlives a
+ * re-recognition that changes a word. Every other kind is keyed on the original text or on a row
+ * id: `'utterance'` on the utterance id, `'summary'`/`'narrative'` on `DOC_KEY` (there is one of
+ * each per meeting), and `'minute'` on `itemKey` of the stored minute's content.
+ *
+ * `'minute'` is what every shipped build wrote for a decision, an action or an open question.
+ * Those rows are MOVED onto `'item'` by `AudioDb.carryEditsOntoItems`, which runs before anything
+ * reads a meeting; what still writes `'minute'` is the population that has no item to key on —
+ * a row somebody typed themselves, which lives in `minutes` until Task 12.
+ */
+export type EditTarget = 'utterance' | 'minute' | 'item' | 'summary' | 'narrative';
 
 export interface Edit {
   meetingId: string;

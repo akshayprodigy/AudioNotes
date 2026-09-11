@@ -1,7 +1,7 @@
 package com.innocorelabs.verbale.data
 
 /**
- * The content hash that anchors a tick, and now a hand correction, to a minute.
+ * The content hash that anchors a tick, and a hand correction, to a row that has no id worth using.
  *
  * A deliberate mirror of `itemKey` in src/screens/meeting/shared.tsx. Minutes rows are deleted and
  * re-inserted on every reprocess and every speaker merge, so their ids are worthless as an anchor;
@@ -9,6 +9,14 @@ package com.innocorelabs.verbale.data
  * Actions tab, the edit from the meeting screen) and native has to READ them, because the export
  * renderer lives here and an exported document that silently drops the user's corrections is worse
  * than one that never offered editing at all.
+ *
+ * WHAT STILL USES IT, and what has moved off it. `items` rows have stable ids that survive a
+ * reprocess, so a tick on one lives in `item_done` keyed on that id and a correction lives in
+ * `edits` keyed the same way — a hash cannot do that, because it moves with the text it hashes.
+ * This is now the key of two populations only: rows that are still `minutes` (a person's own
+ * typed decision, until Task 12) and the historical `action_done` / `target_kind='minute'` rows
+ * that `AudioDb.backfillItems` and `AudioDb.carryEditsOntoItems` are migrating off it. Reading it
+ * is what makes those migrations possible at all, since SQL cannot reproduce the hash.
  *
  * Two mirrors are two chances to drift, so ItemKeyTest pins the same vectors as
  * __tests__/actionKey.test.ts. The arithmetic below is JS's, exactly: `charCodeAt` yields UTF-16

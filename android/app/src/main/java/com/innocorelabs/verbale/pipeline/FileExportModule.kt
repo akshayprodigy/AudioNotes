@@ -22,6 +22,14 @@ import java.util.Locale
 /**
  * FileExport — render a meeting to Markdown / plain text / SRT and hand it to the Android share
  * sheet via a FileProvider content URI. See src/native/NativeFileExport.ts.
+ *
+ * THE SPLIT IN THIS FILE, and why it is where it is. Everything that READS lives on the instance,
+ * because a read needs the React context to reach the database; everything that RENDERS lives in
+ * the companion, because rendering a document from data needs no Android at all. That is not a
+ * tidying preference: the export renderer is the thing a person forwards to a client, and until
+ * this split it was the largest untested surface in the app — it could only be exercised by
+ * constructing a React module, which a JVM test cannot do. `forcedMarker` was already down there
+ * for exactly this reason and is the only part of this file that ever had a unit test.
  */
 class FileExportModule(private val ctx: ReactApplicationContext) :
   ReactContextBaseJavaModule(ctx) {
@@ -38,31 +46,62 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
   )
 
   /**
-   * Render a meeting to a document, with the user's own corrections in it.
+   * One decision, action or open question as the export renders it, with its correction already
+   * applied.
    *
-   * The single renderer for every way a meeting leaves the app — the share sheet, the clipboard,
+   * [anchorStartMs] is NULLABLE and that is the whole of the type's interest. A row a person
+   * typed themselves was never said by anybody, and a meeting whose item migration has not run
+   * has only `minutes` rows, which carry no timings at all. Both must render WITHOUT a stamp
+   * rather than with `[0:00]`, which is a fabricated claim about a moment: it would send a reader
+   * to the top of the meeting to look for something nobody said there. It is the same rule Task
+   * 10 applies on screen — an item with no evidence is not a failure to find any; it is an item
+   * that never claimed any.
+   */
+  data class ExportItem(val kind: String, val text: String, val anchorStartMs: Long?)
+
+  /** One turn of the transcript, attributed and with its correction already applied. */
+  data class ExportTurn(
+    val speaker: String,
+    val text: String,
+    val startMs: Long,
+    val endMs: Long,
+  )
+
+  /**
+   * Everything the renderers need, read once and rendered four ways.
+   *
+   * Assembled by `document` from the database and by nothing else. Every correction, every
+   * merge and every ordering decision is made on the way IN, so the four renderers below differ
+   * only in how they lay the same document out — which is the property that makes "the Markdown
+   * and the PDF are the same document" checkable rather than merely intended.
+   */
+  data class Content(
+    val title: String,
+    val createdAt: Long,
+    val summary: String?,
+    val narrative: String?,
+    val items: List<ExportItem>,
+    val turns: List<ExportTurn>,
+  )
+
+  /**
+   * Read a meeting, with the user's own corrections in it, and render it.
+   *
+   * The single reader for every way a meeting leaves the app — the share sheet, the clipboard,
    * and anything added later. Splitting it would mean two descriptions of the export format, and
    * the one people notice drifting is the one they send to a client.
    *
-   * Edits are overlaid HERE rather than being written back over the pipeline's text, because
-   * action ticks are hashed on that text (see ItemKey) and rewriting it would untick every item
-   * the user had worked through. The consequence is that every reader has to ask for the edit
-   * first, and this is the export's asking.
-   */
-  /**
-   * The line at the foot of every exported document.
+   * Edits are overlaid HERE rather than being written back over the pipeline's text, because a
+   * reprocess owns and rewrites that text and an edit written into it would be lost the next time
+   * the rules ran. The consequence is that every reader has to ask for the edit first, and this is
+   * the export's asking — [exportItems] and [said] are where it happens.
    *
-   * An exported set of minutes is forwarded to people who were in the meeting and people who were
-   * not, which makes it the only part of this product that travels on its own. A quiet credit at
-   * the bottom is what turns a document somebody wrote into a document that says where it came
-   * from — so it stays at the FOOT, after the content, never over it. Nobody forwards a page with
-   * a logo stamped across their minutes.
-   *
-   * It is not a paywall. Free exports carry it and so do paid ones: the point is reach, and the
-   * free tier is the half that gets forwarded most.
+   * ITEMS COME FROM `items` AND PROSE FROM `minutes`. The two tables split at Task 5: every
+   * decision, action and open question is an `items` row carrying the moment it was said, and
+   * `minutes` keeps the summary, the narrative and the headline. The one exception is a row a
+   * person typed themselves, which `db.addUserMinute` still writes to `minutes` until Task 12 —
+   * see [exportItems], which merges it back in for the same reason `toItemRows` does.
    */
-  private val EXPORT_CREDIT = "Created with Verbale — verbale.innocorelabs.com"
-
   private fun document(meetingId: String, format: String): Document {
     val db = AudioDb.get(ctx)
     val meeting = JSONArray(
@@ -75,6 +114,15 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
     val minutes = JSONArray(
       db.rawQueryJson(
         "SELECT kind,content_json AS content,source FROM minutes WHERE meeting_id=? ORDER BY rowid",
+        arrayOf(meetingId),
+      ),
+    )
+    // The same order `AudioDb.items` promises and `indexItems` writes: the meeting's own order, so
+    // a reader scanning the exported document meets the decisions in the order they were taken.
+    val items = JSONArray(
+      db.rawQueryJson(
+        "SELECT id,kind,text,anchor_start_ms FROM items WHERE meeting_id=? " +
+          "ORDER BY anchor_start_ms, rowid",
         arrayOf(meetingId),
       ),
     )
@@ -100,6 +148,8 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
       val o = speakerRows.getJSONObject(i)
       nameById[o.getString("id")] = o.getString("name")
     }
+    // Both key shapes at once, deliberately: `item/<items.id>` for a row that has an id, and
+    // `minute/<ItemKey.of(content)>` for one that does not — see [exportItems].
     val edits = HashMap<String, String>()
     for (i in 0 until editRows.length()) {
       val o = editRows.getJSONObject(i)
@@ -114,10 +164,21 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
       meeting?.let { if (it.isNull("transcribe_forced_at")) null else it.optLong("transcribe_forced_at") }
     val marker = forcedMarkerOrNull(forcedAt, meeting?.optString("forced_from_language", "") ?: "")
 
+    // Read once, rendered four ways. Every format below gets the same corrections, the same merge
+    // and the same order, because there is only one place any of that is decided.
+    val content = Content(
+      title = title,
+      createdAt = createdAt,
+      summary = summaryOf(minutes, edits),
+      narrative = narrativeOf(minutes, edits),
+      items = exportItems(items, minutes, edits),
+      turns = turnsOf(utterances, nameById, edits),
+    )
+
     if (format == "pdf") {
       // Blocks, not a string: a PDF is laid out rather than concatenated. The content still comes
       // from the same accessors as every other format, so a correction reaches it for free.
-      val blocks = pdfBlocks(title, createdAt, minutes, utterances, nameById, edits)
+      val blocks = pdfBlocks(content)
       // After the title and date, before any content: a reader who stops at the first paragraph
       // must still have seen it.
       val withMarker = if (marker == null) blocks else buildList {
@@ -136,10 +197,10 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
 
     val ext = when (format) { "srt" -> "srt"; "txt", "transcript" -> "txt"; else -> "md" }
     val body = when (format) {
-      "srt" -> renderSrt(utterances, nameById, edits)
-      "txt" -> renderText(title, createdAt, minutes, utterances, nameById, edits)
-      "transcript" -> renderTranscript(utterances, nameById, edits)
-      else -> renderMarkdown(title, createdAt, minutes, utterances, nameById, edits)
+      "srt" -> renderSrt(content)
+      "txt" -> renderText(content)
+      "transcript" -> renderTranscript(content)
+      else -> renderMarkdown(content)
     }
     // SRT gets a real cue rather than a comment, because subtitle players drop comments — a
     // warning nobody can see is not a warning.
@@ -237,212 +298,305 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
     }
   }
 
-  /**
-   * The same document as the Markdown, described as blocks for the page.
-   *
-   * Deliberately the same order and the same sections: somebody who has been mailing the Markdown
-   * and switches to PDF should get the document they already know, not a redesign of it.
-   */
-  private fun pdfBlocks(
-    title: String, createdAt: Long, minutes: JSONArray, utterances: JSONArray,
-    nameById: Map<String, String>, edits: Map<String, String>,
-  ): List<PdfExport.Block> {
-    val grey = android.graphics.Color.rgb(0x6B, 0x70, 0x80)
-    val blocks = ArrayList<PdfExport.Block>()
-    blocks.add(PdfExport.Block(title, 22f, bold = true))
-    blocks.add(PdfExport.Block(dateStr(createdAt), 10f, color = grey, spaceBefore = 2f))
+  companion object {
+    /**
+     * The line at the foot of every exported document.
+     *
+     * An exported set of minutes is forwarded to people who were in the meeting and people who were
+     * not, which makes it the only part of this product that travels on its own. A quiet credit at
+     * the bottom is what turns a document somebody wrote into a document that says where it came
+     * from — so it stays at the FOOT, after the content, never over it. Nobody forwards a page with
+     * a logo stamped across their minutes.
+     *
+     * It is not a paywall. Free exports carry it and so do paid ones: the point is reach, and the
+     * free tier is the half that gets forwarded most.
+     */
+    const val EXPORT_CREDIT = "Created with Verbale — verbale.innocorelabs.com"
 
-    summaryOf(minutes, edits)?.let {
-      blocks.add(PdfExport.Block(it, 11f, spaceBefore = 18f))
-    }
-    narrativeOf(minutes, edits)?.let {
-      blocks.add(PdfExport.Block("Minutes", 14f, bold = true, spaceBefore = 22f))
-      blocks.add(PdfExport.Block(it, 11f, spaceBefore = 8f))
+    /** The three sections of an exported document that are lists rather than prose, in order. */
+    private val SECTIONS =
+      listOf("decision" to "Decisions", "action" to "Action items", "question" to "Open questions")
+
+    /** The kinds that live in `items`. `summary`, `narrative` and `headline` are documents. */
+    private val ITEM_KINDS = setOf("decision", "action", "question")
+
+    /**
+     * mm:ss, or h:mm:ss past the hour.
+     *
+     * A deliberate mirror of `provenanceLabel` in src/screens/meeting/ItemProvenance.tsx, and
+     * mirrors are two chances to drift — so ExportItemsTest pins the same vectors as
+     * ItemProvenance.test.tsx, exactly as ItemKeyTest pins `__tests__` vectors for [ItemKey].
+     * The one that matters is the hour boundary: 59:59 and 1:00:00 are one millisecond apart and a
+     * `%02d` on the leading field is invisible until a meeting runs long.
+     *
+     * `Locale.US` is not decoration. `String.format` with no locale uses the DEVICE's, and in
+     * locales with their own digits (`ar`, `fa`, `ne`) `%d` writes Arabic-Indic numerals — so an
+     * exported document's timestamps would render in a script the reader it was forwarded to
+     * cannot match against a player's clock. The JavaScript side has no such hazard, which is why
+     * this is the half of the mirror that carries the comment.
+     */
+    fun stamp(ms: Long): String {
+      val total = (ms / 1000).coerceAtLeast(0)
+      val s = total % 60
+      val m = (total / 60) % 60
+      val h = total / 3600
+      return if (h > 0) String.format(Locale.US, "%d:%02d:%02d", h, m, s)
+      else String.format(Locale.US, "%d:%02d", m, s)
     }
 
-    for ((kind, heading) in listOf(
-      "decision" to "Decisions", "action" to "Action items", "question" to "Open questions",
-    )) {
-      val items = byKind(minutes, kind, edits)
-      if (items.isEmpty()) continue
-      blocks.add(PdfExport.Block(heading, 14f, bold = true, spaceBefore = 22f))
-      for (item in items) {
-        // The bullet is part of the string rather than drawn separately, so a wrapped item
-        // indents under its own text instead of under the bullet.
-        blocks.add(PdfExport.Block("•  $item", 11f, spaceBefore = 6f, indent = 8f))
+    /**
+     * The decisions, actions and questions of a meeting, merged from the two tables that hold
+     * them, each with the user's correction in place of the pipeline's text.
+     *
+     * A DELIBERATE MIRROR of `toItemRows` in src/screens/meeting/shared.tsx, down to the guard,
+     * because the document a person exports and the screen they exported it from must not disagree
+     * about which rows a meeting has. Both halves of the mirror are transitional and both go the
+     * same way:
+     *
+     *  - **A hand-typed row still lives in `minutes`.** `db.addUserMinute` writes a `minutes` row
+     *    with source='user' and no item until **Task 12**, so exporting `items` alone would drop a
+     *    decision somebody typed out of the document they typed it for — silently, since nothing
+     *    counts the rows. It is merged back in here, and Task 12 deletes this half.
+     *  - **A meeting with NO items falls back to its `minutes` entirely.** `ensureItems` needs the
+     *    native core and MeetingScreen swallows its failure on purpose, so a pre-items meeting can
+     *    be on screen — and exported — unmigrated. Items-only would hand somebody an empty
+     *    document with a summary at the top still counting seven actions. It heals on the next open.
+     *
+     * THE EDIT KEY, which is the part that would fail in silence. A row that has an item id is
+     * corrected under `item/<id>`, so a correction now survives the item being re-worded by a
+     * reprocess — the same property `item_done` gives a tick. A row that has no id keeps the
+     * `minute/<hash-of-its-text>` key it has always had, because there is nothing else to key it
+     * on. `AudioDb.carryEditsOntoItems` is what moves an existing correction from the second shape
+     * to the first, and it runs before anything reads a meeting; the two shapes are read together
+     * here because the second population does not go away until Task 12.
+     */
+    fun exportItems(
+      items: JSONArray,
+      minutes: JSONArray,
+      edits: Map<String, String>,
+    ): List<ExportItem> {
+      val out = ArrayList<ExportItem>()
+      for (i in 0 until items.length()) {
+        val o = items.getJSONObject(i)
+        val text = o.getString("text")
+        out.add(
+          ExportItem(
+            o.getString("kind"),
+            edits["item/" + o.getString("id")] ?: text,
+            o.getLong("anchor_start_ms"),
+          ),
+        )
       }
+
+      val unmigrated = items.length() == 0
+      for (i in 0 until minutes.length()) {
+        val o = minutes.getJSONObject(i)
+        val kind = o.getString("kind")
+        if (kind !in ITEM_KINDS) continue
+        // Stated as what is kept rather than as what is skipped, the same way toItemRows states
+        // it: "keep this row if the meeting has no items to show instead, or if a person typed
+        // it". Task 12 strips the second disjunct and leaves the first standing.
+        val keep = unmigrated || o.optString("source") == "user"
+        if (!keep) continue
+        val content = o.getString("content")
+        out.add(ExportItem(kind, edits["minute/" + ItemKey.of(content)] ?: content, null))
+      }
+      return out
     }
 
-    if (utterances.length() > 0) {
-      blocks.add(PdfExport.Block("Transcript", 14f, bold = true, spaceBefore = 24f))
+    /** The transcript, attributed and corrected, in the shape the renderers read. */
+    fun turnsOf(
+      utterances: JSONArray,
+      nameById: Map<String, String>,
+      edits: Map<String, String>,
+    ): List<ExportTurn> {
+      val out = ArrayList<ExportTurn>()
       for (i in 0 until utterances.length()) {
         val u = utterances.getJSONObject(i)
-        val who = nameById[u.optString("speaker_id")] ?: "Speaker"
-        blocks.add(PdfExport.Block(who, 9f, bold = true, color = grey, spaceBefore = 10f))
-        blocks.add(PdfExport.Block(said(u, edits), 11f, spaceBefore = 2f))
+        out.add(
+          ExportTurn(
+            nameById[u.optString("speaker_id")] ?: "Speaker",
+            said(u, edits),
+            u.getLong("start_ms"),
+            u.getLong("end_ms"),
+          ),
+        )
       }
+      return out
     }
-    return blocks
-  }
 
-  private fun dateStr(ms: Long): String =
-    SimpleDateFormat("EEE d MMM yyyy, HH:mm", Locale.getDefault()).format(Date(ms))
-
-  /** Minute contents of one kind, each with the user's correction in place of the pipeline's text. */
-  private fun byKind(minutes: JSONArray, kind: String, edits: Map<String, String>): List<String> {
-    val out = ArrayList<String>()
-    for (i in 0 until minutes.length()) {
-      val o = minutes.getJSONObject(i)
-      if (o.getString("kind") != kind) continue
-      val content = o.getString("content")
-      out.add(edits["minute/" + ItemKey.of(content)] ?: content)
-    }
-    return out
-  }
-
-  /**
-   * The overview at the top of the document, best version first.
-   *
-   * A hand-written one wins outright — a summary somebody typed is the summary of that meeting,
-   * whatever a model did or did not manage. Then the model's prose, then the rule-composed
-   * overview, which is the free tier's floor and a whole paragraph in its own right (see
-   * composeSummary in cpp/minutes/minutes_extractor.cpp).
-   *
-   * Order matters because both rows can exist at once: `replaceMinutes` is scoped by source, so a
-   * narrated meeting keeps its rule summary alongside the model's. Reading them in rowid order —
-   * which is what this used to do — handed a paying subscriber the rule row, because that one was
-   * written first.
-   */
-  private fun summaryOf(minutes: JSONArray, edits: Map<String, String>): String? {
-    edits["summary/doc"]?.let { return it }
-    var fallback: String? = null
-    for (i in 0 until minutes.length()) {
-      val o = minutes.getJSONObject(i)
-      if (o.getString("kind") != "summary") continue
-      val content = o.getString("content")
-      if (o.optString("source") == "llm") return content
-      if (fallback == null) fallback = content
-    }
-    return fallback
-  }
-
-  /**
-   * The written-up minutes — the model's prose, or the user's correction of it.
-   *
-   * This was missing from the export entirely, which meant the MOM tab's main content — the thing
-   * the tab describes as "the document you would send someone" — was the one part of the meeting
-   * that could not be sent. The overview above it is two or three sentences; this is the write-up.
-   */
-  private fun narrativeOf(minutes: JSONArray, edits: Map<String, String>): String? {
-    edits["narrative/doc"]?.let { return it }
-    for (i in 0 until minutes.length()) {
-      val o = minutes.getJSONObject(i)
-      if (o.getString("kind") == "narrative" && o.optString("source") == "llm") {
-        return o.getString("content")
+    /**
+     * The overview at the top of the document, best version first.
+     *
+     * A hand-written one wins outright — a summary somebody typed is the summary of that meeting,
+     * whatever a model did or did not manage. Then the model's prose, then the rule-composed
+     * overview, which is the free tier's floor and a whole paragraph in its own right (see
+     * composeSummary in cpp/minutes/minutes_extractor.cpp).
+     *
+     * Order matters because both rows can exist at once: `replaceMinutes` is scoped by source, so a
+     * narrated meeting keeps its rule summary alongside the model's. Reading them in rowid order —
+     * which is what this used to do — handed a paying subscriber the rule row, because that one was
+     * written first.
+     */
+    fun summaryOf(minutes: JSONArray, edits: Map<String, String>): String? {
+      edits["summary/doc"]?.let { return it }
+      var fallback: String? = null
+      for (i in 0 until minutes.length()) {
+        val o = minutes.getJSONObject(i)
+        if (o.getString("kind") != "summary") continue
+        val content = o.getString("content")
+        if (o.optString("source") == "llm") return content
+        if (fallback == null) fallback = content
       }
+      return fallback
     }
-    return null
-  }
 
-  private fun said(u: JSONObject, edits: Map<String, String>): String =
-    edits["utterance/" + u.optString("id")] ?: u.getString("text")
-
-  private fun renderMarkdown(
-    title: String, createdAt: Long, minutes: JSONArray, utterances: JSONArray,
-    nameById: Map<String, String>, edits: Map<String, String>,
-  ): String {
-    val sb = StringBuilder()
-    sb.append("# ").append(title).append("\n\n")
-    sb.append("_").append(dateStr(createdAt)).append("_\n\n")
-    summaryOf(minutes, edits)?.let { sb.append(it).append("\n\n") }
-    narrativeOf(minutes, edits)?.let { sb.append("## Minutes\n\n").append(it).append("\n\n") }
-    val sections = listOf("decision" to "Decisions", "action" to "Action items", "question" to "Open questions")
-    for ((kind, heading) in sections) {
-      val items = byKind(minutes, kind, edits)
-      if (items.isNotEmpty()) {
-        sb.append("## ").append(heading).append("\n\n")
-        for (it in items) sb.append("- ").append(it).append("\n")
-        sb.append("\n")
+    /**
+     * The written-up minutes — the model's prose, or the user's correction of it.
+     *
+     * This was missing from the export entirely, which meant the MOM tab's main content — the thing
+     * the tab describes as "the document you would send someone" — was the one part of the meeting
+     * that could not be sent. The overview above it is two or three sentences; this is the write-up.
+     */
+    fun narrativeOf(minutes: JSONArray, edits: Map<String, String>): String? {
+      edits["narrative/doc"]?.let { return it }
+      for (i in 0 until minutes.length()) {
+        val o = minutes.getJSONObject(i)
+        if (o.getString("kind") == "narrative" && o.optString("source") == "llm") {
+          return o.getString("content")
+        }
       }
+      return null
     }
-    sb.append("## Transcript\n\n")
-    for (i in 0 until utterances.length()) {
-      val u = utterances.getJSONObject(i)
-      val who = nameById[u.optString("speaker_id")] ?: "Speaker"
-      sb.append("**").append(who).append(":** ").append(said(u, edits)).append("\n\n")
-    }
-    return sb.toString()
-  }
 
-  private fun renderText(
-    title: String, createdAt: Long, minutes: JSONArray, utterances: JSONArray,
-    nameById: Map<String, String>, edits: Map<String, String>,
-  ): String {
-    val sb = StringBuilder()
-    sb.append(title).append("\n").append(dateStr(createdAt)).append("\n\n")
-    summaryOf(minutes, edits)?.let { sb.append(it).append("\n\n") }
-    narrativeOf(minutes, edits)?.let { sb.append("MINUTES\n").append(it).append("\n\n") }
-    val sections = listOf("decision" to "DECISIONS", "action" to "ACTION ITEMS", "question" to "OPEN QUESTIONS")
-    for ((kind, heading) in sections) {
-      val items = byKind(minutes, kind, edits)
-      if (items.isNotEmpty()) {
-        sb.append(heading).append("\n")
-        for (it in items) sb.append("  - ").append(it).append("\n")
-        sb.append("\n")
+    private fun said(u: JSONObject, edits: Map<String, String>): String =
+      edits["utterance/" + u.optString("id")] ?: u.getString("text")
+
+    private fun dateStr(ms: Long): String =
+      SimpleDateFormat("EEE d MMM yyyy, HH:mm", Locale.getDefault()).format(Date(ms))
+
+    /**
+     * One item, as a line of a forwarded document.
+     *
+     * THE STAMP LEADS THE LINE, and both halves of that are deliberate. A reader scanning a
+     * document somebody sent them finds the moment without reading the sentence — the column of
+     * timestamps down the left is the index. And a correction replaces [ExportItem.text] alone, so
+     * however far somebody rewrites the wording, the moment it was said stays exactly where it was:
+     * the one part of the line the user does not own is the one part that makes it checkable.
+     */
+    private fun bullet(item: ExportItem): String =
+      if (item.anchorStartMs == null) item.text else "[" + stamp(item.anchorStartMs) + "] " + item.text
+
+    fun renderMarkdown(c: Content): String {
+      val sb = StringBuilder()
+      sb.append("# ").append(c.title).append("\n\n")
+      sb.append("_").append(dateStr(c.createdAt)).append("_\n\n")
+      c.summary?.let { sb.append(it).append("\n\n") }
+      c.narrative?.let { sb.append("## Minutes\n\n").append(it).append("\n\n") }
+      for ((kind, heading) in SECTIONS) {
+        val items = c.items.filter { it.kind == kind }
+        if (items.isNotEmpty()) {
+          sb.append("## ").append(heading).append("\n\n")
+          for (item in items) sb.append("- ").append(bullet(item)).append("\n")
+          sb.append("\n")
+        }
       }
+      sb.append("## Transcript\n\n")
+      for (t in c.turns) {
+        sb.append("**").append(t.speaker).append(":** ").append(t.text).append("\n\n")
+      }
+      return sb.toString()
     }
-    sb.append("TRANSCRIPT\n")
-    for (i in 0 until utterances.length()) {
-      val u = utterances.getJSONObject(i)
-      val who = nameById[u.optString("speaker_id")] ?: "Speaker"
-      sb.append(who).append(": ").append(said(u, edits)).append("\n")
+
+    fun renderText(c: Content): String {
+      val sb = StringBuilder()
+      sb.append(c.title).append("\n").append(dateStr(c.createdAt)).append("\n\n")
+      c.summary?.let { sb.append(it).append("\n\n") }
+      c.narrative?.let { sb.append("MINUTES\n").append(it).append("\n\n") }
+      for ((kind, heading) in SECTIONS) {
+        val items = c.items.filter { it.kind == kind }
+        if (items.isNotEmpty()) {
+          sb.append(heading.uppercase(Locale.US)).append("\n")
+          for (item in items) sb.append("  - ").append(bullet(item)).append("\n")
+          sb.append("\n")
+        }
+      }
+      sb.append("TRANSCRIPT\n")
+      for (t in c.turns) sb.append(t.speaker).append(": ").append(t.text).append("\n")
+      return sb.toString()
     }
-    return sb.toString()
-  }
 
-  /**
-   * Just what was said, attributed.
-   *
-   * No heading and no minutes: this is what someone copying from the Script tab is asking for —
-   * the record itself, to paste into a mail or a document that already has its own context. Blank
-   * lines between turns rather than one line each, because a wall of "Name: sentence" is unusable
-   * at meeting length.
-   */
-  private fun renderTranscript(
-    utterances: JSONArray, nameById: Map<String, String>, edits: Map<String, String>,
-  ): String {
-    val sb = StringBuilder()
-    for (i in 0 until utterances.length()) {
-      val u = utterances.getJSONObject(i)
-      val who = nameById[u.optString("speaker_id")] ?: "Speaker"
-      sb.append(who).append(": ").append(said(u, edits)).append("\n\n")
+    /**
+     * Just what was said, attributed.
+     *
+     * No heading and no minutes: this is what someone copying from the Script tab is asking for —
+     * the record itself, to paste into a mail or a document that already has its own context. Blank
+     * lines between turns rather than one line each, because a wall of "Name: sentence" is unusable
+     * at meeting length.
+     */
+    fun renderTranscript(c: Content): String {
+      val sb = StringBuilder()
+      for (t in c.turns) sb.append(t.speaker).append(": ").append(t.text).append("\n\n")
+      return sb.toString().trimEnd()
     }
-    return sb.toString().trimEnd()
-  }
 
-  private fun renderSrt(
-    utterances: JSONArray, nameById: Map<String, String>, edits: Map<String, String>,
-  ): String {
-    val sb = StringBuilder()
-    for (i in 0 until utterances.length()) {
-      val u = utterances.getJSONObject(i)
-      val who = nameById[u.optString("speaker_id")] ?: "Speaker"
-      sb.append(i + 1).append("\n")
-      sb.append(srtTime(u.getLong("start_ms"))).append(" --> ").append(srtTime(u.getLong("end_ms"))).append("\n")
-      sb.append(who).append(": ").append(said(u, edits)).append("\n\n")
+    fun renderSrt(c: Content): String {
+      val sb = StringBuilder()
+      c.turns.forEachIndexed { i, t ->
+        sb.append(i + 1).append("\n")
+        sb.append(srtTime(t.startMs)).append(" --> ").append(srtTime(t.endMs)).append("\n")
+        sb.append(t.speaker).append(": ").append(t.text).append("\n\n")
+      }
+      return sb.toString()
     }
-    return sb.toString()
-  }
 
-  private fun srtTime(ms: Long): String {
-    val h = ms / 3600000
-    val m = (ms % 3600000) / 60000
-    val s = (ms % 60000) / 1000
-    val milli = ms % 1000
-    return String.format(Locale.US, "%02d:%02d:%02d,%03d", h, m, s, milli)
-  }
+    private fun srtTime(ms: Long): String {
+      val h = ms / 3600000
+      val m = (ms % 3600000) / 60000
+      val s = (ms % 60000) / 1000
+      val milli = ms % 1000
+      return String.format(Locale.US, "%02d:%02d:%02d,%03d", h, m, s, milli)
+    }
 
-  companion object {
+    /**
+     * The same document as the Markdown, described as blocks for the page.
+     *
+     * Deliberately the same order and the same sections: somebody who has been mailing the Markdown
+     * and switches to PDF should get the document they already know, not a redesign of it.
+     */
+    fun pdfBlocks(c: Content): List<PdfExport.Block> {
+      val grey = android.graphics.Color.rgb(0x6B, 0x70, 0x80)
+      val blocks = ArrayList<PdfExport.Block>()
+      blocks.add(PdfExport.Block(c.title, 22f, bold = true))
+      blocks.add(PdfExport.Block(dateStr(c.createdAt), 10f, color = grey, spaceBefore = 2f))
+
+      c.summary?.let { blocks.add(PdfExport.Block(it, 11f, spaceBefore = 18f)) }
+      c.narrative?.let {
+        blocks.add(PdfExport.Block("Minutes", 14f, bold = true, spaceBefore = 22f))
+        blocks.add(PdfExport.Block(it, 11f, spaceBefore = 8f))
+      }
+
+      for ((kind, heading) in SECTIONS) {
+        val items = c.items.filter { it.kind == kind }
+        if (items.isEmpty()) continue
+        blocks.add(PdfExport.Block(heading, 14f, bold = true, spaceBefore = 22f))
+        for (item in items) {
+          // The bullet is part of the string rather than drawn separately, so a wrapped item
+          // indents under its own text instead of under the bullet.
+          blocks.add(PdfExport.Block("•  " + bullet(item), 11f, spaceBefore = 6f, indent = 8f))
+        }
+      }
+
+      if (c.turns.isNotEmpty()) {
+        blocks.add(PdfExport.Block("Transcript", 14f, bold = true, spaceBefore = 24f))
+        for (t in c.turns) {
+          blocks.add(PdfExport.Block(t.speaker, 9f, bold = true, color = grey, spaceBefore = 10f))
+          blocks.add(PdfExport.Block(t.text, 11f, spaceBefore = 2f))
+        }
+      }
+      return blocks
+    }
+
     /**
      * The line that travels with a forced transcript wherever it goes.
      *

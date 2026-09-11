@@ -111,10 +111,11 @@ const ITEM_KINDS: readonly string[] = ['decision', 'action', 'question'];
  *  - a row somebody TYPED (`minutes` with source='user'), which Task 12 moves across;
  *  - every row of a meeting whose item migration has not run — see [toItemRows].
  *
- * `itemId` is the whole difference. A row that has one is ticked in `item_done` by its id; a row
- * that has none has no id worth keying on and keeps the text hash it has always had. Read
- * `itemId === null` as "this row is not in `items` yet", never as "this row is the user's" —
- * `mine` says that, and after Task 12 a user row will have both.
+ * `itemId` is the whole difference. A row that has one is ticked in `item_done` and corrected in
+ * `edits` by its id, so both survive the wording changing under it; a row that has none has no id
+ * worth keying on and keeps the text hash it has always had, for both. Read `itemId === null` as
+ * "this row is not in `items` yet", never as "this row is the user's" — `mine` says that, and
+ * after Task 12 a user row will have both.
  */
 export type ItemRow = {
   /** React key. Namespaced by table, because the two id spaces are unrelated. */
@@ -122,8 +123,15 @@ export type ItemRow = {
   kind: ItemRowKind;
   /** What to show, and what an edit prompt starts from. Never what a key is computed on. */
   text: string;
-  /** The `edits` key: [itemKey] of the STORED string. See [toItemRows] for why they can differ. */
-  editKey: string;
+  /**
+   * [itemKey] of the row's STORED string — which is not always what [text] shows; see [toItemRows].
+   *
+   * The key of everything that CANNOT be keyed on an id: the `action_done` tick of a row with no
+   * item, and its `edits` row. Not the edits key for a row that HAS an item — that one is keyed on
+   * the id, which is what [editTargetOf] is for, and reaching for this field instead is how a
+   * correction gets written where nothing will look for it.
+   */
+  textKey: string;
   /** The `items` row id, or null for a row that is still only a minute. */
   itemId: string | null;
   /** The `minutes` row id, or null. Removal needs it, and only a source='user' row has removal. */
@@ -161,23 +169,14 @@ export type ItemRow = {
  * "an item with no sources is not a failure to find evidence; it is an item that never claimed
  * any" — and a row with no stable id keeps the tick key it already has.
  *
- * WHY AN EXISTING CORRECTION STILL RESOLVES. Corrections are keyed `target_kind='minute'`,
- * `target_key=itemKey(<the stored minutes content>)`, and Task 11 — not this — is what moves them
- * onto item ids. They keep resolving because `itemKey(item.text)` reproduces
- * `itemKey(minute.content)` for a rule-extracted row: `Minutes.extract` and `Minutes.extractItems`
- * are the same rules over the same turns, which is the property `AudioDb.backfillItems` already
- * bets every existing tick in every existing library on. The two strings are not always identical
- * — the item path asciifies non-breaking spaces before splitting sentences and the minutes path
- * does not — but `itemKey` collapses every whitespace run to one space before hashing, so the
- * difference cannot reach the key. Verified against the paired C++ goldens as well as argued; see
- * ItemProvenance.test.tsx.
+ * WHERE A CORRECTION TO ONE OF THESE ROWS LIVES: [editTargetOf], not [ItemRow.textKey].
  */
 export function toItemRows(items: Item[], minutes: Minute[]): ItemRow[] {
   const rows: ItemRow[] = items.map(it => ({
     key: `i:${it.id}`,
     kind: it.kind,
     text: it.text,
-    editKey: itemKey(it.text),
+    textKey: itemKey(it.text),
     itemId: it.id,
     minuteId: null,
     // Nothing writes 'user' into `items.gen_version` yet; Task 12 is what does, and this is the
@@ -200,7 +199,7 @@ export function toItemRows(items: Item[], minutes: Minute[]): ItemRow[] {
       // added on the one build that JSON-encoded them (see minuteText), and the key has to stay on
       // the raw column because the export renderer hashes that column in Kotlin.
       text: minuteText(m),
-      editKey: itemKey(m.content),
+      textKey: itemKey(m.content),
       itemId: null,
       minuteId: m.id,
       mine: m.source === 'user',
@@ -208,6 +207,30 @@ export function toItemRows(items: Item[], minutes: Minute[]): ItemRow[] {
     });
   }
   return rows;
+}
+
+/**
+ * Where a correction to this row is stored.
+ *
+ * A row with an item is keyed on `items.id`, and that is the point of the whole move: an id
+ * survives the text being rewritten, so a correction now outlives a reprocess that changes a word
+ * — the same property `item_done` gives a tick, and one no hash of the text can have, because the
+ * hash moves with the text.
+ *
+ * A row with no item keeps `minute/<hash of its stored text>`, because it has nothing else to be
+ * keyed on. That population is a row somebody typed themselves, which lives in `minutes` until
+ * Task 12, plus every row of a meeting whose migration has not run.
+ *
+ * BOTH SIDES MOVED TOGETHER, and they had to. The reader here, the writer in
+ * `MeetingScreen.onEditRow`, and `FileExportModule` in Kotlin all agree on this key; changing one
+ * of them alone loses every correction in whichever direction it goes, silently, because `edits`
+ * has a foreign key to `meetings` and none to `items` — an unmatched join returns nothing and
+ * nothing errors. `AudioDb.carryEditsOntoItems` is what moves the rows every shipped build wrote.
+ */
+export function editTargetOf(row: ItemRow): { kind: EditTarget; key: string } {
+  return row.itemId
+    ? { kind: 'item', key: row.itemId }
+    : { kind: 'minute', key: row.textKey };
 }
 
 // ---------------------------------------------------------------------------------------------

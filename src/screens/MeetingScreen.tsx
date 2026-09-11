@@ -52,6 +52,7 @@ import type {
 import {
   DOC_KEY,
   composeAction,
+  editTargetOf,
   toEditMap,
   type EditMap,
   type ItemRow,
@@ -364,10 +365,11 @@ export default function MeetingScreen({ route, navigation }: Props) {
   /**
    * Save a correction, or a newly typed item.
    *
-   * Corrections go into the `edits` side table rather than over the text they correct. Ticked
-   * actions are keyed on a hash of the STORED minute text, so rewriting it in place would untick
-   * every item the user had worked through — and reprocessing would overwrite their words anyway,
-   * since it owns the `rule` rows. A side row survives both and makes revert a single delete.
+   * Corrections go into the `edits` side table rather than over the text they correct, because
+   * reprocessing owns and rewrites the `rule` rows and would overwrite a person's words on the
+   * next pass. A side row survives that and makes revert a single delete. `spec.target` says where
+   * it is keyed — [editTargetOf] for an item row, `DOC_KEY` for the summary and the write-up, the
+   * utterance id for a transcript line — and this handler never invents one.
    */
   const onSaveEdit = useCallback(
     async (value: string, extra: string) => {
@@ -432,24 +434,33 @@ export default function MeetingScreen({ route, navigation }: Props) {
   /**
    * Open the prompt on one item — the correction path shared by the MOM and Actions tabs.
    *
-   * Keyed on `row.editKey`, which is [itemKey] of the STORED string and never of what is
-   * displayed: the export renderer computes the same key in Kotlin (ItemKey.of) straight from the
-   * database column, so a key derived from the display text would write an edit the exported
-   * document could never find. The rows are `items` now and the key still hashes text, because
-   * moving `edits` onto item ids is Task 11's job, not this one's — see toItemRows for why an
-   * item's text reproduces the key its minute already had.
+   * Keyed by [editTargetOf] and never by anything computed here: an extracted row is corrected on
+   * its `items.id`, a row that has no item on the hash of its STORED text — never on what is
+   * displayed, which is already the correction on a second edit. The Kotlin export renderer reads
+   * exactly these two keys off the database, so a writer that disagreed with it would save a
+   * correction the exported document could never find, and nothing would report it.
    */
   const onEditRow = useCallback(
     (row: ItemRow) => {
+      const target = editTargetOf(row);
       setEditing({
         title: 'Correct this line',
         hint: 'Your wording replaces what the app wrote. The original is kept, and you can put it back.',
-        initial: edits.get(`minute/${row.editKey}`) ?? row.text,
+        initial: edits.get(`${target.kind}/${target.key}`) ?? row.text,
         multiline: true,
-        target: { kind: 'minute', key: row.editKey },
+        target,
       });
     },
     [edits],
+  );
+
+  /** Undo a correction, wherever this row's correction happens to live. */
+  const onRevertRow = useCallback(
+    (row: ItemRow) => {
+      const target = editTargetOf(row);
+      onRevertEdit(target.kind, target.key);
+    },
+    [onRevertEdit],
   );
 
   /**
@@ -940,7 +951,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 onCopy={onCopy}
                 edits={edits}
                 onEditItem={onEditRow}
-                onRevertItem={key => onRevertEdit('minute', key)}
+                onRevertItem={onRevertRow}
                 onRemoveItem={onRemoveMinute}
                 onAdd={onAddMinute}
                 onOpenProvenance={openProvenance}
@@ -987,7 +998,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 minutes={minutes}
                 edits={edits}
                 onEditItem={onEditRow}
-                onRevertItem={key => onRevertEdit('minute', key)}
+                onRevertItem={onRevertRow}
                 onRemoveItem={onRemoveMinute}
                 onAdd={onAddMinute}
                 onOpenProvenance={openProvenance}

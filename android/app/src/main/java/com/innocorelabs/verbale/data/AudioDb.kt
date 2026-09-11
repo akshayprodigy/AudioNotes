@@ -1053,10 +1053,13 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    * field HERE, beside the query; it does not re-derive the predicate at the call site.
    *
    * `edits` carries a foreign key to `meetings` only — none to `items` — and nothing anywhere
-   * cleans up orphans, so an edit row outlives an item id that will never be re-minted. The join in
-   * [items] is latent for the same reason it is correct: Task 11 is what starts writing
-   * `target_kind='item'`, so it returns nothing today, on purpose, and no compile error would say
-   * otherwise. Whoever implements that write owns this note.
+   * cleans up orphans, so an edit row outlives an item id that will never be re-minted. That is
+   * also why the join in [items] was LATENT until Task 11: it asks for `target_kind='item'` and
+   * nothing wrote one, so it returned nothing, with no compile error to say so. It is live now —
+   * [carryEditsOntoItems] is the write — and the consequence is worth stating, because it was a
+   * real hole rather than a formality: until that carry ran, an item somebody had rewritten by
+   * hand read as UNTOUCHED, and rule 4 deletes an untouched row the rules no longer produce. A
+   * person's own words could be swept away by a reprocess with nothing reporting it.
    */
   data class StoredItem(
     val id: String,
@@ -1117,7 +1120,9 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
         "FROM items i " +
         // Both joins are on a primary key, so neither can multiply the rows.
         "LEFT JOIN item_done d ON d.meeting_id=i.meeting_id AND d.item_id=i.id " +
-        // Latent until Task 11 writes the first target_kind='item' row, and correct as it stands.
+        // Live since Task 11: [carryEditsOntoItems] moves every correction onto the item id, and
+        // MeetingScreen writes new ones there. A correction to a row that has no item yet is still
+        // keyed target_kind='minute' and is invisible here, correctly — it has no item to protect.
         "LEFT JOIN edits e ON e.meeting_id=i.meeting_id AND e.target_kind='item' " +
         "AND e.target_key=i.id " +
         // The order this method's KDoc promises, and the one Reconciler's tie-break is stated in.
@@ -1257,6 +1262,113 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
   }
 
   /**
+   * Move a meeting's hand corrections off the minutes they were written against and onto the items.
+   *
+   * THE MOVE IS THE WHOLE OF TASK 11's RISK. Every correction anybody has ever made is an `edits`
+   * row keyed `target_kind='minute'`, `target_key=`[ItemKey]`.of(<the stored minutes content>)`.
+   * Task 11 switches every reader — this file's `touched` join, the meeting tabs, and the export
+   * renderer that produces the document people forward — to `target_kind='item'` keyed on
+   * `items.id`. `edits` carries a foreign key to `meetings` and NONE to `items`, and nothing
+   * anywhere cleans up orphans, so switching the readers WITHOUT this compiles, runs, throws
+   * nothing, and returns an empty join: every correction in every install, silently gone.
+   *
+   * WHY AN ID AND NOT THE HASH, since the hash worked. The hash moves with the text, so a
+   * correction is lost the moment a reprocess re-words the line it corrects — the same defect
+   * `item_done` was created to end for ticks. The id survives, because `Reconciler` hands a matched
+   * row its id back. It also finally makes the [StoredItem.touched] edit signal true, which is what
+   * stops rule 4 deleting somebody's own words when the rules stop extracting the line.
+   *
+   * WHAT IT RESTS ON is the identity [backfillItems] already bets every existing tick on:
+   * `ItemKey.of(item.text)` reproduces `ItemKey.of(minute.content)`, because `Minutes.extract` and
+   * `Minutes.extractItems` are the same rules over the same turns. NOT on the two strings being
+   * equal — they are not always: `extractItems` asciifies whitespace before splitting sentences and
+   * `extractMinutes` does not, so a non-breaking space survives into the minute and becomes a plain
+   * space in the item. `ItemKey` collapses whitespace runs before hashing, which is the only reason
+   * the key still matches. `BackfillEditsTest` seeds the string `Minutes.extract` really produces
+   * rather than a literal, so it fails on the build where the two extractors drift.
+   *
+   * A CORRECTION IT CANNOT PLACE IS LEFT ALONE, never deleted. Three populations reach that branch
+   * and only one is a real orphan: a row somebody TYPED, which lives in `minutes` with no item
+   * until Task 12 and whose correction every reader still finds on this exact key; a meeting whose
+   * migration has not run, which simply has no items to match yet; and a correction whose minute
+   * the rules no longer produce. Deleting on a failure to match would take the first two with the
+   * third, and the third costs a few dozen bytes — while a correction is the only thing in this
+   * database that cannot be recomputed from anything else.
+   *
+   * IDEMPOTENT FROM THE DATA, not from a marker, which is why it can be called on every open: after
+   * a carry there are no `target_kind='minute'` rows left for the items to claim, so a second pass
+   * is one indexed lookup that returns nothing — the `edits` primary key is
+   * (meeting_id, target_kind, target_key), so the read below is a range scan of exactly the rows it
+   * wants. That independence from a marker is deliberate: see the callers.
+   *
+   * TWO CALLERS, and each reaches a population the other cannot.
+   *  - [backfillItems], inside its transaction, for the meeting being migrated right now — the
+   *    items and the corrections that belong to them land together or neither does.
+   *  - `StorageModule.ensureItems`, for every meeting [backfillItems] will never run again: one the
+   *    Task 8b sweep has already stamped `items_migrated_at`, and one the current pipeline wrote
+   *    items for directly, which carries no marker and is excluded by `items().isEmpty()` instead.
+   *    Both can hold `minute`-keyed corrections, and putting the carry ONLY in [backfillItems]
+   *    would leave exactly the meetings most likely to have them.
+   *
+   * NO REINDEX, unlike [putEdit] and [clearEdit] which both call one. Nothing in `search_fts` is
+   * built from `edits` — `indexMinutes` indexes `content_json` and `indexItems` indexes
+   * `items.text` — so a correction is not searchable either before or after this, and re-indexing
+   * would rewrite every row of the meeting to produce identical text.
+   *
+   * @return how many `edits` rows were rewritten; 0 when there was nothing to do.
+   */
+  fun carryEditsOntoItems(meetingId: String): Int {
+    val pending = HashMap<String, Pair<String, Long>>()
+    db.rawQuery(
+      "SELECT target_key,content,edited_at FROM edits WHERE meeting_id=? AND target_kind='minute'",
+      arrayOf(meetingId),
+    ).use { c ->
+      while (c.moveToNext()) pending[c.getString(0)] = c.getString(1) to c.getLong(2)
+    }
+    if (pending.isEmpty()) return 0
+
+    // Id and text, and deliberately NOT [items]: that method assembles `touched` out of four
+    // tables, and none of it is asked for here. It also reads `edits` itself, which is the table
+    // this is in the middle of rewriting.
+    val rows = ArrayList<Pair<String, String>>()
+    db.rawQuery("SELECT id,text FROM items WHERE meeting_id=?", arrayOf(meetingId)).use { c ->
+      while (c.moveToNext()) rows.add(c.getString(0) to c.getString(1))
+    }
+
+    var moved = 0
+    db.beginTransaction()
+    try {
+      for ((id, text) in rows) {
+        val key = ItemKey.of(text)
+        val (content, editedAt) = pending[key] ?: continue
+        // OR IGNORE, not OR REPLACE: a row already keyed on this item was written by THIS build
+        // against this row's identity, so it is both newer and more specific than one inherited
+        // from the minute. The stale minute row is deleted either way — left behind, it would come
+        // straight back the next time somebody reverted the item-keyed one.
+        db.execSQL(
+          "INSERT OR IGNORE INTO edits(meeting_id,target_kind,target_key,content,edited_at) " +
+            "VALUES(?,'item',?,?,?)",
+          // The day it was WRITTEN, not the day it was migrated — the same loss `done_at` is
+          // carried to avoid, and the original is recoverable from nowhere afterwards.
+          arrayOf<Any?>(meetingId, id, content, editedAt),
+        )
+        // Two items with identical text hash to one key, and both get the correction — which is
+        // what the old reader did too, since it hashed each minute of the kind separately and
+        // matched them all. The delete is by key and so runs at most once per key.
+        db.execSQL(
+          "DELETE FROM edits WHERE meeting_id=? AND target_kind='minute' AND target_key=?",
+          arrayOf<Any?>(meetingId, key),
+        )
+        moved++
+      }
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
+    return moved
+  }
+
+  /**
    * Give a meeting recorded before this feature its items, and move its ticks onto them.
    *
    * The rule pass runs over the STORED utterances — pure text, no ASR, no diarization, no audio at
@@ -1331,6 +1443,12 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
           )
         }
       }
+
+      // The corrections, in the same transaction and for the same reason as the ticks: a process
+      // killed between the items and the corrections would leave a meeting that HAS items, and so
+      // never migrates again, with every correction still keyed on a minute nothing reads.
+      carryEditsOntoItems(meetingId)
+
       // "We tried", stamped LAST and inside the same transaction as everything above, so a
       // process killed half way leaves a meeting that will be migrated again rather than one that
       // never will be. It is not "we found something": [ensureItems] and [unmigratedMeetings] both
@@ -1682,8 +1800,13 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       // moves, reprocessing still overwrites what it owns, and an edit can be reverted by
       // deleting one row.
       //
-      // target_key is the ORIGINAL content's identity: an utterance id for kind='utterance',
-      // otherwise the same normalised-text hash the worklist uses.
+      // target_key is the thing being corrected, named the most durable way it can be named:
+      // an utterance id for kind='utterance'; an `items` id for kind='item', which is what lets a
+      // correction survive a reprocess that re-words the line (see AudioDb.carryEditsOntoItems);
+      // DOC_KEY for kind='summary'/'narrative', there being one of each per meeting; and the same
+      // normalised-text hash the worklist uses for kind='minute', which is what every shipped
+      // build wrote for a decision, an action or a question and is now only used by the rows that
+      // have no item to key on — the ones a person typed, until Task 12.
       """CREATE TABLE IF NOT EXISTS edits(
            meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
            target_kind TEXT NOT NULL,
