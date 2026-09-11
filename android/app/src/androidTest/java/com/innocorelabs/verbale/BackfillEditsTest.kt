@@ -222,7 +222,11 @@ class BackfillEditsTest {
       db.backfillItems(m)
       db.putEdit(m, "minute", ItemKey.of("Something nobody ever said in this meeting"), "Kept")
 
-      db.carryEditsOntoItems(m)
+      assertEquals(
+        "the carry reported work it did not do — it contracts the number of rows REWRITTEN, and " +
+          "nothing here can be placed on an item",
+        0, db.carryEditsOntoItems(m),
+      )
 
       val rows = editRows(m)
       assertEquals("somebody's own words were deleted for not matching", 1, rows.length())
@@ -231,14 +235,31 @@ class BackfillEditsTest {
     }
   }
 
-  /** Twice is the same as once: the carry re-runs on every open and must be a no-op after the first. */
+  /**
+   * Twice is the same as once — and the second pass actually runs.
+   *
+   * The carry is called on every open, so a re-run is the ordinary case rather than an accident.
+   * The first version of this test seeded only a CARRYABLE correction, so by the second pass there
+   * was nothing left keyed `minute`, the `pending.isEmpty()` early return fired, and the loop it
+   * claims to be testing was never entered — it asserted the idempotence of a function that had
+   * already returned. A correction that can NEVER be carried is seeded alongside, which is not a
+   * contrivance: a hand-typed row keeps its `minute` key by design until Task 12, so this is the
+   * state of every meeting somebody has typed a decision into.
+   */
   @Test fun runningTheCarryTwiceChangesNothing() {
     inAMeeting { m ->
       correctAnActionTheOldWay(m)
+      // Stands in for a hand-typed row: a correction with no item that will ever match it, so
+      // `pending` is still non-empty on the second pass and the match loop really runs.
+      db.putEdit(m, "minute", ItemKey.of("A decision nobody ever extracted"), "Typed by hand")
       db.backfillItems(m)
       val first = editRows(m).toString()
+      assertEquals("precondition: one carried and one left behind", 2, editRows(m).length())
 
-      assertEquals("a second pass found work the first should have finished", 0, db.carryEditsOntoItems(m))
+      assertEquals(
+        "a second pass moved something the first should have finished",
+        0, db.carryEditsOntoItems(m),
+      )
       assertEquals(first, editRows(m).toString())
     }
   }
@@ -258,7 +279,10 @@ class BackfillEditsTest {
       db.putEdit(m, "item", action.id, "What the user typed most recently")
       db.putEdit(m, "minute", ItemKey.of(corrected), CORRECTION)
 
-      db.carryEditsOntoItems(m)
+      assertEquals(
+        "the carry reported a count other than the rows it rewrote",
+        1, db.carryEditsOntoItems(m),
+      )
 
       val rows = editRows(m)
       assertEquals("the stale minute row was left behind to come back on a revert", 1, rows.length())

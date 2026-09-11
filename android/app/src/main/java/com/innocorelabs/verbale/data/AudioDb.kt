@@ -1055,11 +1055,13 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    * `edits` carries a foreign key to `meetings` only — none to `items` — and nothing anywhere
    * cleans up orphans, so an edit row outlives an item id that will never be re-minted. That is
    * also why the join in [items] was LATENT until Task 11: it asks for `target_kind='item'` and
-   * nothing wrote one, so it returned nothing, with no compile error to say so. It is live now —
-   * [carryEditsOntoItems] is the write — and the consequence is worth stating, because it was a
-   * real hole rather than a formality: until that carry ran, an item somebody had rewritten by
-   * hand read as UNTOUCHED, and rule 4 deletes an untouched row the rules no longer produce. A
-   * person's own words could be swept away by a reprocess with nothing reporting it.
+   * nothing wrote one, so it returned nothing, with no compile error to say so. The join itself has
+   * not changed a character; what Task 11 added is the WRITERS — [carryEditsOntoItems] for the rows
+   * already on disk, `MeetingScreen.onEditRow` for new ones. The consequence is worth stating,
+   * because it was a real hole rather than a formality: until a correction is item-keyed, the item
+   * reads as UNTOUCHED, and rule 4 deletes an untouched row the rules no longer produce. A person's
+   * own words could be swept away by a reprocess with nothing reporting it — see [replaceItems] for
+   * the one window where that is still reachable.
    */
   data class StoredItem(
     val id: String,
@@ -1120,9 +1122,11 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
         "FROM items i " +
         // Both joins are on a primary key, so neither can multiply the rows.
         "LEFT JOIN item_done d ON d.meeting_id=i.meeting_id AND d.item_id=i.id " +
-        // Live since Task 11: [carryEditsOntoItems] moves every correction onto the item id, and
-        // MeetingScreen writes new ones there. A correction to a row that has no item yet is still
-        // keyed target_kind='minute' and is invisible here, correctly — it has no item to protect.
+        // UNCHANGED by Task 11 and live BECAUSE of it. This clause has always asked for
+        // target_kind='item'; what Task 11 added is the first code that writes one —
+        // [carryEditsOntoItems] for the rows already on disk, MeetingScreen for new ones. A
+        // correction to a row that has no item yet is still keyed target_kind='minute' and is
+        // invisible here, correctly: it has no item to protect.
         "LEFT JOIN edits e ON e.meeting_id=i.meeting_id AND e.target_kind='item' " +
         "AND e.target_key=i.id " +
         // The order this method's KDoc promises, and the one Reconciler's tie-break is stated in.
@@ -1163,6 +1167,21 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    * Every item row for the meeting is deleted and re-inserted, which is why `item_done`
    * deliberately has no foreign key to `items`: a cascade there would wipe every tick on every
    * reprocess.
+   *
+   * WHOEVER ADDS A NEW REPROCESS TRIGGER MUST READ THIS. `Reconciler` rule 4 deletes an untouched
+   * row the rules no longer produce, and a hand correction only counts towards `touched` once it
+   * has been moved onto the item's id by [carryEditsOntoItems]. So a meeting whose corrections are
+   * still `minute`-keyed — one nobody has opened since this build was installed — can lose a
+   * person's own words to a reprocess, silently.
+   *
+   * That window is CLOSED today, but by the call graph rather than by any guard here: every path
+   * that reaches this method arrives from a meeting screen that has already awaited
+   * `StorageModule.ensureItems`, which carries first. Nothing enforces it. A reprocess reachable
+   * from the library, from a notification action, or from a background sweep would reopen it — so
+   * a new trigger either routes through `ensureItems` or calls [carryEditsOntoItems] itself before
+   * it runs. Recorded rather than guarded because the guard would be a second call on the hot path
+   * for a caller that does not exist yet; Task 12 removes the `minute`-keyed population and with it
+   * the whole hazard.
    */
   fun replaceItems(meetingId: String, genVersion: String, incoming: List<Minutes.Item>) {
     db.beginTransaction()
@@ -1296,10 +1315,19 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    * database that cannot be recomputed from anything else.
    *
    * IDEMPOTENT FROM THE DATA, not from a marker, which is why it can be called on every open: after
-   * a carry there are no `target_kind='minute'` rows left for the items to claim, so a second pass
-   * is one indexed lookup that returns nothing — the `edits` primary key is
-   * (meeting_id, target_kind, target_key), so the read below is a range scan of exactly the rows it
-   * wants. That independence from a marker is deliberate: see the callers.
+   * a carry there is nothing left keyed `minute` for an item to claim. The `edits` primary key is
+   * (meeting_id, target_kind, target_key), so the first read below is a range scan of exactly the
+   * rows it wants, and a fully carried meeting stops there. That independence from a marker is
+   * deliberate: see the callers.
+   *
+   * IT IS NOT FREE FOR EVERY MEETING, and the exception is one this design creates on purpose. A
+   * hand-typed row keeps its `minute` key until Task 12, so a meeting holding one arrives here on
+   * EVERY open carrying a correction that can never match an item — `pending` is non-empty, and the
+   * first read cannot end it. Such a meeting re-reads its items and re-hashes their text each time:
+   * a few dozen string hashes over a list bounded by what fits on a screen, which is the honest
+   * shape of the cost rather than "one lookup that returns nothing". What it must NOT also pay is
+   * an empty transaction, which is why the matches are worked out BEFORE `beginTransaction` rather
+   * than inside it. Task 12 ends the case entirely.
    *
    * TWO CALLERS, and each reaches a population the other cannot.
    *  - [backfillItems], inside its transaction, for the meeting being migrated right now — the
@@ -1315,7 +1343,9 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    * `items.text` — so a correction is not searchable either before or after this, and re-indexing
    * would rewrite every row of the meeting to produce identical text.
    *
-   * @return how many `edits` rows were rewritten; 0 when there was nothing to do.
+   * @return how many `minute`-keyed corrections were resolved onto an item — moved, or, where the
+   *   item already carried its own correction, superseded and removed. 0 when there was nothing to
+   *   do, which includes the case where corrections are present but none of them belongs to an item.
    */
   fun carryEditsOntoItems(meetingId: String): Int {
     val pending = HashMap<String, Pair<String, Long>>()
@@ -1334,13 +1364,20 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     db.rawQuery("SELECT id,text FROM items WHERE meeting_id=?", arrayOf(meetingId)).use { c ->
       while (c.moveToNext()) rows.add(c.getString(0) to c.getString(1))
     }
+    if (rows.isEmpty()) return 0
 
-    var moved = 0
+    // Which corrections have a home, decided before anything is opened or written. `pending` being
+    // non-empty does not mean there is work: see the cost note above.
+    val moves = rows.mapNotNull { (id, text) ->
+      val key = ItemKey.of(text)
+      pending[key]?.let { Triple(id, key, it) }
+    }
+    if (moves.isEmpty()) return 0
+
     db.beginTransaction()
     try {
-      for ((id, text) in rows) {
-        val key = ItemKey.of(text)
-        val (content, editedAt) = pending[key] ?: continue
+      for ((id, key, edit) in moves) {
+        val (content, editedAt) = edit
         // OR IGNORE, not OR REPLACE: a row already keyed on this item was written by THIS build
         // against this row's identity, so it is both newer and more specific than one inherited
         // from the minute. The stale minute row is deleted either way — left behind, it would come
@@ -1359,13 +1396,15 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
           "DELETE FROM edits WHERE meeting_id=? AND target_kind='minute' AND target_key=?",
           arrayOf<Any?>(meetingId, key),
         )
-        moved++
       }
       db.setTransactionSuccessful()
     } finally {
       db.endTransaction()
     }
-    return moved
+    // `moves.size` rather than a counter incremented once per iteration: a counter that cannot
+    // differ from the list's length is a fact restated, and this file has already had one test
+    // asserting exactly such a counter.
+    return moves.size
   }
 
   /**

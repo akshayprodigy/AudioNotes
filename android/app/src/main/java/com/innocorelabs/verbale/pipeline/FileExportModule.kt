@@ -184,13 +184,13 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
       val withMarker = if (marker == null) blocks else buildList {
         addAll(blocks.take(2))
         add(PdfExport.Block(marker, 10f, bold = true,
-                            color = android.graphics.Color.rgb(0x8A, 0x5A, 0x00), spaceBefore = 14f))
+                            color = rgb(0x8A, 0x5A, 0x00), spaceBefore = 14f))
         addAll(blocks.drop(2))
       }
       // Last block on the last page, small and grey: a footer, not a stamp.
       val withCredit = withMarker + PdfExport.Block(
         EXPORT_CREDIT, 8f,
-        color = android.graphics.Color.rgb(0x8A, 0x8F, 0xA2), spaceBefore = 20f,
+        color = rgb(0x8A, 0x8F, 0xA2), spaceBefore = 20f,
       )
       return Document(title, "pdf", "", withCredit)
     }
@@ -472,6 +472,24 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
     private fun said(u: JSONObject, edits: Map<String, String>): String =
       edits["utterance/" + u.optString("id")] ?: u.getString("text")
 
+    /**
+     * Opaque ARGB from three channels — the arithmetic `Color.rgb` performs, spelled out.
+     *
+     * Not a style preference and not an optimisation. `Color.rgb` is a framework METHOD, and the
+     * android.jar a JVM unit test compiles against is the "mockable" one, where every framework
+     * method throws "not mocked" rather than running. One call to it made the ENTIRE block list
+     * untestable off a device — which is how [pdfBlocks] came to be public and in this companion
+     * so a JVM test could reach it, with no test reaching it. The PDF is the format people
+     * actually forward, so that was the wrong thing to leave unpinned.
+     *
+     * Value-identical by inspection and by the framework's own source, which is
+     * `0xFF000000 | (r << 16) | (g << 8) | b`. `Block.color` defaults to `Color.BLACK`, a
+     * compile-time constant FIELD, so it is inlined rather than called — that one is fine, and
+     * ExportItemsTest rendering a block list off a device is what proves it.
+     */
+    private fun rgb(r: Int, g: Int, b: Int): Int =
+      (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+
     private fun dateStr(ms: Long): String =
       SimpleDateFormat("EEE d MMM yyyy, HH:mm", Locale.getDefault()).format(Date(ms))
 
@@ -565,7 +583,7 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
      * and switches to PDF should get the document they already know, not a redesign of it.
      */
     fun pdfBlocks(c: Content): List<PdfExport.Block> {
-      val grey = android.graphics.Color.rgb(0x6B, 0x70, 0x80)
+      val grey = rgb(0x6B, 0x70, 0x80)
       val blocks = ArrayList<PdfExport.Block>()
       blocks.add(PdfExport.Block(c.title, 22f, bold = true))
       blocks.add(PdfExport.Block(dateStr(c.createdAt), 10f, color = grey, spaceBefore = 2f))

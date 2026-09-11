@@ -47,6 +47,16 @@ class ExportItemsTest {
   private fun sectionOf(md: String, heading: String): String =
     md.substringAfter("## $heading\n\n").substringBefore("\n## ")
 
+  /**
+   * The same, for the plain-text format, which spells its headings in capitals.
+   *
+   * `substringAfter` returns the WHOLE string when the delimiter is absent, which is the property
+   * that makes this an assertion about the heading as well as about the rows under it: lose the
+   * heading line, or lose its `.uppercase`, and the comparison is against the entire document.
+   */
+  private fun textSectionOf(txt: String, heading: String): String =
+    txt.substringAfter("$heading\n").substringBefore("\n\n")
+
   // ---- The stamp --------------------------------------------------------------------------
 
   /**
@@ -108,6 +118,33 @@ class ExportItemsTest {
       content(items = listOf(FileExportModule.ExportItem("action", "Send the report — Priya", 3_725_000L))),
     )
     assertTrue(txt.contains("  - [1:02:05] Send the report — Priya\n"))
+  }
+
+  /**
+   * ...and the same headings, and the same order.
+   *
+   * Held to the same bar as the Markdown rather than to a single substring, because "the same
+   * document in four layouts" is a claim that only holds where something checks it. A lone
+   * `contains` on one bullet left three mutants alive here that the Markdown killed outright:
+   * dropping `.uppercase(Locale.US)` from the headings, deleting the heading line, and sorting the
+   * rows alphabetically. The two actions are in reverse alphabetical order for that last one — see
+   * [itemsAreExportedInTheOrderTheyWereSaid], which learned it the hard way.
+   */
+  @Test fun thePlainTextExportIsTheSameDocumentInTheSameOrder() {
+    val txt = FileExportModule.renderText(
+      content(
+        items = listOf(
+          FileExportModule.ExportItem("action", "Write up the notes", 61_000L),
+          FileExportModule.ExportItem("decision", "A decision in between", 90_000L),
+          FileExportModule.ExportItem("action", "Book the room", 125_000L),
+        ),
+      ),
+    )
+    assertEquals(
+      "  - [1:01] Write up the notes\n  - [2:05] Book the room",
+      textSectionOf(txt, "ACTION ITEMS"),
+    )
+    assertEquals("  - [1:30] A decision in between", textSectionOf(txt, "DECISIONS"))
   }
 
   /**
@@ -232,6 +269,62 @@ class ExportItemsTest {
     )
     assertEquals(listOf("Send the report — Priya"), items.map { it.text })
     assertEquals("a minutes fallback row invented an anchor", listOf<Long?>(null), items.map { it.anchorStartMs })
+  }
+
+  // ---- The PDF ------------------------------------------------------------------------------
+
+  /**
+   * THE FORMAT THE ARGUMENT IS ABOUT, and the one nothing was checking.
+   *
+   * The case for stamping an item at all is that an exported document gets forwarded to people who
+   * were not in the room, which is exactly where an unverifiable claim does harm. The PDF is the
+   * format that gets forwarded — the Markdown renders as raw asterisks in most mail clients, which
+   * is why PdfExport exists at all. It satisfied the rule in production because it calls the same
+   * `bullet`, and nothing whatever pinned that: stripping the stamp from every PDF bullet passed
+   * all 162 Kotlin tests, and so did deleting the three item sections from the PDF outright.
+   *
+   * `pdfBlocks` was made public and moved into the companion PRECISELY so a JVM test could reach
+   * it, and then no test reached it. A seam built for a test that no test uses is the same defect
+   * twice over.
+   */
+  @Test fun theForwardedPdfCarriesTheStampToo() {
+    val blocks = FileExportModule.pdfBlocks(
+      content(items = listOf(FileExportModule.ExportItem("action", "Send the report — Priya", 3_725_000L))),
+    )
+    assertTrue(
+      "the PDF is the format people actually forward, and it lost the moment",
+      blocks.any { it.text == "•  [1:02:05] Send the report — Priya" },
+    )
+  }
+
+  /** And it carries the sections themselves, under the same three headings as every other format. */
+  @Test fun theForwardedPdfCarriesEverySection() {
+    val blocks = FileExportModule.pdfBlocks(
+      content(
+        items = listOf(
+          FileExportModule.ExportItem("decision", "Ship on the 14th", 61_000L),
+          FileExportModule.ExportItem("action", "Send the report — Priya", 125_000L),
+          FileExportModule.ExportItem("question", "Who owns renewals?", 200_000L),
+        ),
+      ),
+    )
+    val text = blocks.map { it.text }
+    assertEquals(
+      "the PDF lost a whole section of the meeting",
+      listOf("Decisions", "Action items", "Open questions"),
+      text.filter { it in setOf("Decisions", "Action items", "Open questions") },
+    )
+    assertTrue(text.contains("•  [1:01] Ship on the 14th"))
+    assertTrue(text.contains("•  [2:05] Send the report — Priya"))
+    assertTrue(text.contains("•  [3:20] Who owns renewals?"))
+  }
+
+  /** A row nobody said gets no stamp in the PDF either — same rule, all four formats. */
+  @Test fun theForwardedPdfDoesNotStampARowNobodySpoke() {
+    val blocks = FileExportModule.pdfBlocks(
+      content(items = listOf(FileExportModule.ExportItem("decision", "Ship on the 14th", null))),
+    )
+    assertTrue(blocks.any { it.text == "•  Ship on the 14th" })
   }
 
   // ---- Order --------------------------------------------------------------------------------
