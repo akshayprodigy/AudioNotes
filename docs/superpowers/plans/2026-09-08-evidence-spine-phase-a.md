@@ -3033,16 +3033,16 @@ player.available and the play call is."
 
 ## Task 11: Exports carry the timestamps
 
-> **WRITTEN AND HOST-VERIFIED, DEVICE-UNVERIFIED — 11 September 2026.** Commits `c6559c3`,
-> `d664e3f`, `8b82204`. 180 Kotlin unit tests (was 151), 324 jest, typecheck clean, 31/31 reconciler
-> mutations. **Do NOT tick this task's device steps.**
+> **SHIPPED 11 September 2026** — commits `c6559c3`, `d664e3f`, `8b82204`. 180 Kotlin unit tests
+> (was 151), 324 jest, typecheck clean, 31/31 reconciler mutations.
 >
-> **What is unverified and why.** The last green device run — 55 tests, 9 classes, nothing skipped —
-> was against `c6559c3`. The Galaxy A07 then left the USB bus and has not returned (`adb devices`
-> empty, nothing Android on the USB tree, confirmed independently). `d664e3f` changed three
-> `BackfillEditsTest` assertions and `carryEditsOntoItems`, which is device-covered code; `8b82204`
-> touched `BackfillEditsTest` comments only. The expected result is 55/9 unchanged. **It has not
-> been observed.**
+> **The device gate was open for several hours and is now closed.** The last green run at the time
+> — 55 tests, 9 classes — was against `c6559c3`; the Galaxy A07 then left the USB bus mid-round,
+> and two later commits touched device-covered code. The task was recorded as DEVICE-UNVERIFIED and
+> its device steps left unticked rather than assumed, which is the convention Task 4 set. When a
+> phone returned (the Pixel 7 Pro, not the A07), `BackfillEditsTest` ran **7/7 green**, as did
+> `ItemsDbTest` (12) and `BackfillTest` (9) — the classes `d664e3f` touched. Nothing behaved
+> differently on the other handset.
 >
 > **The listing reduces the hardest part to one sentence, and taken literally it destroys every
 > correction anybody has made.** *"The `edits` lookup keyed on `target_kind='minute'` becomes
@@ -3188,6 +3188,68 @@ Prose still comes from minutes; only the items moved."
 ---
 
 ## Task 12: User-typed items move across
+
+> **SHIPPED 11 September 2026** — commits `d94e44d`, `06fe608`, `a7867aa`. **71 instrumentation
+> tests across 10 classes on the Pixel 7 Pro, zero skipped**; 188 Kotlin unit tests; 351 jest;
+> typecheck clean; 31/31 reconciler mutations.
+>
+> **The listing's central instruction collides with Task 11.** It has `addUserItem` writing
+> `anchor_start_ms = 0`, and Task 11 established — and tested — that a hand-typed row gets **no
+> stamp at all**, because `[0:00]` sends a reader of a forwarded document to the top of the
+> recording for a sentence nobody spoke. That worked while typed rows lived in `minutes`, which has
+> no anchor column. `items.anchor_start_ms` is `INTEGER NOT NULL` and SQLite cannot alter
+> nullability, so a value must be stored and "anchorless" derived from `gen_version = 'user'` at
+> each display boundary — Task 6's `touched` lesson restated.
+>
+> **The sentinel is `Number.MAX_SAFE_INTEGER`, and the choice was decided by a bridge bug found by
+> mutation.** Every parameter crosses as JSON and `StorageModule.parseArgs` binds it as **text**, so
+> `Long.MAX_VALUE` arrives as `9223372036854775808` and SQLite stores it as a **REAL in an INTEGER
+> column**. Verified independently by the reviewer running the affinity check. It also sorts last,
+> preserving where typed rows have always been, and is inert in `Reconciler`.
+>
+> **A claim was withdrawn as false.** The comment justified the sentinel over `0` by saying a typed
+> row at `0` "would overlap whatever the meeting opened with". It would not: with
+> `MIN_OVERLAP_MS = 1`, a row at `0..0` never matches anything either — and a test encoded the false
+> version by asserting `overlap < 0` rather than `overlap < MIN_OVERLAP_MS`, so its name described a
+> distinction that does not exist. The surviving argument (ordering, and bridge representability)
+> never needed the third leg.
+>
+> **The trap the listing does not mention.** The move runs before the native load, so it can put an
+> item into a meeting the rules have never run over. Every migration guard asked "does this meeting
+> have items", so that meeting would be excluded from migration **forever** and its rule-extracted
+> `minutes` would stop being drawn the same instant — the whole MOM gone, one typed line left,
+> nothing thrown. Four predicates now ask about **rule** items, and the reviewer swept the codebase
+> to confirm there is no fifth.
+>
+> **But there was a fifth READER, and then a sixth.** `SummaryTab` counted decisions and actions
+> from `minutes`, so a typed row stopped being counted and a meeting whose only item-kind content
+> was hand-typed lost its counter block entirely — *and the commit message cited that very counter
+> four times while reasoning about the fallback*. Chasing it found worse: `MeetingScreen`'s
+> `working`/`empty` guards asked `minutes.length === 0`, so a meeting containing only a typed note
+> drew **"Writing your notes…" over the note just typed**. Then `refresh()` turned out to be the
+> sixth, returning `mins.length` to drive a 2-second poll — silent waste, and already visible as a
+> jest "did not exit" warning nobody had connected to anything.
+>
+> **The lesson about the sweep is the transferable one.** Looking for a fifth *predicate* was the
+> right sweep and it answered a narrower question than the one that mattered. A predicate decides
+> whether to migrate; a reader decides what a person sees. The same rows had both kinds of consumer.
+>
+> **The device gate caught two failures in fourteen tests that had never been executed** — neither
+> reachable by any host gate. One was a test helper minting `"$meetingId:user:$kind"`, unique per
+> *kind* not per row, so any test typing two actions into one meeting hit a primary-key collision:
+> **the same generator flaw already found and fixed on the host a day earlier, arrived at
+> independently in the other language.** The other was an assertion that could not pass sitting
+> beside one that could not fail, in the same test: `review='confirmed'` puts every migrated row in
+> `BY_A_PERSON`, so `touched` saturates. A test defect, not the documented fan-out — and closing it
+> exposed a genuinely unpinned defect class, since dropping `target_key` from the edits join marks
+> **every** item in a meeting holding one correction as touched, which is a protection racket rather
+> than a crash. `BackfillEditsTest` and `ItemsDbTest` both tested that signal with one item per
+> meeting, so neither could see it.
+>
+> **A generalisation worth keeping**, arrived at after the single-row fixture landed again in the
+> task whose brief warned about it: the rule is not "fixtures about order or selection need two
+> rows". It is that **a fixture about a two-branch `CASE` needs a row on each side.** That one
+> generalises to every conditional this codebase pins.
 
 **Files:**
 - Modify: `src/db/queries.ts`, `src/screens/meeting/MinutesTab.tsx`, `src/screens/meeting/ActionsTab.tsx`
