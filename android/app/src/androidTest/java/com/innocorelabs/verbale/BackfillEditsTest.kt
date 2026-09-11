@@ -245,12 +245,20 @@ class BackfillEditsTest {
    * already returned. A correction that can NEVER be carried is seeded alongside, which is not a
    * contrivance: a hand-typed row keeps its `minute` key by design until Task 12, so this is the
    * state of every meeting somebody has typed a decision into.
+   *
+   * BE PRECISE ABOUT WHAT THE SECOND PASS NOW REACHES, because the obvious reading is wrong. It
+   * gets past `pending.isEmpty()` and runs the matching — `rows.mapNotNull` over every item — and
+   * then stops at `moves.isEmpty()`. The write loop inside the transaction is still never entered
+   * twice, and no test in this file enters it twice, because there is no way to: a carried row is
+   * gone. What this pins is the matching pass and the reported count, which is what "a re-run finds
+   * nothing" actually means.
    */
   @Test fun runningTheCarryTwiceChangesNothing() {
     inAMeeting { m ->
       correctAnActionTheOldWay(m)
       // Stands in for a hand-typed row: a correction with no item that will ever match it, so
-      // `pending` is still non-empty on the second pass and the match loop really runs.
+      // `pending` is still non-empty on the second pass and the MATCHING runs — see the docstring
+      // for what that does and does not reach.
       db.putEdit(m, "minute", ItemKey.of("A decision nobody ever extracted"), "Typed by hand")
       db.backfillItems(m)
       val first = editRows(m).toString()

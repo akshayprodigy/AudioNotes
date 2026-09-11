@@ -5,6 +5,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -297,26 +298,86 @@ class ExportItemsTest {
     )
   }
 
-  /** And it carries the sections themselves, under the same three headings as every other format. */
-  @Test fun theForwardedPdfCarriesEverySection() {
+  /**
+   * And it carries the sections themselves, under the same three headings, in the meeting's order.
+   *
+   * TWO actions, reverse alphabetical, and an ordered comparison rather than `contains` — the same
+   * shape the Markdown and plain-text tests were rewritten into, for the same mutant. The first
+   * version of this test had one item per section, so `sortedBy { it.text }` in `pdfBlocks`
+   * survived it: the lesson had been written down twice and still had not crossed to the format
+   * this whole commit argues is the one that actually gets forwarded.
+   */
+  @Test fun theForwardedPdfCarriesEverySectionInOrder() {
     val blocks = FileExportModule.pdfBlocks(
       content(
         items = listOf(
           FileExportModule.ExportItem("decision", "Ship on the 14th", 61_000L),
-          FileExportModule.ExportItem("action", "Send the report — Priya", 125_000L),
-          FileExportModule.ExportItem("question", "Who owns renewals?", 200_000L),
+          FileExportModule.ExportItem("action", "Write up the notes", 125_000L),
+          FileExportModule.ExportItem("action", "Book the room", 200_000L),
+          FileExportModule.ExportItem("question", "Who owns renewals?", 260_000L),
         ),
       ),
     )
     val text = blocks.map { it.text }
     assertEquals(
-      "the PDF lost a whole section of the meeting",
-      listOf("Decisions", "Action items", "Open questions"),
-      text.filter { it in setOf("Decisions", "Action items", "Open questions") },
+      "the PDF lost a section, re-ordered one, or ran two together",
+      listOf(
+        "Decisions",
+        "•  [1:01] Ship on the 14th",
+        "Action items",
+        "•  [2:05] Write up the notes",
+        "•  [3:20] Book the room",
+        "Open questions",
+        "•  [4:20] Who owns renewals?",
+      ),
+      text.filter { it.startsWith("•  ") || it in setOf("Decisions", "Action items", "Open questions") },
     )
-    assertTrue(text.contains("•  [1:01] Ship on the 14th"))
-    assertTrue(text.contains("•  [2:05] Send the report — Priya"))
-    assertTrue(text.contains("•  [3:20] Who owns renewals?"))
+  }
+
+  /**
+   * The two blocks the forced-transcript warning is spliced in after.
+   *
+   * `document` takes the first `PDF_HEADER_BLOCKS` and puts the warning — "if it was not English,
+   * the words below are invented" — immediately after them, because a reader who stops at the
+   * first paragraph must still have seen it. That index is a claim about THIS function, made in
+   * another one. Deleting the date block here passed every test and silently slid the warning
+   * below the summary, which is the one placement its own comment forbids.
+   */
+  @Test fun thePdfLeadsWithExactlyATitleAndADate() {
+    val blocks = FileExportModule.pdfBlocks(content(summary = "One action, no decisions."))
+    assertEquals("Design review", blocks[0].text)
+    assertTrue(
+      "the second block is no longer the date, so the forced-transcript warning moves",
+      blocks[1].text.contains("1970"),
+    )
+    assertEquals("One action, no decisions.", blocks[2].text)
+  }
+
+  /**
+   * Finding 1: the greys, asserted rather than inspected.
+   *
+   * [FileExportModule] transcribes `android.graphics.Color.rgb` by hand so that a JVM test can
+   * reach this renderer at all, and until now the KDoc's "value-identical by inspection" was the
+   * only thing holding the value — every test asserted `Block.text` and none read `.color`. Both
+   * surviving mutants are silent and catastrophic in the same way: drop the `0xFF shl 24` and the
+   * alpha channel goes to zero, so the date line, every speaker label and the credit footer are
+   * rendered fully transparent in every exported PDF, with nothing thrown and nothing to see.
+   *
+   * The default is asserted for the same reason. `Block.color` defaults to `Color.BLACK`, and the
+   * argument that it is safe is that a constant FIELD is inlined by the compiler where a METHOD
+   * would throw "not mocked". This turns that argument into an assertion instead of leaving it as
+   * a side effect of the tests happening to pass.
+   */
+  @Test fun thePdfIsSetInTheGreysItIntendsAndNotInTransparentInk() {
+    val blocks = FileExportModule.pdfBlocks(content(summary = "One action, no decisions."))
+    assertEquals(
+      "the date line is not the grey it is meant to be — a wrong alpha here is invisible ink",
+      0xFF6B7080.toInt(), blocks[1].color,
+    )
+    assertEquals(
+      "Block.color's default stopped being opaque black",
+      0xFF000000.toInt(), blocks[0].color,
+    )
   }
 
   /** A row nobody said gets no stamp in the PDF either — same rule, all four formats. */
@@ -325,6 +386,207 @@ class ExportItemsTest {
       content(items = listOf(FileExportModule.ExportItem("decision", "Ship on the 14th", null))),
     )
     assertTrue(blocks.any { it.text == "•  Ship on the 14th" })
+  }
+
+  // ---- The transcript, and the corrections that reach it --------------------------------------
+
+  /**
+   * Finding 2: three more seams that went public in the split and that no test used.
+   *
+   * `turnsOf` is the worst of them, because it is the SOLE caller of `said()` — so the path by
+   * which a person's correction of a mis-heard line reaches an exported document was pinned by
+   * nothing at all. `renderTranscript` is what the Script tab's copy button returns, and
+   * `renderSrt` is the subtitle file. All three are exercised from one fixture here, because the
+   * alternative to testing a seam you made public for a test is making it private again.
+   *
+   * The correction is keyed `utterance/<id>`, which is the one `EditTarget` this task did not move
+   * and must not: an utterance has a real row id, and that id is what the key has always been.
+   */
+  private fun twoTurns(edits: Map<String, String> = emptyMap()) = FileExportModule.turnsOf(
+    rows(
+      JSONObject().put("id", "u1").put("start_ms", 61_000L).put("end_ms", 64_000L)
+        .put("speaker_id", "s1").put("text", "We agreed to ship on Monday."),
+      JSONObject().put("id", "u2").put("start_ms", 125_000L).put("end_ms", 129_000L)
+        .put("speaker_id", "s2").put("text", "I will send the report by Friday."),
+    ),
+    mapOf("s1" to "Priya", "s2" to "Ravi"),
+    edits,
+  )
+
+  @Test fun aTurnIsAttributedToTheSpeakerTheMeetingNamed() {
+    assertEquals(listOf("Priya", "Ravi"), twoTurns().map { it.speaker })
+    assertEquals(listOf(61_000L, 125_000L), twoTurns().map { it.startMs })
+    assertEquals(listOf(64_000L, 129_000L), twoTurns().map { it.endMs })
+  }
+
+  /** An unnamed speaker is "Speaker", not a crash and not a blank. */
+  @Test fun aTurnWithNoNamedSpeakerIsStillAttributed() {
+    val turns = FileExportModule.turnsOf(
+      rows(
+        JSONObject().put("id", "u1").put("start_ms", 0L).put("end_ms", 1_000L)
+          .put("speaker_id", "s9").put("text", "Anyone?"),
+      ),
+      emptyMap(), emptyMap(),
+    )
+    assertEquals("Speaker", turns.single().speaker)
+  }
+
+  /**
+   * A correction of a mis-heard line reaches the exported document.
+   *
+   * The only assertion anywhere over `said()`. A transcript correction that silently failed to
+   * export is the same class of loss this whole task exists to prevent, and it had no test.
+   */
+  @Test fun aCorrectedTurnIsExportedAsTheUserCorrectedIt() {
+    val turns = twoTurns(mapOf("utterance/u2" to "I will send the deck by Friday."))
+    assertEquals(
+      listOf("We agreed to ship on Monday.", "I will send the deck by Friday."),
+      turns.map { it.text },
+    )
+  }
+
+  /**
+   * The Script tab's copy button: what was said, attributed, and nothing else.
+   *
+   * No heading and no minutes — this is what somebody pasting into a mail that already has its own
+   * context is asking for. Blank lines between turns, because a wall of "Name: sentence" is
+   * unusable at meeting length.
+   */
+  @Test fun theTranscriptExportIsJustWhatWasSaidAttributed() {
+    assertEquals(
+      "Priya: We agreed to ship on Monday.\n\nRavi: I will send the report by Friday.",
+      FileExportModule.renderTranscript(content(turns = twoTurns())),
+    )
+  }
+
+  /** And it carries the correction too, since it reads the same turns. */
+  @Test fun theTranscriptExportCarriesACorrection() {
+    val txt = FileExportModule.renderTranscript(
+      content(turns = twoTurns(mapOf("utterance/u1" to "We agreed to ship on Tuesday."))),
+    )
+    assertTrue(txt.startsWith("Priya: We agreed to ship on Tuesday."))
+  }
+
+  /**
+   * The subtitle file: numbered from 1, with SRT's comma-before-milliseconds timing.
+   *
+   * `00:01:01,000`, not `0:01:01.000` — a player that cannot parse the timing drops the cue
+   * silently, which is a subtitle track that renders as nothing at all.
+   */
+  @Test fun theSubtitleExportIsNumberedAndTimedTheWaySrtRequires() {
+    assertEquals(
+      "1\n00:01:01,000 --> 00:01:04,000\nPriya: We agreed to ship on Monday.\n\n" +
+        "2\n00:02:05,000 --> 00:02:09,000\nRavi: I will send the report by Friday.\n\n",
+      FileExportModule.renderSrt(content(turns = twoTurns())),
+    )
+  }
+
+  // ---- The prose, and which version of it wins ------------------------------------------------
+
+  /**
+   * Finding 5: a regression that already shipped once, and was unpinned again.
+   *
+   * `replaceMinutes` is scoped by source, so a narrated meeting keeps its rule-composed summary
+   * ALONGSIDE the model's — both rows exist, rule written first. Reading them in rowid order is
+   * what this used to do, and it handed a paying subscriber the rule row. The branch that fixed it
+   * could be deleted with every test in the tree green, because the only fixture that reached it
+   * had a single summary row.
+   *
+   * The rows are in the order `replaceMinutes` really writes them: rule first, llm second. A
+   * fixture with the llm row first would pass against rowid order and prove nothing.
+   */
+  @Test fun aNarratedMeetingExportsTheModelsSummaryAndNotTheRuleOne() {
+    val minutes = rows(
+      minuteRow("summary", "2 action items, 1 decision.", source = "rule"),
+      minuteRow("summary", "The team agreed to ship on Monday and split the follow-ups.", source = "llm"),
+    )
+    assertEquals(
+      "the rule summary won because it was written first — the exact defect this branch fixed",
+      "The team agreed to ship on Monday and split the follow-ups.",
+      FileExportModule.summaryOf(minutes, emptyMap()),
+    )
+  }
+
+  /** With no model summary, the rule-composed one is the free tier's floor and must still show. */
+  @Test fun aMeetingWithOnlyARuleSummaryStillExportsIt() {
+    assertEquals(
+      "2 action items, 1 decision.",
+      FileExportModule.summaryOf(rows(minuteRow("summary", "2 action items, 1 decision.")), emptyMap()),
+    )
+  }
+
+  /**
+   * A summary somebody typed wins outright, whatever the model did or did not manage.
+   *
+   * Keyed on `summary/doc` because there is exactly one summary per meeting, so the kind already
+   * identifies the thing and the key has nothing left to say.
+   */
+  @Test fun aHandWrittenSummaryBeatsBothOfThem() {
+    val minutes = rows(
+      minuteRow("summary", "2 action items, 1 decision.", source = "rule"),
+      minuteRow("summary", "The team agreed to ship on Monday.", source = "llm"),
+    )
+    assertEquals(
+      "What we actually decided: ship Monday, Priya owns the report.",
+      FileExportModule.summaryOf(
+        minutes, mapOf("summary/doc" to "What we actually decided: ship Monday, Priya owns the report."),
+      ),
+    )
+  }
+
+  /**
+   * The write-up is the MODEL's prose, and a rule row of that kind is not a write-up.
+   *
+   * The same unpinned filter as the summary's, one line down: nothing asserted that a
+   * `source='rule'` narrative is rejected, because no fixture ever had one.
+   */
+  @Test fun theWriteUpComesFromTheModelAndNotFromARuleRow() {
+    assertNull(
+      "a rule row was exported as the written-up minutes",
+      FileExportModule.narrativeOf(rows(minuteRow("narrative", "Rule text", source = "rule")), emptyMap()),
+    )
+    assertEquals(
+      "The team walked through the roadmap.",
+      FileExportModule.narrativeOf(
+        rows(minuteRow("narrative", "The team walked through the roadmap.", source = "llm")), emptyMap(),
+      ),
+    )
+  }
+
+  /** And a hand-written write-up beats the model's, on the same `doc` key. */
+  @Test fun aHandWrittenWriteUpBeatsTheModels() {
+    assertEquals(
+      "What really happened.",
+      FileExportModule.narrativeOf(
+        rows(minuteRow("narrative", "The team walked through the roadmap.", source = "llm")),
+        mapOf("narrative/doc" to "What really happened."),
+      ),
+    )
+  }
+
+  // ---- The other half of the one-sided switch -------------------------------------------------
+
+  /**
+   * Finding 7: the Kotlin mirror of "does not read an item's correction off the minute key".
+   *
+   * ItemProvenance.test.tsx pins this on the JavaScript side and explains why a fallback read is
+   * forbidden rather than merely unnecessary: leaving the stale `minute` row in place means REVERT
+   * appears to do nothing, because deleting the item-keyed row lets the minute-keyed one come
+   * straight back. The whole point of that test is making the two sides one change rather than
+   * two — so the side that renders the document people forward needs the same assertion. Adding
+   * `?: edits["minute/" + ItemKey.of(text)]` to the item branch passed every Kotlin test.
+   */
+  @Test fun anItemsCorrectionIsNotReadOffTheMinuteKeyAnyMore() {
+    val text = "Send the report — Priya"
+    val items = FileExportModule.exportItems(
+      rows(itemRow("it-1", "action", text, 3_725_000L)),
+      rows(),
+      mapOf("minute/" + ItemKey.of(text) to "A stale correction from before the migration"),
+    )
+    assertEquals(
+      "the export fell back to the minute key, which makes revert silently no-op",
+      listOf(text), items.map { it.text },
+    )
   }
 
   // ---- Order --------------------------------------------------------------------------------
@@ -342,19 +604,30 @@ class ExportItemsTest {
    * the renderer changed nothing and the test could not fail on the defect it names — found by
    * mutating the renderer rather than by reading it. The decision between them is there so a filter
    * that leaked one kind into another's section would fail too.
+   *
+   * THE ROWS COME THROUGH `exportItems`, not from hand-built `ExportItem`s, and that is the whole
+   * difference between this test and the claim above it. `exportItems` IS what sits between the
+   * SELECT and the page — it is the function that merges the two tables — so a version that built
+   * its own list left the merge outside the assertion entirely: `out.reverse()` inside it passed
+   * every test in this file.
    */
   @Test fun itemsAreExportedInTheOrderTheyWereSaid() {
     val md = FileExportModule.renderMarkdown(
       content(
-        items = listOf(
-          FileExportModule.ExportItem("action", "Write up the notes", 61_000L),
-          FileExportModule.ExportItem("decision", "A decision in between", 90_000L),
-          FileExportModule.ExportItem("action", "Book the room", 125_000L),
+        items = FileExportModule.exportItems(
+          rows(
+            itemRow("it-1", "action", "Write up the notes", 61_000L),
+            itemRow("it-2", "decision", "A decision in between", 90_000L),
+            itemRow("it-3", "action", "Book the room", 125_000L),
+          ),
+          rows(),
+          emptyMap(),
         ),
       ),
     )
     assertEquals(
       "- [1:01] Write up the notes\n- [2:05] Book the room\n", sectionOf(md, "Action items"),
     )
+    assertEquals("- [1:30] A decision in between\n", sectionOf(md, "Decisions"))
   }
 }

@@ -1343,9 +1343,12 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    * `items.text` — so a correction is not searchable either before or after this, and re-indexing
    * would rewrite every row of the meeting to produce identical text.
    *
-   * @return how many `minute`-keyed corrections were resolved onto an item — moved, or, where the
-   *   item already carried its own correction, superseded and removed. 0 when there was nothing to
-   *   do, which includes the case where corrections are present but none of them belongs to an item.
+   * @return how many ITEMS received a carried correction — not how many corrections moved, and the
+   *   two differ: two items whose text hashes to one key both take the same correction, so one
+   *   correction reports 2 (see the note beside the DELETE, which is why that is the wanted
+   *   behaviour rather than a bug to dedupe away). Counts an item whose own correction superseded
+   *   the inherited one, because the stale row was still resolved and removed. 0 when there was
+   *   nothing to do, including when corrections are present but none belongs to any item.
    */
   fun carryEditsOntoItems(meetingId: String): Int {
     val pending = HashMap<String, Pair<String, Long>>()

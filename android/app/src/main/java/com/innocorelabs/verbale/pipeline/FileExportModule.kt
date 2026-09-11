@@ -180,12 +180,13 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
       // from the same accessors as every other format, so a correction reaches it for free.
       val blocks = pdfBlocks(content)
       // After the title and date, before any content: a reader who stops at the first paragraph
-      // must still have seen it.
+      // must still have seen it. [PDF_HEADER_BLOCKS] is what "after the title and date" means to
+      // an index, and the count is a fact about pdfBlocks rather than about this statement.
       val withMarker = if (marker == null) blocks else buildList {
-        addAll(blocks.take(2))
+        addAll(blocks.take(PDF_HEADER_BLOCKS))
         add(PdfExport.Block(marker, 10f, bold = true,
                             color = rgb(0x8A, 0x5A, 0x00), spaceBefore = 14f))
-        addAll(blocks.drop(2))
+        addAll(blocks.drop(PDF_HEADER_BLOCKS))
       }
       // Last block on the last page, small and grey: a footer, not a stamp.
       val withCredit = withMarker + PdfExport.Block(
@@ -312,6 +313,21 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
      * free tier is the half that gets forwarded most.
      */
     const val EXPORT_CREDIT = "Created with Verbale — verbale.innocorelabs.com"
+
+    /**
+     * How many blocks [pdfBlocks] emits before any content: the title and the date.
+     *
+     * Read as an INDEX by `document`, which splices the forced-transcript warning in after them —
+     * "heard as Turkish, transcribed as English; if it was not English, the words below are
+     * invented". That placement is the whole of the warning's job: a reader who stops at the first
+     * paragraph must still have seen it. Get the count wrong and the warning slides below the
+     * summary, which is the one placement its own comment forbids, and nothing throws.
+     *
+     * A named constant rather than a literal `2` in two places, and ExportItemsTest asserts what
+     * those first two blocks actually are — because this number is a claim about a function in
+     * another file, and deleting the date line there is a change here.
+     */
+    private const val PDF_HEADER_BLOCKS = 2
 
     /** The three sections of an exported document that are lists rather than prose, in order. */
     private val SECTIONS =

@@ -52,6 +52,7 @@ import type {
 import {
   DOC_KEY,
   composeAction,
+  editKey,
   editTargetOf,
   toEditMap,
   type EditMap,
@@ -391,7 +392,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
         const { kind, key } = spec.target;
         // Optimistic, and cheap to be: the row is on screen and the map is the only thing the
         // render reads. A failed write is put right by the refresh in the catch.
-        setEdits(prev => new Map(prev).set(`${kind}/${key}`, value));
+        setEdits(prev => new Map(prev).set(editKey(kind, key), value));
         await db.putEdit(meetingId, kind, key, value);
       } catch (e: any) {
         Alert.alert('Could not save that', String(e?.message ?? e));
@@ -406,7 +407,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
     async (kind: EditTarget, key: string) => {
       setEdits(prev => {
         const next = new Map(prev);
-        next.delete(`${kind}/${key}`);
+        next.delete(editKey(kind, key));
         return next;
       });
       try {
@@ -446,7 +447,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
       setEditing({
         title: 'Correct this line',
         hint: 'Your wording replaces what the app wrote. The original is kept, and you can put it back.',
-        initial: edits.get(`${target.kind}/${target.key}`) ?? row.text,
+        initial: edits.get(editKey(target.kind, target.key)) ?? row.text,
         multiline: true,
         target,
       });
