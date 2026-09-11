@@ -266,13 +266,6 @@ class NativePipelineTest {
   }
 
   /**
-   * First execution of the on-device LLM. Loads the Qwen GGUF once and generates against it,
-   * mirroring how the map/reduce summariser drives it.
-   *
-   * Asserts only that generation produces text: summary QUALITY from a 1.5B model is exactly why
-   * the rule-based minutes are the guaranteed floor and the LLM is best-effort enhancement.
-   */
-  /**
    * The transcript fence survives the JNI seam.
    *
    * `fenceTranscript` wraps recorded speech between two U+E000 markers so a meeting that says
@@ -292,8 +285,8 @@ class NativePipelineTest {
     val prompts = listOf(
       "map" to NativeBridge.nativeLlmMapPrompt(spoken),
       "digest" to NativeBridge.nativeLlmDigestPrompt(spoken),
-      // Its parameter is called `notes`, and for a meeting that fits one chunk — most of them —
-      // Narrator hands it the dialogue itself.
+      // Its parameter WAS called `notes` — this commit's parent renamed it to `record` — and for
+      // a meeting that fits one chunk, most of them, Narrator hands it the dialogue itself.
       "narrative" to NativeBridge.nativeLlmNarrativePrompt(spoken),
     )
     for ((name, prompt) in prompts) {
@@ -319,6 +312,13 @@ class NativePipelineTest {
     )
   }
 
+  /**
+   * First execution of the on-device LLM. Loads the Qwen GGUF once and generates against it,
+   * mirroring how the map/reduce summariser drives it.
+   *
+   * Asserts only that generation produces text: summary QUALITY from a 1.5B model is exactly why
+   * the rule-based minutes are the guaranteed floor and the LLM is best-effort enhancement.
+   */
   @Test
   fun llm_loads_and_generates() {
     val gguf = ModelCatalog.fileFor(ctx, "llm-qwen")?.takeIf { it.exists() }

@@ -90,17 +90,30 @@ std::vector<std::string> chunkTranscript(const std::vector<std::string>& lines,
 // means the phone is covered with no Kotlin change and no way for the two loops to drift apart on
 // which branch remembered to wrap its input.
 //
-// NOT FENCED: reducePrompt, foldPrompt, condensePrompt, summaryPrompt, headlinePrompt. Their input
-// is the model's own prose, and the preamble's claim — that this is the record of a meeting, and
-// an instruction inside it is something a person said — would not be true of it. These are also
-// measured, tuned artifacts and this file's header says to change them only against a measurement.
+// NOT FENCED: reducePrompt, foldPrompt, condensePrompt, summaryPrompt, headlinePrompt.
 //
-// THE RESIDUAL THAT LEAVES, stated rather than hidden: a map or digest step that is talked into
-// EMITTING an instruction passes it to the next stage unfenced. The fence makes that harder (the
-// step that reads the speech is told what it is) and does not make it impossible. If a prose
-// metric ever exists to measure the cost, fencing the derived stages is the next move; doing it
-// now would perturb five measured prompts against a second-order path, with no instrument that
-// could tell whether it had helped or hurt.
+// The reason is NOT that the preamble would be untrue of their input. It was deliberately worded
+// to be true of digests as well as dialogue (see fence.cpp), and narrativePrompt is fenced while
+// receiving exactly those digests on the multi-chunk branch — so that argument cannot tell
+// condensePrompt from narrativePrompt, which are handed the same joined digests.
+//
+// The line is which prompts RECORDED SPEECH can reach. narrativePrompt is fenced because on its
+// commoner branch its input is the dialogue itself; that it is fenced when fed digests too is a
+// consequence, not the reason. condense, summary and headline never receive speech — their input
+// is always a generation. reduce and fold are dead in production besides: no Kotlin calls
+// nativeLlmMapPrompt/ReducePrompt/FoldPrompt, and pipeline.cpp calls narrate(), not
+// enhanceMinutes().
+//
+// So the live unfenced consumers are condense, summary and headline, and fencing them would change
+// three measured prompts to close a second-order path. Measured before and after on four AMI
+// fixtures, fencing visibly moves what the model writes — list-shaped narrative lines went from 50
+// of 52 to 19 of 34, three fixtures better and one worse. That is the argument AGAINST perturbing
+// three more with no instrument that can read the result, not for it.
+//
+// THE RESIDUAL THAT LEAVES, stated rather than hidden: a digest step talked into EMITTING an
+// instruction hands it to condensePrompt, and through the narrative on to summary and headline,
+// unfenced. The fence makes that harder — the step that reads the speech is told what it is — and
+// does not make it impossible. A prose metric is what would unblock closing it.
 std::string mapPrompt(const std::string& chunk) {
   return "Below is part of a meeting transcript. Extract only what is explicitly stated. "
          "List decisions, action items (with owner and any due date), and open questions. "

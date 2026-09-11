@@ -18,6 +18,8 @@ guard that trips on it earns an allowlist entry for the one file that actually f
 a model, which would leave this check covering nothing. So the literal must be INSTRUCTION TEXT: it
 carries a word (three letters or more), or it carries a line break and a letter, which is what a
 terse label like "Q:\n" looks like. `": "` and `"\n\n"` are punctuation glue and are not prompts.
+That rule is what buys the absence of an allowlist, and it is paid for below: a label made only of
+punctuation reads as glue too.
 
 THERE IS NO ALLOWLIST, deliberately. fence.cpp does not need an entry because it concatenates its
 own preamble with a delimiter constant, and neither carries a transcript-shaped name. If you find
@@ -27,6 +29,13 @@ WHAT THIS CANNOT SEE, written down so the next person does not mistake a pass fo
   * a prompt assembled through a variable (`p += chunk;` after `p = "Summarise:\n";`) — the second
     line carries no literal to judge, and deciding it needs flow analysis a grep does not have;
   * a prompt built by std::ostringstream, printf-style formatting or std::format;
+  * a label made only of punctuation — `"T: "`, `"### "`, `"---\n"`, `">>> "`, a markdown code
+    fence. This is the price of the instruction-text rule above, and therefore the price of having
+    no allowlist. It is a family, not the one `"X:" + chunk` case;
+  * a HALF-fenced prompt: `"TRANSCRIPT:\n" + fenceTranscript(a) + chunk`. The exemption inspects
+    the operand next to the literal, and `chunk` is next to `fenceTranscript(a)`;
+  * a transcript that is not the FIRST operand of a wrapper — `escape(style, chunk)` — nor the
+    whole of one;
   * a transcript passed into a helper that concatenates it somewhere else.
 The fence itself is the guarantee. This is the tripwire that says when somebody walks past it.
 
@@ -48,28 +57,47 @@ SKIP_DIRS = {"build", "third_party", "__pycache__", "_deps"}
 _LITERAL = r'"(?:[^"\\]|\\.)*"'
 
 # An expression whose FINAL name ends in a transcript word — `chunk`, `chunks[i]`, `u.text`,
-# `utterance_text`, `fenceTranscript(chunk)`.
+# `utterance_text`, `chunk_`, `this->transcript_`, `record`.
 #
 # Ending matters, and the listing's version had it wrong in both directions. Its expression
 # required at least one character BEFORE the keyword, so a bare `chunk` — which is exactly what
 # mapPrompt was concatenating — never matched at all: the guard as specified would have passed the
 # file it was written for. And with no boundary after the keyword it matched `chunks_failed`
 # inside an ASR error message in pipeline.cpp, which is a number being logged, not a transcript.
+#
+# Trailing underscores are part of the name, not past its end. The boundary that stops
+# `chunks_failed` first stopped `chunk_` and `transcript_` too — and this codebase names members
+# that way throughout (`cfg_`, `active_`, `arena_`), so that was a hole the width of a convention.
+#
+# `record` is in the list because narrativePrompt's parameter is called that, and that prompt is
+# the one handed raw dialogue on the single-chunk path. Naming it honestly and leaving the guard
+# blind to the name would have documented the risk while removing the only thing watching it.
 _NAME = r'[A-Za-z_][A-Za-z0-9_]*'
-_TRANSCRIPT_WORD = r'(?:text|transcript|utterance|chunk|turn|sentence)s?'
-_TRANSCRIPT_EXPR = (
+_TRANSCRIPT_WORD = r'(?:text|transcript|utterance|chunk|turn|sentence|record)s?_*'
+_TRANSCRIPT_NAME = (
     r'(?:' + _NAME + r'\s*(?:\.|->|::)\s*)*'      # qualifiers: u. / this-> / audionotes::
     r'(?:' + _NAME + r')??' + _TRANSCRIPT_WORD +   # the last name, ending in a transcript word
     r'(?![A-Za-z0-9_])'
     r'(?:\s*(?:\([^()]*\)|\[[^\]]*\]))?'          # a trailing call or subscript
 )
 
+# `std::string(chunk)`, `(chunk)`, `fenceTranscript(chunk)` — a wrapper around the operand must not
+# hide it. Captured as part of the expression so the fence exemption below can still see through it.
+_OPENERS = r'(?:(?:' + _NAME + r'(?:\s*::\s*' + _NAME + r')*\s*)?\(\s*)*'
+_OPERAND = _OPENERS + _TRANSCRIPT_NAME
+# ...and the closing parens of such a wrapper sit between the literal and the `+`:
+#   std::string("Below is:\n") + chunk
+_CLOSERS = r'\s*\)*\s*'
+
 # Both orders. The listing only caught literal-then-text, but every prompt in this codebase puts
 # its rules AFTER the material, so text-then-literal is the likelier way to write the mistake.
 LITERAL_THEN_TEXT = re.compile(
-    r'(?P<lit>' + _LITERAL + r')\s*\+\s*(?P<expr>' + _TRANSCRIPT_EXPR + r')', re.IGNORECASE)
+    r'(?P<lit>' + _LITERAL + r')' + _CLOSERS + r'\+\s*(?P<expr>' + _OPERAND + r')',
+    re.IGNORECASE)
 TEXT_THEN_LITERAL = re.compile(
-    r'(?P<expr>' + _TRANSCRIPT_EXPR + r')\s*\+\s*(?P<lit>' + _LITERAL + r')', re.IGNORECASE)
+    r'(?P<expr>' + _OPERAND + r')' + _CLOSERS + r'\+\s*' + _OPENERS +
+    r'(?P<lit>' + _LITERAL + r')',
+    re.IGNORECASE)
 
 # The one legal way in. `audionotes::` optional; a name that merely ENDS in fenceTranscript is not
 # it, so the character before must not be able to continue an identifier.

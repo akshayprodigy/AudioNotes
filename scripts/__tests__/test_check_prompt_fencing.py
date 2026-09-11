@@ -66,14 +66,65 @@ class TestPromptFencing(unittest.TestCase):
     def test_a_transcript_line_being_assembled_is_not_a_prompt(self):
         # cpp/minutes/llm_prompts.cpp builds the transcript itself, one line per utterance. The
         # literal is punctuation glue, not an instruction, and there is no model anywhere near it.
+        #
+        # Asserted under a NEUTRAL path as well, because on its own the real path cannot tell
+        # "the checker judged this line" from "the checker skipped this file".
         source = '    out.push_back(who + ": " + u.text);\n'
         self.assertEqual(violations("cpp/minutes/llm_prompts.cpp", source), [])
+        self.assertEqual(violations("cpp/minutes/x.cpp", source), [])
+
+    def test_no_file_is_exempt(self):
+        """The invariant the whole design rests on, and the one nothing could see.
+
+        There is no allowlist, and three comments say so — which is worth nothing while a path
+        exemption for llm_prompts.cpp, the one file where the risk actually lives, could be added
+        with every test still green. check-network-egress.py pins its allowlist; this pins the
+        absence of one.
+        """
+        source = '  std::string prompt = "Summarise this meeting:\\n" + utterance.text;\n'
+        here = violations("cpp/minutes/llm_prompts.cpp", source)
+        elsewhere = violations("cpp/minutes/x.cpp", source)
+        self.assertNotEqual([], here, "the file that feeds a model is exempt")
+        self.assertEqual(here, elsewhere, "the verdict depends on the path, so some file is exempt")
 
     def test_a_one_word_label_is_still_an_instruction(self):
         # The other side of the same decision. "Q:\n" carries no three-letter word, so it is caught
         # by the newline arm rather than the word arm — without which a terse label would be a hole.
         source = '  std::string prompt = "Q:\\n" + chunk;\n'
         self.assertEqual(len(violations("cpp/minutes/x.cpp", source)), 1)
+
+    def test_the_narrative_prompts_own_parameter_name_is_covered(self):
+        # narrativePrompt receives raw dialogue on the single-chunk path — the hidden surface this
+        # whole check exists for — and its parameter is `record`. With that word missing from the
+        # list, the guard could watch it be un-fenced and say nothing.
+        source = '  return "RECORD:\\n" + record + "\\n";\n'
+        self.assertEqual(len(violations("cpp/minutes/x.cpp", source)), 1)
+
+    def test_a_trailing_underscore_member_is_still_transcript(self):
+        # This repo names members cfg_, active_, arena_. The boundary that stops `chunks_failed`
+        # must not also stop `chunk_`.
+        for src in ('  std::string p = "Below is:\\n" + chunk_;\n',
+                    '  std::string p = "Below is:\\n" + this->transcript_;\n'):
+            with self.subTest(src=src):
+                self.assertEqual(len(violations("cpp/minutes/x.cpp", src)), 1)
+
+    def test_a_count_that_merely_contains_a_transcript_word_is_not_transcript(self):
+        # The other side of that boundary: pipeline.cpp logs chunks_failed, which is a number.
+        source = '  fail("asr: every chunk failed (" + std::to_string(asr_run.chunks_failed));\n'
+        self.assertEqual(violations("cpp/pipeline/x.cpp", source), [])
+
+    def test_a_std_string_wrapper_does_not_hide_the_violation(self):
+        # The idiom the plan's own fence.cpp listing is written in.
+        for src in ('  std::string p = std::string("Below is:\\n") + chunk;\n',
+                    '  std::string p = "Below is:\\n" + std::string(chunk);\n',
+                    '  std::string p = "Below is:\\n" + (chunk);\n'):
+            with self.subTest(src=src):
+                self.assertEqual(len(violations("cpp/minutes/x.cpp", src)), 1)
+
+    def test_a_fenced_prompt_inside_a_wrapper_is_still_fenced(self):
+        # The accept side of the same widening — it must not start crying wolf on the real code.
+        source = '  std::string p = "TRANSCRIPT:\\n" + std::string(fenceTranscript(chunk));\n'
+        self.assertEqual(violations("cpp/minutes/x.cpp", source), [])
 
     def test_joining_a_newline_onto_a_chunk_is_not_a_prompt(self):
         source = '    joined += "\\n\\n" + chunk;\n'
@@ -116,6 +167,29 @@ class TestPromptFencing(unittest.TestCase):
         self.assertIn("sneaky.cpp", result.stderr)
         self.assertIn("utterance_text", result.stderr)
         self.assertIn("fenceTranscript", result.stderr)
+
+    def test_every_search_root_is_checked(self):
+        """Narrowing SEARCH_ROOTS back to the listing's three left all eleven tests green.
+
+        cpp/jni, cpp/capi and cpp/cli are scope beyond the listing and were argued for in the
+        docstring; an argument in a comment is not a gate. One planted violation per root.
+
+        The roots are RESTATED here rather than read from the module. Written as
+        `for root in _mod.SEARCH_ROOTS` this test passed happily against a checker narrowed to
+        `("cpp/minutes",)` — it simply iterated less. A fixture that asks the implementation what
+        the answer should be cannot fail when the implementation is wrong.
+        """
+        for root in ("cpp/minutes", "cpp/llm", "cpp/pipeline", "cpp/jni", "cpp/capi", "cpp/cli"):
+            with self.subTest(root=root):
+                tree = tempfile.mkdtemp()
+                self.addCleanup(shutil.rmtree, tree)
+                path = os.path.join(tree, *root.split("/"))
+                os.makedirs(path)
+                with open(os.path.join(path, "planted.cpp"), "w") as f:
+                    f.write('std::string p = "Summarise:\\n" + utterance_text;\n')
+                result = run_against(tree)
+                self.assertEqual(1, result.returncode, f"{root} is not searched")
+                self.assertIn("planted.cpp", result.stderr)
 
     def test_the_real_repository_passes(self):
         # The check is worthless if it does not hold on the tree it ships with — and this is the
