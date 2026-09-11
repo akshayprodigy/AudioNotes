@@ -95,6 +95,49 @@ object Narrator {
   fun modelFile(ctx: Context) = ModelCatalog.fileFor(ctx, "llm-qwen")?.takeIf { it.exists() }
 
   /**
+   * Each chunk's prose digest, in order, with the chunks whose generation FAILED dropped entirely.
+   *
+   * Dropping is the load-bearing part and what it protects is not visible from here. A chunk is
+   * recorded speech; what it feeds next is [NativeBridge.nativeLlmCondensePrompt], which is NOT
+   * fenced — the core reasons that a condense prompt's input is always a generation and never
+   * speech (see `cpp/minutes/fence.h` and the note above `mapPrompt` in `llm_prompts.cpp`).
+   *
+   * So the obvious kindness — `digest.ifEmpty { chunks[i] }`, so a chunk the model failed on is
+   * not "lost" — would put a meeting's own words into the instruction position of a live model.
+   * Every assertion about condensePrompt would still pass: the builder would be exactly as
+   * unfenced as it was meant to be. What changed is what is handed to it.
+   *
+   * Extracted from [run] so that invariant can be tested off a device. `narrate()` in
+   * llm_prompts.cpp is the same loop in C++ and `test_llm_minutes` pins it there; this is the copy
+   * the phone actually runs, and until NarratorDigestsTest it had nothing watching it.
+   *
+   * @param already digests an earlier interrupted run already committed, by chunk index
+   * @param digestOf chunk -> prose, `""` when the model produced nothing
+   * @param commit checkpoint one digest as it lands
+   * @param beforeEach called with each index before any work; return true to cancel the run
+   * @return the digests in chunk order, or null when [beforeEach] asked to cancel
+   */
+  internal fun digestChunks(
+    chunks: List<String>,
+    already: Map<Int, String>,
+    digestOf: (String) -> String,
+    commit: (Int, String) -> Unit,
+    beforeEach: (Int) -> Boolean = { false },
+  ): List<String>? {
+    val done = already.toMutableMap()
+    for (i in chunks.indices) {
+      if (beforeEach(i)) return null
+      if (done.containsKey(i)) continue
+      val digest = digestOf(chunks[i])
+      // NEVER `?: chunks[i]` here. Read the note above before making a failed chunk carry itself.
+      if (digest.isEmpty()) continue
+      commit(i, digest)
+      done[i] = digest
+    }
+    return chunks.indices.mapNotNull { done[it] }
+  }
+
+  /**
    * Narrate one meeting. Returns true when `llm` rows were written.
    * Requires [NativeBridge.ensureLoaded] to have run.
    */
@@ -187,22 +230,20 @@ object Narrator {
         if (tick()) return false
         source = chunks[0]
       } else {
-        val done = db.notes(meetingId).toMutableMap()
-        for (i in chunks.indices) {
-          if (tick()) return false
-          step++
-          if (done.containsKey(i)) continue
-          val digest = NativeBridge.nativeStripMarkdown(
-            gen(NativeBridge.nativeLlmDigestPrompt(chunks[i]), DIGEST_TOKENS),
-          )
-          if (digest.isEmpty()) continue
+        var digests = digestChunks(
+          chunks.toList(),
+          db.notes(meetingId),
+          digestOf = { chunk ->
+            NativeBridge.nativeStripMarkdown(
+              gen(NativeBridge.nativeLlmDigestPrompt(chunk), DIGEST_TOKENS),
+            )
+          },
           // Committed as it lands: this is the whole reason llm_notes exists. A process killed at
           // chunk 5 of 9 resumes at 5 instead of regenerating eight minutes of work it already did.
-          db.putNote(meetingId, i, digest)
-          done[i] = digest
-        }
+          commit = { i, digest -> db.putNote(meetingId, i, digest) },
+          beforeEach = { if (tick()) true else { step++; false } },
+        ) ?: return false
 
-        var digests = chunks.indices.mapNotNull { done[it] }
         if (digests.isEmpty()) {
           Log.w(TAG, "no digests produced for $meetingId")
           return false

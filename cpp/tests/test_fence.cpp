@@ -77,8 +77,14 @@ int main() {
           "U+E001 is not the fence and must not be stripped");
   }
 
-  // A truncated UTF-8 tail — the last thing a mis-decoded recording produces — must not make the
-  // stripper eat past the end of the string.
+  // A truncated UTF-8 tail — the last thing a mis-decoded recording produces — is not a marker,
+  // and its bytes come through unchanged.
+  //
+  // This does NOT demonstrate that the loop's bound stops a read past the end, whatever it looks
+  // like: std::string::operator[](size()) is defined and returns '\0', so an off-by-one here reads
+  // a real character and no sanitizer has anything to report. What it does pin is the comparison —
+  // it fails against a stripper that matches on the first two bytes alone. The bound becomes
+  // load-bearing the moment fenceTranscript takes a string_view or a const char*; see fence.cpp.
   {
     const std::string out = fenceTranscript(std::string("ok\xEE\x80"));
     CHECK(out.find("ok\xEE\x80") != std::string::npos, "a truncated sequence should pass through");

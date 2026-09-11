@@ -67,6 +67,7 @@ def main():
     root = args.root
 
     violations = []
+    scanned = 0
     for search in SEARCH_ROOTS:
         base = os.path.join(root, search)
         if not os.path.isdir(base):
@@ -80,6 +81,9 @@ def main():
                     continue
                 path = os.path.join(dirpath, name)
                 rel = os.path.relpath(path, root)
+                # Counted BEFORE the allowlist: a tree holding nothing but registered call sites
+                # has still been examined, and only a tree with no sources at all has not.
+                scanned += 1
                 if rel in ALLOWED or rel.startswith(ALLOWED_PREFIXES):
                     continue
                 with open(path, encoding="utf-8", errors="replace") as f:
@@ -88,6 +92,20 @@ def main():
                             continue
                         if PATTERN.search(line):
                             violations.append(f"{rel}:{lineno}: {line.strip()}")
+
+    # Found while fixing the same defect in check-prompt-fencing.py, which was modelled on this
+    # file: `if not os.path.isdir(base): continue` plus "no violations means exit 0" means that
+    # renaming src/ turns the privacy gate into a green tick. The screen would go on claiming it
+    # counts every byte while nothing checked.
+    if not scanned:
+        print(
+            "Scanned no files at all. SEARCH_ROOTS names "
+            + ", ".join(SEARCH_ROOTS)
+            + " and none of them exist here, so this run checked nothing and is not a pass.\n"
+            "Update SEARCH_ROOTS in scripts/check-network-egress.py to wherever the sources moved.",
+            file=sys.stderr,
+        )
+        return 1
 
     if violations:
         print("A network call exists outside the registered call sites:\n", file=sys.stderr)
@@ -101,7 +119,7 @@ def main():
             file=sys.stderr,
         )
         return 1
-    print("network egress OK")
+    print(f"network egress OK ({scanned} files)")
     return 0
 
 

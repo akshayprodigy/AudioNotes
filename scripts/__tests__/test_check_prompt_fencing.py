@@ -108,10 +108,33 @@ class TestPromptFencing(unittest.TestCase):
             with self.subTest(src=src):
                 self.assertEqual(len(violations("cpp/minutes/x.cpp", src)), 1)
 
-    def test_a_count_that_merely_contains_a_transcript_word_is_not_transcript(self):
-        # The other side of that boundary: pipeline.cpp logs chunks_failed, which is a number.
-        source = '  fail("asr: every chunk failed (" + std::to_string(asr_run.chunks_failed));\n'
+    def test_an_identifier_that_merely_begins_with_a_transcript_word_is_not_transcript(self):
+        # The other side of the trailing-underscore boundary. Named for what it pins: the
+        # IDENTIFIER rule, not the count shape — `chunks_failed` is rejected because the name ends
+        # in `failed`, and it would still be rejected outside any std::to_string.
+        source = '  logLine("asr: every chunk failed (" + asr_run.chunks_failed);\n'
         self.assertEqual(violations("cpp/pipeline/x.cpp", source), [])
+
+    def test_a_count_of_transcript_things_is_a_number_not_a_transcript(self):
+        """std::to_string is exempt by SIGNATURE, not by path — the count shape the guard meets.
+
+        Every overload takes an arithmetic type, so the result is the decimal form of a number and
+        can never be speech. `std::to_string(chunks.size())` would otherwise be flagged from both
+        directions at once: the wrapper rule reaches into it after a literal, and the closing-paren
+        rule reaches out of it before one.
+        """
+        for src in ('  fail("asr: every chunk failed (" + std::to_string(run.chunks) + ")");\n',
+                    '  fail("asr: failed (" + std::to_string(chunks.size()) + ")");\n',
+                    '  log("turns: " + std::to_string(turns));\n',
+                    '  log("sentences: " + std::to_string(sentences.size()));\n',
+                    '  log("records: " + std::to_string(db.records));\n'):
+            with self.subTest(src=src):
+                self.assertEqual(violations("cpp/pipeline/x.cpp", src), [])
+
+    def test_a_transcript_beside_a_count_is_still_caught(self):
+        # The accept above must not become a way in: blanking the count leaves everything else.
+        source = '  std::string p = "seen " + std::to_string(n) + " lines:\\n" + chunk;\n'
+        self.assertEqual(len(violations("cpp/minutes/x.cpp", source)), 1)
 
     def test_a_std_string_wrapper_does_not_hide_the_violation(self):
         # The idiom the plan's own fence.cpp listing is written in.
@@ -190,6 +213,22 @@ class TestPromptFencing(unittest.TestCase):
                 result = run_against(tree)
                 self.assertEqual(1, result.returncode, f"{root} is not searched")
                 self.assertIn("planted.cpp", result.stderr)
+
+    def test_a_tree_with_nothing_to_scan_is_not_a_pass(self):
+        """A guard that examined no files must not print OK.
+
+        Every root is a hard-coded path. Copy cpp/minutes to cpp/prompts and the checker reports
+        success over a tree holding a real violation — a directory rename disables it with no
+        signal at all, which is worse than not having it, because somebody is relying on it.
+        """
+        tree = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tree)
+        os.makedirs(os.path.join(tree, "cpp", "prompts"))
+        with open(os.path.join(tree, "cpp", "prompts", "moved.cpp"), "w") as f:
+            f.write('std::string p = "Summarise:\\n" + utterance_text;\n')
+        result = run_against(tree)
+        self.assertEqual(1, result.returncode, "a run that scanned nothing reported success")
+        self.assertIn("SEARCH_ROOTS", result.stderr)
 
     def test_the_real_repository_passes(self):
         # The check is worthless if it does not hold on the tree it ships with — and this is the

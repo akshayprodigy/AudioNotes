@@ -815,8 +815,8 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeDropAbsenceTail(
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmNarrativePrompt(
-    JNIEnv* env, jobject /*thiz*/, jstring jNotes) {
-  return promptCall(env, jNotes,
+    JNIEnv* env, jobject /*thiz*/, jstring jRecord) {
+  return promptCall(env, jRecord,
                     [](const std::string& s) { return audionotes::narrativePrompt(s, "en"); });
 }
 

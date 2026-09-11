@@ -36,7 +36,13 @@ WHAT THIS CANNOT SEE, written down so the next person does not mistake a pass fo
     the operand next to the literal, and `chunk` is next to `fenceTranscript(a)`;
   * a transcript that is not the FIRST operand of a wrapper — `escape(style, chunk)` — nor the
     whole of one;
-  * a transcript passed into a helper that concatenates it somewhere else.
+  * a transcript passed into a helper that concatenates it somewhere else;
+  * ANY LANGUAGE BUT C++. SEARCH_ROOTS is C++ only, so TypeScript and Kotlin are invisible to this
+    check entirely. src/pipeline/summarize.ts really does build `TRANSCRIPT:\n${chunk}` unfenced;
+    it is safe because nothing calls its enhanceMinutes — dead by INSPECTION, not by gate, which
+    makes it the third load-bearing claim on this path that no test can see. Kotlin builds no
+    prompts today (Narrator calls the C++ builders through JNI) and the day it does, this list is
+    where somebody will look to find out that nothing was watching.
 The fence itself is the guarantee. This is the tripwire that says when somebody walks past it.
 
     python3 scripts/check-prompt-fencing.py
@@ -103,6 +109,24 @@ TEXT_THEN_LITERAL = re.compile(
 # it, so the character before must not be able to continue an identifier.
 FENCED = re.compile(r'(?:^|[^A-Za-z0-9_:])(?:audionotes\s*::\s*)?fenceTranscript\s*\(')
 
+# std::to_string(chunks.size()), std::to_string(run.chunks), std::to_string(turns) — a count of
+# transcript things, logged. The wrappers that let `std::string(chunk)` be seen let these be seen
+# too, from BOTH sides: _OPENERS reaches into `std::to_string(run.chunks` after a literal, and
+# _CLOSERS reaches out of it before one.
+#
+# THIS IS NOT AN ALLOWLIST ENTRY, and the distinction is the point. An allowlist exempts a PATH —
+# "trust this file" — and cannot say why. This exempts a SIGNATURE. Every std::to_string overload
+# takes an arithmetic type, so its result is the decimal form of a number and can never be speech:
+# a transcript cannot be laundered through a function that will not compile when handed one. The
+# exemption is therefore checkable by reading the C++ standard rather than by trusting an author.
+#
+# It is done by BLANKING the calls, not by a lookahead. `(?!(?:std\s*::\s*)?to_string\s*\()` at the
+# head of each _OPENERS repetition passes all 26 tests and the real tree and does NOTHING: the
+# engine slides one character right and matches `td::to_string(`. A narrowing here can look correct
+# against every test you own and be defeated by a one-character offset. Blanking preserves length,
+# so reported line numbers still map.
+_STRINGIFY = re.compile(r'(?:std\s*::\s*)?to_string\s*\((?:[^()]|\([^()]*\))*\)')
+
 _WORD = re.compile(r"[A-Za-z]{3,}")
 _ESCAPE = re.compile(r"\\.")
 _LETTER = re.compile(r"[A-Za-z]")
@@ -128,6 +152,11 @@ def _is_instruction_text(literal):
     return "\\n" in body and bool(_LETTER.search(visible))
 
 
+def _blank_counts(code):
+    """Replace std::to_string(...) with same-length filler, so offsets and line numbers survive."""
+    return _STRINGIFY.sub(lambda m: "0" * len(m.group(0)), code)
+
+
 def _strip_comments(source):
     """Blank out whole-line comments, keeping the line count so offsets still map to line numbers."""
     out = []
@@ -141,7 +170,7 @@ def violations(path, source):
 
     `path` is reported, not consulted: no file is exempt. Returns "<line>: <fragment>" strings.
     """
-    code = _strip_comments(source)
+    code = _blank_counts(_strip_comments(source))
     found = {}
     for pattern in (LITERAL_THEN_TEXT, TEXT_THEN_LITERAL):
         for m in pattern.finditer(code):
@@ -165,6 +194,7 @@ def main():
     root = args.root
 
     found = []
+    scanned = 0
     for search in SEARCH_ROOTS:
         base = os.path.join(root, *search.split("/"))
         if not os.path.isdir(base):
@@ -176,9 +206,23 @@ def main():
                     continue
                 path = os.path.join(dirpath, name)
                 rel = os.path.relpath(path, root)
+                scanned += 1
                 with open(path, encoding="utf-8", errors="replace") as f:
                     for v in violations(rel, f.read()):
                         found.append(f"{rel}:{v}")
+
+    # A check that examined nothing must not report success. Every root is a hard-coded path, so
+    # moving cpp/minutes anywhere else turns this from a gate into a green tick with no signal at
+    # all — the same silent-disable shape that check-engine-encapsulation.py exists because of.
+    if not scanned:
+        print(
+            "Scanned no files at all. SEARCH_ROOTS names "
+            + ", ".join(SEARCH_ROOTS)
+            + " and none of them exist here, so this run checked nothing and is not a pass.\n"
+            "Update SEARCH_ROOTS in scripts/check-prompt-fencing.py to wherever the prompts moved.",
+            file=sys.stderr,
+        )
+        return 1
 
     if found:
         print("Transcript text reached a prompt outside fenceTranscript():\n", file=sys.stderr)
@@ -192,7 +236,7 @@ def main():
             file=sys.stderr,
         )
         return 1
-    print("prompt fencing: OK")
+    print(f"prompt fencing: OK ({scanned} files)")
     return 0
 
 

@@ -71,6 +71,15 @@ class TestNetworkEgressCheck(unittest.TestCase):
         )
         self.assertEqual(0, run_against(self.tree).returncode)
 
+    def test_a_tree_with_nothing_to_scan_is_not_a_pass(self):
+        # Same defect, found while writing check-prompt-fencing.py against this file: no sources
+        # under SEARCH_ROOTS meant "no violations" meant exit 0, so renaming src/ would have turned
+        # the privacy gate into a green tick while the screen kept claiming it counts every byte.
+        self.write(os.path.join("app", "screens", "Sneaky.tsx"), "await fetch('https://x/');\n")
+        result = run_against(self.tree)
+        self.assertEqual(1, result.returncode, "a run that scanned nothing reported success")
+        self.assertIn("SEARCH_ROOTS", result.stderr)
+
     def test_the_real_repository_passes(self):
         # The check is worthless if it does not hold on the tree it ships with.
         result = run_against(ROOT)

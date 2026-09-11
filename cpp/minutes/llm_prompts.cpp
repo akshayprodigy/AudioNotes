@@ -114,6 +114,14 @@ std::vector<std::string> chunkTranscript(const std::vector<std::string>& lines,
 // instruction hands it to condensePrompt, and through the narrative on to summary and headline,
 // unfenced. The fence makes that harder — the step that reads the speech is told what it is — and
 // does not make it impossible. A prose metric is what would unblock closing it.
+//
+// AND "condense never receives speech" IS A CLAIM ABOUT narrate() BELOW, WHICH HAS A SECOND HOME.
+// Narrator.kt re-implements this loop in Kotlin — it must, to checkpoint and cancel between
+// generations — and the phone runs THAT one. The claim holds in both today and is pinned in both:
+// the dataflow case at the end of test_llm_minutes here, NarratorDigestsTest there. Both exist
+// because the one-line edit that breaks the claim (carry the chunk forward when its digest comes
+// back empty) leaves every assertion ABOUT condensePrompt passing. If you change the loop in
+// either language, change the other, and check that both tests still fail when you break it.
 std::string mapPrompt(const std::string& chunk) {
   return "Below is part of a meeting transcript. Extract only what is explicitly stated. "
          "List decisions, action items (with owner and any due date), and open questions. "
