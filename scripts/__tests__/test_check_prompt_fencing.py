@@ -31,6 +31,13 @@ _spec.loader.exec_module(_mod)
 violations = _mod.violations
 
 
+# Restated, never read from the module: written as `_mod.SEARCH_ROOTS` these tests passed happily
+# against a checker narrowed to ("cpp/minutes",) — they simply iterated less.
+ROOTS = ("cpp/minutes", "cpp/llm", "cpp/pipeline", "cpp/jni", "cpp/capi", "cpp/cli")
+
+VIOLATION = 'std::string p = "Summarise:\\n" + utterance_text;\n'
+
+
 def run_against(tree):
     return subprocess.run(
         [sys.executable, CHECK, "--root", tree], capture_output=True, text=True
@@ -38,6 +45,25 @@ def run_against(tree):
 
 
 class TestPromptFencing(unittest.TestCase):
+    def a_tree(self, roots=ROOTS):
+        """A temp tree with the given roots present — by default ALL of them.
+
+        Trees here have to be REAL shapes. A tempdir holding one root is a tree in which five roots
+        are missing, so anything asserted against it is also asserting the behaviour of a repository
+        somebody has taken an axe to.
+        """
+        tree = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tree)
+        for r in roots:
+            os.makedirs(os.path.join(tree, *r.split("/")), exist_ok=True)
+        return tree
+
+    def plant(self, tree, root, name, text):
+        path = os.path.join(tree, *root.split("/"))
+        os.makedirs(path, exist_ok=True)
+        with open(os.path.join(path, name), "w") as f:
+            f.write(text)
+
     # --- what a fenced prompt looks like, and what an unfenced one looks like ---
 
     def test_accepts_a_fenced_prompt(self):
@@ -131,6 +157,14 @@ class TestPromptFencing(unittest.TestCase):
             with self.subTest(src=src):
                 self.assertEqual(violations("cpp/pipeline/x.cpp", src), [])
 
+    def test_a_nested_count_is_still_a_count(self):
+        # Every one of the accept cases above is a single-level call, so none of them would notice
+        # _STRINGIFY failing to balance a nested one. It fails CLOSED when it does — the call goes
+        # un-blanked and legitimate code is rejected — which is a false positive, and a false
+        # positive is how a check earns the allowlist entry it spent this whole file refusing.
+        source = '  log("chunks: " + std::to_string(std::min(chunks.size(), cap)));\n'
+        self.assertEqual(violations("cpp/pipeline/x.cpp", source), [])
+
     def test_a_transcript_beside_a_count_is_still_caught(self):
         # The accept above must not become a way in: blanking the count leaves everything else.
         source = '  std::string p = "seen " + std::to_string(n) + " lines:\\n" + chunk;\n'
@@ -170,25 +204,19 @@ class TestPromptFencing(unittest.TestCase):
     # --- the checker as a build gate ---
 
     def test_a_clean_tree_passes(self):
-        tree = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, tree)
-        path = os.path.join(tree, "cpp", "minutes")
-        os.makedirs(path)
-        with open(os.path.join(path, "fine.cpp"), "w") as f:
-            f.write('std::string p = "TRANSCRIPT:\\n" + fenceTranscript(chunk);\n')
-        self.assertEqual(0, run_against(tree).returncode)
+        tree = self.a_tree()
+        self.plant(tree, "cpp/minutes", "fine.cpp",
+                   'std::string p = "TRANSCRIPT:\\n" + fenceTranscript(chunk);\n')
+        result = run_against(tree)
+        self.assertEqual(0, result.returncode, result.stderr)
 
     def test_a_planted_prompt_fails_the_build(self):
-        tree = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, tree)
-        path = os.path.join(tree, "cpp", "minutes")
-        os.makedirs(path)
-        with open(os.path.join(path, "sneaky.cpp"), "w") as f:
-            f.write('std::string p = "Summarise:\\n" + utterance_text;\n')
+        tree = self.a_tree()
+        self.plant(tree, "cpp/minutes", "sneaky.cpp", VIOLATION.replace("utterance_text", "utterance.text"))
         result = run_against(tree)
         self.assertEqual(1, result.returncode)
         self.assertIn("sneaky.cpp", result.stderr)
-        self.assertIn("utterance_text", result.stderr)
+        self.assertIn("utterance.text", result.stderr)
         self.assertIn("fenceTranscript", result.stderr)
 
     def test_every_search_root_is_checked(self):
@@ -202,33 +230,46 @@ class TestPromptFencing(unittest.TestCase):
         `("cpp/minutes",)` — it simply iterated less. A fixture that asks the implementation what
         the answer should be cannot fail when the implementation is wrong.
         """
-        for root in ("cpp/minutes", "cpp/llm", "cpp/pipeline", "cpp/jni", "cpp/capi", "cpp/cli"):
+        for root in ROOTS:
             with self.subTest(root=root):
-                tree = tempfile.mkdtemp()
-                self.addCleanup(shutil.rmtree, tree)
-                path = os.path.join(tree, *root.split("/"))
-                os.makedirs(path)
-                with open(os.path.join(path, "planted.cpp"), "w") as f:
-                    f.write('std::string p = "Summarise:\\n" + utterance_text;\n')
+                tree = self.a_tree()
+                self.plant(tree, root, "planted.cpp", VIOLATION)
                 result = run_against(tree)
                 self.assertEqual(1, result.returncode, f"{root} is not searched")
                 self.assertIn("planted.cpp", result.stderr)
 
-    def test_a_tree_with_nothing_to_scan_is_not_a_pass(self):
-        """A guard that examined no files must not print OK.
+    def test_one_renamed_root_among_five_intact_ones_is_not_a_pass(self):
+        """The shape a directory rename actually has, and the one a total count cannot see.
 
-        Every root is a hard-coded path. Copy cpp/minutes to cpp/prompts and the checker reports
-        success over a tree holding a real violation — a directory rename disables it with no
-        signal at all, which is worse than not having it, because somebody is relying on it.
+        Rename cpp/minutes to cpp/prompts and five roots still scan, so "did we scan anything?"
+        answers yes and the checker reports success over a tree holding a real violation in the
+        directory it can no longer reach. The first version of this test described exactly this
+        scenario in its docstring and then built a tempdir containing ONLY cpp/prompts — where the
+        total count catches it by accident, with no sibling roots to keep the count up. A docstring
+        claiming a scenario the body does not build is the same defect as a comment claiming an
+        invariant nothing enforces.
         """
+        tree = self.a_tree([r for r in ROOTS if r != "cpp/minutes"])
+        self.plant(tree, "cpp/prompts", "moved.cpp", VIOLATION)
+        result = run_against(tree)
+        self.assertEqual(1, result.returncode, "a renamed root was skipped in silence")
+        self.assertIn("cpp/minutes", result.stderr)
+
+    def test_a_tree_with_none_of_the_roots_is_not_a_pass(self):
+        # The blunter case: nothing the checker was told about is there at all.
         tree = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tree)
-        os.makedirs(os.path.join(tree, "cpp", "prompts"))
-        with open(os.path.join(tree, "cpp", "prompts", "moved.cpp"), "w") as f:
-            f.write('std::string p = "Summarise:\\n" + utterance_text;\n')
+        os.makedirs(os.path.join(tree, "src"))
         result = run_against(tree)
-        self.assertEqual(1, result.returncode, "a run that scanned nothing reported success")
+        self.assertEqual(1, result.returncode)
         self.assertIn("SEARCH_ROOTS", result.stderr)
+
+    def test_roots_that_exist_but_hold_no_sources_are_not_a_pass(self):
+        # And the third shape, which the existence check above cannot see: every root present, the
+        # sources moved out from under them.
+        result = run_against(self.a_tree())
+        self.assertEqual(1, result.returncode, "a run that opened no file reported success")
+        self.assertIn("examined nothing", result.stderr)
 
     def test_the_real_repository_passes(self):
         # The check is worthless if it does not hold on the tree it ships with — and this is the

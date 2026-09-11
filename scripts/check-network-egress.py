@@ -66,12 +66,33 @@ def main():
     args = parser.parse_args()
     root = args.root
 
+    # EVERY DECLARED ROOT MUST EXIST, checked before anything is scanned.
+    #
+    # A total-scanned count is not enough and the first version of this check proved it: with six
+    # roots, renaming one leaves `scanned` comfortably nonzero, so the guard never fires and the
+    # checker reports success over a tree it is now blind in. That is the realistic shape — nobody
+    # moves both at once — and it is how a directory rename silently disables a gate.
+    #
+    # EXISTENCE rather than a per-root file count, because the two fail on different things. A
+    # declared root that is not there means it moved (the guard is blind wherever it went) or the
+    # list is stale; both deserve a failure, so failing is right in every case. A root that exists
+    # and holds no sources is legitimate — a directory emptied mid-refactor — and a per-root count
+    # would reject it. The total below still catches every root existing and none holding a source.
+    missing = [r for r in SEARCH_ROOTS if not os.path.isdir(os.path.join(root, r))]
+    if missing:
+        print(
+            "SEARCH_ROOTS names a directory that is not there:\n  " + "\n  ".join(missing)
+            + "\n\nThe privacy screen claims to count every byte that leaves this phone, and this\n"
+              "check is blind wherever that code moved to. Point SEARCH_ROOTS in\n"
+              "scripts/check-network-egress.py at the new location.",
+            file=sys.stderr,
+        )
+        return 1
+
     violations = []
     scanned = 0
     for search in SEARCH_ROOTS:
         base = os.path.join(root, search)
-        if not os.path.isdir(base):
-            continue
         for dirpath, dirnames, filenames in os.walk(base):
             dirnames[:] = [
                 d for d in dirnames if d not in ("node_modules", "build", "__pycache__")
@@ -93,16 +114,13 @@ def main():
                         if PATTERN.search(line):
                             violations.append(f"{rel}:{lineno}: {line.strip()}")
 
-    # Found while fixing the same defect in check-prompt-fencing.py, which was modelled on this
-    # file: `if not os.path.isdir(base): continue` plus "no violations means exit 0" means that
-    # renaming src/ turns the privacy gate into a green tick. The screen would go on claiming it
-    # counts every byte while nothing checked.
+    # Both roots are there and neither holds a source file. Rarer than a rename and the same
+    # conclusion: a run that examined nothing is not a pass.
     if not scanned:
         print(
-            "Scanned no files at all. SEARCH_ROOTS names "
-            + ", ".join(SEARCH_ROOTS)
-            + " and none of them exist here, so this run checked nothing and is not a pass.\n"
-            "Update SEARCH_ROOTS in scripts/check-network-egress.py to wherever the sources moved.",
+            "Every directory in SEARCH_ROOTS exists and not one holds a "
+            + "/".join(EXTENSIONS)
+            + " file, so this run examined nothing and is not a pass.",
             file=sys.stderr,
         )
         return 1

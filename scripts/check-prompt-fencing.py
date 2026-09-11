@@ -125,7 +125,14 @@ FENCED = re.compile(r'(?:^|[^A-Za-z0-9_:])(?:audionotes\s*::\s*)?fenceTranscript
 # engine slides one character right and matches `td::to_string(`. A narrowing here can look correct
 # against every test you own and be defeated by a one-character offset. Blanking preserves length,
 # so reported line numbers still map.
-_STRINGIFY = re.compile(r'(?:std\s*::\s*)?to_string\s*\((?:[^()]|\([^()]*\))*\)')
+#
+# Two levels of nesting — `std::to_string(chunks.size())` and
+# `std::to_string(std::min(a.size(), b.size()))`. A regex cannot balance arbitrarily, and a deeper
+# nest simply fails to match, leaving the call un-blanked. That fails CLOSED: the result is a false
+# rejection of legitimate code, never a missed violation. Extend the nesting if a third level ever
+# appears; do not reach for an allowlist entry when it does.
+_STRINGIFY = re.compile(
+    r'(?:std\s*::\s*)?to_string\s*\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)')
 
 _WORD = re.compile(r"[A-Za-z]{3,}")
 _ESCAPE = re.compile(r"\\.")
@@ -193,12 +200,34 @@ def main():
     args = parser.parse_args()
     root = args.root
 
+    # EVERY DECLARED ROOT MUST EXIST, checked before anything is scanned.
+    #
+    # A total-scanned count is not enough and the first version of this check proved it: with six
+    # roots, renaming one leaves `scanned` comfortably nonzero, so the guard never fires and the
+    # checker reports success over a tree it is now blind in. That is the realistic shape — nobody
+    # moves all six at once — and it is how a directory rename silently disables a gate.
+    #
+    # EXISTENCE rather than a per-root file count, because the two fail on different things. A
+    # declared root that is not there means it moved (the guard is blind wherever it went) or the
+    # list is stale; both deserve a failure, so failing is right in every case. A root that exists
+    # and holds no sources is legitimate — a directory emptied mid-refactor — and a per-root count
+    # would reject it. The total below still catches every root existing and none holding a source.
+    missing = [r for r in SEARCH_ROOTS
+               if not os.path.isdir(os.path.join(root, *r.split("/")))]
+    if missing:
+        sys.stderr.write(
+            "SEARCH_ROOTS names a directory that is not there:\n  "
+            + "\n  ".join(missing)
+            + "\n\nThis check is blind wherever that code moved to, so it is not a pass. Point\n"
+              "SEARCH_ROOTS in scripts/check-prompt-fencing.py at the new location, or drop the\n"
+              "entry if the code is gone.\n"
+        )
+        return 1
+
     found = []
     scanned = 0
     for search in SEARCH_ROOTS:
         base = os.path.join(root, *search.split("/"))
-        if not os.path.isdir(base):
-            continue
         for dirpath, dirnames, filenames in os.walk(base):
             dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
             for name in filenames:
@@ -211,15 +240,13 @@ def main():
                     for v in violations(rel, f.read()):
                         found.append(f"{rel}:{v}")
 
-    # A check that examined nothing must not report success. Every root is a hard-coded path, so
-    # moving cpp/minutes anywhere else turns this from a gate into a green tick with no signal at
-    # all — the same silent-disable shape that check-engine-encapsulation.py exists because of.
+    # Every root is there and none of them holds a source file. Distinct from the check above and
+    # rarer, but the same conclusion: a run that examined nothing is not a pass.
     if not scanned:
         print(
-            "Scanned no files at all. SEARCH_ROOTS names "
-            + ", ".join(SEARCH_ROOTS)
-            + " and none of them exist here, so this run checked nothing and is not a pass.\n"
-            "Update SEARCH_ROOTS in scripts/check-prompt-fencing.py to wherever the prompts moved.",
+            "Every directory in SEARCH_ROOTS exists and not one holds a "
+            + "/".join(EXTENSIONS)
+            + " file, so this run examined nothing and is not a pass.",
             file=sys.stderr,
         )
         return 1
