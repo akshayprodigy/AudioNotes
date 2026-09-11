@@ -309,9 +309,9 @@ export default function ActionsTab({
         onEdit={onEditItem ? () => onEditItem(r) : undefined}
         onRevert={onRevertItem ? () => onRevertItem(r) : undefined}
         // `r.mine` and nothing else. The old gate also asked for `r.minuteId`, which a hand-typed
-      // row stopped having the moment Task 12 moved it into `items` — leaving it would have taken
-      // the remove button off every row that has ever had one, silently.
-      onRemove={onRemoveItem && r.mine ? () => onRemoveItem(r) : undefined}
+        // row stopped having the moment Task 12 moved it into `items` — leaving it would have
+        // taken the remove button off every row that has ever had one, silently.
+        onRemove={onRemoveItem && r.mine ? () => onRemoveItem(r) : undefined}
         provenance={provenanceFor(r)}
       />
       );

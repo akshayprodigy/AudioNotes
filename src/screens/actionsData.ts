@@ -27,9 +27,10 @@ import type { ActionRow } from '../pipeline/types';
  * closed.
  *
  * What `action_done` still holds, and why this list cannot see it: the rows with no item id to key
- * on — any meeting the item
- * migration has not reached. Neither is in `items`, so neither is in `allActions` either, and this
- * list is consistent with itself rather than half-informed.
+ * on, which since Task 12 is one population and not two — every row of a meeting the item
+ * migration has not reached. None of them is in `items`, so none is in `allActions` either, and
+ * this list is consistent with itself rather than half-informed. A row somebody TYPED was the
+ * second such population, and it is in `items` now, tick and all.
  */
 
 /** The full worklist, newest meeting first, with each item's tick resolved. */

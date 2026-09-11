@@ -194,27 +194,63 @@ class UserItemsMigrationTest {
   }
 
   /**
-   * A search hit on a typed item opens the meeting at the TOP, not at the sentinel.
+   * A search hit on a typed item opens the meeting at the TOP — and an extracted one still opens
+   * at the moment it was said.
    *
-   * `indexItems` writes the anchor into `search_fts.start_ms`, which is where a hit is opened
-   * from. 0 is what every row with no moment already writes there — `indexTitle`, `indexMinutes`
-   * and `indexSummary` all do — and it is exactly what this row got while it was a `minutes` row,
-   * so the behaviour a person sees is unchanged. The sentinel would be a number that is neither a
+   * `indexItems` writes the anchor into `search_fts.start_ms`, which is where a hit is opened from.
+   * 0 is what every row with no moment already writes there — `indexTitle`, `indexMinutes` and
+   * `indexSummary` all do — and it is exactly what this row got while it was a `minutes` row, so
+   * the behaviour a person sees is unchanged. The sentinel would be a number that is neither a
    * moment nor a marker for one.
+   *
+   * THE RULE ITEMS ARE THE POINT OF THE FIXTURE, not scenery. Seeded with the typed row alone this
+   * test killed the mutant that deletes the `CASE` and could not fail against `indexItems` writing
+   * a CONSTANT 0 for every item — which would break search-to-moment for every extracted item in
+   * the app, and which no other test in the tree asserts. That is the single-row fixture this
+   * branch has now found a dozen times, landing in the task whose own brief warned about it: the
+   * warning was applied to fixtures about ORDER and SELECTION and this one reads as a fixture about
+   * a single value, which it is not — it is a fixture about a CASE with two branches, and a branch
+   * needs a row on each side.
    */
   @Test fun aTypedItemIsSearchableAndOpensAtTheTop() {
     inAMeeting { m ->
       typeAMinute(m, "decision", "Ship the beta to the pilot group")
       db.carryUserMinutesOntoItems(m)
+      // The rules over this transcript produce a decision at 61s and an action at 125s; both are
+      // indexed from their own anchors, and neither may be dragged to 0 by the typed row's branch.
+      db.replaceItems(m, Minutes.RULES_GEN, Minutes.extractItems(db.utterances(m), db.speakers(m)))
       db.reindexMeeting(m)
 
-      val hits = json(
+      val typedHits = json(
         "SELECT kind,start_ms AS startMs FROM search_fts WHERE meeting_id=? AND text MATCH 'pilot'",
         m,
       )
-      assertEquals(1, hits.length())
-      assertEquals("item", hits.getJSONObject(0).getString("kind"))
-      assertEquals(0L, hits.getJSONObject(0).getLong("startMs"))
+      assertEquals(1, typedHits.length())
+      assertEquals("item", typedHits.getJSONObject(0).getString("kind"))
+      assertEquals(0L, typedHits.getJSONObject(0).getLong("startMs"))
+
+      // Every item the rules produced, read back from the index by its own id, so the assertion is
+      // about each row's anchor rather than about whichever row the FTS ranker happened to put
+      // first. Two of them, at different non-zero moments: a constant 0 fails on both, and a CASE
+      // inverted to zero the WRONG branch fails on both too.
+      val ruleItems = db.items(m).filter { it.genVersion == Minutes.RULES_GEN }
+      assertTrue("the fixture needs at least two rule items", ruleItems.size >= 2)
+      for (it in ruleItems) {
+        val indexed = json(
+          "SELECT start_ms AS startMs FROM search_fts WHERE meeting_id=? AND kind='item' " +
+            "AND ref_id=?",
+          m, it.id,
+        )
+        assertEquals("an extracted item was not indexed", 1, indexed.length())
+        assertEquals(
+          "an extracted item's search hit was dragged to the top of the recording",
+          it.anchorStartMs, indexed.getJSONObject(0).getLong("startMs"),
+        )
+      }
+      assertTrue(
+        "every rule item is anchored at 0, so this fixture cannot see a constant",
+        ruleItems.any { it.anchorStartMs > 0 },
+      )
     }
   }
 

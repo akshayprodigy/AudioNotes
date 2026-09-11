@@ -27,8 +27,11 @@ export interface Spec extends TurboModule {
   // main thread. It exists because ensureItems is per-meeting and the worklist, the Library's
   // outstanding-actions tally and Search's "meetings with actions" filter are all CROSS-meeting —
   // under lazy-only they show a library that has been opened rather than the library.
-  // "Outstanding" is meetings with a transcript, no items and no items_migrated_at stamp; the
-  // stamp is what stops a meeting whose transcript yields no items from being swept forever.
+  // "Outstanding" is meetings with a transcript, no items THE RULES PRODUCED, and no
+  // items_migrated_at stamp; the stamp is what stops a meeting whose transcript yields no items
+  // from being swept forever. "No rule items" rather than "no items" because
+  // AudioDb.carryUserMinutesOntoItems runs on every open and can give an item to a meeting the
+  // rules have never run over — see AudioDb.hasRuleItems.
   backfillItems(limit: number): Promise<number>;
   // Index up to `limit` meetings that have never been indexed; resolves with how many are still
   // outstanding. Driven from the app's sweep so an existing library becomes searchable without a

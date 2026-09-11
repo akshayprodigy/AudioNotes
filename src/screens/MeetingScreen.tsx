@@ -616,8 +616,18 @@ export default function MeetingScreen({ route, navigation }: Props) {
   // starts, so Redo shows real progress.
   const refused =
     meeting?.status === 'unsupported_language' && !reprocessing && stage === null;
-  const working = !refused && (stage !== null || reprocessing || (!settled && minutes.length === 0));
-  const empty = !refused && settled && !working && minutes.length === 0 && utterances.length === 0;
+  // "Has this meeting anything written about it", asked of BOTH tables — the same correction the
+  // Summary tab's counters needed, on the guard that decides whether the tabs are drawn at all.
+  //
+  // It was `minutes.length === 0`, and that was right only while every decision and action lived
+  // in `minutes` as well as in `items`. A meeting whose rules extracted nothing and that somebody
+  // then typed a decision into now has ONE row and it is an `items` row: asked of `minutes` alone
+  // this screen answers "nothing here", and the person is shown "Writing your notes…" — or "could
+  // not hear any speech" — over the note they typed themselves. Before Task 12 that same note was
+  // a `minutes` row and the tabs were drawn.
+  const nothingWritten = minutes.length === 0 && items.length === 0;
+  const working = !refused && (stage !== null || reprocessing || (!settled && nothingWritten));
+  const empty = !refused && settled && !working && nothingWritten && utterances.length === 0;
 
   /**
    * Per-meeting actions, in the overflow sheet.
@@ -951,6 +961,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
           <View style={st.flex}>
             {tab === 'summary' ? (
               <SummaryTab
+                items={items}
                 minutes={minutes}
                 speakers={speakers}
                 speechMs={speechMs}

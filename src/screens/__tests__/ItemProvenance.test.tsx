@@ -51,6 +51,10 @@ const typedDecision = (over: Partial<Item> = {}): Item =>
     ...over,
   });
 
+/** An action a person typed themselves, the twin of [typedDecision] on the tab that matters most. */
+const typedAction = (over: Partial<Item> = {}): Item =>
+  typedDecision({ id: 'it-typed-action', kind: 'action', text: 'Book the venue — Priya', ...over });
+
 const minute = (over: Partial<Minute> = {}): Minute => ({
   id: 'min-action',
   meetingId: 'm1',
@@ -689,6 +693,171 @@ describe('the Actions tab', () => {
 
     expect(db.setActionDone).toHaveBeenCalledWith('m1', itemKey('Call the vendor back'), true);
     expect(db.setItemDone).not.toHaveBeenCalled();
+    await act(async () => tree.unmount());
+  });
+
+  /**
+   * REMOVING A HAND-TYPED ACTION, which is the half the MOM tab's two remove tests cannot reach.
+   *
+   * Reverting this tab's gate to the old `r.mine && r.minuteId` left all 342 tests passing while
+   * the identical mutation on MinutesTab was killed — both remove tests sat under
+   * `describe('the MOM tab')` and this describe had none. The defect is the one this task's own
+   * comment names: a hand-typed row stopped having a `minuteId` when it became an `items` row, so
+   * the gate silently stops drawing the button. An ACTION is the more common case and the one the
+   * whole worklist argument is about.
+   */
+  it('removes a hand-typed action from items', async () => {
+    (db.items as jest.Mock).mockResolvedValue([item(), typedAction()]);
+
+    const tree = await render({ tab: 'actions' });
+    const remove = byLabel(tree, 'Remove this item')[0];
+    await act(async () => remove.props.onPress());
+
+    expect(db.removeUserItem).toHaveBeenCalledWith('m1', 'it-typed-action');
+    expect(db.deleteUserMinute).not.toHaveBeenCalled();
+    await act(async () => tree.unmount());
+  });
+
+  /** And an unmigrated meeting's typed action still deletes from `minutes`, where it still lives. */
+  it('removes a hand-typed action from minutes when the meeting has no items', async () => {
+    (db.items as jest.Mock).mockResolvedValue([]);
+    (db.minutes as jest.Mock).mockResolvedValue([
+      minute(),
+      minute({ id: 'min-user', content: 'Call the vendor back', source: 'user' }),
+    ]);
+
+    const tree = await render({ tab: 'actions' });
+    const remove = byLabel(tree, 'Remove this item')[0];
+    await act(async () => remove.props.onPress());
+
+    expect(db.deleteUserMinute).toHaveBeenCalledWith('m1', 'min-user');
+    expect(db.removeUserItem).not.toHaveBeenCalled();
+    await act(async () => tree.unmount());
+  });
+});
+
+/**
+ * THE FIFTH READER, and the one nothing in this branch had ever counted.
+ *
+ * The Summary tab's "2 actions · 1 decision · 0 open" strip counted `minutes` rows. A hand-typed
+ * decision WAS a `minutes` row, so it was counted; it is an `items` row now and
+ * `carryUserMinutesOntoItems` deletes the row it came from. So a newly typed action never
+ * incremented the counter, the migration DECREMENTED it by however many rows a person had typed,
+ * and — because the whole strip is gated on `actions + decisions + questions > 0` — a meeting
+ * whose only item-kind content is hand-typed lost the block entirely, where it had said
+ * "2 actions".
+ *
+ * Nothing failed, because the pipeline still writes rule rows to both tables, so only the
+ * hand-typed contribution went missing. And nothing anywhere had ever tested these counters.
+ *
+ * The counter counts `toItemRows(items, minutes)` now — the same call the two tabs it links to
+ * make — so it is right by construction rather than by two tables happening to hold the same
+ * sentences. The fixtures below are the states where those two answers differ.
+ */
+describe('the Summary tab’s counters', () => {
+  /**
+   * The strip, read off the labels a screen reader is given — "3 actions", "1 decision", "0 open".
+   *
+   * Asserting the accessibility label rather than a number buried in the rendered tree pins the
+   * singular/plural too, and it is the string somebody who cannot see the strip actually receives.
+   * An empty array means the whole block was not rendered, which is its own failure mode here.
+   */
+  const glances = (tree: renderer.ReactTestRenderer): string[] =>
+    tree.root
+      .findAllByProps({ accessibilityRole: 'button' }, { deep: false })
+      .map(b => String(b.props.accessibilityLabel))
+      .filter(l => /^\d+ (actions?|decisions?|open)$/.test(l));
+
+  /**
+   * A hand-typed action is counted. TWO rule actions in the fixture, so a counter stuck on the
+   * item count, on the minute count, or on 1 cannot pass.
+   */
+  it('counts a hand-typed action alongside the extracted ones', async () => {
+    (db.items as jest.Mock).mockResolvedValue([
+      item(),
+      item({ id: 'it-2', text: 'Send the report — Sam' }),
+      typedAction(),
+    ]);
+    (db.minutes as jest.Mock).mockResolvedValue([
+      minute(),
+      minute({ id: 'min-2', content: 'Send the report — Sam' }),
+    ]);
+
+    const tree = await render({ tab: 'summary' });
+
+    expect(glances(tree)).toEqual(['3 actions', '0 decisions', '0 open']);
+    await act(async () => tree.unmount());
+  });
+
+  /**
+   * THE DISAPPEARANCE. A meeting whose only item-kind content is hand-typed showed no strip at
+   * all after the migration deleted the `minutes` row the count was reading.
+   */
+  it('still shows the strip for a meeting whose only content is hand-typed', async () => {
+    (db.items as jest.Mock).mockResolvedValue([typedAction(), typedDecision()]);
+    (db.minutes as jest.Mock).mockResolvedValue([]);
+
+    const tree = await render({ tab: 'summary' });
+
+    expect(glances(tree)).toEqual(['1 action', '1 decision', '0 open']);
+    await act(async () => tree.unmount());
+  });
+
+  /**
+   * THE SAME QUESTION, ASKED WHERE IT DECIDES WHETHER THE TABS EXIST AT ALL.
+   *
+   * `MeetingScreen`'s own "is there anything written about this meeting" guard was
+   * `minutes.length === 0`, which was right only while every decision and action lived in both
+   * tables. A meeting whose rules extracted nothing and that somebody then typed a decision into
+   * has exactly one row and it is an `items` row — so the screen answered "nothing here" and drew
+   * "Writing your notes…" over the note they had typed themselves. Before Task 12 that note was a
+   * `minutes` row and the tabs were drawn. The counter fix above cannot be reached at all until
+   * this one is, which is how it was found.
+   */
+  it('opens onto the tabs for a meeting whose only content is hand-typed', async () => {
+    (db.items as jest.Mock).mockResolvedValue([typedAction()]);
+    (db.minutes as jest.Mock).mockResolvedValue([]);
+
+    const tree = await render({ tab: 'summary' });
+
+    expect(byLabel(tree, 'MOM')).toHaveLength(1);
+    expect(JSON.stringify(tree.toJSON())).not.toContain('Writing your notes');
+    await act(async () => tree.unmount());
+  });
+
+  /**
+   * And it counts each sentence ONCE for a meeting that holds it in both tables.
+   *
+   * That is the ordinary state of every migrated meeting: `replaceMinutes` still writes the item
+   * kinds to `minutes` because a meeting nobody has opened has not been migrated and its `minutes`
+   * are all it has. Counting both tables would double every extracted row.
+   */
+  it('counts a sentence held in both tables once', async () => {
+    (db.items as jest.Mock).mockResolvedValue([item()]);
+    (db.minutes as jest.Mock).mockResolvedValue([minute()]);
+
+    const tree = await render({ tab: 'summary' });
+
+    expect(glances(tree)).toEqual(['1 action', '0 decisions', '0 open']);
+    await act(async () => tree.unmount());
+  });
+
+  /**
+   * An unmigrated meeting counts its `minutes`, which is what the tabs draw for it.
+   *
+   * The counter and the tab it links to have to agree in every state, and this is the state where
+   * agreeing means reading the OTHER table.
+   */
+  it('counts an unmigrated meeting’s minutes, as the tabs do', async () => {
+    (db.items as jest.Mock).mockResolvedValue([]);
+    (db.minutes as jest.Mock).mockResolvedValue([
+      minute(),
+      minute({ id: 'min-d', kind: 'decision', content: 'Ship on the 14th' }),
+    ]);
+
+    const tree = await render({ tab: 'summary' });
+
+    expect(glances(tree)).toEqual(['1 action', '1 decision', '0 open']);
     await act(async () => tree.unmount());
   });
 });

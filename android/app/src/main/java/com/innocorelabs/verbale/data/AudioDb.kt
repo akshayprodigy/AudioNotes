@@ -1095,11 +1095,18 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
      *
      * IT IS ALSO INERT IN `Reconciler`, which is worth knowing because rule 1 is what should be
      * doing that work. `min(end, NO_ANCHOR) - max(start, NO_ANCHOR)` is hugely negative and cannot
-     * underflow, so a hand-typed row fails every overlap check rather than passing them all — the
-     * fail-safe direction if rule 1 were ever removed. `0` fails the other way: a typed row would
-     * overlap whatever the meeting opened with. ReconcilerTest deliberately gives its user row a
-     * REAL anchor so that rule 1 stays pinned as a `gen_version` rule rather than as an accident
-     * of this constant.
+     * WRAP, so a row carrying it fails every overlap check rather than — the failure a value this
+     * large could plausibly have — coming back hugely positive and matching everything. That is
+     * the fail-safe direction if rule 1 were ever removed.
+     *
+     * `0` IS NOT THE DANGEROUS CHOICE HERE, and an earlier version of this note said it was. A row
+     * stored at `0..0` yields `-newStart`, at most 0, and `MIN_OVERLAP_MS` is 1 — so it never
+     * matches either, exactly as the plan's Task 7 note says. The case for this value over `0` is
+     * the ordering and the bridge, above; this property is shared, and it is recorded because it
+     * was nearly written down as a difference that does not exist. UserItemsTest asserts both.
+     *
+     * ReconcilerTest deliberately gives its user row a REAL anchor so that rule 1 stays pinned as
+     * a `gen_version` rule rather than as an accident of this constant.
      *
      * NOTHING READS IT BACK AS A NUMBER. "This row has no moment" is derived from [USER] at each
      * boundary that hands an anchor to something which renders it, never by comparing against this
@@ -1108,6 +1115,28 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
      */
     const val NO_ANCHOR = 9_007_199_254_740_991L
   }
+
+  /**
+   * `minutes.source` for a row a person wrote, which is a DIFFERENT column and a different
+   * vocabulary from [Gen.USER].
+   *
+   * `MinuteSource` in src/pipeline/types.ts is `rule | llm | user`; `items.gen_version` is
+   * `rules@1 | user`. The two spell this one value the same way today by coincidence — one names
+   * WHICH PIPELINE wrote a minute, the other VERSIONS the extractor that produced an item — and
+   * [carryUserMinutesOntoItems] reads the first while writing the second. Bound to [Gen.USER] it
+   * would compile, run, and quietly stop migrating anything the day a versioned user gen arrived.
+   */
+  private val MINUTE_SOURCE_USER = "user"
+
+  /**
+   * The kinds that live in `items`, in SQL and in Kotlin.
+   *
+   * `FileExportModule.ITEM_KINDS` is the same list for the renderer, `ITEM_KINDS` in
+   * src/screens/meeting/shared.tsx is the JavaScript one and `ItemKind` in types.ts is its type.
+   * This is the fourth and last: [carryUserMinutesOntoItems] spelled it inline until the review
+   * counted the spellings.
+   */
+  private val ITEM_KINDS = listOf("decision", "action", "question")
 
   /**
    * A row of `items` as it stands on disk, with its evidence and the two facts the reconciler
@@ -1440,7 +1469,8 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    * lookup that returns nothing". What it must NOT also pay is an empty transaction, which is why
    * the matches are worked out BEFORE `beginTransaction` rather than inside it.
    *
-   * TWO CALLERS, and each reaches a population the other cannot.
+   * TWO CALLERS, and each reaches a population the other cannot. Both run
+   * [carryUserMinutesOntoItems] FIRST, so a correction on a hand-typed row has an item to land on.
    *  - [backfillItems], inside its transaction, for the meeting being migrated right now — the
    *    items and the corrections that belong to them land together or neither does.
    *  - `StorageModule.ensureItems`, for every meeting [backfillItems] will never run again: one the
@@ -1594,9 +1624,16 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       // ORDER BY rowid so two rows typed into one meeting arrive in the order they were typed.
       // They share [Gen.NO_ANCHOR], so `ORDER BY anchor_start_ms, rowid` breaks their tie on the
       // rowid minted here, and this is where that order is decided.
+      //
+      // `minutes.source` IS A DIFFERENT VOCABULARY from `items.gen_version` — `rule|llm|user`
+      // against `rules@1|user` — and they agree on the spelling of this one value by coincidence,
+      // not by construction. That is why [MINUTE_SOURCE_USER] is its own constant: binding
+      // [Gen.USER] here would make a versioned user gen (`user@1`) silently stop this migration
+      // finding anything, with nothing failing to compile and every hand-typed row left behind.
       "SELECT id,kind,content_json FROM minutes WHERE meeting_id=? AND source=? " +
-        "AND kind IN ('decision','action','question') ORDER BY rowid",
-      arrayOf(meetingId, Gen.USER),
+        // The item kinds, from the one list, rather than a fifth spelling of them inline.
+        "AND kind IN (${ITEM_KINDS.joinToString(",") { "'" + it + "'" }}) ORDER BY rowid",
+      arrayOf(meetingId, MINUTE_SOURCE_USER),
     ).use { c ->
       while (c.moveToNext()) typed.add(Typed(c.getString(0), c.getString(1), c.getString(2)))
     }
@@ -1875,14 +1912,14 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    *
    * The objection Task 8 raised against a sweep is real and is answered rather than dismissed: this
    * guard cannot tell an unmigrated meeting from one the pipeline is part-way through, because both
-   * have utterances and no items. So the sweep re-asks it per meeting rather than trusting the
+   * have utterances and no rule items. So the sweep re-asks it per meeting rather than trusting the
    * batch it selected, and the window that remains — a meeting whose ASR finished between the SELECT
    * and this call — costs one rule pass whose result the pipeline's own `replaceItems` reconciles
    * moments later.
    *
    * WHAT THIS GUARD STILL MISSES, and the marker does not close it. A meeting carrying `action_done`
-   * ticks that is REPROCESSED on this build before anybody opens it comes out with items, so
-   * `items().isEmpty()` excludes it before `items_migrated_at` is ever consulted, and its ticks stay
+   * ticks that is REPROCESSED on this build before anybody opens it comes out with rule items, so
+   * [hasRuleItems] excludes it before `items_migrated_at` is ever consulted, and its ticks stay
    * in `action_done` forever. Nothing is deleted, because [StoredItem.touched] still reads that
    * table, but [doneItemIds] does not, so the worklist draws those items unticked. The marker
    * answers "have the rules been run", which is a different question. Carrying the ticks

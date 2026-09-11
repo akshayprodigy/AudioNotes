@@ -1,6 +1,7 @@
 package com.innocorelabs.verbale.data
 
 import com.innocorelabs.verbale.pipeline.Minutes
+import com.innocorelabs.verbale.pipeline.Reconciler
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -72,24 +73,61 @@ class UserItemsTest {
   }
 
   /**
-   * A hand-typed row cannot overlap anything, which is the fail-safe direction.
+   * A row stored at the sentinel cannot be MATCHED, even with rule 1 out of the way.
    *
-   * `Reconciler` rule 2 computes `min(oldEnd, newEnd) - max(oldStart, newStart)` and keeps the pair
-   * only when that clears `MIN_OVERLAP_MS`. Rule 1 is what stops a typed row reaching that
-   * arithmetic at all — and if it were ever deleted, this value makes the overlap hugely negative
-   * rather than overflowing, so the row matches NOTHING instead of matching whatever the meeting
-   * happens to open with. `0`, the value this task's listing proposed, fails the other way.
+   * Rule 1 is what stops a hand-typed row reaching `Reconciler`'s matching at all, and it is meant
+   * to be the only thing doing that work — so this asks what happens if it were ever deleted. The
+   * row is labelled `rules@1` here precisely to get past rule 1 and reach rule 2's arithmetic:
+   * `min(oldEnd, newEnd) - max(oldStart, newStart)`, kept only when it clears `MIN_OVERLAP_MS`.
+   * With the sentinel that lands far below the threshold and, importantly, does not WRAP — a
+   * subtraction that underflowed would come back hugely positive and the row would match
+   * everything, which is the one failure a value this large could plausibly have.
    *
-   * The subtraction is written out here because "it cannot underflow" is a claim about Long
-   * arithmetic and not about intent: `end - NO_ANCHOR` for any non-negative `end` lands in
-   * [-NO_ANCHOR, 0], well inside Long.
+   * A PREVIOUS VERSION OF THIS TEST CLAIMED `0` "fails the other way", and that is false. It
+   * asserted `overlap < 0`, which is the only reason `0` appeared to fail it. `MIN_OVERLAP_MS` is
+   * 1, so a row stored at `0..0` yields `-newStart`, which is at most 0 and therefore also never
+   * clears the threshold — the plan's own Task 7 note says so. The second half of this test is
+   * that correction, asserted rather than written in a comment: both values are inert here, the
+   * case for the sentinel over `0` is ORDERING and BRIDGE REPRESENTABILITY, and it does not need a
+   * third leg that does not exist.
+   *
+   * Driven through `Reconciler.reconcile` rather than by re-deriving the subtraction, because the
+   * threshold is `Reconciler`'s private business and a test that copies a private constant is a
+   * test of its own copy. ReconcilerTest deliberately gives its user row a REAL anchor so that
+   * rule 1 stays pinned as a `gen_version` rule rather than as an accident of this constant.
    */
-  @Test fun theSentinelAnchorMakesAnOverlapImpossibleRatherThanCertain() {
-    val incomingStart = 0L
-    val incomingEnd = 4_000L
-    val overlap = minOf(incomingEnd, AudioDb.Gen.NO_ANCHOR) -
-      maxOf(incomingStart, AudioDb.Gen.NO_ANCHOR)
-    assertTrue("a hand-typed row was made to overlap the start of the meeting", overlap < 0)
+  @Test fun neitherTheSentinelNorZeroCanEverBeMatched() {
+    fun matchedIdOf(anchorStart: Long, anchorEnd: Long): String {
+      val stored = AudioDb.StoredItem(
+        "id-1", "action", "Send the report — Unassigned", AudioDb.Review.SUGGESTED,
+        // NOT Gen.USER: rule 1 would set the row aside before the arithmetic below is reached, and
+        // the arithmetic is the whole subject of this test.
+        Minutes.RULES_GEN, anchorStart, anchorEnd, emptyList(), 1_772_000_000_000L, true,
+      )
+      val incoming = Minutes.Item(
+        "action", "Send the report — Unassigned",
+        listOf(Minutes.Source("u-new", 0L, 4_000L, 0, 5)), 0L, 4_000L,
+      )
+      val plan = Reconciler.reconcile(listOf(stored), listOf(incoming))
+      // A match REUSES the stored id; a miss mints a fresh one and preserves the old row beside it.
+      return plan.rows.first { it.item.anchorStartMs == 0L }.id
+    }
+
+    assertNotEquals(
+      "the sentinel anchor wrapped and matched an item said at the start of the meeting",
+      "id-1", matchedIdOf(AudioDb.Gen.NO_ANCHOR, AudioDb.Gen.NO_ANCHOR),
+    )
+    assertNotEquals(
+      "0 was supposed to be the dangerous choice and is not — fix the claim, not the code",
+      "id-1", matchedIdOf(0L, 0L),
+    )
+    // And the helper can tell a match from a miss. Without this the two assertions above pass
+    // against a `matchedIdOf` that could never return "id-1" at all — a test of its own plumbing,
+    // which is the single-row failure this branch keeps finding, wearing a different hat.
+    assertEquals(
+      "the same row at an anchor that really overlaps did not match, so the misses prove nothing",
+      "id-1", matchedIdOf(0L, 4_000L),
+    )
   }
 
   /**

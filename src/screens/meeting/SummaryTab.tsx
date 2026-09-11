@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Icon, { type IconName } from '../../components/Icon';
 import { Raised, Slide, SoftButton, Txt } from '../../components/ui';
 import { radius, s, useTheme, type Colors } from '../../theme';
-import type { EditTarget, Minute, Speaker } from '../../pipeline/types';
+import type { EditTarget, Item, Minute, Speaker } from '../../pipeline/types';
 import Llm from '../../native/NativeLlm';
 import Licence from '../../native/NativeLicence';
 import { TRIAL_DAYS, entitlement } from '../../billing/trial';
@@ -14,6 +14,7 @@ import {
   ToolButton,
   editedText,
   isEdited,
+  toItemRows,
   type EditMap,
 } from './shared';
 
@@ -25,10 +26,15 @@ import {
  * the first thing you read about a meeting was a count of its own output. Counting is not
  * summarising, and the Actions tab already exists.
  *
+ * What remains of the counting is the strip of three, and it is a WAY IN rather than a readout —
+ * each one opens the tab that holds those rows. That is why it counts [toItemRows]' output and not
+ * a table: a number that disagrees with the list it links to is worse than no number.
+ *
  * When there is no prose the tab says so and offers the fix, rather than filling the space with
  * something that looks like an answer.
  */
 export default function SummaryTab({
+  items,
   minutes,
   speakers,
   speechMs,
@@ -41,6 +47,16 @@ export default function SummaryTab({
   onUpgrade,
   writing,
 }: {
+  /**
+   * Taken for the COUNTERS alone — the prose still comes from `minutes`, which is where it lives.
+   *
+   * This tab's strip links to the MOM and Actions tabs, so it has to count the rows THOSE tabs
+   * will draw, and both build that list with [toItemRows]. It counted `minutes` directly until
+   * Task 12, and got the right answer only because the two tables happened to hold the same
+   * sentences: `replaceMinutes` still writes the item kinds. A hand-typed row broke the
+   * coincidence in both directions — see below.
+   */
+  items: Item[];
   minutes: Minute[];
   speakers: Speaker[];
   speechMs: number;
@@ -65,9 +81,25 @@ export default function SummaryTab({
   const prose = editedText(ed, 'summary', DOC_KEY, written);
   const proseEdited = isEdited(ed, 'summary', DOC_KEY);
   const mins = Math.max(1, Math.round(speechMs / 60000));
-  const actions = minutes.filter(m => m.kind === 'action').length;
-  const decisions = minutes.filter(m => m.kind === 'decision').length;
-  const questions = minutes.filter(m => m.kind === 'question').length;
+
+  // THE SAME LIST THE TABS THIS LINKS TO WILL DRAW, and not a second count of its own.
+  //
+  // These three read `minutes` directly until Task 12, and were right only by coincidence: the
+  // pipeline writes every decision, action and question to BOTH tables, so counting either gave
+  // the same number. A row a person typed was the exception at each end of the move. Before it, a
+  // typed decision was a `minutes` row and was counted here; after it, the row is an `items` row
+  // and `AudioDb.carryUserMinutesOntoItems` DELETES the minute it came from — so a newly typed
+  // action never incremented this, migrating decremented it by however many rows somebody had
+  // typed, and a meeting whose only item-kind content is hand-typed lost the whole strip, which is
+  // gated on the total below. Nothing threw and nothing was tested.
+  //
+  // `toItemRows` is the one place the merge is decided — items, plus the whole `minutes` list for
+  // a meeting whose migration has not run — so counting its output makes this agree with the MOM
+  // and Actions tabs by construction rather than by two tables happening to say the same thing.
+  const rows = React.useMemo(() => toItemRows(items, minutes), [items, minutes]);
+  const actions = rows.filter(r => r.kind === 'action').length;
+  const decisions = rows.filter(r => r.kind === 'decision').length;
+  const questions = rows.filter(r => r.kind === 'question').length;
 
   // Why there is no summary decides what we can honestly offer. A lapsed subscription is a
   // sentence, not a fix we can offer from here; a missing model is a Settings trip; a capable
