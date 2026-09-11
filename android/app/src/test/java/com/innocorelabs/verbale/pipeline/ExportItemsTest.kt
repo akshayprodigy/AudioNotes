@@ -1,5 +1,6 @@
 package com.innocorelabs.verbale.pipeline
 
+import com.innocorelabs.verbale.data.AudioDb
 import com.innocorelabs.verbale.data.ItemKey
 import org.json.JSONArray
 import org.json.JSONObject
@@ -28,9 +29,26 @@ class ExportItemsTest {
 
   // ---- Fixtures ---------------------------------------------------------------------------
 
-  private fun itemRow(id: String, kind: String, text: String, anchorStartMs: Long) =
-    JSONObject().put("id", id).put("kind", kind).put("text", text)
-      .put("anchor_start_ms", anchorStartMs)
+  private fun itemRow(
+    id: String,
+    kind: String,
+    text: String,
+    anchorStartMs: Long,
+    genVersion: String = Minutes.RULES_GEN,
+  ) = JSONObject().put("id", id).put("kind", kind).put("text", text)
+    .put("anchor_start_ms", anchorStartMs).put("gen_version", genVersion)
+
+  /**
+   * An item a person typed, as `document`'s SELECT really hands it over.
+   *
+   * The anchor is the SENTINEL and not 0, because that is what is on disk: `anchor_start_ms` is
+   * `INTEGER NOT NULL`, so a row that never claimed a moment still stores a number, and the
+   * derivation that turns it back into "no moment" is `gen_version` — never a comparison against
+   * the number. A fixture that put 0 here would pass against a renderer that had no derivation at
+   * all, which is the whole defect these tests exist to catch.
+   */
+  private fun typedRow(id: String, kind: String, text: String) =
+    itemRow(id, kind, text, AudioDb.Gen.NO_ANCHOR, AudioDb.Gen.USER)
 
   private fun minuteRow(kind: String, content: String, source: String = "rule") =
     JSONObject().put("kind", kind).put("content", content).put("source", source)
@@ -204,54 +222,96 @@ class ExportItemsTest {
   /**
    * A decision somebody typed themselves still reaches the document they typed it for.
    *
-   * `db.addUserMinute` writes a `minutes` row with no item until Task 12, so an export that read
-   * `items` alone would drop it — silently, since nothing counts the rows. The same merge
-   * `toItemRows` makes for the tabs, for the same reason.
+   * It is an `items` row as of Task 12, so the merge that used to bring it back from `minutes` is
+   * gone — and the risk moved with it. Until the migration ran, exporting `items` alone dropped it
+   * silently; now the same silence is available to a migration that did not fire, which is what
+   * [aMeetingWhoseOnlyItemIsHandTypedStillFallsBackToItsMinutes] below pins.
+   *
+   * TWO ITEMS, with the extracted one LAST in the fixture and the typed one first, so this cannot
+   * pass by rendering whatever it was handed in whatever order it arrived.
    */
   @Test fun aHandTypedRowIsStillExported() {
     val items = FileExportModule.exportItems(
-      rows(itemRow("it-1", "action", "Send the report — Priya", 65_000L)),
       rows(
-        minuteRow("action", "Send the report — Priya"),
-        minuteRow("decision", "Ship on the 14th", source = "user"),
+        typedRow("it-user", "decision", "Ship on the 14th"),
+        itemRow("it-1", "action", "Send the report — Priya", 65_000L),
       ),
+      rows(minuteRow("action", "Send the report — Priya")),
       emptyMap(),
     )
     val md = FileExportModule.renderMarkdown(content(items = items))
     assertEquals("- Ship on the 14th\n", sectionOf(md, "Decisions"))
+    assertEquals("- [1:05] Send the report — Priya\n", sectionOf(md, "Action items"))
   }
 
   /**
    * ...and it carries no timestamp, because nobody ever said it.
    *
    * `[0:00]` would be a fabricated claim about a moment: it sends a reader to the top of the
-   * recording to look for a sentence that was never spoken there. Task 12's rule, arrived at
-   * early — an item with no evidence is not a failure to find any; it is one that never claimed any.
+   * recording to look for a sentence that was never spoken there. And `[2562047788:00:54]` — what
+   * printing the stored sentinel gives — would be worse only in that somebody would notice.
+   *
+   * The extracted row is in the fixture so the assertion can fail: a renderer that had stopped
+   * stamping anything at all would pass a list of one null.
    */
   @Test fun aHandTypedRowIsNotStampedWithAMomentNobodySpoke() {
     val items = FileExportModule.exportItems(
-      rows(), rows(minuteRow("decision", "Ship on the 14th", source = "user")), emptyMap(),
+      rows(
+        itemRow("it-1", "action", "Send the report — Priya", 65_000L),
+        typedRow("it-user", "action", "Book the venue — Priya"),
+      ),
+      rows(),
+      emptyMap(),
     )
-    assertEquals(listOf<Long?>(null), items.map { it.anchorStartMs })
+    assertEquals(listOf<Long?>(65_000L, null), items.map { it.anchorStartMs })
+    val md = FileExportModule.renderMarkdown(content(items = items))
+    assertEquals(
+      "- [1:05] Send the report — Priya\n- Book the venue — Priya\n",
+      sectionOf(md, "Action items"),
+    )
     assertFalse(
       "a row nobody said was stamped with the start of the meeting",
-      FileExportModule.renderMarkdown(content(items = items)).contains("0:00"),
+      md.contains("0:00"),
     )
   }
 
   /**
-   * A correction to a hand-typed row still resolves, because that row has no id to key it on.
+   * A correction to a hand-typed row is keyed on its ITEM ID now, like every other correction.
    *
-   * Both key shapes are live at once until Task 12 moves these rows into `items`, exactly as two
-   * tick stores are live at once for the same population and the same reason.
+   * That is the point of the move rather than a consequence of it: a hash of the text was the last
+   * key this row had, and a hash moves with the text it hashes — so correcting a typed line twice
+   * orphaned the first correction. `AudioDb.carryUserMinutesOntoItems` and `carryEditsOntoItems`
+   * are what move the rows already on disk onto the new key.
    */
-  @Test fun aCorrectionToAHandTypedRowStillResolvesOnItsTextHash() {
+  @Test fun aCorrectionToAHandTypedRowResolvesOnItsItemId() {
     val items = FileExportModule.exportItems(
+      rows(
+        itemRow("it-1", "action", "Send the report — Priya", 65_000L),
+        typedRow("it-user", "decision", "Ship on the 14th"),
+      ),
       rows(),
-      rows(minuteRow("decision", "Ship on the 14th", source = "user")),
-      mapOf("minute/" + ItemKey.of("Ship on the 14th") to "Ship on the 21st"),
+      mapOf("item/it-user" to "Ship on the 21st"),
     )
-    assertEquals(listOf("Ship on the 21st"), items.map { it.text })
+    assertEquals(listOf("Send the report — Priya", "Ship on the 21st"), items.map { it.text })
+  }
+
+  /**
+   * A `minutes` row somebody typed is NOT merged back into a meeting that has items.
+   *
+   * It was, transitionally, for as long as `db.addUserMinute` was where a typed decision landed.
+   * The migration has moved it and deleted the `minutes` row, so merging one back would print the
+   * same sentence twice on a document somebody forwards — once from each table.
+   */
+  @Test fun aHandTypedMinuteIsNotMergedIntoAMigratedMeeting() {
+    val items = FileExportModule.exportItems(
+      rows(
+        itemRow("it-1", "action", "Send the report — Priya", 65_000L),
+        typedRow("it-user", "decision", "Ship on the 14th"),
+      ),
+      rows(minuteRow("decision", "Ship on the 14th", source = "user")),
+      emptyMap(),
+    )
+    assertEquals(listOf("Send the report — Priya", "Ship on the 14th"), items.map { it.text })
   }
 
   /**
@@ -270,6 +330,30 @@ class ExportItemsTest {
     )
     assertEquals(listOf("Send the report — Priya"), items.map { it.text })
     assertEquals("a minutes fallback row invented an anchor", listOf<Long?>(null), items.map { it.anchorStartMs })
+  }
+
+  /**
+   * THE HOLE THE MOVE OPENS, and the reason the fallback asks about RULE rows rather than rows.
+   *
+   * `carryUserMinutesOntoItems` runs before the native load, deliberately — a phone still
+   * downloading `libonnxruntime.so` must not open a meeting with the person's own notes missing.
+   * So an unmigrated meeting somebody typed a decision into arrives here with EXACTLY ONE item,
+   * the typed one, and every rule-extracted row still in `minutes`. Under "does this meeting have
+   * any items" the fallback switches off at that moment and the exported document loses its entire
+   * minutes — the summary at the top still counting seven actions above a page holding one typed
+   * line. Nothing throws and nothing is deleted.
+   *
+   * `AudioDb.ensureItems` and `AudioDb.UNMIGRATED` ask the same narrowed question for the same
+   * reason: a row a person typed is not evidence that the rules have run.
+   */
+  @Test fun aMeetingWhoseOnlyItemIsHandTypedStillFallsBackToItsMinutes() {
+    val items = FileExportModule.exportItems(
+      rows(typedRow("it-user", "decision", "Ship on the 14th")),
+      rows(minuteRow("action", "Send the report — Priya"), minuteRow("summary", "One action.")),
+      emptyMap(),
+    )
+    assertEquals(listOf("Ship on the 14th", "Send the report — Priya"), items.map { it.text })
+    assertEquals(listOf<Long?>(null, null), items.map { it.anchorStartMs })
   }
 
   // ---- The PDF ------------------------------------------------------------------------------

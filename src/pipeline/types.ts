@@ -87,10 +87,14 @@ export type MinuteKind =
 /**
  * Where a minute came from.
  *
- * `user` rows are items a person typed themselves — a decision the model missed, an action nobody
- * said out loud. They are stored in the same table on purpose: every kind-based filter picks them
- * up with no extra code, they export and back up for free, and `replaceMinutes` is scoped by
- * source so reprocessing can never delete them.
+ * `user` rows are PROSE a person wrote themselves — a summary, a write-up, a headline. A typed
+ * decision, action or open question was one of these until Task 12 and is an `items` row now
+ * (db.addUserItem), because a list row wants a stable id for its tick and its correction and a
+ * document wants none of that. `replaceMinutes` is scoped by source, so reprocessing can never
+ * delete what is left here.
+ *
+ * A `user` row of an ITEM kind therefore means exactly one thing now: a meeting
+ * `AudioDb.carryUserMinutesOntoItems` has not reached yet.
  */
 export type MinuteSource = 'rule' | 'llm' | 'user';
 
@@ -113,8 +117,9 @@ export interface Minute {
  *
  * `'minute'` is what every shipped build wrote for a decision, an action or an open question.
  * Those rows are MOVED onto `'item'` by `AudioDb.carryEditsOntoItems`, which runs before anything
- * reads a meeting; what still writes `'minute'` is the population that has no item to key on —
- * a row somebody typed themselves, which lives in `minutes` until Task 12.
+ * reads a meeting; what still writes `'minute'` is the ONE population that has no item to key on —
+ * every row of a meeting whose item migration has not run. A row somebody typed themselves was the
+ * second such population until Task 12 gave it an item of its own.
  */
 export type EditTarget = 'utterance' | 'minute' | 'item' | 'summary' | 'narrative';
 
@@ -138,6 +143,11 @@ export interface Edit {
  * moment it was said — so it is the SECOND kind whose `startMs` means something. `'title'`,
  * `'minute'` and `'summary'` are all indexed at 0, and any code that treats a zero here as "this
  * kind has no moment" is now wrong for one of the five.
+ *
+ * A zero on an `'item'` hit is not a contradiction of that: an item a PERSON typed never claimed a
+ * moment, and `AudioDb.indexItems` writes 0 for it deliberately — the same "open at the top" every
+ * other kind means by it. It is the sentinel anchor such a row really stores that must never reach
+ * this field.
  *
  * Adding a member to this union does NOT fail a build on its own: SearchScreen's `kindMeta`
  * switches on it with a `default` branch, which swallows an unhandled kind and labels it "TITLE".
@@ -173,11 +183,69 @@ export interface ItemSource {
   utteranceId: string | null;
 }
 
+/**
+ * `items.gen_version` for a row a person typed, and the AUTHORITATIVE marker of one.
+ *
+ * The JavaScript mirror of `AudioDb.Gen.USER` in Kotlin, and a genuine cross-language contract
+ * rather than a tidy-up: JavaScript is the only thing that WRITES this string (db.addUserItem),
+ * and Kotlin is what reads it — `Reconciler` rule 1 refuses to match, replace or flag a row
+ * carrying it, so an item a person wrote is never consumed by an extracted one; `AudioDb.items`
+ * and `FileExportModule.exportItems` refuse it an anchor; `AudioDb.indexItems` indexes it at the
+ * top of the recording rather than at its sentinel.
+ *
+ * CHANGING IT ON ONE SIDE FAILS NO BUILD AND RAISES NOTHING. The two spellings meet only inside
+ * the database, so a drift shows up as hand-typed items quietly losing rule 1's protection and
+ * being swallowed by the next reprocess. The pin is a pair of tests that assert the literal on
+ * each side and name the other — src/db/__tests__/userItems.test.ts and
+ * android/.../UserItemsTest.kt — the same instrument `ItemKeyTest` and `__tests__/actionKey.test.ts`
+ * use for `ItemKey`, and `ExportItemsTest`/`ItemProvenance.test.tsx` for the timestamp format.
+ *
+ * If a VERSIONED user gen is ever wanted — `user@1`, the convention `rules@1` already sets — it
+ * changes here, in `AudioDb.Gen`, and in the `CASE` inside db.allActions, together or not at all.
+ */
+export const USER_GEN = 'user';
+
+/**
+ * What `items.anchor_start_ms` / `anchor_end_ms` hold for a row that never claimed a moment.
+ *
+ * `anchor_start_ms` is `INTEGER NOT NULL` and SQLite cannot make a column nullable without
+ * rebuilding the table, so a hand-typed row still has to store a number. This one is chosen for
+ * two properties and nothing else:
+ *
+ *  - **It sorts last.** Every read of `items` is `ORDER BY anchor_start_ms, rowid`, so the value
+ *    decides where a hand-typed row appears. `0` — what this task's listing proposed — would put
+ *    every typed row at the TOP of every meeting, reversing the order they have always had (they
+ *    lived in `minutes` and were appended after the items) and undoing the determinism Task 10
+ *    built on purpose. Above every real anchor, they stay where they were, ordered among
+ *    themselves by rowid, which is the order they were typed in.
+ *  - **It is exactly representable in JavaScript.** Every query parameter crosses the bridge as
+ *    JSON, so a sentinel above 2^53 arrives rounded: `Long.MAX_VALUE` becomes
+ *    9223372036854775808, which SQLite then stores as a REAL in an INTEGER column. 2^53-1 is
+ *    285,000 years of recording, so nothing real will ever reach it.
+ *
+ * NOTHING READS IT BACK AS A NUMBER. "This row has no moment" is derived at each database
+ * boundary from [USER_GEN] — never by comparing against this value — so the sentinel stays an
+ * implementation detail of the column's NOT NULL, and a reader that forgot to ask would be handed
+ * an absurd number rather than a plausible `0:00` it would happily print.
+ */
+export const NO_ANCHOR = Number.MAX_SAFE_INTEGER;
+
+/**
+ * The three kinds that live in `items`. `summary`, `narrative` and `headline` are prose and stay
+ * in `minutes` — they are documents, one of each per meeting, with no anchor, no tick and no
+ * provenance, so `items` has nothing to offer them.
+ *
+ * Named because four places select on exactly this set — db.addUserItem's signature,
+ * `toItemRows`' merge guard, MeetingScreen's add path, and `FileExportModule.ITEM_KINDS` in
+ * Kotlin — and a list written out a fourth time is a list that drifts.
+ */
+export type ItemKind = 'decision' | 'action' | 'question';
+
 /** A decision, action or question, with the evidence behind it. */
 export interface Item {
   id: string;
   meetingId: string;
-  kind: 'decision' | 'action' | 'question';
+  kind: ItemKind;
   text: string;
   /**
    * What the REVIEW COLUMN says, which is much less than "has anybody engaged with this".
@@ -195,8 +263,18 @@ export interface Item {
    */
   review: 'suggested' | 'needs_review' | 'confirmed' | 'rejected';
   genVersion: string;
-  anchorStartMs: number;
-  anchorEndMs: number;
+  /**
+   * When it was said, or `null` for a row that never claimed to have been said at all.
+   *
+   * NULLABLE because a hand-typed row is an `items` row now, and the column it comes out of is
+   * `INTEGER NOT NULL` — see [NO_ANCHOR]. The null is derived at the boundary, in db.items, from
+   * `gen_version`, so no screen, renderer or export ever meets the stored sentinel. Read
+   * `anchorStartMs === null` as "this row has no evidence to show", which is what the provenance
+   * button on both tabs is gated on: an item with no sources is not a failure to find evidence,
+   * it is an item that never claimed any.
+   */
+  anchorStartMs: number | null;
+  anchorEndMs: number | null;
   sources: ItemSource[];
 }
 
@@ -224,8 +302,14 @@ export interface ActionRow {
    * `ActionsScreen` has no entry point wired to it at all — see "Discovered during Task 9". It is
    * carried anyway because the worklist is the one list that can send you to a claim you do not
    * remember, and the row is worthless without the sentence it came from being findable.
+   *
+   * NULL for a hand-typed action, derived in the SELECT from `gen_version` beside the `source`
+   * CASE that was already there — see [NO_ANCHOR]. The worklist shows hand-typed actions for the
+   * first time as of Task 12, and the reader this field is waiting for would otherwise be handed
+   * a sentinel and send somebody 285,000 years into a recording. Widening the type now is what
+   * makes that reader's `null` check a compile error rather than a judgement call.
    */
-  anchorStartMs: number;
+  anchorStartMs: number | null;
   done: boolean;
 }
 

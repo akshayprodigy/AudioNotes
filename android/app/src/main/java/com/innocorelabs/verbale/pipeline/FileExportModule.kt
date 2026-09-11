@@ -98,9 +98,10 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
    *
    * ITEMS COME FROM `items` AND PROSE FROM `minutes`. The two tables split at Task 5: every
    * decision, action and open question is an `items` row carrying the moment it was said, and
-   * `minutes` keeps the summary, the narrative and the headline. The one exception is a row a
-   * person typed themselves, which `db.addUserMinute` still writes to `minutes` until Task 12 —
-   * see [exportItems], which merges it back in for the same reason `toItemRows` does.
+   * `minutes` keeps the summary, the narrative and the headline. A row a person TYPED was the one
+   * exception until Task 12 and is not one any more: `db.addUserItem` writes it to `items`, and
+   * `AudioDb.carryUserMinutesOntoItems` has moved the ones already on disk. What [exportItems]
+   * still merges back is a meeting whose migration has not run — see the note there.
    */
   private fun document(meetingId: String, format: String): Document {
     val db = AudioDb.get(ctx)
@@ -121,7 +122,10 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
     // a reader scanning the exported document meets the decisions in the order they were taken.
     val items = JSONArray(
       db.rawQueryJson(
-        "SELECT id,kind,text,anchor_start_ms FROM items WHERE meeting_id=? " +
+        // gen_version comes back because it is what decides whether a row HAS a moment: the
+        // column is NOT NULL, a hand-typed row stores AudioDb.Gen.NO_ANCHOR, and exportItems
+        // derives "no anchor" from the gen and never from the number.
+        "SELECT id,kind,text,anchor_start_ms,gen_version FROM items WHERE meeting_id=? " +
           "ORDER BY anchor_start_ms, rowid",
         arrayOf(meetingId),
       ),
@@ -366,16 +370,16 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
      *
      * A DELIBERATE MIRROR of `toItemRows` in src/screens/meeting/shared.tsx, down to the guard,
      * because the document a person exports and the screen they exported it from must not disagree
-     * about which rows a meeting has. Both halves of the mirror are transitional and both go the
-     * same way:
+     * about which rows a meeting has. ONE half of that mirror is left, and Task 12 removed the
+     * other:
      *
-     *  - **A hand-typed row still lives in `minutes`.** `db.addUserMinute` writes a `minutes` row
-     *    with source='user' and no item until **Task 12**, so exporting `items` alone would drop a
-     *    decision somebody typed out of the document they typed it for — silently, since nothing
-     *    counts the rows. It is merged back in here, and Task 12 deletes this half.
-     *  - **A meeting with NO items falls back to its `minutes` entirely.** `ensureItems` needs the
-     *    native core and MeetingScreen swallows its failure on purpose, so a pre-items meeting can
-     *    be on screen — and exported — unmigrated. Items-only would hand somebody an empty
+     *  - **A hand-typed row is an `items` row.** `db.addUserItem` writes it there and
+     *    `AudioDb.carryUserMinutesOntoItems` has moved the ones already on disk, deleting the
+     *    `minutes` row behind each. So a source='user' minute is no longer merged back in: merging
+     *    one would print the same sentence twice on a document somebody forwards.
+     *  - **A meeting with no RULE items falls back to its `minutes` entirely.** `ensureItems` needs
+     *    the native core and MeetingScreen swallows its failure on purpose, so a pre-items meeting
+     *    can be on screen — and exported — unmigrated. Items-only would hand somebody an empty
      *    document with a summary at the top still counting seven actions. It heals on the next open.
      *
      * THE EDIT KEY, which is the part that would fail in silence. A row that has an item id is
@@ -384,7 +388,7 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
      * `minute/<hash-of-its-text>` key it has always had, because there is nothing else to key it
      * on. `AudioDb.carryEditsOntoItems` is what moves an existing correction from the second shape
      * to the first, and it runs before anything reads a meeting; the two shapes are read together
-     * here because the second population does not go away until Task 12.
+     * here because a meeting whose migration has not run still holds the second.
      */
     fun exportItems(
       items: JSONArray,
@@ -392,29 +396,49 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
       edits: Map<String, String>,
     ): List<ExportItem> {
       val out = ArrayList<ExportItem>()
+      // Whether the RULES have produced items for this meeting — not whether it has any. See the
+      // note above the loop below, which is the half of this function most easily got wrong.
+      var hasRuleItems = false
       for (i in 0 until items.length()) {
         val o = items.getJSONObject(i)
         val text = o.getString("text")
+        val typed = o.optString("gen_version") == AudioDb.Gen.USER
+        if (!typed) hasRuleItems = true
         out.add(
           ExportItem(
             o.getString("kind"),
             edits["item/" + o.getString("id")] ?: text,
-            o.getLong("anchor_start_ms"),
+            // THE DERIVATION, and it asks the gen rather than the number. A hand-typed row stores
+            // AudioDb.Gen.NO_ANCHOR because the column is NOT NULL; printing it would give
+            // `[2562047788:00:54]`, and printing a 0 stored there instead would give `[0:00]` —
+            // a fabricated claim that sends a reader of a forwarded document to the top of the
+            // recording for a sentence nobody spoke. `bullet` omits the stamp for a null.
+            if (typed) null else o.getLong("anchor_start_ms"),
           ),
         )
       }
 
-      val unmigrated = items.length() == 0
+      // A meeting whose migration has not run falls back to its `minutes` entirely, and the
+      // question is "have the RULES produced items", not "are there items".
+      //
+      // `AudioDb.carryUserMinutesOntoItems` runs before the native load, on purpose, so a phone
+      // still downloading libonnxruntime.so does not open a meeting with the person's own notes
+      // missing. An unmigrated meeting somebody typed a decision into therefore arrives here with
+      // EXACTLY ONE item — the typed one — and every rule-extracted row still in `minutes`. Asked
+      // as `items.length() == 0`, the fallback switches off at that moment and the exported
+      // document loses its whole minutes, under a summary still counting seven actions. Nothing
+      // throws. `AudioDb.ensureItems` and `AudioDb.UNMIGRATED` narrow the same question the same
+      // way, for the same reason: a row a person typed is not evidence that the rules have run.
+      val unmigrated = !hasRuleItems
+      if (!unmigrated) return out
       for (i in 0 until minutes.length()) {
         val o = minutes.getJSONObject(i)
         val kind = o.getString("kind")
         if (kind !in ITEM_KINDS) continue
-        // Stated as what is kept rather than as what is skipped, the same way toItemRows states
-        // it: "keep this row if the meeting has no items to show instead, or if a person typed
-        // it". Task 12 strips the second disjunct and leaves the first standing.
-        val keep = unmigrated || o.optString("source") == "user"
-        if (!keep) continue
         val content = o.getString("content")
+        // A row with no item keeps the `minute/<hash-of-its-text>` key it has always had, which is
+        // the only key it can have. A hand-typed row left this population in Task 12 — it is an
+        // `items` row now, corrected under `item/<id>` — and an unmigrated meeting's rows have not.
         out.add(ExportItem(kind, edits["minute/" + ItemKey.of(content)] ?: content, null))
       }
       return out

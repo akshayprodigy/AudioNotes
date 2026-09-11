@@ -1,10 +1,12 @@
 // Typed query layer over the Storage TurboModule. Screens/state call these, never raw SQL.
 import Storage from '../native/NativeStorage';
+import { NO_ANCHOR, USER_GEN } from '../pipeline/types';
 import type {
   ActionRow,
   Edit,
   EditTarget,
   Item,
+  ItemKind,
   ItemSource,
   Meeting,
   Minute,
@@ -198,11 +200,22 @@ export const db = {
    * the column HERE, next to this SQL and next to that comment, so the two boundaries stay in step
    * — not by OR-ing `review` and a tick at the call site. That reassembly is the mistake this
    * sub-project has now made three times, and not one of the three failed to compile.
+   *
+   * WHAT IT DOES DERIVE, for exactly that reason: the anchor of a row that never claimed a moment.
+   * `anchor_start_ms` is `INTEGER NOT NULL` and a hand-typed row still has to store a number, so
+   * the column holds a sentinel (types.ts NO_ANCHOR) and this SELECT turns it into `null` — from
+   * `gen_version`, which is the authoritative marker, and never by comparing against the sentinel.
+   * It happens HERE, in the SQL, so that no screen, no renderer and no export can be handed a
+   * stored anchor that secretly means "none": `toItemRows` copies the field straight through, both
+   * tabs gate the provenance button on `anchorStartMs !== null`, and none of them has to know the
+   * rule. AudioDb.items and FileExportModule.exportItems are the same derivation on the Kotlin
+   * side.
    */
   items: async (meetingId: string): Promise<Item[]> => {
     const rows = await run<Omit<Item, 'sources'>>(
       'SELECT id, meeting_id AS meetingId, kind, text, review, gen_version AS genVersion, ' +
-        'anchor_start_ms AS anchorStartMs, anchor_end_ms AS anchorEndMs ' +
+        `CASE WHEN gen_version = '${USER_GEN}' THEN NULL ELSE anchor_start_ms END AS anchorStartMs, ` +
+        `CASE WHEN gen_version = '${USER_GEN}' THEN NULL ELSE anchor_end_ms END AS anchorEndMs ` +
         'FROM items WHERE meeting_id = ? ORDER BY anchor_start_ms, rowid',
       [meetingId],
     );
@@ -282,12 +295,13 @@ export const db = {
    * merged, so a row-id key would silently uncheck everything the user had worked through. Keying
    * on the normalised text means a tick survives anything that does not change the wording.
    *
-   * WHAT STILL READS THIS, since Task 10 moved the meeting's Actions tab onto `item_done`. The two
-   * populations that have no item to key on: a row somebody TYPED (`minutes` with source='user',
-   * moved across by Task 12) and every row of a meeting whose item migration has not run yet. The
-   * tab reads both stores and asks each row's own identity which one it lives in — see
-   * ActionsTab.tsx. It is also still where every tick lives that a rolled-back build would have to
-   * find, which is the other reason none of this is deleted.
+   * WHAT STILL READS THIS, since Task 10 moved the meeting's Actions tab onto `item_done`. The ONE
+   * population that has no item to key on: every row of a meeting whose item migration has not run
+   * yet. A row somebody TYPED was the second until Task 12 gave it an item and
+   * `AudioDb.carryUserMinutesOntoItems` moved its tick into `item_done` with it. The tab reads both
+   * stores and asks each row's own identity which one it lives in — see ActionsTab.tsx. It is also
+   * still where every tick lives that a rolled-back build would have to find, which is the other
+   * reason none of this is deleted.
    */
   doneActions: async (meetingId: string): Promise<Set<string>> => {
     const rows = await run<{ itemKey: string }>(
@@ -514,14 +528,84 @@ export const db = {
     await Storage.reindex(meetingId);
   },
 
-  // ---- Hand-written minutes ---------------------------------------------------------------
+  // ---- Hand-written items and prose -----------------------------------------------------------
 
   /**
-   * Add an item the meeting never produced — the action the model missed.
+   * A decision, an action or an open question a person typed themselves.
    *
-   * Written into `minutes` with source='user'. Every filter in the app selects on `kind`, so the
-   * row simply appears alongside the extracted ones; and `replaceMinutes` deletes only
-   * source='rule', so reprocessing cannot take it away.
+   * IT IS AN `items` ROW, not a `minutes` row, and that is the whole of Task 12. It keeps the
+   * property the old user-minute rows were given deliberately — one table, so every kind-based
+   * filter picks it up and it exports and backs up for free — and gains the three a `minutes` row
+   * could never have: a stable id, so its tick lives in `item_done` and its correction in `edits`
+   * keyed on that id and both survive the wording changing under them; a row in the CROSS-MEETING
+   * worklist, which reads `items` and so has never shown a hand-typed action at all; and one
+   * renderer on the tabs and in the export instead of a merge of two tables.
+   *
+   * `review = 'confirmed'` is true by construction — a person wrote it, there is nothing to
+   * review. `gen_version = 'user'` is the marker everything else keys on: Reconciler rule 1 sets
+   * the row aside before matching, so a reprocess can neither consume it, re-word it nor flag it.
+   *
+   * IT CITES NOTHING, and the UI must not offer it a provenance button. An item with no sources is
+   * not a failure to find evidence; it is an item that never claimed any. That is also why its
+   * anchor is NO_ANCHOR rather than 0 — see the constant, and db.items, which is where the
+   * sentinel becomes the `null` every reader actually sees.
+   */
+  addUserItem: async (meetingId: string, kind: ItemKind, text: string): Promise<Item> => {
+    // The id shape addUserMinute already used, random suffix included: two actions typed in one
+    // sitting can land in the same millisecond, and a bare Date.now() id collides on the primary
+    // key. The `:user:` segment is a convenience for anybody reading rows by hand — nothing parses
+    // it, and `gen_version` is what every decision is made on.
+    const id = `${meetingId}:user:${Date.now()}:${Math.floor(Math.random() * 1e6)}`;
+    const createdAt = Date.now();
+    await run(
+      'INSERT INTO items(id, meeting_id, kind, text, review, gen_version, ' +
+        'anchor_start_ms, anchor_end_ms, created_at) VALUES(?,?,?,?,?,?,?,?,?)',
+      [id, meetingId, kind, text, 'confirmed', USER_GEN, NO_ANCHOR, NO_ANCHOR, createdAt],
+    );
+    // Searchable the moment it is typed, exactly as a hand-typed `minutes` row has always been.
+    // AudioDb.indexItems is what decides where a hit on it opens the meeting — at the top, like
+    // every other row with no moment, and not at the sentinel.
+    await Storage.reindex(meetingId);
+    return {
+      id,
+      meetingId,
+      kind,
+      text,
+      review: 'confirmed',
+      genVersion: USER_GEN,
+      // What db.items would hand back for this row, so a caller that uses the return value and one
+      // that re-reads see the same thing. Never the sentinel: that number exists only on disk.
+      anchorStartMs: null,
+      anchorEndMs: null,
+      sources: [],
+    };
+  },
+
+  /**
+   * Remove an item a person typed. Never an extracted one.
+   *
+   * The `gen_version` clause is the safety of this statement rather than a formality. An id
+   * arriving from a screen that had drawn a stale list would otherwise delete an extracted item
+   * outright — and a reprocess would bring the sentence back without its tick and without the
+   * person's correction, because both are keyed on the id this deleted.
+   *
+   * `item_done` and `edits` rows keyed on the id are left behind, as they are everywhere else in
+   * this schema: `item_done` has no foreign key to `items` on purpose (a cascade there would wipe
+   * every tick on every reprocess) and `edits` has none either. Both are orphaned by an id that
+   * will never be minted again, and `replaceItems` sweeps orphaned ticks on the next reprocess.
+   */
+  removeUserItem: async (meetingId: string, id: string) => {
+    await run(`DELETE FROM items WHERE id = ? AND gen_version = '${USER_GEN}'`, [id]);
+    await Storage.reindex(meetingId);
+  },
+
+  /**
+   * Add a piece of PROSE the meeting never produced — a summary, a write-up, a headline.
+   *
+   * Written into `minutes` with source='user'. The item kinds moved to [addUserItem] in Task 12;
+   * these three stay because they are documents rather than list rows — there is one of each per
+   * meeting, they have no anchor, no tick and no provenance, and `items` has nothing to offer
+   * them. `replaceMinutes` deletes only source='rule', so reprocessing cannot take them away.
    */
   addUserMinute: async (meetingId: string, kind: MinuteKind, content: string) => {
     const id = `${meetingId}:user:${Date.now()}:${Math.floor(Math.random() * 1e6)}`;
@@ -565,12 +649,12 @@ export const db = {
    * `minutes` rows and every `action_done` tick stayed exactly where they were, and a meeting's own
    * Actions tab still reads both.
    *
-   * The other consequence, until Task 12 moves hand-written items across: an action somebody TYPED
-   * into a meeting is a `minutes` row with source='user' and no item, so it shows on that meeting's
-   * own Actions tab and not here — a migrated meeting included.
+   * AS OF TASK 12 IT FINALLY SHOWS HAND-TYPED ACTIONS. One a person typed used to be a `minutes`
+   * row with no item, so it appeared on that meeting's own Actions tab and nowhere else — the one
+   * list whose whole job is to say what you owe left it out, on every meeting, migrated or not.
    *
-   * `items` has no `source` column; `gen_version` records what wrote the row, and 'user' is the
-   * value Task 12 will write there. Archived meetings are excluded because they are hidden from
+   * `items` has no `source` column; `gen_version` records what wrote the row, and USER_GEN is what
+   * `db.addUserItem` writes there. Archived meetings are excluded because they are hidden from
    * the library, and their actions resurfacing in a worklist is what would make archiving useless.
    *
    * Rejected items are excluded for a reason that has not happened yet, which is exactly why the
@@ -590,13 +674,19 @@ export const db = {
   allActions: () =>
     run<Omit<ActionRow, 'done'>>(
       'SELECT i.id AS id, i.meeting_id AS meetingId, mt.title AS meetingTitle, ' +
-        'mt.created_at AS createdAt, i.text AS content, i.anchor_start_ms AS anchorStartMs, ' +
-        // 'user' is Reconciler.USER_GEN's value, spelled here in another language on the read
-        // side, and the ELSE is lossy. If Task 12 ever writes a VERSIONED user gen — `user@1`, the
-        // convention `rules@1` already sets — this line silently reports every hand-typed action
-        // as 'rule' and rule 1's `genVersion != USER_GEN` stops protecting it. The two change
-        // together or not at all.
-        "CASE WHEN i.gen_version = 'user' THEN 'user' ELSE 'rule' END AS source " +
+        'mt.created_at AS createdAt, i.text AS content, ' +
+        // The same derivation db.items makes, for the same reason: a hand-typed action has no
+        // moment, and `ActionRow.anchorStartMs` is what the "take me to where this was said"
+        // gesture will read. Handing it the sentinel would send somebody 285,000 years into a
+        // recording; handing it 0 would send them to the top of one for a sentence nobody spoke.
+        `CASE WHEN i.gen_version = '${USER_GEN}' THEN NULL ELSE i.anchor_start_ms END ` +
+        'AS anchorStartMs, ' +
+        // Spelled from the shared constant now rather than inline, which is what Task 9's review
+        // flagged. The ELSE is still lossy: if a VERSIONED user gen is ever wanted — `user@1`, the
+        // convention `rules@1` already sets — this line would silently report every hand-typed
+        // action as 'rule', and Reconciler rule 1's `genVersion != Gen.USER` would stop protecting
+        // it at the same moment. The two change together or not at all.
+        `CASE WHEN i.gen_version = '${USER_GEN}' THEN 'user' ELSE 'rule' END AS source ` +
         'FROM items i JOIN meetings mt ON mt.id = i.meeting_id ' +
         "WHERE i.kind = 'action' AND i.review <> 'rejected' AND mt.archived_at IS NULL " +
         // meeting_id is in here for the grouper, not for the eye: ActionsScreen.group() is a

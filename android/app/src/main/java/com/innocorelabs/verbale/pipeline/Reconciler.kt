@@ -135,19 +135,19 @@ object Reconciler {
     else -> null
   }
 
-  /** `gen_version` of an item a person typed. See rule 1. */
-  private const val USER_GEN = "user"
-
-  // The review vocabulary lives in AudioDb.Review and is deliberately NOT re-declared here. These
-  // states are compared as plain strings, and AudioDb.items() decides with the same four, so a
-  // second copy would drift from the first without failing a build or raising anything.
+  // The review vocabulary lives in AudioDb.Review and the gen_version vocabulary in AudioDb.Gen,
+  // and neither is re-declared here. Both are compared as plain strings, and AudioDb.items()
+  // decides with the same values, so a second copy would drift from the first without failing a
+  // build or raising anything — which is exactly what the `private const val USER_GEN` that used
+  // to sit here had already produced: unreachable from AudioDb and from anywhere else, so
+  // src/db/queries.ts spelled the string inline in its SQL instead of mirroring one constant.
 
   /** A scored (incoming, stored) pair, sorted best-first in [reconcile]. */
   private data class Pairing(val incomingIndex: Int, val storedIndex: Int, val score: Double)
 
   fun reconcile(existing: List<AudioDb.StoredItem>, incoming: List<Minutes.Item>): Plan {
     // Rule 1: hand-written rows take no part in matching at all.
-    val candidates = existing.filter { it.genVersion != USER_GEN }
+    val candidates = existing.filter { it.genVersion != AudioDb.Gen.USER }
 
     // Rule 2: score every legal pair, then take them best-first across the whole meeting rather
     // than incoming-item by incoming-item. Ties break on position so the result does not depend
@@ -238,7 +238,7 @@ object Reconciler {
       )
       val review = when {
         // A person's own item. Untouched means untouched: not re-flagged, not re-stamped.
-        old.genVersion == USER_GEN -> old.review
+        old.genVersion == AudioDb.Gen.USER -> old.review
         // Already rejected, and now not even extracted. Both agree it does not belong. Asking
         // again every reprocess is how a review queue turns into noise; dropping it would let the
         // next recogniser improvement re-suggest it as brand new. Keeping the "no" is what makes

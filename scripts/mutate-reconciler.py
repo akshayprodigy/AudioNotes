@@ -84,7 +84,7 @@ MUTATIONS = [
      "          Minutes.Source(it.utteranceId ?: \"\", it.startMs, it.endMs, it.charStart,"
      " it.charEnd)"),
     ("user items may be matched",
-     "    val candidates = existing.filter { it.genVersion != USER_GEN }",
+     "    val candidates = existing.filter { it.genVersion != AudioDb.Gen.USER }",
      "    val candidates = existing"),
     ("kind is ignored",
      "        if (old.kind != item.kind) continue",

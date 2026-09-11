@@ -58,6 +58,13 @@ CLASSES=(
   # one `am instrument`, one process — that IS the mechanism, and ItemSweepTest cannot stand in for
   # it because its own helper loads the core before every test.
   com.innocorelabs.verbale.StorageSweepTest
+  # Every decision and action anybody has ever TYPED, moved out of `minutes` and into `items` —
+  # with its tick, its correction, and the `minutes` row deleted behind it. Task 12 stops the tabs
+  # and the export merging those rows back in, so a migration that does not run makes every
+  # hand-written item disappear from the meeting it was typed into, silently. A move between two
+  # tables, a tick re-keyed, a correction re-keyed and a delete: SQLite from end to end, so none
+  # of it can be a JVM test.
+  com.innocorelabs.verbale.UserItemsMigrationTest
 )
 
 if ! "$ADB" devices | grep -qE "device$"; then

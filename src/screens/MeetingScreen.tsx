@@ -54,6 +54,7 @@ import {
   composeAction,
   editKey,
   editTargetOf,
+  isItemKind,
   toEditMap,
   type EditMap,
   type ItemRow,
@@ -384,7 +385,19 @@ export default function MeetingScreen({ route, navigation }: Props) {
           // renders both, the export writes both, and the tick key hashes both the same way.
           const content =
             spec.add === 'action' ? composeAction(value, extra || 'Unassigned') : value;
-          await db.addUserMinute(meetingId, spec.add, content);
+          // THE SPLIT IS THE KIND. A decision, action or open question is a list row and goes to
+          // `items`, where it gains a stable id — so its tick lives in `item_done` and its
+          // correction in `edits` keyed on that id, and both survive a reprocess re-wording the
+          // line. A summary, narrative or headline is a DOCUMENT: one per meeting, no anchor, no
+          // tick, no provenance, and `items` has nothing to offer it, so it stays prose in
+          // `minutes`. ITEM_KINDS is the one list either side is written from.
+          // `isItemKind` NARROWS, so neither call needs a cast — and a mutant that routed every
+          // add to `addUserItem` stops compiling rather than shipping prose into the list tables.
+          if (isItemKind(spec.add)) {
+            await db.addUserItem(meetingId, spec.add, content);
+          } else {
+            await db.addUserMinute(meetingId, spec.add, content);
+          }
           await refresh();
           return;
         }
@@ -419,11 +432,25 @@ export default function MeetingScreen({ route, navigation }: Props) {
     [meetingId, refresh],
   );
 
-  /** Remove an item the user added. Only ever reachable on a source='user' row. */
-  const onRemoveMinute = useCallback(
-    async (id: string) => {
+  /**
+   * Remove a row the person added. Only ever reachable on a row `toItemRows` marked `mine`.
+   *
+   * DISPATCHED ON THE ROW, not on an id, because two stores can hold one of these. A hand-typed
+   * decision is an `items` row as of Task 12 and is deleted by its item id; a hand-typed row on a
+   * meeting whose migration has not run is still a `minutes` row and is deleted by that. Handing
+   * this an id would mean the tab deciding which store it came from, and the tab is exactly the
+   * place that must not know — see [editTargetOf], which answers the same question for
+   * corrections.
+   *
+   * Both writers are scoped to the person's own rows in SQL (`gen_version='user'`,
+   * `source='user'`), so a stale row id cannot delete something the rules produced.
+   */
+  const onRemoveRow = useCallback(
+    async (row: ItemRow) => {
       try {
-        await db.deleteUserMinute(meetingId, id);
+        if (row.itemId) await db.removeUserItem(meetingId, row.itemId);
+        else if (row.minuteId) await db.deleteUserMinute(meetingId, row.minuteId);
+        else return;
         await refresh();
       } catch (e: any) {
         Alert.alert('Could not remove that', String(e?.message ?? e));
@@ -953,7 +980,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 edits={edits}
                 onEditItem={onEditRow}
                 onRevertItem={onRevertRow}
-                onRemoveItem={onRemoveMinute}
+                onRemoveItem={onRemoveRow}
                 onAdd={onAddMinute}
                 onOpenProvenance={openProvenance}
                 canPlay={player.available}
@@ -1000,7 +1027,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 edits={edits}
                 onEditItem={onEditRow}
                 onRevertItem={onRevertRow}
-                onRemoveItem={onRemoveMinute}
+                onRemoveItem={onRemoveRow}
                 onAdd={onAddMinute}
                 onOpenProvenance={openProvenance}
                 canPlay={player.available}

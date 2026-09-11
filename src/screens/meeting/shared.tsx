@@ -3,7 +3,8 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Icon, { type IconName } from '../../components/Icon';
 import { Raised, Txt } from '../../components/ui';
 import { radius, s, type Colors } from '../../theme';
-import type { Edit, EditTarget, Item, Minute } from '../../pipeline/types';
+import { USER_GEN } from '../../pipeline/types';
+import type { Edit, EditTarget, Item, ItemKind, Minute } from '../../pipeline/types';
 
 /**
  * Pieces shared by more than one meeting tab. Moved out of MeetingScreen when it split —
@@ -96,26 +97,48 @@ export function minuteText(m: Minute): string {
 // ---------------------------------------------------------------------------------------------
 
 /** The three kinds a decision/action/question tab renders. `summary`/`narrative` are documents. */
-export type ItemRowKind = 'decision' | 'action' | 'question';
+export type ItemRowKind = ItemKind;
 
-const ITEM_KINDS: readonly string[] = ['decision', 'action', 'question'];
+/**
+ * The kinds that live in `items`, as a runtime list.
+ *
+ * Exported because MeetingScreen's add path routes on exactly this set — a typed decision, action
+ * or question becomes an `items` row through `db.addUserItem`, and a typed summary, narrative or
+ * headline stays prose in `minutes` — and a second list written out there is a list that drifts
+ * from this one. `ItemKind` is the type of the same statement, and `FileExportModule.ITEM_KINDS`
+ * is the Kotlin mirror.
+ */
+export const ITEM_KINDS: readonly ItemKind[] = ['decision', 'action', 'question'];
+
+/**
+ * Whether this kind belongs in `items`, as a type guard rather than a boolean.
+ *
+ * A GUARD AND NOT A PREDICATE, deliberately. `db.addUserItem` takes an [ItemKind] and
+ * `db.addUserMinute` takes a `MinuteKind`, and the whole split is that prose — `summary`,
+ * `narrative`, `headline` — must not reach the first. Written as `ITEM_KINDS.includes(k as
+ * ItemKind)` the cast throws that away and a caller that routed every add to `addUserItem`
+ * compiles cleanly, which is exactly what happened when this was measured: the mutation survived
+ * every test in the tree, because nothing in the app adds prose by hand YET and so no test could
+ * reach the branch. Narrowing makes the compiler the test.
+ */
+export const isItemKind = (kind: string): kind is ItemKind =>
+  (ITEM_KINDS as readonly string[]).includes(kind);
 
 /**
  * One line on the MOM or Actions tab, from whichever table currently holds it.
  *
  * The tabs used to render `minutes` rows, which carry no id a tick can survive a reprocess on and
  * no timestamp at all. They render `items` now — that is what makes the provenance button
- * possible, and what puts this tab's ticks in the same store as the cross-meeting worklist's. Two
- * populations are not in `items` yet, so this type is what lets one renderer show both:
- *
- *  - a row somebody TYPED (`minutes` with source='user'), which Task 12 moves across;
- *  - every row of a meeting whose item migration has not run — see [toItemRows].
+ * possible, and what puts this tab's ticks in the same store as the cross-meeting worklist's. ONE
+ * population is still not in `items`, and this type is what lets one renderer show it alongside:
+ * every row of a meeting whose item migration has not run — see [toItemRows]. A row somebody
+ * TYPED was the second such population until Task 12 moved it across.
  *
  * `itemId` is the whole difference. A row that has one is ticked in `item_done` and corrected in
  * `edits` by its id, so both survive the wording changing under it; a row that has none has no id
  * worth keying on and keeps the text hash it has always had, for both. Read `itemId === null` as
- * "this row is not in `items` yet", never as "this row is the user's" — `mine` says that, and
- * after Task 12 a user row will have both.
+ * "this row is not in `items` yet", never as "this row is the user's" — `mine` says that, and a
+ * hand-typed row now has both.
  */
 export type ItemRow = {
   /** React key. Namespaced by table, because the two id spaces are unrelated. */
@@ -134,7 +157,13 @@ export type ItemRow = {
   textKey: string;
   /** The `items` row id, or null for a row that is still only a minute. */
   itemId: string | null;
-  /** The `minutes` row id, or null. Removal needs it, and only a source='user' row has removal. */
+  /**
+   * The `minutes` row id, or null.
+   *
+   * Only an unmigrated meeting's rows have one now. Removal dispatches on it — a hand-typed row
+   * is deleted from `items` by [ItemRow.itemId] and a hand-typed minute from `minutes` by this —
+   * which is why `MeetingScreen.onRemoveRow` takes the whole row and not an id.
+   */
   minuteId: string | null;
   /** Typed by a person rather than pulled out of the transcript. */
   mine: boolean;
@@ -145,29 +174,33 @@ export type ItemRow = {
 /**
  * Merge the two tables into one list of rows, items first.
  *
- * **The merge is transitional and Task 12 removes the second half of it.** Until then a decision
- * or action a person typed lives in `minutes` with source='user' and has no item, so a tab that
- * rendered items alone would make a hand-typed row vanish from the very screen it was typed on —
- * a worse failure than any this conversion fixes.
+ * **The hand-typed half of the merge is gone as of Task 12.** A decision, action or question a
+ * person types is an `items` row now (`db.addUserItem`), and `AudioDb.carryUserMinutesOntoItems`
+ * has moved the ones already on disk and deleted the `minutes` rows they came from. So a
+ * source='user' minute is no longer merged back in: it either does not exist, or it belongs to a
+ * meeting whose migration has not run, and the fallback below is what shows it then.
  *
- * **The empty-items fallback is transitional too, and it goes when nothing can render an
- * unmigrated meeting.** `db.ensureItems` is what gives a pre-items meeting its items, it needs the
- * native core, and MeetingScreen deliberately swallows the failure so the meeting still opens. It
- * opens onto its `minutes`, which is what a person has always seen there; rendering items alone
- * would draw an empty MOM tab under a Summary tab still counting "7 actions". So: when a meeting
- * has NO items at all, its rule-extracted rows are shown from `minutes` exactly as before. It
- * costs a boolean, it is self-healing on the next open, and the alternative is showing somebody
- * nothing.
+ * **The empty-items fallback stays, and it goes when nothing can render an unmigrated meeting.**
+ * `db.ensureItems` is what gives a pre-items meeting its items, it needs the native core, and
+ * MeetingScreen deliberately swallows the failure so the meeting still opens. It opens onto its
+ * `minutes`, which is what a person has always seen there; rendering items alone would draw an
+ * empty MOM tab under a Summary tab still counting "7 actions". It costs a boolean, it is
+ * self-healing on the next open, and the alternative is showing somebody nothing.
  *
- * TWO CONCERNS, ONE EXPRESSION, for whoever removes the first of them. The guard below reads
- * `keep = unmigrated || m.source === 'user'`, and those disjuncts are independent: Task 12 strips
- * `m.source === 'user' ||` and leaves `unmigrated` standing, because a meeting nobody has migrated
- * still has nothing else to show. Deleting the whole condition takes the fallback with it.
+ * IT ASKS ABOUT RULE ROWS, NOT ABOUT ROWS, and that is the half Task 12 could most easily have got
+ * wrong. `carryUserMinutesOntoItems` runs before the native load — deliberately, so a phone still
+ * downloading `libonnxruntime.so` does not open a meeting with the person's own notes missing — so
+ * an unmigrated meeting somebody typed a decision into arrives here with EXACTLY ONE item, the
+ * typed one, and all of its rule-extracted rows still in `minutes`. Under "does this meeting have
+ * any items at all" the fallback switches off at that moment and the whole MOM disappears, leaving
+ * the one line they typed. Nothing throws, nothing is deleted, and it heals only if the native
+ * core loads. `AudioDb.ensureItems` and `AudioDb.UNMIGRATED` ask the same narrowed question, for
+ * the same reason — a hand-typed row is not evidence that the rules have run.
  *
- * Both fallbacks give the row a null `anchorStartMs` and no `itemId`, which is the honest answer
- * rather than a placeholder: a row with no evidence gets no provenance button — Task 12's rule,
- * "an item with no sources is not a failure to find evidence; it is an item that never claimed
- * any" — and a row with no stable id keeps the tick key it already has.
+ * The fallback gives its rows a null `anchorStartMs` and no `itemId`, which is the honest answer
+ * rather than a placeholder: a row with no evidence gets no provenance button — "an item with no
+ * sources is not a failure to find evidence; it is an item that never claimed any" — and a row
+ * with no stable id keeps the tick key it already has.
  *
  * WHERE A CORRECTION TO ONE OF THESE ROWS LIVES: [editTargetOf], not [ItemRow.textKey].
  */
@@ -179,22 +212,23 @@ export function toItemRows(items: Item[], minutes: Minute[]): ItemRow[] {
     textKey: itemKey(it.text),
     itemId: it.id,
     minuteId: null,
-    // Nothing writes 'user' into `items.gen_version` yet; Task 12 is what does, and this is the
-    // read side of it, spelled the same way db.allActions spells it.
-    mine: it.genVersion === 'user',
+    // `gen_version`, which is the authoritative marker and the one Reconciler rule 1 keys on —
+    // never "did this row come out of `minutes`". db.addUserItem is what writes it.
+    mine: it.genVersion === USER_GEN,
+    // Already null for a hand-typed row: db.items derives it there, at the database boundary, so
+    // nothing here has to know that the column is NOT NULL and holds a sentinel.
     anchorStartMs: it.anchorStartMs,
   }));
 
-  const unmigrated = items.length === 0;
+  // "Have the RULES produced items for this meeting" — see the note above for why it is not
+  // "does this meeting have items".
+  const unmigrated = !items.some(it => it.genVersion !== USER_GEN);
   for (const m of minutes) {
-    if (!ITEM_KINDS.includes(m.kind)) continue;
-    // Stated as what is kept rather than as what is skipped: "keep this row if the meeting has no
-    // items to show instead, or if the person typed it" is the sentence above, in code.
-    const keep = unmigrated || m.source === 'user';
-    if (!keep) continue;
+    if (!isItemKind(m.kind)) continue;
+    if (!unmigrated) continue;
     rows.push({
       key: `m:${m.id}`,
-      kind: m.kind as ItemRowKind,
+      kind: m.kind,
       // minuteText for the display, m.content for the key. They differ only for a hand-written row
       // added on the one build that JSON-encoded them (see minuteText), and the key has to stay on
       // the raw column because the export renderer hashes that column in Kotlin.
@@ -218,8 +252,8 @@ export function toItemRows(items: Item[], minutes: Minute[]): ItemRow[] {
  * hash moves with the text.
  *
  * A row with no item keeps `minute/<hash of its stored text>`, because it has nothing else to be
- * keyed on. That population is a row somebody typed themselves, which lives in `minutes` until
- * Task 12, plus every row of a meeting whose migration has not run.
+ * keyed on. That population is every row of a meeting whose migration has not run, and nothing
+ * else: a row somebody typed themselves left it in Task 12, which gave it an item of its own.
  *
  * BOTH SIDES MOVED TOGETHER, and they had to. The reader here, the writer in
  * `MeetingScreen.onEditRow`, and `FileExportModule` in Kotlin all agree on this key; changing one

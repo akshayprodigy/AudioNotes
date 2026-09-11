@@ -66,17 +66,31 @@ class StorageModule(private val ctx: ReactApplicationContext) :
       // FIRST, and outside the native load below on purpose — two separate reasons, both about
       // reaching meetings [AudioDb.backfillItems] cannot.
       //
-      // [AudioDb.carryEditsOntoItems] moves every hand correction off the minute it was written
-      // against and onto the item that replaced it. `backfillItems` carries them too, in its own
-      // transaction, but only for a meeting it is migrating NOW — and it never runs again for a
-      // meeting the Task 8b sweep has stamped, nor for one the pipeline wrote items for directly.
-      // Those are precisely the meetings likeliest to be carrying corrections, and this is the one
-      // call every reader of a meeting passes through before reading it.
+      // [AudioDb.carryUserMinutesOntoItems] moves every decision, action and open question a
+      // person TYPED out of `minutes` and into `items`, and [AudioDb.carryEditsOntoItems] moves
+      // every hand correction off the minute it was written against and onto the item that
+      // replaced it. `backfillItems` does both, in its own transaction, but only for a meeting it
+      // is migrating NOW — and it never runs again for a meeting the Task 8b sweep has stamped,
+      // nor for one the pipeline wrote items for directly. Those are precisely the meetings
+      // likeliest to be carrying typed rows and corrections, and this is the one call every reader
+      // of a meeting passes through before reading it.
       //
-      // Before `ensureLoaded` because the carry is pure SQL — no rules, no core — and a phone
+      // Before `ensureLoaded` because both carries are pure SQL — no rules, no core — and a phone
       // still downloading libonnxruntime.so would otherwise open every meeting with the user's own
-      // corrections missing from it. It is idempotent from the data, so running it on every open
-      // costs one indexed lookup that returns nothing.
+      // corrections and their own typed decisions missing from it. Both are idempotent from the
+      // data rather than from a marker, so running them on every open costs one indexed lookup and
+      // one scan of this meeting's `minutes` — a scan `db.minutes` pays again on the same open.
+      //
+      // That ordering is also why [AudioDb.ensureItems] and [AudioDb.unmigratedMeetings] ask
+      // whether the RULES have produced items rather than whether there are any: the typed-row
+      // carry can give an item to a meeting the rules have never run over, and a guard that could
+      // not tell the difference would strand it unmigrated forever.
+      //
+      // [AudioDb.carryUserMinutesOntoItems] is the other half and runs FIRST, because the
+      // correction carry matches an item's text and a hand-typed row has no item until this has
+      // run. It moves every decision, action and open question a person typed out of `minutes`,
+      // where every shipped build wrote them and where nothing draws them any more.
+      db.carryUserMinutesOntoItems(meetingId)
       db.carryEditsOntoItems(meetingId)
       // The ONLY part of this method that reaches native code. The migration re-runs the rule
       // pass, which lives in libaudionotes.so, and nothing loads that at app start —

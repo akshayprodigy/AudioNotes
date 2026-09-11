@@ -58,7 +58,13 @@ export default function MinutesTab({
   onEditItem?: (row: ItemRow) => void;
   /** Takes the ROW, not a key: where a correction lives is editTargetOf's answer, not a tab's. */
   onRevertItem?: (row: ItemRow) => void;
-  onRemoveItem?: (id: string) => void;
+  /**
+   * Takes the ROW for [onRevertItem]'s reason: a hand-typed row is an `items` row now and an
+   * unmigrated meeting's is still a `minutes` row, so which table to delete from is the row's
+   * own identity to answer and not a tab's. It was `(id: string)` while only one store held
+   * these rows.
+   */
+  onRemoveItem?: (row: ItemRow) => void;
   onAdd?: (kind: MinuteKind) => void;
   onEditNarrative?: (initial: string) => void;
   onRevertNarrative?: () => void;
@@ -97,7 +103,10 @@ export default function MinutesTab({
       mine={r.mine}
       onEdit={onEditItem ? () => onEditItem(r) : undefined}
       onRevert={onRevertItem ? () => onRevertItem(r) : undefined}
-      onRemove={onRemoveItem && r.mine && r.minuteId ? () => onRemoveItem(r.minuteId!) : undefined}
+      // `r.mine` and nothing else. The old gate also asked for `r.minuteId`, which a hand-typed
+      // row stopped having the moment Task 12 moved it into `items` — leaving it would have taken
+      // the remove button off every row that has ever had one, silently.
+      onRemove={onRemoveItem && r.mine ? () => onRemoveItem(r) : undefined}
       provenance={
         // No anchor, no button. A row somebody typed never claimed to have been said at any
         // particular moment, and offering to "play from 0:00" would be inventing one.

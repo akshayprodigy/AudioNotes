@@ -27,7 +27,7 @@ import type { ActionRow } from '../pipeline/types';
  * closed.
  *
  * What `action_done` still holds, and why this list cannot see it: the rows with no item id to key
- * on — an action somebody TYPED into a meeting (Task 12 moves those) and any meeting the item
+ * on — any meeting the item
  * migration has not reached. Neither is in `items`, so neither is in `allActions` either, and this
  * list is consistent with itself rather than half-informed.
  */

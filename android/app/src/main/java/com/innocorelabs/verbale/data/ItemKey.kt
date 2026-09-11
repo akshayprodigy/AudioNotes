@@ -13,10 +13,12 @@ package com.innocorelabs.verbale.data
  * WHAT STILL USES IT, and what has moved off it. `items` rows have stable ids that survive a
  * reprocess, so a tick on one lives in `item_done` keyed on that id and a correction lives in
  * `edits` keyed the same way — a hash cannot do that, because it moves with the text it hashes.
- * This is now the key of two populations only: rows that are still `minutes` (a person's own
- * typed decision, until Task 12) and the historical `action_done` / `target_kind='minute'` rows
- * that `AudioDb.backfillItems` and `AudioDb.carryEditsOntoItems` are migrating off it. Reading it
- * is what makes those migrations possible at all, since SQL cannot reproduce the hash.
+ * This is now the key of two populations only: rows that are still `minutes` because their
+ * meeting's migration has not run, and the historical `action_done` / `target_kind='minute'` rows
+ * that `AudioDb.backfillItems`, `AudioDb.carryUserMinutesOntoItems` and
+ * `AudioDb.carryEditsOntoItems` are migrating off it. A person's own typed decision was a third
+ * until Task 12 moved it into `items`. Reading it is what makes those migrations possible at all,
+ * since SQL cannot reproduce the hash.
  *
  * Two mirrors are two chances to drift, so ItemKeyTest pins the same vectors as
  * __tests__/actionKey.test.ts. The arithmetic below is JS's, exactly: `charCodeAt` yields UTF-16

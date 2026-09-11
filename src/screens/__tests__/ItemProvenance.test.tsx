@@ -4,7 +4,7 @@ import renderer, { act } from 'react-test-renderer';
 import MeetingScreen from '../MeetingScreen';
 import TranscriptTab from '../meeting/TranscriptTab';
 import { ProvenanceButton, provenanceLabel } from '../meeting/ItemProvenance';
-import { editTargetOf, itemKey, toItemRows } from '../meeting/shared';
+import { editTargetOf, isItemKind, itemKey, toItemRows } from '../meeting/shared';
 import { TextPrompt } from '../../components/ui';
 import { loadActions } from '../actionsData';
 import { db } from '../../db/queries';
@@ -29,6 +29,27 @@ const item = (over: Partial<Item> = {}): Item => ({
   sources: [{ startMs: 65_000, endMs: 69_000, charStart: 0, charEnd: 40, utteranceId: 'u2' }],
   ...over,
 });
+
+/**
+ * A decision a person typed themselves, as it comes back out of `items` after Task 12.
+ *
+ * `anchorStartMs` is null because db.items derives it there from `gen_version`; the sentinel the
+ * column really holds never reaches a screen. `sources` is empty because the row never claimed any
+ * — which is what withholds the provenance button, and why it is not the same thing as an
+ * extracted item whose evidence could not be resolved.
+ */
+const typedDecision = (over: Partial<Item> = {}): Item =>
+  item({
+    id: 'it-typed',
+    kind: 'decision',
+    text: 'Ship on the 14th',
+    review: 'confirmed',
+    genVersion: 'user',
+    anchorStartMs: null,
+    anchorEndMs: null,
+    sources: [],
+    ...over,
+  });
 
 const minute = (over: Partial<Minute> = {}): Minute => ({
   id: 'min-action',
@@ -142,16 +163,44 @@ describe('toItemRows', () => {
   });
 
   /**
-   * The transitional half, and the reason it exists. `db.addUserMinute` writes a `minutes` row
-   * with source='user' and no item until Task 12 moves it, so a tab rendering items alone would
-   * make a hand-typed action vanish from the screen it was typed on.
+   * A hand-typed row is an ITEM now, and it is `mine` because of `gen_version`, not because of
+   * which table it came out of.
+   *
+   * It has an id — so its tick and its correction are keyed on something a re-wording cannot move
+   * — and no anchor, because it never claimed a moment. Both tabs gate the provenance button on
+   * `anchorStartMs !== null`, so the null is what withholds it.
    */
-  it('keeps a hand-typed row, with no anchor and no item id', () => {
+  it('gives a hand-typed item its id, marks it mine, and gives it no anchor', () => {
+    const typed = item({
+      id: 'it-typed',
+      kind: 'decision',
+      text: 'Ship on the 14th',
+      genVersion: 'user',
+      review: 'confirmed',
+      anchorStartMs: null,
+      anchorEndMs: null,
+      sources: [],
+    });
+    const rows = toItemRows([item(), typed], []);
+    expect(rows.map(r => r.text)).toEqual([ACTION, 'Ship on the 14th']);
+    expect(rows[1]).toMatchObject({ itemId: 'it-typed', minuteId: null, anchorStartMs: null });
+    expect(rows[1].mine).toBe(true);
+    // The extracted row is still not mine and still has its moment: a `mine` that was true for
+    // every row, or an anchor nulled for every row, would pass an assertion on the typed one alone.
+    expect(rows[0]).toMatchObject({ mine: false, anchorStartMs: 65_000 });
+  });
+
+  /**
+   * The transitional half Task 12 removes: a `minutes` row with source='user' is no longer merged
+   * back in, because `AudioDb.carryUserMinutesOntoItems` has moved it into `items` and deleted it.
+   *
+   * The fixture is the state that used to produce TWO rows for one sentence — a migrated meeting
+   * still holding the minutes row it was migrated from. Rendering both is what this drops.
+   */
+  it('no longer merges a hand-typed minutes row into a meeting that has items', () => {
     const typed = minute({ id: 'min-user', content: 'Call the vendor back', source: 'user' });
     const rows = toItemRows([item()], [minute(), typed]);
-    expect(rows.map(r => r.text)).toEqual([ACTION, 'Call the vendor back']);
-    expect(rows[1]).toMatchObject({ itemId: null, minuteId: 'min-user', anchorStartMs: null });
-    expect(rows[1].mine).toBe(true);
+    expect(rows.map(r => r.text)).toEqual([ACTION]);
   });
 
   /**
@@ -164,6 +213,43 @@ describe('toItemRows', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ itemId: null, minuteId: 'min-action', anchorStartMs: null });
     expect(rows[0].mine).toBe(false);
+  });
+
+  /**
+   * THE HOLE TASK 12 OPENS, and the reason the fallback asks about RULE rows rather than about
+   * rows.
+   *
+   * `carryUserMinutesOntoItems` runs before the native load, so an unmigrated meeting somebody has
+   * typed a decision into arrives here with exactly one item — the typed one — and all of its
+   * rule-extracted minutes still in `minutes`. Under "does this meeting have any items at all" the
+   * fallback switches OFF at that moment and the entire MOM disappears, leaving the one line the
+   * person typed. Nothing fails, nothing is deleted, and the tab is empty but for their own note.
+   */
+  it('still falls back to the minutes for a meeting whose only item is hand-typed', () => {
+    const typed = item({
+      id: 'it-typed',
+      kind: 'decision',
+      text: 'Ship on the 14th',
+      genVersion: 'user',
+      anchorStartMs: null,
+      anchorEndMs: null,
+      sources: [],
+    });
+    const rows = toItemRows([typed], [minute(), minute({ id: 'min-sum', kind: 'summary' })]);
+    expect(rows.map(r => r.text)).toEqual(['Ship on the 14th', ACTION]);
+    expect(rows[1]).toMatchObject({ itemId: null, minuteId: 'min-action', anchorStartMs: null });
+  });
+
+  /**
+   * The list the add path and the merge are both written from.
+   *
+   * `isItemKind` is a type GUARD, which is what makes the compiler enforce the split — routing a
+   * `summary` to `db.addUserItem` is a type error rather than a runtime surprise — but the
+   * membership itself is a claim about this app's vocabulary and nothing else pins it.
+   */
+  it('counts the three list kinds as items and the three prose kinds as documents', () => {
+    expect(['decision', 'action', 'question'].map(isItemKind)).toEqual([true, true, true]);
+    expect(['summary', 'narrative', 'headline'].map(isItemKind)).toEqual([false, false, false]);
   });
 
   it('never turns a summary or a narrative into an item row', () => {
@@ -184,20 +270,30 @@ describe('toItemRows', () => {
  * `minute/<hash>` key it has always had, because there is nothing else to key it on.
  *
  * Both shapes are live at once, deliberately and transitionally, exactly as two tick stores are:
- * `db.addUserMinute` writes a hand-typed row to `minutes` with no item until Task 12.
+ * A meeting whose migration has not run has every row in `minutes` and no item to key on.
  */
 describe('editTargetOf', () => {
   it('keys an extracted item on its id, which a re-wording cannot move', () => {
     expect(editTargetOf(toItemRows([item()], [])[0])).toEqual({ kind: 'item', key: 'it-action' });
   });
 
-  it('keys a hand-typed row on the hash of its stored text, having nothing else', () => {
-    const typed = minute({ id: 'min-user', content: 'Call the vendor back', source: 'user' });
-    const rows = toItemRows([item()], [typed]);
-    expect(editTargetOf(rows[1])).toEqual({
+  /**
+   * The population that still has no id: every row of a meeting whose migration has not run. A
+   * hand-typed row left this population in Task 12 — it is an item now, keyed on its own id — and
+   * an unmigrated meeting's rows have not, which is why the `minute/<hash>` shape stays live.
+   */
+  it('keys a row with no item on the hash of its stored text, having nothing else', () => {
+    const rows = toItemRows([], [minute({ id: 'min-x', content: 'Call the vendor back' })]);
+    expect(editTargetOf(rows[0])).toEqual({
       kind: 'minute',
       key: itemKey('Call the vendor back'),
     });
+  });
+
+  /** A hand-typed item is keyed on its id, exactly as an extracted one is. */
+  it('keys a hand-typed item on its id too', () => {
+    const typed = item({ id: 'it-typed', genVersion: 'user', anchorStartMs: null, sources: [] });
+    expect(editTargetOf(toItemRows([typed], [])[0])).toEqual({ kind: 'item', key: 'it-typed' });
   });
 });
 
@@ -401,41 +497,41 @@ describe('the MOM tab', () => {
   });
 
   /**
-   * A hand-typed row has no id, so its correction stays on the text hash — and must still resolve.
+   * A correction to a hand-typed row is keyed on the ITEM's id now, like every other correction.
    *
-   * The population `carryEditsOntoItems` deliberately leaves alone, and the reason the edits map
-   * has to hold both shapes until Task 12 gives these rows items of their own.
+   * That is the point of Task 12 rather than a side effect: a hand-typed row was the last
+   * population still keyed on a hash of its own text, so correcting one and then correcting it
+   * again orphaned the first correction the moment the wording moved. The `minute/<hash>` shape
+   * stays live only for a meeting whose migration has not run.
    */
-  it('still shows a correction to a hand-typed row, keyed on its text', async () => {
-    (db.minutes as jest.Mock).mockResolvedValue([
-      minute(),
-      minute({ id: 'min-user', kind: 'decision', content: 'Ship on the 14th', source: 'user' }),
-    ]);
+  it('shows a correction to a hand-typed item, keyed on its id', async () => {
+    (db.items as jest.Mock).mockResolvedValue([item(), typedDecision()]);
     (db.edits as jest.Mock).mockResolvedValue([
       {
         meetingId: 'm1',
-        targetKind: 'minute',
-        targetKey: itemKey('Ship on the 14th'),
+        targetKind: 'item',
+        targetKey: 'it-typed',
         content: 'Ship on the 21st',
         editedAt: 2,
       },
     ]);
     const tree = await render({ tab: 'mom' });
-    expect(JSON.stringify(tree.toJSON())).toContain('Ship on the 21st');
+    const json = JSON.stringify(tree.toJSON());
+    expect(json).toContain('Ship on the 21st');
+    expect(json).not.toContain('Ship on the 14th');
     await act(async () => tree.unmount());
   });
 
   /**
-   * A hand-typed row has no item and no evidence, which is not a failure to find any — it is a
-   * row that never claimed any. It keeps its place on the screen it was typed on, and it gets no
-   * button offering to play a moment nobody spoke.
+   * A hand-typed row cites nothing, which is not a failure to find evidence — it is a row that
+   * never claimed any. It gets no button offering to play a moment nobody spoke, and above all no
+   * `[0:00]`, which is what `anchor_start_ms = 0` would have printed.
+   *
+   * TWO ROWS, and the extracted one is what makes this falsifiable: a screen that had stopped
+   * drawing provenance buttons at all would pass an assertion that only counted the typed row's.
    */
   it('keeps a hand-typed decision, and gives it no provenance button', async () => {
-    (db.minutes as jest.Mock).mockResolvedValue([
-      minute(),
-      minute({ id: 'min-user', kind: 'decision', content: 'Ship on the 14th', source: 'user' }),
-    ]);
-    (db.items as jest.Mock).mockResolvedValue([item()]);
+    (db.items as jest.Mock).mockResolvedValue([item(), typedDecision()]);
 
     const tree = await render({ tab: 'mom' });
     const json = JSON.stringify(tree.toJSON());
@@ -444,6 +540,65 @@ describe('the MOM tab', () => {
     // One timestamp on the screen: the extracted action's. The typed decision has none.
     expect(byLabel(tree, 'Show this in the transcript at 1:05')).toHaveLength(1);
     expect(json).not.toContain('0:00');
+    await act(async () => tree.unmount());
+  });
+
+  /**
+   * Removing it deletes the ITEM, not a `minutes` row that no longer exists.
+   *
+   * The remove gesture used to be gated on `r.minuteId`, which a hand-typed row no longer has, so
+   * leaving that gate in place would have taken the remove button off the only rows that have
+   * ever had one — no error, no failing type, just a button that quietly stopped being drawn.
+   */
+  it('removes a hand-typed decision from items', async () => {
+    (db.items as jest.Mock).mockResolvedValue([item(), typedDecision()]);
+
+    const tree = await render({ tab: 'mom' });
+    const remove = byLabel(tree, 'Remove this item')[0];
+    await act(async () => remove.props.onPress());
+
+    expect(db.removeUserItem).toHaveBeenCalledWith('m1', 'it-typed');
+    expect(db.deleteUserMinute).not.toHaveBeenCalled();
+    await act(async () => tree.unmount());
+  });
+
+  /**
+   * And an unmigrated meeting's hand-typed row still deletes from `minutes`, because that is still
+   * where it lives. One gesture, two stores, dispatched on the row's own identity.
+   */
+  it('removes a hand-typed minute from minutes when the meeting has no items', async () => {
+    (db.items as jest.Mock).mockResolvedValue([]);
+    (db.minutes as jest.Mock).mockResolvedValue([
+      minute(),
+      minute({ id: 'min-user', kind: 'decision', content: 'Ship on the 14th', source: 'user' }),
+    ]);
+
+    const tree = await render({ tab: 'mom' });
+    const remove = byLabel(tree, 'Remove this item')[0];
+    await act(async () => remove.props.onPress());
+
+    expect(db.deleteUserMinute).toHaveBeenCalledWith('m1', 'min-user');
+    expect(db.removeUserItem).not.toHaveBeenCalled();
+    await act(async () => tree.unmount());
+  });
+
+  /**
+   * Typing a decision writes an `items` row, and typing a SUMMARY still writes a `minutes` row.
+   *
+   * The split is the kind and nothing else: `summary`, `narrative` and `headline` are documents —
+   * one of each per meeting, no anchor, no tick, no provenance — and `items` has nothing to offer
+   * them. Routing every add to `addUserItem` would put prose in the list tables and give the MOM
+   * tab a row containing the whole write-up.
+   */
+  it('writes a typed decision to items', async () => {
+    const tree = await render({ tab: 'mom' });
+    const add = byLabel(tree, 'Add a decision')[0];
+    await act(async () => add.props.onPress());
+    const prompt = tree.root.findAllByType(TextPrompt).find(pr => pr.props.visible)!;
+    await act(async () => prompt.props.onSubmit('Ship on the 14th', ''));
+
+    expect(db.addUserItem).toHaveBeenCalledWith('m1', 'decision', 'Ship on the 14th');
+    expect(db.addUserMinute).not.toHaveBeenCalled();
     await act(async () => tree.unmount());
   });
 });
@@ -517,7 +672,9 @@ describe('the Actions tab', () => {
   /**
    * The population that has no id to key on. A typed row keeps the store it has always had, which
    * is what makes this an id-keyed tick for everything that CAN have one rather than a conversion
-   * that quietly drops the ticks it cannot move. Task 12 moves the row, and its tick with it.
+   * that quietly drops the ticks it cannot move. A HAND-TYPED row left this population in Task 12
+   * — `carryUserMinutesOntoItems` moved its tick into `item_done` along with it — so the fixture
+   * here is an unmigrated MEETING, which is the population that is left.
    */
   it('still ticks a hand-typed action in the store that holds it', async () => {
     const typed = minute({ id: 'min-user', content: 'Call the vendor back', source: 'user' });

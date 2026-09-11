@@ -179,7 +179,8 @@ describe('allActions', () => {
   /**
    * `items` has no `source` column; `gen_version` carries what wrote the row. The worklist keeps
    * the field because a hand-typed item is not something the pipeline may quietly rewrite, and
-   * Task 12 is what starts writing `gen_version='user'` rows.
+   * `db.addUserItem` is what writes `gen_version='user'` rows; src/db/__tests__/userItems.test.ts
+   * is where that writer and this read meet.
    */
   it('reports a hand-typed item as the user’s', async () => {
     meeting('m1', 'Standup', 1000);

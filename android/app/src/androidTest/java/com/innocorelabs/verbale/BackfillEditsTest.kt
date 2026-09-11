@@ -205,13 +205,15 @@ class BackfillEditsTest {
    * There are three ways to have a `minute`-keyed correction that matches no item, and only one of
    * them is a genuine orphan:
    *
-   *  - a row somebody TYPED, which lives in `minutes` with no item until Task 12 and whose
-   *    correction the tabs and the export still read on this exact key;
    *  - a meeting whose migration has not run yet, which has no items to match against and gets
    *    them on a later open;
    *  - a correction whose minute the rules no longer produce at all.
    *
-   * Deleting on a failure to match would destroy the first two along with the third, and the third
+   * (A row somebody TYPED was a third until Task 12 gave it an item of its own, and note the order
+   * that forced at both call sites: `carryUserMinutesOntoItems` runs BEFORE this, so a correction
+   * on such a row has an item to find rather than being left on a key nothing reads.)
+   *
+   * Deleting on a failure to match would destroy the first along with the second, and the second
    * is the one case where the row is harmless: it is a few dozen bytes, `edits` has no orphan
    * cleanup for any other kind either, and a correction is the only thing in this database that
    * cannot be recomputed from anything. Nothing is deleted; the carry only ever MOVES a row it has
@@ -243,7 +245,7 @@ class BackfillEditsTest {
    * was nothing left keyed `minute`, the `pending.isEmpty()` early return fired, and the loop it
    * claims to be testing was never entered — it asserted the idempotence of a function that had
    * already returned. A correction that can NEVER be carried is seeded alongside, which is not a
-   * contrivance: a hand-typed row keeps its `minute` key by design until Task 12, so this is the
+   * contrivance: any meeting whose migration has not run keeps `minute` keys, so this is the
    * state of every meeting somebody has typed a decision into.
    *
    * BE PRECISE ABOUT WHAT THE SECOND PASS NOW REACHES, because the obvious reading is wrong. It

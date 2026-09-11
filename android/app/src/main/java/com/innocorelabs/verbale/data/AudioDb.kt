@@ -141,12 +141,26 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    * `start_ms` is the item's anchor, so a search hit on an item opens the meeting where it was
    * said. Minutes rows are indexed at 0 and a hit therefore opens at the beginning; `SearchHit` has
    * always carried a `startMs` field with nothing to put in it.
+   *
+   * A ROW A PERSON TYPED IS INDEXED AT 0, like every other row with no moment. It is searchable —
+   * it is a decision somebody cared enough about to write down, and it was searchable as a
+   * `minutes` row before Task 12 moved it — but it never claimed to have been SAID anywhere, so
+   * `start_ms` has nothing true to hold. 0 is already what `indexTitle`, `indexMinutes` and
+   * `indexSummary` write and what SearchScreen reads as "no moment, open at the top"
+   * (`hit.startMs > 0` is what gates the stamp), so the behaviour a person sees is exactly what it
+   * was. Writing [Gen.NO_ANCHOR] here instead would put a number in that column which is neither a
+   * moment nor a marker for the absence of one.
+   *
+   * Derived from `gen_version` and not from the stored anchor, for the reason given at
+   * [StoredItem.anchorStartMs]: the sentinel is a storage detail of a NOT NULL column, and code
+   * that compares against it is code that breaks when the column's fallback changes.
    */
   fun indexItems(meetingId: String) {
     indexDelete(meetingId, "item")
     db.rawQuery(
-      "SELECT id, anchor_start_ms, text FROM items WHERE meeting_id=? ORDER BY anchor_start_ms",
-      arrayOf(meetingId),
+      "SELECT id, CASE WHEN gen_version=? THEN 0 ELSE anchor_start_ms END, text FROM items " +
+        "WHERE meeting_id=? ORDER BY anchor_start_ms",
+      arrayOf(Gen.USER, meetingId),
     ).use { c ->
       while (c.moveToNext()) {
         indexInsert(meetingId, "item", c.getString(0), c.getLong(1), c.getString(2))
@@ -1026,6 +1040,76 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
   }
 
   /**
+   * The `items.gen_version` vocabulary this file and `Reconciler` both decide with.
+   *
+   * Here rather than in `Reconciler` for [Review]'s reason exactly: this is the column's own file,
+   * the writers live here ([carryUserMinutesOntoItems]) and so does the one place that decides
+   * what the value MEANS for a reader ([indexItems], and the KDoc on
+   * [StoredItem.anchorStartMs]). `Reconciler` already imports [StoredItem] from here, so this adds
+   * no dependency that was not already there — and it replaces a `private const val USER_GEN` in
+   * `Reconciler` that nothing else could reach, which is how src/db/queries.ts came to spell the
+   * string inline in SQL.
+   *
+   * [Minutes.RULES_GEN] is the other half of the vocabulary and stays in `Minutes`, because it
+   * VERSIONS the rules: `rules@1` becomes `rules@2` when the extractor changes, and the file that
+   * changes is that one.
+   */
+  object Gen {
+    /**
+     * `gen_version` of an item a person typed. See `Reconciler` rule 1.
+     *
+     * A CROSS-LANGUAGE CONTRACT rather than a local constant. JavaScript is the only thing that
+     * WRITES this string — `db.addUserItem` — and the readers are here: rule 1 refuses to match,
+     * replace or flag a row carrying it, so a person's own item is never consumed by an extracted
+     * one; [indexItems] indexes such a row at the top of the recording rather than at its
+     * sentinel anchor; and `FileExportModule.exportItems` refuses it a timestamp. The two
+     * spellings meet only inside the database, so a change on one side fails no build and raises
+     * nothing — it just stops protecting hand-typed items, which the next reprocess then deletes.
+     * `USER_GEN` in src/pipeline/types.ts is the mirror, and UserItemsTest pins this literal the
+     * way ItemKeyTest pins [ItemKey]'s vectors.
+     *
+     * Unversioned on purpose. A `user@1` would mean "the first version of a person", and the
+     * `CASE` in `db.allActions` — which reports anything that is not this string as `rule` — would
+     * silently reclassify every hand-typed action the day somebody added one.
+     */
+    const val USER = "user"
+
+    /**
+     * What `anchor_start_ms` / `anchor_end_ms` hold for a row that never claimed a moment.
+     *
+     * `anchor_start_ms` is `INTEGER NOT NULL` and SQLite cannot make a column nullable without
+     * rebuilding the table, so a hand-typed row still has to store a number. This one is chosen
+     * for exactly two properties:
+     *
+     *  - **It sorts last.** Every read of `items` is `ORDER BY anchor_start_ms, rowid` — this
+     *    file's [items], `FileExportModule.document`, `db.items` and `db.allActions` — so the
+     *    value decides where a hand-typed row appears. `0` would put every typed row at the TOP of
+     *    every meeting and of every exported document; above every real anchor they stay where
+     *    they have always been, which is last, ordered among themselves by rowid: the order they
+     *    were typed in.
+     *  - **It is exactly representable in JavaScript.** Every query parameter crosses the bridge
+     *    as JSON and `StorageModule.parseArgs` binds it as text, so a sentinel above 2^53 arrives
+     *    rounded — `Long.MAX_VALUE` becomes 9223372036854775808, which SQLite stores as a REAL in
+     *    an INTEGER column. This is `Number.MAX_SAFE_INTEGER`, 2^53-1, which is 285,000 years of
+     *    recording: nothing real reaches it.
+     *
+     * IT IS ALSO INERT IN `Reconciler`, which is worth knowing because rule 1 is what should be
+     * doing that work. `min(end, NO_ANCHOR) - max(start, NO_ANCHOR)` is hugely negative and cannot
+     * underflow, so a hand-typed row fails every overlap check rather than passing them all — the
+     * fail-safe direction if rule 1 were ever removed. `0` fails the other way: a typed row would
+     * overlap whatever the meeting opened with. ReconcilerTest deliberately gives its user row a
+     * REAL anchor so that rule 1 stays pinned as a `gen_version` rule rather than as an accident
+     * of this constant.
+     *
+     * NOTHING READS IT BACK AS A NUMBER. "This row has no moment" is derived from [USER] at each
+     * boundary that hands an anchor to something which renders it, never by comparing against this
+     * value — so a reader that forgot to ask is handed an absurd number rather than a plausible
+     * `0:00` it would print without hesitating.
+     */
+    const val NO_ANCHOR = 9_007_199_254_740_991L
+  }
+
+  /**
    * A row of `items` as it stands on disk, with its evidence and the two facts the reconciler
    * cannot see any other way.
    *
@@ -1069,6 +1153,26 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     val text: String,
     val review: String,
     val genVersion: String,
+    /**
+     * The STORED column, which for a hand-typed row is [Gen.NO_ANCHOR] and not a moment.
+     *
+     * NOT nullable, and that is deliberate rather than an omission. This type has exactly one
+     * reader — `Reconciler` — and what it does with these two fields is hand them straight back
+     * for a preserved row, so [replaceItems] can write them to a `NOT NULL` column. A `Long?` here
+     * would move the sentinel into `Reconciler`, which would then have to know a storage detail it
+     * has no other reason to know, and the alternative — a derived `anchorless` flag beside
+     * [touched] — cannot be given a production reader at all: using it in rule 2's overlap check
+     * would make DELETING rule 1 undetectable by scripts/mutate-reconciler.py, because a typed row
+     * would still fail to match for the wrong reason. A field with no reader is the failure this
+     * branch has already named twice.
+     *
+     * SO A READER THAT DISPLAYS AN ANCHOR ASKS `genVersion == Gen.USER` AND SHOWS NOTHING. The two
+     * that exist do: `FileExportModule.exportItems`, which turns it into a null `ExportItem`
+     * anchor so no bullet is stamped, and [indexItems], which indexes such a row at 0 so a search
+     * hit opens the meeting at the top like every other row with no moment. `db.items` in
+     * JavaScript makes the same derivation in SQL for the screens. Do not compare against
+     * [Gen.NO_ANCHOR]; ask about the gen.
+     */
     val anchorStartMs: Long,
     val anchorEndMs: Long,
     val sources: List<StoredSource>,
@@ -1180,8 +1284,14 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    * from the library, from a notification action, or from a background sweep would reopen it — so
    * a new trigger either routes through `ensureItems` or calls [carryEditsOntoItems] itself before
    * it runs. Recorded rather than guarded because the guard would be a second call on the hot path
-   * for a caller that does not exist yet; Task 12 removes the `minute`-keyed population and with it
-   * the whole hazard.
+   * for a caller that does not exist yet.
+   *
+   * THIS NOTE USED TO SAY TASK 12 WOULD REMOVE THE HAZARD, AND IT DOES NOT. What Task 12 removed
+   * is the population of `minute`-keyed corrections belonging to HAND-TYPED rows, by giving those
+   * rows items; every correction on a meeting nobody has opened since this build was installed is
+   * still keyed on a minute and still loses rule 4's protection until [carryEditsOntoItems] has
+   * run for it. The window is exactly as wide as it was. Left here rather than deleted because a
+   * forward promise that quietly stops being true is worse than one that was never made.
    */
   fun replaceItems(meetingId: String, genVersion: String, incoming: List<Minutes.Item>) {
     db.beginTransaction()
@@ -1306,13 +1416,14 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    * the key still matches. `BackfillEditsTest` seeds the string `Minutes.extract` really produces
    * rather than a literal, so it fails on the build where the two extractors drift.
    *
-   * A CORRECTION IT CANNOT PLACE IS LEFT ALONE, never deleted. Three populations reach that branch
-   * and only one is a real orphan: a row somebody TYPED, which lives in `minutes` with no item
-   * until Task 12 and whose correction every reader still finds on this exact key; a meeting whose
-   * migration has not run, which simply has no items to match yet; and a correction whose minute
-   * the rules no longer produce. Deleting on a failure to match would take the first two with the
-   * third, and the third costs a few dozen bytes — while a correction is the only thing in this
-   * database that cannot be recomputed from anything else.
+   * A CORRECTION IT CANNOT PLACE IS LEFT ALONE, never deleted. TWO populations reach that branch
+   * and only one is a real orphan: a meeting whose migration has not run, which simply has no items
+   * to match yet; and a correction whose minute the rules no longer produce. A row somebody TYPED
+   * was a third until Task 12 gave it an item — and note what that means for the ORDER at both call
+   * sites: [carryUserMinutesOntoItems] runs FIRST, so the correction has an item to find. Deleting
+   * on a failure to match would take the survivor with the orphan, and the orphan costs a few dozen
+   * bytes — while a correction is the only thing in this database that cannot be recomputed from
+   * anything else.
    *
    * IDEMPOTENT FROM THE DATA, not from a marker, which is why it can be called on every open: after
    * a carry there is nothing left keyed `minute` for an item to claim. The `edits` primary key is
@@ -1320,14 +1431,14 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    * rows it wants, and a fully carried meeting stops there. That independence from a marker is
    * deliberate: see the callers.
    *
-   * IT IS NOT FREE FOR EVERY MEETING, and the exception is one this design creates on purpose. A
-   * hand-typed row keeps its `minute` key until Task 12, so a meeting holding one arrives here on
-   * EVERY open carrying a correction that can never match an item — `pending` is non-empty, and the
-   * first read cannot end it. Such a meeting re-reads its items and re-hashes their text each time:
-   * a few dozen string hashes over a list bounded by what fits on a screen, which is the honest
-   * shape of the cost rather than "one lookup that returns nothing". What it must NOT also pay is
-   * an empty transaction, which is why the matches are worked out BEFORE `beginTransaction` rather
-   * than inside it. Task 12 ends the case entirely.
+   * IT IS NOT FREE FOR EVERY MEETING, and Task 12 narrowed the exception rather than ending it. A
+   * hand-typed row kept its `minute` key until then, so ANY meeting holding one paid on every open;
+   * now the meetings that arrive with a correction no item can claim are the one whose migration
+   * has not run and the one holding a correction the rules no longer produce a minute for. Such a
+   * meeting re-reads its items and re-hashes their text each time: a few dozen string hashes over a
+   * list bounded by what fits on a screen, which is the honest shape of the cost rather than "one
+   * lookup that returns nothing". What it must NOT also pay is an empty transaction, which is why
+   * the matches are worked out BEFORE `beginTransaction` rather than inside it.
    *
    * TWO CALLERS, and each reaches a population the other cannot.
    *  - [backfillItems], inside its transaction, for the meeting being migrated right now — the
@@ -1411,6 +1522,137 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
   }
 
   /**
+   * Move every decision, action and open question a person TYPED out of `minutes` and into `items`.
+   *
+   * THE MOST USER-VISIBLE LOSS THIS SUB-PROJECT CAN PRODUCE, and the listing for this task does not
+   * mention it at all. Task 12 stops `toItemRows` and `FileExportModule.exportItems` merging
+   * `minutes` rows with `source='user'` back into the list, because `db.addUserItem` writes them to
+   * `items` now. Everything anybody has already typed is still in `minutes`, so without this every
+   * hand-written decision and action disappears from the meeting it was typed into the moment the
+   * update lands — no error, nothing deleted, the row simply stops being drawn and stops being
+   * exported.
+   *
+   * WHAT COMES WITH IT, and each is a separate silent loss if it is left behind:
+   *  - **the tick**, which lives in `action_done` keyed on [ItemKey] of the text. After the move
+   *    the Actions tab reads `item_done` for any row that has an item, so a tick left behind draws
+   *    as unticked work somebody has already done — the exact failure `item_done` exists to end.
+   *    It is carried HERE rather than left to [backfillItems]' generic tick carry because this
+   *    method also runs from `StorageModule.ensureItems`, where there is no tick carry at all, and
+   *    because for these rows it is a 1:1 move rather than a match: the key is computed from the
+   *    very content being moved. `done_at` comes across, for [backfillItems]' reason.
+   *  - **the correction**, which lives in `edits` keyed `minute/<`[ItemKey]`>`. That one is
+   *    [carryEditsOntoItems]' job and needs no new matching logic — but it needs the ORDER: the
+   *    rows must become items BEFORE the carry runs, or there is no item for the correction to find
+   *    and it is left keyed on a minute nothing reads.
+   *
+   * PROSE IS NOT MOVED. A hand-written `summary`, `narrative` or `headline` stays in `minutes`:
+   * there is one of each per meeting, they have no anchor, no tick and no provenance, and `items`
+   * has nothing to offer them. `db.addUserMinute` still writes those three and still reads them.
+   *
+   * THE SOURCE ROW IS DELETED, and that is the opposite of what was done to `action_done`. The
+   * difference is what a leftover row DOES. `action_done` is a side table nothing renders, kept as
+   * a rollback path because a tick exists nowhere else. A leftover `minutes` row is RENDERED: the
+   * empty-items fallback in `toItemRows` and `exportItems` draws every `minutes` row of an item
+   * kind, so the moment somebody deletes the typed item this created — leaving a meeting whose
+   * rules extracted nothing with no rule items at all — the row they just deleted comes back from
+   * the dead. It would also be indexed twice (`indexMinutes` and [indexItems]), giving two search
+   * cards for one sentence. And nothing is lost by deleting it: the content is reproduced verbatim
+   * in `items.text`, which is precisely what is NOT true of a tick. The rollback argument is spent
+   * either way, because `db.addUserItem` writes only to `items`, so a rolled-back build has lost
+   * every row typed since the update whatever this does.
+   *
+   * THE ANCHOR IS [Gen.NO_ANCHOR] AND NOT 0. `anchor_start_ms` is `INTEGER NOT NULL` and SQLite
+   * cannot make a column nullable without rebuilding the table, so the row must store a number;
+   * every read of `items` is `ORDER BY anchor_start_ms, rowid`, so 0 would move every hand-typed
+   * row to the TOP of every meeting and of every exported document — they have always come last —
+   * and would print `[0:00]`, a fabricated claim that sends a reader of a forwarded document to the
+   * start of the recording for a sentence nobody spoke.
+   *
+   * IDEMPOTENT FROM THE DATA, like [carryEditsOntoItems] and for the same reason: after a move
+   * there is no `source='user'` row of an item kind left to move. That is what makes it affordable
+   * to call on every open, which is how it reaches the two populations [backfillItems] never
+   * visits again — a meeting the Task 8b sweep has already stamped, and one the pipeline wrote
+   * items for directly. Its cost for a meeting with nothing typed is one scan of that meeting's
+   * `minutes`, which `db.minutes` and `indexMinutes` already pay on the same open.
+   *
+   * IT NARROWS TWO GUARDS AS A SIDE EFFECT, and they had to move with it: [hasRuleItems] and
+   * [UNMIGRATED] both used to ask "does this meeting have items". Running before the native load
+   * means this method can give an item to a meeting the rules have never run over, and asked the
+   * old way those guards would strand it — never migrated, its rule-extracted minutes never drawn.
+   *
+   * TWO CALLERS, exactly [carryEditsOntoItems]' two and for its reasons: [backfillItems], inside
+   * the transaction that carries the ticks and the corrections, and `StorageModule.ensureItems`,
+   * before the native load, for every meeting [backfillItems] will never run for again.
+   *
+   * @return how many rows were moved; 0 when there was nothing to move.
+   */
+  fun carryUserMinutesOntoItems(meetingId: String): Int {
+    data class Typed(val id: String, val kind: String, val content: String)
+
+    val typed = ArrayList<Typed>()
+    db.rawQuery(
+      // ORDER BY rowid so two rows typed into one meeting arrive in the order they were typed.
+      // They share [Gen.NO_ANCHOR], so `ORDER BY anchor_start_ms, rowid` breaks their tie on the
+      // rowid minted here, and this is where that order is decided.
+      "SELECT id,kind,content_json FROM minutes WHERE meeting_id=? AND source=? " +
+        "AND kind IN ('decision','action','question') ORDER BY rowid",
+      arrayOf(meetingId, Gen.USER),
+    ).use { c ->
+      while (c.moveToNext()) typed.add(Typed(c.getString(0), c.getString(1), c.getString(2)))
+    }
+    // Before beginTransaction, for the reason carryEditsOntoItems states: the ordinary case is a
+    // meeting with nothing typed, and it must not pay for an empty transaction on every open.
+    if (typed.isEmpty()) return 0
+
+    val tickedAt = ticksKeyedOnText(meetingId)
+    val now = System.currentTimeMillis()
+
+    db.beginTransaction()
+    try {
+      for (row in typed) {
+        // A NEW id rather than the minutes row's. The two id spaces are unrelated everywhere else
+        // in this app — `toItemRows` namespaces its React keys `i:` and `m:` precisely because of
+        // it — and a shared id would make a stale `minutes` reference and a live `items` reference
+        // indistinguishable in a log, a backup or a bug report.
+        val id = UUID.randomUUID().toString()
+        db.execSQL(
+          "INSERT INTO items(id,meeting_id,kind,text,review,gen_version," +
+            "anchor_start_ms,anchor_end_ms,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+          arrayOf<Any?>(
+            id, meetingId, row.kind, row.content,
+            // True by construction: a person wrote it, there is nothing to review.
+            Review.CONFIRMED, Gen.USER, Gen.NO_ANCHOR, Gen.NO_ANCHOR,
+            // `now`, and it is the one thing here that is genuinely lost: a `minutes` row has no
+            // created_at column, so the day somebody typed it is not recorded anywhere and cannot
+            // be recovered. Stamping the migration's date is the only honest answer available —
+            // the alternative, the meeting's own created_at, would claim they typed it during the
+            // meeting.
+            now,
+          ),
+        )
+        // The tick, by the key the shipped build wrote it under: a hash of this exact content.
+        tickedAt[ItemKey.of(row.content)]?.let { at ->
+          db.execSQL(
+            "INSERT OR REPLACE INTO item_done(meeting_id,item_id,done_at) VALUES(?,?,?)",
+            arrayOf<Any?>(meetingId, id, at),
+          )
+        }
+        // `action_done` is NOT deleted — see backfillItems and the schema comment at `item_done`.
+        db.execSQL("DELETE FROM minutes WHERE id=?", arrayOf<Any?>(row.id))
+      }
+      // Both tables this touched are indexed, and both changed: the `minute` rows are gone and
+      // there are new `item` rows. Inside the transaction for replaceItems' reason — a rollback
+      // between the write and the index leaves search hits that open onto nothing.
+      indexMinutes(meetingId)
+      indexItems(meetingId)
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
+    return typed.size
+  }
+
+  /**
    * Give a meeting recorded before this feature its items, and move its ticks onto them.
    *
    * The rule pass runs over the STORED utterances — pure text, no ASR, no diarization, no audio at
@@ -1465,6 +1707,18 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     db.beginTransaction()
     try {
       replaceItems(meetingId, Minutes.RULES_GEN, incoming)
+
+      // AFTER replaceItems, which deletes and re-inserts every item row for the meeting — a typed
+      // row inserted before it would be wiped by the very call that is supposed to preserve it —
+      // and BEFORE both carries below, which match on ItemKey.of(item.text) and so pick these rows
+      // up for free, with no new matching logic. That ordering is the whole of this task's
+      // interaction with this method; get it wrong in either direction and either the typed rows
+      // vanish or they arrive with neither their tick nor their correction, and nothing reports it.
+      //
+      // It carries its own ticks, so the loop below finds nothing left to do for them; that is a
+      // duplicate INSERT OR REPLACE of identical values, not a conflict. The duplication is
+      // deliberate — see its KDoc for why the carry cannot be left to this method alone.
+      carryUserMinutesOntoItems(meetingId)
 
       // done_at comes across with the tick. Stamping `now` instead would tell somebody they
       // finished this morning something they crossed off in March, and the original is then
@@ -1565,7 +1819,12 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    */
   private val UNMIGRATED =
     "FROM meetings m WHERE EXISTS(SELECT 1 FROM utterances u WHERE u.meeting_id=m.id) " +
-      "AND NOT EXISTS(SELECT 1 FROM items i WHERE i.meeting_id=m.id) " +
+      // "has no items the RULES produced", not "has no items". [carryUserMinutesOntoItems] runs on
+      // every open, before the native load, so a meeting the rules have never run over can already
+      // hold one item: the decision somebody typed into it. Asked as a bare NOT EXISTS, that
+      // meeting leaves the backlog the moment it is opened and never gains its rule items —
+      // permanently, since nothing else would ever select it again.
+      "AND NOT EXISTS(SELECT 1 FROM items i WHERE i.meeting_id=m.id AND i.gen_version<>'${Gen.USER}') " +
       "AND m.items_migrated_at IS NULL"
 
   /** Whether [backfillItems] has ever run to completion for this meeting. */
@@ -1598,10 +1857,12 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    *    guard is permanently true for it — a wasted rule pass on every open, which was invisible
    *    while opening was the only trigger, and an undrainable backlog now that
    *    `StorageModule.backfillItems` sweeps the library.
-   *  - `items().isEmpty()` excludes a meeting the current pipeline already wrote items for, which
+   *  - [hasRuleItems] excludes a meeting the current pipeline already wrote items for, which
    *    carries no marker because nothing on that path stamps one. Re-running there would not be
    *    free: `replaceItems` runs the reconciler, which deletes an untouched row the rules no longer
-   *    produce, so a second pass is a reprocess and not a no-op.
+   *    produce, so a second pass is a reprocess and not a no-op. It asks about RULE items rather
+   *    than about items, and that narrowing is load-bearing rather than pedantic — see its own
+   *    KDoc for the meeting it would otherwise strand.
    *
    * TWO CALLERS as of Task 8b, and they migrate the same meetings for different readers.
    * `MeetingScreen.refresh` (JavaScript) awaits this before it reads a meeting and memoises it per
@@ -1632,11 +1893,34 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    * @return how many items the migration produced; 0 when there was nothing to do.
    */
   fun ensureItems(meetingId: String): Int =
-    if (hasUtterances(meetingId) && !itemsMigrated(meetingId) && items(meetingId).isEmpty()) {
+    if (hasUtterances(meetingId) && !itemsMigrated(meetingId) && !hasRuleItems(meetingId)) {
       backfillItems(meetingId)
     } else {
       0
     }
+
+  /**
+   * Whether the RULES have produced items for this meeting, which is the question every "has it
+   * been migrated" guard in this file is really asking.
+   *
+   * It was `items(meetingId).isEmpty()` until Task 12, and the difference is the trap that task
+   * sets. [carryUserMinutesOntoItems] runs on every open and BEFORE the native load — deliberately,
+   * so a phone still downloading libonnxruntime.so does not open a meeting with the person's own
+   * notes missing — so it puts an item into a meeting the rules have never run over. Under the old
+   * spelling that meeting is excluded from [ensureItems] and from [UNMIGRATED] forever: it never
+   * gains its rule items, and its rule-extracted `minutes` stop being drawn the moment the tabs'
+   * own fallback asks the same question the same wrong way. A row somebody typed is not evidence
+   * that the rules have run.
+   *
+   * One query rather than filtering [items], which assembles `touched` out of four tables and is
+   * asked nothing of here.
+   */
+  private fun hasRuleItems(meetingId: String): Boolean {
+    db.rawQuery(
+      "SELECT 1 FROM items WHERE meeting_id=? AND gen_version<>? LIMIT 1",
+      arrayOf(meetingId, Gen.USER),
+    ).use { c -> return c.moveToFirst() }
+  }
 
   /**
    * The ids of this meeting's ticked items. Keyed on the item, so a re-worded item stays ticked.
@@ -1848,7 +2132,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       // DOC_KEY for kind='summary'/'narrative', there being one of each per meeting; and the same
       // normalised-text hash the worklist uses for kind='minute', which is what every shipped
       // build wrote for a decision, an action or a question and is now only used by the rows that
-      // have no item to key on — the ones a person typed, until Task 12.
+      // have no item to key on, which is now only a meeting whose migration has not run.
       """CREATE TABLE IF NOT EXISTS edits(
            meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
            target_kind TEXT NOT NULL,
