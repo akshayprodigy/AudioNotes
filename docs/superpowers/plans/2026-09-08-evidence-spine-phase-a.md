@@ -3033,6 +3033,81 @@ player.available and the play call is."
 
 ## Task 11: Exports carry the timestamps
 
+> **WRITTEN AND HOST-VERIFIED, DEVICE-UNVERIFIED — 11 September 2026.** Commits `c6559c3`,
+> `d664e3f`, `8b82204`. 180 Kotlin unit tests (was 151), 324 jest, typecheck clean, 31/31 reconciler
+> mutations. **Do NOT tick this task's device steps.**
+>
+> **What is unverified and why.** The last green device run — 55 tests, 9 classes, nothing skipped —
+> was against `c6559c3`. The Galaxy A07 then left the USB bus and has not returned (`adb devices`
+> empty, nothing Android on the USB tree, confirmed independently). `d664e3f` changed three
+> `BackfillEditsTest` assertions and `carryEditsOntoItems`, which is device-covered code; `8b82204`
+> touched `BackfillEditsTest` comments only. The expected result is 55/9 unchanged. **It has not
+> been observed.**
+>
+> **The listing reduces the hardest part to one sentence, and taken literally it destroys every
+> correction anybody has made.** *"The `edits` lookup keyed on `target_kind='minute'` becomes
+> `target_kind='item'` keyed on `items.id`."* `edits` has a foreign key to `meetings` and **none to
+> `items`**, with no orphan cleanup anywhere, so a reader pointed at the new key joins to empty —
+> no error, no compile failure, every hand-written correction gone. **Task 6's `StoredItem` KDoc
+> predicted exactly this and put the warning where this join's author would read it.** That note
+> paid for itself three tasks later.
+>
+> So the task is four things, not one: both sides switch together, the existing rows are migrated,
+> the migration runs somewhere that reaches every meeting, and only then does the rendering change.
+>
+> **The migration runs at two call sites, each reaching a population the other cannot.** Inside
+> `backfillItems`' transaction, for the meeting migrating now; and in `StorageModule.ensureItems`
+> **before** `NativeBridge.ensureLoaded`, for every meeting `backfillItems` will never run for
+> again — one the Task 8b sweep already stamped, and one the pipeline wrote items for directly (no
+> marker, excluded by `items().isEmpty()`). Both can hold corrections and they are the likeliest to.
+> Before the native load because the carry is pure SQL: a phone still downloading
+> `libonnxruntime.so` must not open every meeting with the user's own words missing.
+>
+> **It needs no marker of its own — idempotence comes from the data.** After a carry there is
+> nothing left keyed `minute` for an item to claim. That is what makes calling it on every open
+> affordable, and it is why a kill between items and corrections is self-healing here where the tick
+> carry's is not. **The cost claim was initially wrong** and is corrected: hand-typed rows keep a
+> minute key by design until Task 12, so a meeting holding one re-reads its items and re-hashes
+> their text on every open. Correct, bounded, and not "one lookup that returns nothing".
+>
+> **An edit whose item is gone is never deleted.** Three populations reach that branch and only one
+> is a real orphan; a correction is the only thing in this database that cannot be recomputed, and
+> it costs a few dozen bytes. The carry only ever *moves* a row it has found a home for.
+>
+> **A hand-typed row gets no stamp at all**, rather than `[0:00]` — a fabricated timestamp sends a
+> reader to the top of the recording for a sentence nobody spoke. *(Note for Task 12: its listing
+> has `addUserItem` writing `anchor_start_ms = 0`, which would print exactly that. An anchor is
+> nullable now.)*
+>
+> **What the reviews found — no correctness defect either time, and eleven unfalsifiable tests.**
+> Spec review verified rather than accepted: it enumerated every JS reader and writer of `edits` and
+> confirmed none was left behind (including `onRevertRow`, absent from the listing, which would have
+> made revert silently no-op); it diffed declaration inventories across the ~300-line companion move
+> (20 → 28, every old one surviving); and it checked the untested `ensureLoaded` ordering
+> *statically* rather than accepting the reasoning. It then corrected two claims: a mutant labelled
+> "equivalent" was merely unkilled, because the only test that could kill it did not assert the
+> return — and *equivalent* is a label that stops future people looking.
+>
+> Quality review ran 28 mutants and **8 survived**. Two findings worth carrying:
+>
+>  - **The PDF was untestable, not merely untested.** One call to `android.graphics.Color.rgb` — a
+>    framework *method*, which the mockable `android.jar` throws "not mocked" for — made the whole
+>    block list unreachable off a device. Three greys were enough. So `pdfBlocks` was made public
+>    and moved into the companion in good faith and then nothing could reach it. And the commit that
+>    fixed that, titled *"the PDF seam was built for a test and no test used it"*, **built three more
+>    such seams** — `turnsOf`, `renderTranscript`, `renderSrt`, all public, none referenced. The
+>    first is the sole caller of `said()`, so the path by which a transcript correction reaches an
+>    exported document was entirely unpinned.
+>  - **`summaryOf`'s source preference was deletable with every test green** — a branch whose own
+>    KDoc records it as a defect that already shipped: reading in rowid order handed a paying
+>    subscriber the rule summary instead of the model's.
+>
+> **Every one of the eleven had the same root cause: a single-row fixture.** One item per PDF
+> section, one summary row, one item handed to the renderer. A one-element fixture cannot tell
+> correct ordering from any ordering, or correct selection from no selection. The Markdown tests had
+> already learned it — two actions, deliberately reverse-alphabetical — and the lesson never crossed
+> to the other three formats.
+
 **Files:**
 - Modify: `android/app/src/main/java/com/innocorelabs/verbale/pipeline/FileExportModule.kt`
 - Test: `android/app/src/test/java/com/innocorelabs/verbale/ExportItemsTest.kt`
