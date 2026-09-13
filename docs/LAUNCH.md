@@ -83,9 +83,9 @@ question is gone: English-only means it does not ship in v1.
 
 | Decision | What it releases |
 |---|---|
-| Final prices, and two tiers or three | The plans screen and per-plan model access — ~2 days, built the moment this is settled |
-| Sentry DSN (free account, 15 min) | Crash reporting is built and ships OFF. Without it you launch blind |
-| Hostinger bandwidth limit | The last number needed to say where the server breaks. Easier now: Pro is ~1.1 GB, not ~2.2 GB |
+| ~~Final prices, and two tiers or three~~ **decided** | Two tiers; ₹299 / ₹2,499 and $4.99 / $39.99. The plans screen shipped 7 Sep. What remains is creating `verbale_pro` in Play Console |
+| ~~Sentry DSN~~ **closed 12 Sep** | Not Sentry — Firebase Crashlytics (`00f08a4`), configured by the committed `android/app/google-services.json`. Nothing to send. Still ships OFF until the user says yes |
+| ~~Hostinger bandwidth limit~~ **closed 12 Sep** | Founder confirmed the hosting has enough bandwidth for launch. Nothing to send |
 
 ---
 
@@ -235,26 +235,34 @@ reads as a decision rather than a failure.*
       America. Every tier is profitable even at a 40% launch discount — worst case still keeps
       ~99% margin, because a paid user costs one download and nothing after.
 
-- [ ] Confirm the numbers — *you*
+- [x] ~~Confirm the numbers~~ — *decided by 7 Sep, recorded 13 Sep*
 
-  Recommendation: **two tiers, not three** (whisper-small turned out to be an English-only gain).
+  **Two tiers, Free and Pro. No lifetime SKU** (parked, `docs/NEXT.md` §5). The table below is
+  what shipped, not the earlier ₹249 / $5.99 recommendation:
 
   | | India | Rest of world |
   |---|---|---|
-  | Monthly | ₹249 | $5.99 |
-  | Yearly | ₹1,799 | $39.99 |
-  | Lifetime | ₹3,999 | $89 |
-  | Launch, first 90 days | 40% off | 40% off |
+  | Monthly | ₹299 | $4.99 |
+  | Yearly | ₹2,499 | $39.99 |
 
-- [ ] Build the plans screen — *me, 1 day* — **blocked by: final prices**
-      Separate screen, as asked. Two cards, monthly/yearly toggle, lifetime as one line underneath.
-      First run stays two buttons — the Pro option was already falling below the fold with two.
-- [ ] Per-plan model access — *me, 1 day* — **blocked by: how many tiers**
-      Smaller than it sounds: the licence token already carries a `plan` field and the app already
-      reads it. The native gate is currently a yes/no and needs to become a level.
-- [ ] Create the products in Play Console — *you + me, 1 day* — **blocked by: prices, Play account**
-      Subscription base plans, one-time products, introductory offer. Play supports the launch
-      discount natively.
+  Public on the landing page (`server/app/landing.py`) and fixed in the billing tests as "the
+  founder's launch prices". A launch discount, if any, is an introductory offer in Play Console —
+  the paywall then shows Play's own full price struck through, which is the only honest way to
+  show one.
+
+- [x] ~~Build the plans screen~~ — *done 7 Sep* (`42fbda2`, `810c279`)
+      Lives on the paywall rather than a separate screen: two cards, yearly preselected, the
+      saving computed from twelve months of the monthly rate. Prices are read live from Play, not
+      hard-coded. First run stays two buttons.
+- [x] ~~Per-plan model access~~ — *moot with two tiers*
+      The native gate is a yes/no, and with Free and Pro that is the design. Reopens only if a
+      third tier does.
+- [ ] Create the product in Play Console — *you + me, ~1 hr* — **the one thing still open here**
+      One subscription, id `verbale_pro` (must match `playSubscriptionId` in
+      `android/gradle.properties`), with two base plans, `monthly` and `annual`, priced as above.
+      No one-time products. A launch discount, if wanted, is an introductory offer on the same
+      product. Then a licensed tester buys through the paywall on a phone — the first time a real
+      Play price will ever have been seen in the app.
 
 ---
 
@@ -262,9 +270,11 @@ reads as a decision rather than a failure.*
 
 *Mostly paperwork, and mostly yours. It will take longer than you expect.*
 
-- [ ] Create a Sentry account, send me the DSN — *you, 15 min*
-      Free tier is enough. Crash reporting is built and ships switched **off**; one line in
-      `src/telemetry/dsn.ts` turns it on. Without it you launch blind.
+- [x] ~~Create a Sentry account, send me the DSN~~ — *closed 12 Sep: not Sentry*
+      Crash reporting is Firebase Crashlytics (`00f08a4`), configured by the committed
+      `android/app/google-services.json`, so there is nothing to create or send. It still ships
+      switched **off** until the user says yes, and debug builds never report —
+      `src/telemetry/crash.ts`, `src/telemetry/enabled.ts`.
 - [ ] Play listing assets — *you, half day*
       Screenshots, feature graphic, short + full description, content rating questionnaire, data
       safety form, support email. Privacy and terms pages already exist — one blocker already clear.
@@ -272,9 +282,9 @@ reads as a decision rather than a failure.*
       `versionCode` is derived from `versionName` (1.0.0 → 10000) so a release cannot bump one and
       forget the other, and the build refuses a minor or patch above 99. Both guards verified.
       Still `versionCode 1`. Play rejects duplicates, so settle it before the second upload.
-- [ ] **Send me the Hostinger bandwidth limit** — *you, 5 min*
-      Every free install costs 114 MB whether they pay or not. At 100,000 installs that is 11.4 TB.
-      It is the last number I need to say where the server breaks.
+- [x] ~~Send me the Hostinger bandwidth limit~~ — *closed 12 Sep: hosting has enough*
+      Founder confirmed the plan's bandwidth covers launch. The arithmetic stays for the record:
+      every free install costs 114 MB whether they pay or not, so 100,000 installs is 11.4 TB.
 - [ ] Server housekeeping — *me, half day*
       Rehearse a backup **restore**, not just a backup. Check TLS auto-renewal. Add uptime alerting.
       `/srv` now holds 1.4 GB of models.
@@ -322,7 +332,7 @@ reads as a decision rather than a failure.*
 | Theme default — light or system? | You expected light; it ships as `system`, which is why your phone is dark. One line. |
 | ~~Language default~~ | **Settled.** English, with faithful recognition in every language. |
 | ~~Integrate Qwen3-ASR?~~ | **Settled.** Built and reachable; it only needs weights. |
-| Final prices | Gates the plans screen, Play Console, paywall copy, website |
+| ~~Final prices~~ decided | ₹299 / ₹2,499 and $4.99 / $39.99. Plans screen, paywall copy and website are done; only the Play Console product is still open |
 | Two tiers or three? | Gates per-plan model access |
 | Integrate Qwen3-ASR? | 2–3 days, and the answer to Hinglish |
 | Where the 955 MB model lives | Free tier is 114 MB today |
