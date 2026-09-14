@@ -28,7 +28,7 @@ export type RootStackParamList = {
    * `tab` and `atMs` let something outside the screen say where to land: a search hit opens the
    * transcript at the moment the phrase was said, a "Notes ready" tap opens the summary.
    */
-  Meeting: { meetingId: string; tab?: MeetingTab; atMs?: number };
+  Meeting: { meetingId: string; tab?: MeetingTab; atMs?: number; fromNotification?: boolean };
   Speakers: { meetingId: string };
   Search: undefined;
   Settings: undefined;
@@ -65,9 +65,12 @@ export default function RootNavigator() {
     })();
   }, []);
 
+  // Both callers here are the "Your notes are ready" notification — cold start below, warm tap in
+  // the effect after it. The screen is told so, because that notification promises the notes and
+  // must deliver them, not the once-ever Pro sheet (see MeetingScreen's offer effect).
   const openMeeting = useCallback((meetingId?: string | null) => {
     if (meetingId && navigationRef.isReady()) {
-      navigationRef.navigate('Meeting', { meetingId });
+      navigationRef.navigate('Meeting', { meetingId, fromNotification: true });
     }
   }, []);
 

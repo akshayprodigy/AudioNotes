@@ -76,7 +76,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
   const st = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
-  const { meetingId, tab: initialTab, atMs } = route.params;
+  const { meetingId, tab: initialTab, atMs, fromNotification } = route.params;
 
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [minutes, setMinutes] = useState<Minute[]>([]);
@@ -148,9 +148,16 @@ export default function MeetingScreen({ route, navigation }: Props) {
    * who already decided by starting the trial, and never twice, because the second showing is not
    * persuasion and this app's whole pitch is that it does not behave like that. The delay lets the
    * meeting render first, so the sheet arrives over the notes rather than instead of them.
+   *
+   * Not when the meeting was opened from the "Your notes are ready" notification. That notification
+   * says "tap to see the summary and transcript", and on the Galaxy A07 the tap landed on this
+   * sheet 900 ms later — a promise of notes answered with a price. The offer is not spent by that
+   * visit: `shouldOfferPaywall` stays true until the sheet is actually shown, so it is made on the
+   * next finished meeting the person opens from inside the app, which is a moment they chose.
    */
   useEffect(() => {
     if (meeting?.status !== 'done') return;
+    if (fromNotification) return;
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     shouldOfferPaywall()
@@ -165,7 +172,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
       alive = false;
       if (timer) clearTimeout(timer);
     };
-  }, [meeting?.status, openPaywall]);
+  }, [meeting?.status, openPaywall, fromNotification]);
 
   // `atMs` — the moment a search hit matched — only scrolls the transcript to that line; it does
   // NOT move the playhead. Seeking would mean opening the audio device merely to look at a search

@@ -139,3 +139,49 @@ test('the migration is attempted once per opening, not once per poll', async () 
     jest.useRealTimers();
   }
 });
+
+/**
+ * The once-ever Pro offer, and the one entry point it must not fire on.
+ *
+ * `shouldOfferPaywall` decides WHETHER; these pin WHEN. Opened from inside the app, a first
+ * finished meeting gets the sheet after a short delay, over the notes. Opened from the "Your notes
+ * are ready" notification — whose text is "tap to see the summary and transcript" — it must not:
+ * on the Galaxy A07 that tap landed on a price 900 ms later. The offer is not spent by that visit,
+ * so the in-app case still fires afterwards.
+ */
+describe('the first-meeting Pro offer', () => {
+  const trial = require('../../billing/trial');
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.spyOn(trial, 'shouldOfferPaywall').mockResolvedValue(true);
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  async function renderWith(params: Record<string, unknown>) {
+    const r = { key: 'meeting', name: 'Meeting', params: { meetingId: 'm1', ...params } } as any;
+    await act(async () => {
+      renderer.create(<MeetingScreen navigation={nav} route={r} />);
+    });
+    // Let the offer's promise settle, then its delay elapse.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(1_000);
+    });
+  }
+
+  test('opened from inside the app, a finished meeting gets the offer', async () => {
+    await renderWith({});
+    expect(nav.navigate).toHaveBeenCalledWith('Paywall', { meetingId: 'm1' });
+  });
+
+  test('opened from the notes-ready notification, it shows the notes and nothing else', async () => {
+    await renderWith({ fromNotification: true });
+    expect(nav.navigate).not.toHaveBeenCalledWith('Paywall', expect.anything());
+  });
+});
