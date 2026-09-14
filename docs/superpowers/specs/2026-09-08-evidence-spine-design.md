@@ -276,7 +276,11 @@ against measured confidence, not guessed at.
 release build of `f076092` installed over the 10 September debug build with `adb install -r`, no
 wipe — same upload-key signature on both, models and database untouched.** This is not the Pixel
 run Task 14 was written for: the A07 arrived on the cable first, and its library was empty, so the
-"count the ticks before" baseline did not exist. What it could prove, it did.
+"count the ticks before" baseline did not exist. What it could prove, it did. (The empty library
+was checked, not assumed: the install dated from a 10 September reinstall, the models were pushed
+over adb rather than downloaded, and the only thing that ever wrote its database was the
+device-verify runs for Tasks 6, 8 and 8b — a bench install that had never been onboarded. Nothing
+was lost on the 14th. The 5 September recording went with the 10 September reinstall.)
 
 - **A fresh 99-second meeting** (two macOS TTS voices through the laptop speaker: one decision, one
   named action with a due date, one question) went record → stop → **screen off** → VAD 1.9 s →
