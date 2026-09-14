@@ -40,7 +40,13 @@ class RecordingService : Service(), CaptureListener {
     const val EXTRA_CAP_MS = "capMs"
     const val SAMPLE_RATE = 16000
     const val BYTES_PER_MS = 32 // 16000 samples/s * 2 bytes / 1000 ms
-    private const val CHANNEL_ID = "audionotes.recording"
+    // ".v2" because importance cannot be raised on a channel that exists. The first version was
+    // IMPORTANCE_LOW, and on the Pixel 7 Pro running Android 17 that meant the recording
+    // notification — the only place Pause and Stop live once the app is in the background —
+    // was not in the shade at all: the system folded it into "Active apps", whose only button
+    // force-stops the service. DEFAULT importance shows it; setSilent keeps it quiet.
+    private const val CHANNEL_ID = "audionotes.recording.v2"
+    private const val LEGACY_CHANNEL_ID = "audionotes.recording"
     private const val NOTIF_ID = 42
     private const val TAG = "RecordingService"
 
@@ -572,12 +578,19 @@ class RecordingService : Service(), CaptureListener {
    * not record at all there. NotificationChannelCompat is a no-op below 26 instead.
    */
   private fun createChannel() {
-    val channel = NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_LOW)
+    val nm = NotificationManagerCompat.from(this)
+    // Silent by construction — no sound, no vibration — so DEFAULT importance changes where the
+    // notification is shown and nothing about whether it makes a noise.
+    val channel = NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_DEFAULT)
       .setName(getString(R.string.notif_channel_recording))
       .setDescription(getString(R.string.notif_channel_recording_desc))
       .setShowBadge(false)
+      .setSound(null, null)
+      .setVibrationEnabled(false)
       .build()
-    NotificationManagerCompat.from(this).createNotificationChannel(channel)
+    nm.createNotificationChannel(channel)
+    // The LOW-importance original, so the app's notification settings do not list two of these.
+    nm.deleteNotificationChannel(LEGACY_CHANNEL_ID)
   }
 
   /**

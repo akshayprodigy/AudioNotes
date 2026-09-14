@@ -186,11 +186,20 @@ class ProcessingService : Service() {
       .setContentTitle("Verbale")
       .setContentText(text)
       .setOngoing(true)
+      // Updated once per stage on a DEFAULT-importance channel: silent and alert-once, or every
+      // stage change would flash the shade.
+      .setSilent(true)
+      .setOnlyAlertOnce(true)
       .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
       .build()
-  private fun createChannel() = NotificationManagerCompat.from(this).createNotificationChannel(
-    NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_LOW)
-      .setName("Transcribing").build())
+  private fun createChannel() {
+    val nm = NotificationManagerCompat.from(this)
+    nm.createNotificationChannel(
+      NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_DEFAULT)
+        .setName("Transcribing").setSound(null, null).setVibrationEnabled(false).build(),
+    )
+    nm.deleteNotificationChannel(LEGACY_CHANNEL_ID)
+  }
   private fun stopForegroundCompat() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE)
     else @Suppress("DEPRECATION") stopForeground(true)
@@ -241,7 +250,10 @@ class ProcessingService : Service() {
     private const val EXTRA_MEETING_ID = "meetingId"
     private const val EXTRA_FORCE = "force"
     private const val NOTIF_ID = 43
-    private const val CHANNEL_ID = "audionotes.processing"
+    // ".v2" for the same reason as RecordingService.CHANNEL_ID: LOW importance hid the stage
+    // notification on Android 17, and importance cannot be raised on an existing channel.
+    private const val CHANNEL_ID = "audionotes.processing.v2"
+    private const val LEGACY_CHANNEL_ID = "audionotes.processing"
     private const val LABEL_TRANSCRIBING = "Transcribing meeting…"
     private const val TAG = "ProcessingService"
     /** The live instance, so cancel() below can reach it without a bind. Set in onCreate(),
