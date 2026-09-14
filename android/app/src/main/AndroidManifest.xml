@@ -22,13 +22,22 @@
       <!--
         Crashlytics collects NOTHING until somebody says yes.
 
-        This meta-data is the only switch that works before any JavaScript runs. Without it the SDK
-        starts collecting the moment the process does — which would mean the first launch, the one
-        where the person has not yet been asked, is the launch that reports. src/telemetry/crash.ts
-        flips it on at runtime once consent is recorded, and back off when it is withdrawn.
+        TWO switches, and both are needed before any JavaScript runs. The first is Google's own,
+        read by the Crashlytics SDK. The second is react-native-firebase's: its init provider runs
+        at process start, reads `rnfirebase_crashlytics_auto_collection_enabled` (default TRUE) and
+        calls setCrashlyticsCollectionEnabled with whatever it found — which OVERRIDES the first
+        key. With only the first key set, the Galaxy A07 logged "isCrashlyticsCollectionEnabled via
+        RNFBMeta: true" on a phone nobody had consented on, and Crashlytics fetched its settings
+        from Google's server in the second before App.tsx applied the stored consent. Every launch.
+        src/telemetry/crash.ts flips collection on at runtime once consent is recorded, and back
+        off when it is withdrawn; these two keys are what hold the line until it runs.
+        src/telemetry/__tests__/manifest.test.ts fails if either key is missing or not false.
       -->
       <meta-data
         android:name="firebase_crashlytics_collection_enabled"
+        android:value="false" />
+      <meta-data
+        android:name="rnfirebase_crashlytics_auto_collection_enabled"
         android:value="false" />
       <!--
         Analytics is not a dependency of this app and must not become one by transitive addition.
