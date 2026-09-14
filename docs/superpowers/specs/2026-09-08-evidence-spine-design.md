@@ -319,12 +319,19 @@ Samsung-specific:**
    `src/telemetry/__tests__/manifest.test.ts` (fails when either key is missing or true; checked by
    mutation). Verified on the A07: with consent off, a cold start now logs
    `via RNFBPreferences: false` and makes no settings fetch.
-3. **Unexplained, not fixed: the stored consent read `'on'` after first-run onboarding without the
-   switch being tapped.** `io.invertase.firebase.xml` gained `crashlytics_auto_collection_enabled
-   = true` at 17:13 and Settings later showed "Send crash reports" on; the only writer of `'on'` is
-   `setCrashConsent(true)` from a toggle. Turning it off and cold-starting stays off, so it is
-   first-run only. Needs a clean first run on a device that can be wiped, with `setCrashConsent`
-   logged — not this phone, which holds 1.1 GB of models.
+3. **Not reproduced: the stored consent read `'on'` after first-run onboarding without the switch
+   being tapped.** `io.invertase.firebase.xml` gained `crashlytics_auto_collection_enabled = true`
+   at 17:13 and Settings later showed "Send crash reports" on; the only writer of `'on'` is
+   `setCrashConsent(true)` from a toggle. **Chased the same evening on this phone, wiped
+   (`pm clear`, the five required models restored over adb, a release build with every consent
+   write logged with its stack).** Two clean first runs, replaying the exact three taps the log
+   shows the original run received — Download, OK on the battery dialog, Start recording — one
+   without the dialog and one with it re-armed: stored consent stayed `null`, `setCrashConsent`
+   was never called, and the manifest fix held on both (`via RNFBMeta: false` at process start,
+   no settings fetch). The one thing the original run had that neither replay could: the
+   10 September bench database, written only by instrumentation runs, which `pm clear` erased. No
+   test in the suite writes that key. Recorded as seen-once; if it recurs, the diagnostic is a
+   `console.log` with `new Error().stack` in `setCrashConsent` — it survives a release build.
 
 **Two product findings, recorded, not fixed:** the rule extractor missed *"we have decided that
 the launch goes ahead on the 1st of October"* (`DECISION` knows "we decided" and "we agreed", not
