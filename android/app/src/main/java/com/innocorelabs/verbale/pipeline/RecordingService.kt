@@ -259,6 +259,9 @@ class RecordingService : Service(), CaptureListener {
     // reader would be racing the flush for exactly the window it needs. This costs 384 KB for
     // twelve seconds and is released the moment the check is done.
     val prefix = if (resumed) null else ByteArray(ANNOUNCE_PREFIX_BYTES)
+    // Where the verifier found the clip, once it has looked. Written on the announce thread and
+    // read there too; kept outside the lambda so the stamp below can carry it.
+    var announcedLagMs: Long? = null
     var prefixLen = 0
     val prefixReady = java.util.concurrent.CountDownLatch(1)
 
@@ -303,12 +306,14 @@ class RecordingService : Service(), CaptureListener {
                 // Logged every run, pass or fail: the thresholds were set from six recordings on
                 // one phone, and this line is how the next phone tells us they were wrong.
                 Log.i(TAG, "announcement check: $verdict")
+                if (verdict.found) announcedLagMs = verdict.lagFrames * 10L
                 AnnouncementPlayer.verified(playback, verdict.heard)
               }
             }
 
             if (outcome.wasHeard()) {
-              meetingId?.let { db.markAnnounced(it, System.currentTimeMillis()) }
+              // The lag travels with the stamp so ASR can keep the clip out of its windows.
+              meetingId?.let { db.markAnnounced(it, System.currentTimeMillis(), announcedLagMs) }
             } else if (outcome != AnnouncementPlayer.Outcome.DISABLED) {
               Log.w(TAG, "announcement not heard: $outcome — ${outcome.userMessage()}")
             }

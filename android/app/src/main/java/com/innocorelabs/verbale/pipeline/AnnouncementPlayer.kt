@@ -83,6 +83,10 @@ object AnnouncementPlayer {
    * Walks the RIFF chunks to find `data` rather than assuming a 44-byte header, because the header
    * is only 44 bytes when nothing else is in the file, and afconvert does not promise that.
    */
+  /** The bundled clip's length in ms, for keeping its span out of ASR. Null if it cannot be read. */
+  fun bundledClipMs(ctx: Context): Long? =
+    bundledClipPcm(ctx)?.let { it.size * 1000L / RecordingService.SAMPLE_RATE }
+
   fun bundledClipPcm(ctx: Context): ShortArray? = try {
     ctx.resources.openRawResource(R.raw.consent_announcement).use { input ->
       val bytes = input.readBytes()

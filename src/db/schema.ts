@@ -36,6 +36,7 @@ export const SCHEMA = [
      transcribe_forced_at INTEGER, -- set when a person overruled the "not English" refusal
      forced_from_language TEXT,    -- what was heard before they did; the banner's claim
      announced_at INTEGER,         -- when the spoken disclosure finished, while the mic was live
+     announced_lag_ms INTEGER,     -- where in the audio the clip sits, so ASR can be kept off it
      diar_skipped_reason TEXT,     -- why this meeting has no speakers, when the cause was memory
      -- When the rule pass was last run over this meeting's stored transcript to produce items.
      -- "We tried", NOT "we found something": a transcript can legitimately yield no decisions,

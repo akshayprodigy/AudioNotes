@@ -98,7 +98,10 @@ class ProcessingEngine(
       }
 
       // Load spans from the DB so ASR works whether VAD ran THIS session or a previous one.
-      val spans = db.segments(meetingId)
+      // Then keep the spoken consent clip out of them: whisper cannot read it, and a window that
+      // opens with it drops the speech after it (AnnouncementSpan). The stored spans and the audio
+      // are untouched; this is only what the recogniser is asked to read.
+      val spans = announcementFree(db, meetingId, db.segments(meetingId))
 
       // ---- ASR (whisper.cpp) over the VAD spans, if the chosen model is installed ----
       // Stage.ASR not being in `remaining` means utterances already exist from a prior session —
@@ -460,6 +463,20 @@ class ProcessingEngine(
         "silero_vad.onnx not found — place it in assets/ or have ModelManager download it (milestone 2)",
       )
     }
+  }
+
+  /**
+   * [spans] with the located consent clip removed — see AnnouncementSpan for why. A meeting with
+   * no stamp, or one stamped before the lag was recorded, comes back unchanged.
+   */
+  private fun announcementFree(db: AudioDb, meetingId: String, spans: LongArray): LongArray {
+    val lag = db.announcedLagMs(meetingId) ?: return spans
+    val clipMs = AnnouncementPlayer.bundledClipMs(ctx) ?: return spans
+    val out = AnnouncementSpan.exclude(spans, lag, lag + clipMs)
+    if (out.size != spans.size) {
+      Log.i(TAG, "announcement at ${lag}ms kept out of ASR: ${spans.size / 2} span(s) -> ${out.size / 2}")
+    }
+    return out
   }
 
   companion object {

@@ -374,9 +374,24 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     }
   }
 
-  /** Stamp the moment the room was told. Only ever called for Outcome.PLAYED. */
-  fun markAnnounced(id: String, atMs: Long) {
-    db.execSQL("UPDATE meetings SET announced_at=? WHERE id=?", arrayOf<Any?>(atMs, id))
+  /**
+   * Stamp the moment the room was told, and where in the audio the clip sits. Only ever called
+   * for Outcome.PLAYED. [lagMs] is the verifier's location of the clip; null when playback was
+   * confirmed but the check could not run (a meeting stopped before its opening seconds were in).
+   */
+  fun markAnnounced(id: String, atMs: Long, lagMs: Long? = null) {
+    db.execSQL(
+      "UPDATE meetings SET announced_at=?, announced_lag_ms=? WHERE id=?",
+      arrayOf<Any?>(atMs, lagMs, id),
+    )
+  }
+
+  /** Where the clip starts in the capture, in ms, or null when it was not located. */
+  fun announcedLagMs(id: String): Long? {
+    db.rawQuery("SELECT announced_lag_ms FROM meetings WHERE id=?", arrayOf(id)).use { c ->
+      if (!c.moveToFirst() || c.isNull(0)) return null
+      return c.getLong(0)
+    }
   }
 
   /**
@@ -2236,6 +2251,11 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       // on confirmed completion — a meeting where playback was silenced or failed carries no
       // stamp, because the room did not hear it and the recording is not evidence of anything.
       Triple("meetings", "announced_at", "INTEGER"),
+      // WHERE in the capture the clip landed, in ms from the first sample, as located by
+      // AnnouncementVerifier. announced_at says the room was told; this says which slice of the
+      // audio is the telling, so the recogniser can be kept off it (AnnouncementSpan) — whisper
+      // cannot read the clip, and a window that opens with it drops the speech that follows.
+      Triple("meetings", "announced_lag_ms", "INTEGER"),
       // Why this meeting has no speaker labels, when the reason was the phone rather than the
       // recording. Stored rather than re-derived: the decision was made against the memory free
       // at the time, and asking again a day later would answer a different question. Null is the

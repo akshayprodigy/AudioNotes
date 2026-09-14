@@ -190,7 +190,18 @@ class LiveTranscriber(
     modelKey: String, threads: Int, stopping: Boolean, limit: Int = Int.MAX_VALUE,
   ): Int {
     val pending = NativeBridge.nativeVadPendingSpanStartMs(vad)
-    val chunks = NativeBridge.nativeLiveChunks(asr, spans.toLongArray(), pending, capturedMs)
+    // The consent clip is kept out here as well, or the live pass would cache a window the
+    // post-hoc pass then has to distrust — and the two must chunk identically for the cache to
+    // be worth anything. The lag lands a few seconds into the capture, long before the first
+    // window can close, so reading it per call costs one indexed SELECT.
+    val lag = db.announcedLagMs(meetingId)
+    val clipMs = if (lag != null) AnnouncementPlayer.bundledClipMs(ctx) else null
+    val input = if (lag != null && clipMs != null) {
+      AnnouncementSpan.exclude(spans.toLongArray(), lag, lag + clipMs)
+    } else {
+      spans.toLongArray()
+    }
+    val chunks = NativeBridge.nativeLiveChunks(asr, input, pending, capturedMs)
     var n = 0
     var i = 0
     while (i + 1 < chunks.size) {

@@ -94,7 +94,7 @@ describe('schema.ts evidence tables (executed in real SQLite)', () => {
         [
           'id', 'title', 'created_at', 'duration_ms', 'language', 'status', 'tier_used',
           'audio_path', 'audio_retained', 'archived_at', 'summary_line', 'title_edited_at',
-          'transcribe_forced_at', 'forced_from_language', 'announced_at', 'diar_skipped_reason',
+          'transcribe_forced_at', 'forced_from_language', 'announced_at', 'announced_lag_ms', 'diar_skipped_reason',
           'items_migrated_at',
         ].sort(),
       );

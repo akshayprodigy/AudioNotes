@@ -185,7 +185,7 @@ class SchemaTest {
   /**
    * The `meetings` table a real device has, asserted on THIS side of the mirror.
    *
-   * src/db/__tests__/schema.test.ts asserts the same seventeen names by executing src/db/schema.ts
+   * src/db/__tests__/schema.test.ts asserts the same eighteen names by executing src/db/schema.ts
    * in node:sqlite. That test can only catch ONE of the two directions: schema.ts losing a column
    * fails it, and AudioDb GAINING one while schema.ts is left alone fails nothing — which is the
    * direction that actually went wrong. `title_edited_at` was in this file and missing from
@@ -200,11 +200,12 @@ class SchemaTest {
    * is also inlined into the CREATE TABLE for fresh installs. Comparing either half alone would
    * assert a table that exists on no device.
    */
-  @Test fun meetingsHasTheSameSeventeenColumnsAsTheJavaScriptMirror() {
+  @Test fun meetingsHasTheSameEighteenColumnsAsTheJavaScriptMirror() {
     val expected = listOf(
       "id", "title", "created_at", "duration_ms", "language", "status", "tier_used",
       "audio_path", "audio_retained", "archived_at", "summary_line", "title_edited_at",
-      "transcribe_forced_at", "forced_from_language", "announced_at", "diar_skipped_reason",
+      "transcribe_forced_at", "forced_from_language", "announced_at", "announced_lag_ms",
+      "diar_skipped_reason",
       "items_migrated_at",
     )
     val actual = (
