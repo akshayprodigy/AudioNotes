@@ -343,3 +343,36 @@ with goldens — so the change is one task, not a patch. And two synthesised voi
 laptop speaker came back as one speaker, which is not a fair diarization test and is noted only
 so nobody reads "1 speaker" in the screenshots as a defect.
 
+### 14.1 Second A07 session, 14 September evening — the feature pass, and what it found
+
+Fresh install (wiped), release build, media volume up so the consent clip actually played.
+Record → pause (spoken sentence correctly absent) → resume → Home (picture-in-picture recorder
+shown) → **Stop from the notification** → processed in the background → "Your notes are ready".
+Disclosure verified `heard=true found=true peak/bg=5.65`. All of that passed.
+
+**Then the transcript was missing its first four sentences** — the decision and both actions —
+with the disclosure line at 00:01 and part B intact. The capture had them (pulled off the phone:
+speech at 9–27 s at the same level as the 43–56 s that transcribed). Reproduced on the host with
+the production model and the same bytes, no live pass involved: the 18 seconds alone decode
+perfectly; the 4.5-second synthesised clip in front of them in one whisper window decodes to a
+single 25-second utterance of the clip's mangled words and nothing else; the clip alone decodes to
+nothing. Every clean transcript this project had was recorded on a phone that was on silent.
+Fixed in `71ec6a2`: the verifier's clip position is stored (`meetings.announced_lag_ms`) and both
+ASR passes keep that span out of whisper's input — `AnnouncementSpan`, unit-tested on the A07's
+numbers. The audio and `announced_at` are untouched; the clip no longer appears in the transcript
+(it was never legible there) and no longer becomes the title ("By Vernell. The recording stays on
+this stove…" was the auto-title of that meeting).
+
+Also fixed the same evening: "Your notes are ready" landed on the once-ever Pro sheet 900 ms
+after the notes rendered — the offer now stands down when a meeting is opened from that
+notification and is made on the next in-app open instead (`61e9326`); the two extractor misses
+from §14 — `DECISION` takes "we have decided / it was decided / decided that", and
+`<Name> will <verb>` is an action over a verb list, with a golden from the A07's own transcript
+keeping the C++ port in step (`d35a81a`); and the recording notification still said "AudioNotes"
+(`976f70f`).
+
+**Owed to the phone:** the on-device proof of all four — a fresh recording with the clip audible
+must come back complete, titled from real speech, with the decision, two actions and the question
+extracted, and the notification tap must land on the notes — and the rest of the feature pass
+(speakers, rename/tag, exports, archive/delete, import, search gate, settings, dark mode, trial).
+
