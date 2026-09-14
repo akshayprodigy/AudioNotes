@@ -222,3 +222,21 @@ test('regaining focus reloads the meeting, but the first focus does not load it 
   });
   expect((db.speakers as jest.Mock).mock.calls.length).toBe(loadsAfterMount + 1);
 });
+
+/**
+ * Every export format the menu promises must be reachable.
+ *
+ * The format picker used to be an Alert with five buttons; Android renders three, so on the Pixel
+ * "Subtitles (.srt)" and "Cancel" did not exist and the dialog could not be backed out of. It is
+ * now the app's own sheet, and this pins the list: all four formats, by name, in one place.
+ */
+test('the export picker offers all four formats, subtitles included', async () => {
+  const { Sheet } = require('../../components/ui');
+  const tree = await render();
+  const sheets = tree.root.findAllByType(Sheet);
+  const picker = sheets.find(s => s.props.title === 'Export minutes');
+  expect(picker).toBeDefined();
+  expect(picker!.props.actions.map((a: { label: string }) => a.label)).toEqual([
+    'PDF', 'Markdown', 'Plain text', 'Subtitles (.srt)',
+  ]);
+});

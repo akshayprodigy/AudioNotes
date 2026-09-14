@@ -636,14 +636,22 @@ export default function MeetingScreen({ route, navigation }: Props) {
 
   // PDF first: it is what gets attached to an email and read by the person who was not in the
   // meeting, and the only format that looks the same wherever it lands.
-  const onExport = () =>
-    Alert.alert('Export minutes', 'Choose a format', [
-      { text: 'PDF', onPress: () => FileExport.share(meetingId, 'pdf') },
-      { text: 'Markdown', onPress: () => FileExport.share(meetingId, 'md') },
-      { text: 'Plain text', onPress: () => FileExport.share(meetingId, 'txt') },
-      { text: 'Subtitles (.srt)', onPress: () => FileExport.share(meetingId, 'srt') },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+  // The format list was an Alert with five buttons. Android's alert shows THREE: on the Pixel the
+  // dialog offered PDF, Markdown and Plain text, and "Subtitles (.srt)" and "Cancel" were never
+  // rendered — so the subtitle export the menu promised was unreachable, and the dialog could not
+  // be backed out of. The app's own sheet has no such limit and carries a line per row.
+  const [exportSheet, setExportSheet] = useState(false);
+  const onExport = () => setExportSheet(true);
+  const exportActions: SheetAction[] = [
+    { icon: 'share', label: 'PDF', hint: 'The one that looks the same wherever it lands.',
+      onPress: () => FileExport.share(meetingId, 'pdf') },
+    { icon: 'copy', label: 'Markdown', hint: 'For notes apps and wikis.',
+      onPress: () => FileExport.share(meetingId, 'md') },
+    { icon: 'copy', label: 'Plain text', hint: 'For anything else.',
+      onPress: () => FileExport.share(meetingId, 'txt') },
+    { icon: 'share', label: 'Subtitles (.srt)', hint: 'The transcript, timed, for a video editor.',
+      onPress: () => FileExport.share(meetingId, 'srt') },
+  ];
 
   // A recording we declined to transcribe is FINISHED, not in flight. Without this it fell through
   // to the progress view and span on "Writing your notes..." forever, because nothing was running
@@ -859,6 +867,12 @@ export default function MeetingScreen({ route, navigation }: Props) {
           title={meeting?.title || 'Meeting'}
           actions={sheetActions}
           onClose={() => setSheet(false)}
+        />
+        <Sheet
+          visible={exportSheet}
+          title="Export minutes"
+          actions={exportActions}
+          onClose={() => setExportSheet(false)}
         />
       </View>
     );
@@ -1113,6 +1127,13 @@ export default function MeetingScreen({ route, navigation }: Props) {
         title={meeting?.title || 'Meeting'}
         actions={sheetActions}
         onClose={() => setSheet(false)}
+      />
+
+      <Sheet
+        visible={exportSheet}
+        title="Export minutes"
+        actions={exportActions}
+        onClose={() => setExportSheet(false)}
       />
 
       <TextPrompt
