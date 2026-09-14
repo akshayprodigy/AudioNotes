@@ -520,20 +520,23 @@ export function TextPrompt({
               returnKeyType="done"
             />
           ) : null}
+          {/* The buttons sit DIRECTLY in the row. SoftButton's outer view is already `flex: 1`,
+              which in a row means "share the width". Wrapped in another `flex: 1` view — a column
+              with no height of its own — that same `flex: 1` resolves to flexBasis 0 and the
+              button becomes zero pixels tall: the row kept its margin, the card kept its padding,
+              and the Galaxy A07 showed a blank band where Cancel and Add should have been. Rename
+              hid it for a fortnight because a single-line prompt also submits from the keyboard;
+              a multiline prompt had no way to submit at all. */}
           <View style={styles.promptRow}>
-            <View style={styles.flex}>
-              <SoftButton label="Cancel" onPress={onCancel} />
-            </View>
-            <View style={styles.flex}>
-              {/* Empty is not a rename, it is a deletion of the title — refused rather than
-                  quietly storing a blank the library would render as a nameless row. */}
-              <SoftButton
-                label={confirmLabel}
-                icon="check"
-                onPress={() => onSubmit(trimmed, extra.trim())}
-                disabled={!trimmed}
-              />
-            </View>
+            <SoftButton label="Cancel" onPress={onCancel} />
+            {/* Empty is not a rename, it is a deletion of the title — refused rather than
+                quietly storing a blank the library would render as a nameless row. */}
+            <SoftButton
+              label={confirmLabel}
+              icon="check"
+              onPress={() => onSubmit(trimmed, extra.trim())}
+              disabled={!trimmed}
+            />
           </View>
         </View>
       </View>
