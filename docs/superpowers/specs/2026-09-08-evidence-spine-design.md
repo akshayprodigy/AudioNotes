@@ -269,3 +269,66 @@ whose quote is not at its span rather than showing it unverified.
 **"Uncertain" must not become decoration.** If most items end up flagged, the flag stops meaning
 anything and the queue stops being used. Phase C is deliberately last so its thresholds are set
 against measured confidence, not guessed at.
+
+## 14. Device verification
+
+**14 September 2026, Galaxy A07 (SM-A075F, MediaTek MT6789, 3.7 GB, Android 16 / One UI 8.5),
+release build of `f076092` installed over the 10 September debug build with `adb install -r`, no
+wipe — same upload-key signature on both, models and database untouched.** This is not the Pixel
+run Task 14 was written for: the A07 arrived on the cable first, and its library was empty, so the
+"count the ticks before" baseline did not exist. What it could prove, it did.
+
+- **A fresh 99-second meeting** (two macOS TTS voices through the laptop speaker: one decision, one
+  named action with a due date, one question) went record → stop → **screen off** → VAD 1.9 s →
+  ASR 20.3 s (0.20× realtime; two windows reused from the live pass) → diarization 26.5 s (0.27×)
+  → minutes → "Notes ready", 49 s end to end, with Samsung's low-memory killer reaping a dozen
+  other processes around it and never ours. A sentence spoken while the screen was off is in the
+  transcript at 01:02.
+- **The anchor is right.** The one extracted item (the question) shows `▶ 0:46`; tapping it opens
+  Script, highlights that sentence, and plays from 0:46. The Markdown export leads the item with
+  `[0:46]`, matching the app.
+- **The tick survived Redo.** Questions are read-only by design and the extractor missed the
+  action (below), so the ticked item was a hand-typed action with an owner — Task 12's path. Redo
+  re-ran the rule pass (`Minutes produced 2 rows and 1 items`, then `replaceItems` and the
+  reconciler); after leaving and re-opening the meeting, the action was still in Done, struck
+  through and checked, and the question still carried its id and its 0:46.
+- **Not observed here, and still owed to the Pixel:** a rule-extracted ACTION's tick surviving a
+  reprocess (only actions tick, and none was extracted), a library of real meetings carried
+  across, and the 11 `EvidenceParityTest` cases that have never executed.
+
+**Three defects the run produced, two fixed on the spot, all three on `main`-bound code, none
+Samsung-specific:**
+
+1. **Every `TextPrompt` had no Cancel/Save buttons** — zero pixels tall since `44df120` (31 Aug).
+   `SoftButton` is `flex: 1`; wrapped in a second `flex: 1` column view inside the prompt row, Yoga
+   resolves that to height 0. Rename survived because a single-line prompt submits from the
+   keyboard; "Add an action" and "Add a decision" (Task 12) could not be submitted at all — which is
+   why nobody had ever ticked a hand-typed item on a phone. Fixed by removing the wrappers;
+   verified on the A07 (accessibility tree lists both buttons, and the flow above ran through it).
+2. **Crashlytics collection was ON at process start, before consent.** react-native-firebase's init
+   provider reads its own manifest key `rnfirebase_crashlytics_auto_collection_enabled` (default
+   true) and calls `setCrashlyticsCollectionEnabled` with it, overriding the app's
+   `firebase_crashlytics_collection_enabled=false`. On first launch the log read
+   `isCrashlyticsCollectionEnabled via RNFBMeta: true`, Crashlytics minted an installation id and
+   fetched its settings from Google's server, and the privacy screen — which lists Crashlytics only
+   when consent is on — said nothing left the phone. Fixed with the second manifest key, guarded by
+   `src/telemetry/__tests__/manifest.test.ts` (fails when either key is missing or true; checked by
+   mutation). Verified on the A07: with consent off, a cold start now logs
+   `via RNFBPreferences: false` and makes no settings fetch.
+3. **Unexplained, not fixed: the stored consent read `'on'` after first-run onboarding without the
+   switch being tapped.** `io.invertase.firebase.xml` gained `crashlytics_auto_collection_enabled
+   = true` at 17:13 and Settings later showed "Send crash reports" on; the only writer of `'on'` is
+   `setCrashConsent(true)` from a toggle. Turning it off and cold-starting stays off, so it is
+   first-run only. Needs a clean first run on a device that can be wiped, with `setCrashConsent`
+   logged — not this phone, which holds 1.1 GB of models.
+
+**Two product findings, recorded, not fixed:** the rule extractor missed *"we have decided that
+the launch goes ahead on the 1st of October"* (`DECISION` knows "we decided" and "we agreed", not
+"we have decided", "we've decided", "decided to", "it was decided") and *"Kraya will prepare the
+play store listing by Friday"* (`<Name> will <verb>` is only used to label an owner, never as a
+trigger; `ACTION_OBLIGATION` lists `will send|will get|will do` and nothing else). Both reproduce
+on the host with the exact transcript. The rules live in three copies — TS, Kotlin on device, C++
+with goldens — so the change is one task, not a patch. And two synthesised voices through one
+laptop speaker came back as one speaker, which is not a fair diarization test and is noted only
+so nobody reads "1 speaker" in the screenshots as a defect.
+
