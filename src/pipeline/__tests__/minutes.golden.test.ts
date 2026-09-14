@@ -173,6 +173,19 @@ function timed(rows: { text: string; speakerId: string | null }[]) {
   });
 }
 
+// The Galaxy A07's own words, 14 September, exactly as whisper wrote them. Two of these produced
+// nothing until the rules learned "we have decided" and "<Name> will <verb>"; this golden is what
+// keeps the C++ port learning the same thing. The bare-`will` row is here so the port cannot
+// pass by treating every `will` as a commitment.
+const A07 = [
+  { text: 'Good afternoon everyone, thanks for joining the product sync, let us start with the launch date.', speakerId: 'S0' },
+  { text: 'Agreed, so we have decided that the launch goes ahead on the 1st of October.', speakerId: 'S0' },
+  { text: "Good, Kraya will prepare the play store listing by Friday, including the English only statin' in the first line.", speakerId: 'S1' },
+  { text: 'Who is going to record the human consent announcement to replace the synthesized clip?', speakerId: 'S0' },
+  { text: 'It will probably rain during the offsite, and the new office will be bigger than this one.', speakerId: 'S1' },
+  { text: 'It was decided to keep the free tier at fifteen minutes.', speakerId: 'S0' },
+];
+
 const SPANS = [
   // The whitespace runs are INSIDE the sentences, not between them. A run between two sentences
   // is not in either of them, so text.indexOf still finds each one intact and the fallback is
@@ -286,6 +299,11 @@ it('writes the evidence goldens', () => {
 
   const dedup = writeEvidenceGolden('evidence_dedup.json', DEDUP);
   expect(dedup.filter(i => i.kind === 'action').length).toBe(2);
+
+  const a07 = writeEvidenceGolden('evidence_a07.json', A07);
+  // Exact, not non-empty: 2 decisions, 1 action, 1 question, and nothing for the forecast row.
+  expect(a07.map(i => i.kind).sort()).toEqual(['action', 'decision', 'decision', 'question']);
+  expect(a07.find(i => i.kind === 'action')!.text).toContain('due by Friday');
 
   const spans = writeEvidenceGolden('evidence_spans.json', SPANS);
   const decisions = spans.filter(i => i.kind === 'decision');

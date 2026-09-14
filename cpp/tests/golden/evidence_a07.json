@@ -1,0 +1,130 @@
+{
+  "input": {
+    "utterances": [
+      {
+        "id": "u0",
+        "meetingId": "m",
+        "startMs": 0,
+        "endMs": 4000,
+        "speakerId": "S0",
+        "text": "Good afternoon everyone, thanks for joining the product sync, let us start with the launch date."
+      },
+      {
+        "id": "u1",
+        "meetingId": "m",
+        "startMs": 4000,
+        "endMs": 8000,
+        "speakerId": "S0",
+        "text": "Agreed, so we have decided that the launch goes ahead on the 1st of October."
+      },
+      {
+        "id": "u2",
+        "meetingId": "m",
+        "startMs": 8000,
+        "endMs": 14500,
+        "speakerId": "S1",
+        "text": "Good, Kraya will prepare the play store listing by Friday, including the English only statin' in the first line."
+      },
+      {
+        "id": "u3",
+        "meetingId": "m",
+        "startMs": 14500,
+        "endMs": 18500,
+        "speakerId": "S0",
+        "text": "Who is going to record the human consent announcement to replace the synthesized clip?"
+      },
+      {
+        "id": "u4",
+        "meetingId": "m",
+        "startMs": 18500,
+        "endMs": 22500,
+        "speakerId": "S1",
+        "text": "It will probably rain during the offsite, and the new office will be bigger than this one."
+      },
+      {
+        "id": "u5",
+        "meetingId": "m",
+        "startMs": 22500,
+        "endMs": 26500,
+        "speakerId": "S0",
+        "text": "It was decided to keep the free tier at fifteen minutes."
+      }
+    ],
+    "speakers": [
+      {
+        "id": "S0",
+        "displayName": "Speaker 1",
+        "meetingId": "m",
+        "clusterLabel": "S0"
+      },
+      {
+        "id": "S1",
+        "displayName": "Speaker 2",
+        "meetingId": "m",
+        "clusterLabel": "S1"
+      }
+    ]
+  },
+  "output": [
+    {
+      "kind": "decision",
+      "text": "Agreed, so we have decided that the launch goes ahead on the 1st of October.",
+      "sources": [
+        {
+          "utteranceId": "u1",
+          "startMs": 4000,
+          "endMs": 8000,
+          "charStart": 0,
+          "charEnd": 76
+        }
+      ],
+      "anchorStartMs": 4000,
+      "anchorEndMs": 8000
+    },
+    {
+      "kind": "decision",
+      "text": "It was decided to keep the free tier at fifteen minutes.",
+      "sources": [
+        {
+          "utteranceId": "u5",
+          "startMs": 22500,
+          "endMs": 26500,
+          "charStart": 0,
+          "charEnd": 56
+        }
+      ],
+      "anchorStartMs": 22500,
+      "anchorEndMs": 26500
+    },
+    {
+      "kind": "action",
+      "text": "Good, Kraya will prepare the play store listing by Friday, including the English only statin' in the first line. — Kraya (due by Friday)",
+      "sources": [
+        {
+          "utteranceId": "u2",
+          "startMs": 8000,
+          "endMs": 14500,
+          "charStart": 0,
+          "charEnd": 112
+        }
+      ],
+      "anchorStartMs": 8000,
+      "anchorEndMs": 14500
+    },
+    {
+      "kind": "question",
+      "text": "Who is going to record the human consent announcement to replace the synthesized clip?",
+      "sources": [
+        {
+          "utteranceId": "u3",
+          "startMs": 14500,
+          "endMs": 18500,
+          "charStart": 0,
+          "charEnd": 86
+        }
+      ],
+      "anchorStartMs": 14500,
+      "anchorEndMs": 18500
+    }
+  ]
+}

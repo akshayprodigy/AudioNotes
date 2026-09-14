@@ -494,6 +494,7 @@ int main(int argc, char** argv) {
   runGolden(dir, "evidence_unassigned.json");
   runGolden(dir, "evidence_empty.json");
   runGolden(dir, "evidence_caps.json");
+  runGolden(dir, "evidence_a07.json");
   runEdgeCases();
   // The serialization, on EVERY golden rather than a sample. The Android instrumentation test
   // replays these same files through the JNI boundary and asserts the same numbers, so pinning all

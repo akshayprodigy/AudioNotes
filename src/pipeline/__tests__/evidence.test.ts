@@ -306,3 +306,51 @@ describe('sentenceSpan property: the pre-check never changes the answer', () => 
     expect(preCheckFires / candidates).toBeGreaterThan(0.2);
   });
 });
+
+/**
+ * Sentences a meeting actually produces, that the rules used to miss.
+ *
+ * Both came off the Galaxy A07 on 14 September, word-perfect in the transcript and absent from
+ * the minutes. `DECISION` knew "we decided" and "we agreed" but not "we have decided"; and
+ * "<Name> will <verb> by <day>" — the most ordinary action sentence there is — was not an action
+ * unless the verb happened to be send, get or do, because `<Name> will` only ever labelled an
+ * owner and never triggered one. The rules live twice, here and in cpp/minutes/, and the goldens
+ * are what keep the two honest; these pin the TypeScript side.
+ */
+describe('rules: the sentences the A07 meeting said and the minutes missed', () => {
+  const turn = (text: string): Utterance => ({
+    id: 'u1',
+    meetingId: 'm',
+    speakerId: 'S0',
+    startMs: 0,
+    endMs: 1000,
+    text,
+  });
+  const kinds = (text: string) => extractItems([turn(text)], []).map(i => i.kind);
+
+  test('"we have decided that …" is a decision', () => {
+    expect(kinds('Agreed, so we have decided that the launch goes ahead on the 1st of October.'))
+      .toEqual(['decision']);
+  });
+
+  test('"it was decided" and "decided to" are decisions', () => {
+    expect(kinds('It was decided to keep the free tier at fifteen minutes.')).toEqual(['decision']);
+    expect(kinds('After the demo we decided to drop the lifetime plan.')).toEqual(['decision']);
+  });
+
+  test('"<Name> will <verb> by <day>" is an action, owned and dated', () => {
+    const [item] = extractItems(
+      [turn('Good, Kraya will prepare the play store listing by Friday.')],
+      [],
+    );
+    expect(item.kind).toBe('action');
+    expect(item.text).toContain('Kraya');
+    expect(item.text).toContain('due by Friday');
+  });
+
+  test('"will" on its own is not an action — the verb is what makes one', () => {
+    // A forecast and a description, not a commitment. Neither has a verb from the list.
+    expect(kinds('It will probably rain during the offsite.')).toEqual([]);
+    expect(kinds('The new office will be bigger than this one.')).toEqual([]);
+  });
+});

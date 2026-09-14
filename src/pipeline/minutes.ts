@@ -14,13 +14,20 @@ export interface DraftMinute {
 
 const ACTION_FIRST_PERSON = /\b(i['’]ll|i will|i am going to|i'm going to|let me|we['’]ll|we will|we need to|let['’]s)\b/i;
 const ACTION_ASSIGN = /\b(can you|could you|would you|please|you need to|you should|make sure (you|to)|assign(ed)? to)\b/i;
-const ACTION_OBLIGATION = /\b(need to|needs to|have to|has to|must|should|going to|will send|will get|will do|follow[- ]?up|action item|to-?do)\b/i;
+// `will <verb>` rather than bare `will`: "Kraya will prepare the listing by Friday" is the most
+// ordinary action sentence a meeting produces and was not one until 14 September, because the
+// old list stopped at send/get/do. "It will rain" must stay out, so the verb is required.
+// Mirrored in cpp/minutes/minutes_extractor.cpp; the goldens keep the two in step.
+const ACTION_OBLIGATION = /\b(need to|needs to|have to|has to|must|should|going to|will (send|get|do|prepare|schedule|email|call|review|update|create|finish|draft|share|set up|book|confirm|check|fix|add|remove|ping|write|handle|arrange|circulate|deliver|submit|publish|post|present|report|test|deploy|release|ship|record|contact|notify|remind|invite|organi[sz]e|look into|follow up|reach out|take care|sort out|own|lead|start|complete)|follow[- ]?up|action item|to-?do)\b/i;
 const IMPERATIVE_VERBS = [
   'send', 'prepare', 'schedule', 'email', 'call', 'review', 'update', 'create', 'finish',
   'draft', 'share', 'set up', 'book', 'confirm', 'check', 'fix', 'add', 'remove', 'ping',
 ];
 
-export const DECISION = /\b(we decided|the decision|we agreed|agreed to|let['’]s go with|we['’]ll go with|we chose|going with|we['’]re going with|finali[sz]ed|sign(ed)? off|approved|conclusion is)\b/i;
+// "we have decided that the launch goes ahead" produced no decision on the A07: only the simple
+// past was listed. The perfect, the passive and the plain "decided to/that" are how people
+// actually report one. Mirrored in cpp/minutes/minutes_extractor.cpp.
+export const DECISION = /\b(we decided|we have decided|we['’]ve decided|it was decided|it['’]s been decided|decided (that|to)|the decision|decision (is|was)|we agreed|agreed (to|that)|let['’]s go with|we['’]ll go with|we chose|going with|we['’]re going with|finali[sz]ed|sign(ed)? off|approved|conclusion is)\b/i;
 
 export const DUE = /\b(today|tonight|tomorrow|this (morning|afternoon|evening|week|month)|next (week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|by (the )?(end of (the )?(day|week|month)|eod|cob|monday|tuesday|wednesday|thursday|friday|saturday|sunday|noon|\w+day)|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|in \d+ (day|days|week|weeks)|\d{1,2}(st|nd|rd|th)?( of)? (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b/i;
 

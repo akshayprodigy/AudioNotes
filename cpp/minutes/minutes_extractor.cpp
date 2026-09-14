@@ -21,13 +21,14 @@ const std::regex ACTION_FIRST_PERSON(
 const std::regex ACTION_ASSIGN(
     R"rx(\b(can you|could you|would you|please|you need to|you should|make sure (you|to)|assign(ed)? to)\b)rx",
     std::regex::icase);
-// JS: /\b(need to|needs to|have to|has to|must|should|going to|will send|will get|will do|follow[- ]?up|action item|to-?do)\b/i
+// JS: /\b(need to|needs to|have to|has to|must|should|going to|will (<verb list>)|follow[- ]?up|action item|to-?do)\b/i
+// `will <verb>`, never bare `will`: see src/pipeline/minutes.ts for the sentence that forced it.
 const std::regex ACTION_OBLIGATION(
-    R"rx(\b(need to|needs to|have to|has to|must|should|going to|will send|will get|will do|follow[- ]?up|action item|to-?do)\b)rx",
+    R"rx(\b(need to|needs to|have to|has to|must|should|going to|will (send|get|do|prepare|schedule|email|call|review|update|create|finish|draft|share|set up|book|confirm|check|fix|add|remove|ping|write|handle|arrange|circulate|deliver|submit|publish|post|present|report|test|deploy|release|ship|record|contact|notify|remind|invite|organi[sz]e|look into|follow up|reach out|take care|sort out|own|lead|start|complete)|follow[- ]?up|action item|to-?do)\b)rx",
     std::regex::icase);
-// JS: /\b(we decided|the decision|we agreed|agreed to|let['’]s go with|we['’]ll go with|we chose|going with|we['’]re going with|finali[sz]ed|sign(ed)? off|approved|conclusion is)\b/i
+// JS: /\b(we decided|we have decided|we['’]ve decided|it was decided|it['’]s been decided|decided (that|to)|the decision|decision (is|was)|we agreed|agreed (to|that)|let['’]s go with|we['’]ll go with|we chose|going with|we['’]re going with|finali[sz]ed|sign(ed)? off|approved|conclusion is)\b/i
 const std::regex DECISION(
-    R"rx(\b(we decided|the decision|we agreed|agreed to|let's go with|we'll go with|we chose|going with|we're going with|finali[sz]ed|sign(ed)? off|approved|conclusion is)\b)rx",
+    R"rx(\b(we decided|we have decided|we've decided|it was decided|it's been decided|decided (that|to)|the decision|decision (is|was)|we agreed|agreed (to|that)|let's go with|we'll go with|we chose|going with|we're going with|finali[sz]ed|sign(ed)? off|approved|conclusion is)\b)rx",
     std::regex::icase);
 // JS DUE regex, verbatim (only ['’] simplified):
 const std::regex DUE(
