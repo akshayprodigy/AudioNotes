@@ -8,7 +8,17 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
-const nav = { navigate: jest.fn(), goBack: jest.fn(), setOptions: jest.fn() } as any;
+// `addListener` returns the unsubscribe and records the focus handler so a test can fire it.
+const focusHandlers: Array<() => void> = [];
+const nav = {
+  navigate: jest.fn(),
+  goBack: jest.fn(),
+  setOptions: jest.fn(),
+  addListener: jest.fn((event: string, cb: () => void) => {
+    if (event === 'focus') focusHandlers.push(cb);
+    return () => {};
+  }),
+} as any;
 const route = { key: 'meeting', name: 'Meeting', params: { meetingId: 'm1' } } as any;
 
 const minute = {
@@ -184,4 +194,31 @@ describe('the first-meeting Pro offer', () => {
     await renderWith({ fromNotification: true });
     expect(nav.navigate).not.toHaveBeenCalledWith('Paywall', expect.anything());
   });
+});
+
+/**
+ * Coming back to the meeting reloads it.
+ *
+ * The Speakers screen writes a rename to the database and pops; this screen must read again on
+ * that return or the transcript keeps the old label until the meeting is reopened — which is what
+ * the Pixel showed. The first focus is the mount and is already loaded; later ones are not.
+ */
+test('regaining focus reloads the meeting, but the first focus does not load it twice', async () => {
+  focusHandlers.length = 0;
+  await render();
+  const loadsAfterMount = (db.speakers as jest.Mock).mock.calls.length;
+  expect(loadsAfterMount).toBeGreaterThan(0);
+  expect(focusHandlers.length).toBe(1);
+
+  // The mount's own focus: nothing extra.
+  await act(async () => {
+    focusHandlers[0]();
+  });
+  expect((db.speakers as jest.Mock).mock.calls.length).toBe(loadsAfterMount);
+
+  // A return from the Speakers screen: read again.
+  await act(async () => {
+    focusHandlers[0]();
+  });
+  expect((db.speakers as jest.Mock).mock.calls.length).toBe(loadsAfterMount + 1);
 });

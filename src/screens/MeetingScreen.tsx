@@ -281,6 +281,28 @@ export default function MeetingScreen({ route, navigation }: Props) {
     };
   }, [refresh]);
 
+  /**
+   * Reload when the screen comes BACK into focus.
+   *
+   * The Speakers screen is a separate route that writes to the same meeting — a rename lands in
+   * the database the moment editing ends — and this screen used to load once on mount and again
+   * only when the pipeline finished. So on the Pixel a speaker renamed to "Dr Sen" still read
+   * "Speaker 1" on the transcript until the meeting was closed and reopened. The first focus is
+   * the mount, which the load above already covers; every later one is a return from somewhere
+   * that may have changed the data.
+   */
+  useEffect(() => {
+    let mounted = false;
+    const off = navigation.addListener('focus', () => {
+      if (!mounted) {
+        mounted = true;
+        return;
+      }
+      refresh();
+    });
+    return off;
+  }, [navigation, refresh]);
+
   useEffect(() => {
     const offProgress = PipelineController.onProgress(p => {
       if (p.meetingId === meetingId) setStage(p.stage);
