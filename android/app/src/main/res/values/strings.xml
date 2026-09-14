@@ -7,11 +7,11 @@
       must be distinguishable from the shade at a glance, without opening anything.
     -->
     <string name="notif_channel_recording">Recording</string>
-    <string name="notif_channel_recording_desc">Shown while AudioNotes is recording a meeting</string>
+    <string name="notif_channel_recording_desc">Shown while Verbale is recording a meeting</string>
 
-    <string name="notif_title_recording">AudioNotes — recording</string>
-    <string name="notif_title_paused">AudioNotes — paused</string>
-    <string name="notif_title_silenced">AudioNotes — mic unavailable</string>
+    <string name="notif_title_recording">Verbale — recording</string>
+    <string name="notif_title_paused">Verbale — paused</string>
+    <string name="notif_title_silenced">Verbale — mic unavailable</string>
 
     <string name="notif_body_recording">Everything stays on this device</string>
     <string name="notif_body_paused">Nothing is being captured until you resume</string>
