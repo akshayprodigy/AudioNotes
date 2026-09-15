@@ -51,6 +51,24 @@ model as installed on file existence and exact size, so pushed files show up as 
 
 ---
 
+## The gate — every check, before every push
+
+```bash
+npm run hooks:install   # once per clone: points git at scripts/hooks
+npm run gate            # the same thing, by hand
+npm run gate:test       # the gate's own test: it can fail, and it can skip
+```
+
+`scripts/gate.sh` runs, in order and stopping at the first failure: TypeScript, jest, the scans
+(`check:egress`, `check:fence` and their tests, diarization constants, engine encapsulation, the
+live-transcript invariant), the 31 reconciler mutations, the Kotlin unit tests, the C++ build and
+ctest, and — **only if exactly one authorised phone is on adb** — `npm run test:device`. No phone
+is a skip with a message, never a failure.
+
+`git push --no-verify` bypasses it. That is deliberate; use it when you know why.
+
+---
+
 ## Stage 1 — Smoke test: UI + VAD + encrypted storage (no submodules)
 
 This proves the toolchain, the RN New-Architecture module wiring, capture, storage, and VAD. Only
