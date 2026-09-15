@@ -3614,6 +3614,20 @@ way check-network-egress.py was."
 
 ## Task 14: Prove it on a phone
 
+> **SHIPPED 14 September 2026** — on the Pixel 7 Pro (`36091FDH30034G`, Android 17) with its real
+> library of 15 meetings, plus a full pass on the Galaxy A07 the same day. Steps 1–4: two
+> rule-extracted actions on a 7 September meeting were ticked on the 11 September build, the new
+> build installed over it without a wipe (same upload-key signature), both were still ticked with
+> their anchors (1:01, 1:46), tap-to-play landed on the right turn (audio already deleted by
+> retention, so scroll-only — correct), and **Redo re-ran the rule pass (`10 rows and 9 items`)
+> with both ticks intact on a fresh read**. Step 5: a fresh scripted meeting produced the decision,
+> a named-and-dated action and the question, each anchored (0:22, 0:27, 0:36). Step 6: Markdown
+> read off the A07 with `[0:46]` leading the item. Step 7: `npm run test:device` 72 tests / 10
+> classes / zero skips on the Pixel; jest 366; Kotlin 199; ctest 21/21; egress and fence OK.
+> Step 8: spec §14 and §14.2. **Still never executed:** `EvidenceParityTest`'s 11 cases (the JNI
+> sweep). Everything the day found and fixed on the way is in the spec — nine defects, none of
+> them in this branch's own code.
+
 > **Before you run this (11 September 2026).** Step 7 is **already green on `0e7f278`**: jest 351,
 > `check:egress` OK (141 files), `check:fence` OK (32 files), ctest 21/21, and `npm run test:device`
 > at **72 tests across 10 classes with zero skips** on the Pixel 7 Pro `36091FDH30034G`. Steps 1-6

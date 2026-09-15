@@ -376,3 +376,58 @@ must come back complete, titled from real speech, with the decision, two actions
 extracted, and the notification tap must land on the notes — and the rest of the feature pass
 (speakers, rename/tag, exports, archive/delete, import, search gate, settings, dark mode, trial).
 
+### 14.2 The Pixel 7 Pro, 14 September night — Task 14 closed, and the rest of the feature pass
+
+Android 17, the real library (15 meetings, 138 min), release build installed over the 11 September
+one with `adb install -r` — same upload-key signature, nothing wiped.
+
+**Task 14, as written.** Two rule-extracted actions ticked on the OLD build first (the baseline
+the plan said no longer existed — it does, if you make it); installed; both still ticked with
+anchors 1:01 and 1:46; tap-to-play scrolled to the right turn (that meeting's audio is gone under
+retention, so scroll-only is right); **Redo re-ran the rule pass and both ticks survived a fresh
+read** — on rule-extracted actions, which the A07 could not show. A fresh scripted meeting came
+back complete with the clip kept out (`announcement at 270ms kept out of ASR: 21 span(s) -> 19`),
+titled from real speech, with the decision, the named-and-dated action and the question each
+anchored, and the notes-ready notification opened the notes. `npm run test:device`: 72/72, zero
+skips. The four fixes from §14.1 are therefore proven on a second phone and an upgrade path.
+
+**Everything else exercised, and its state:**
+
+| Area | Result |
+|---|---|
+| Onboarding, permissions, consent card, disclosure playback + verification | pass (both phones) |
+| Record, pause/resume, screen off, PiP, stop from notification, background processing, "Notes ready" | pass |
+| Summary / MOM / Script / Actions, tap-to-play, long-press correction (transcript and action), tick, add/remove | pass |
+| Speakers: rename | pass — after a fix (below). Merge not exercised: irreversible on real data |
+| Rename, Add a tag → tag chip + filter, sort sheet | pass |
+| Export PDF / Markdown / plain text / SRT, Copy | pass — after a fix (below) |
+| Archive → Archive screen → Restore; Delete with confirmation | pass |
+| Import a recording (system picker → WAV → notes in 9 s) | pass |
+| Non-English refusal: Hindi → NOT ENGLISH, "sounds like Hindi", Transcribe it anyway offered | pass |
+| Settings: models, retention, language, theme (dark verified), crash-report switch, notices | pass |
+| Privacy ledger: zero on a phone that recorded; then exactly one licence call, host and bytes, after a sign-in attempt | pass |
+| Search on Free → paywall; paywall copy; Subscribe failure copy; sign-in against the live server | pass as built |
+| **Play subscription** | **not purchasable**: "The Play Store has not sent the price yet" and "No subscription 'verbale_pro' is available" — the product does not exist yet or the build is not from Play |
+| Pro narration | not exercised today (trial spent on this phone; an earlier meeting carries an LLM summary, so it has run here) |
+| 15-minute Free cap, 90-minute capture, Quick Settings tile, PiP's own buttons, Archive "Delete all", speaker merge | not exercised |
+
+**Five more defects, all fixed the same night:**
+
+5. **Android 17 hid the recording notification.** LOW-importance channel → folded into "Active
+   apps", whose only button force-stops the service; no Pause/Stop from the shade. Both
+   foreground channels moved to DEFAULT importance under new ids, still silent (`c6a4064`).
+   Verified: "Verbale — recording · Pause · Stop" at the top of the shade, and Stop from there
+   ends the capture.
+6. **A renamed speaker kept its old label** on the meeting until it was reopened: the screen loaded
+   once on mount and again only when the pipeline finished. Refreshes on focus now (`809f7d2`).
+7. **SRT export and Cancel did not exist on Android**: the format picker was a five-button
+   `Alert.alert`, and Android renders three. Now the app's own sheet (`29ed1c1`); SRT verified.
+8. The recording notification said "AudioNotes" (`976f70f`, §14.1).
+9. The consent clip as title — three 7 September meetings on this phone are titled "This meeting
+   is being recorded by Verbal"; the §14.1 fix stops new ones, existing titles stay until renamed.
+
+**Noted, not fixed:** the question extractor emits fragments ("And what?", "Okay?", "What?") as
+open items on real speech; the library's tag chip keeps counting an archived meeting; the app's
+notification small icon is a microphone glyph, so "Notes ready" reads as still-recording; BACK with
+the keyboard up closes a prompt and discards the text on the A07.
+
