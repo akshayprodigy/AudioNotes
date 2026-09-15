@@ -343,7 +343,14 @@ describe('the edits key survives the move from minutes to items', () => {
 // The screen
 // ------------------------------------------------------------------------------------------
 
-const nav = { navigate: jest.fn(), goBack: jest.fn(), setOptions: jest.fn() } as any;
+// `addListener` is what the meeting screen's refresh-on-focus effect subscribes with; it returns
+// the unsubscribe. Nothing here fires focus, so the effect is inert in these tests.
+const nav = {
+  navigate: jest.fn(),
+  goBack: jest.fn(),
+  setOptions: jest.fn(),
+  addListener: jest.fn(() => () => {}),
+} as any;
 
 /** The shared `item_done` store both readers are asked about. */
 let ticks: Set<string>;
