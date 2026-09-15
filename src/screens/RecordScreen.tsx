@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppState,
   NativeEventEmitter,
@@ -17,6 +17,8 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useRecordingStore } from '../state/recordingStore';
 import { PipelineController } from '../pipeline/PipelineController';
 import { db } from '../db/queries';
+import AudioPipeline from '../native/NativeAudioPipeline';
+import { provenanceLabel } from './meeting/ItemProvenance';
 import MicVisualizer from '../components/MicVisualizer';
 import LiveWaveform from '../components/LiveWaveform';
 import Mascot from '../components/Mascot';
@@ -91,6 +93,31 @@ export default function RecordScreen({ navigation }: Props) {
     });
     return () => sub.remove();
   }, []);
+
+  // "Marked 12:34" for two seconds after a mark, wherever it was made: the button here, the PiP
+  // window or the notification all fan out through CaptureController, and native tells us.
+  const [marked, setMarked] = useState<number | null>(null);
+  const markTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashMark = useCallback((at: number) => {
+    setMarked(at);
+    if (markTimer.current) clearTimeout(markTimer.current);
+    markTimer.current = setTimeout(() => setMarked(null), 2000);
+  }, []);
+  useEffect(() => {
+    const emitter = new NativeEventEmitter(NativeModules.AudioPipeline);
+    const sub = emitter.addListener('onCaptureMark', (e: { atMs: number }) => flashMark(e.atMs));
+    return () => {
+      sub.remove();
+      if (markTimer.current) clearTimeout(markTimer.current);
+    };
+  }, [flashMark]);
+  const onMark = useCallback(() => {
+    AudioPipeline.mark()
+      .then(at => {
+        if (at !== null) flashMark(at);
+      })
+      .catch(() => {});
+  }, [flashMark]);
 
   // Native owns capture state: a meeting can be started from the floating bubble and can outlive
   // the JS context, so re-read on mount and on every resume.
@@ -387,11 +414,15 @@ export default function RecordScreen({ navigation }: Props) {
                 icon={paused ? 'mic' : 'pause'}
                 onPress={togglePause}
               />
-              <SoftButton
-                label={silenced ? 'Mic unavailable' : 'Stays on device'}
-                icon={silenced ? 'alert' : 'shield'}
-                tone={silenced ? colors.warning : colors.inkFaint}
-              />
+              {silenced ? (
+                <SoftButton label="Mic unavailable" icon="alert" tone={colors.warning} />
+              ) : (
+                <SoftButton
+                  label={marked !== null ? `Marked ${provenanceLabel(marked)}` : 'Mark'}
+                  icon="clock"
+                  onPress={onMark}
+                />
+              )}
             </>
           ) : (
             <Pressable
