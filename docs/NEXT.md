@@ -86,9 +86,22 @@ Ordered. Items 1 to 3 are the ones that decide whether this is worth shipping at
 
 Small, high-value, and each one answers a complaint the whole category gets.
 
-- **Mark a moment.** One button on the record screen, the picture-in-picture pane, the Quick
-  Settings tile and the notification. Markers become a Highlights section and feed the narrator.
-  Plaud built hardware for this. About a day here. Research §3.2.
+- ~~**Mark a moment.**~~ **Shipped 15 Sep, device-verified on the Pixel.** Mark from the record
+  screen, the PiP menu and the notification; marks become a Highlights section (the sentence said
+  at that moment, tap to play, × to remove) and lead the Markdown, text and PDF exports. Spec:
+  `superpowers/specs/2026-09-15-marks-and-capture-warnings-design.md`. Not done: the Quick
+  Settings tile; feeding marks to the narrator (waits for the narrator work in §3).
+- ~~**Capture warnings.**~~ **Shipped with the marks, same spec.** Too loud, voices faint, storage
+  low — inline amber banner under the meter and the notification body, non-blocking, each
+  transition logged with its numbers. Faint provoked on the Pixel at −59 dBFS; loud cannot be
+  provoked from a speaker on that phone (clip = 0 at full volume), unit-tested. Open finding: below
+  the level where the VAD still hears speech, no warning can fire — a "nothing heard for N
+  minutes" condition is a separate design question.
+- **Live transcript on the record screen — decided against, 15 Sep.** Text only after stopping.
+  The founder's call during the marks design: the screen while recording stays the meter, the
+  clock, Mark and Pause; the live ASR pass stays a cache for the final transcript, not a display.
+  (Distinct from §4 #1, which is about transcribing during capture to shorten the wait — that
+  stands.)
 - **Reassign the speaker on a turn, and split or merge turns.** Text is editable today; who said
   it is not. Wrong attribution is the top diarization complaint in every review. Research §2.3 #11.
   **Item 4 turned this into a measured defect rather than a category complaint:** Indian-accented

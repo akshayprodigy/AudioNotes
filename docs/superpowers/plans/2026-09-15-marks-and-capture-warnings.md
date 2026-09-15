@@ -1,5 +1,7 @@
 # Marks and Capture Warnings — Implementation Plan
 
+> **SHIPPED 15 Sep 2026.** All nine tasks done; device-verified on the Pixel 7 Pro (spec §"Device verification"). Two defects the phone found are fixed in-branch.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A "mark" during recording (screen, PiP, notification) that becomes a Highlights section with playback and exports; and three inline, non-blocking capture warnings (too loud, faint, storage) with logged thresholds.
@@ -527,5 +529,6 @@ with `warningText` mapping the three kinds to the spec's sentences (storage: `Ab
 
 ### Task 9: Prove it on the Pixel
 
-- [ ] Install; record; mark from the screen, the PiP window and the notification (three marks, three captions); stop; Summary shows three highlights with the right sentences; tap one → transcript + playback; × removes one; export Markdown → Highlights section leads. Loud: play the Mac at full volume 10 cm from the phone → "Too loud" within 3 s, clears after. Faint: whisper the script at 2 m → "Voices are faint" after ~15 s of speech. Storage: unit-tested only (state so).
-- [ ] Record the run in the spec (`## Device verification`), update NEXT.md §2 (bookmark ✓, warnings ✓, live transcript — decided against), memory. Commit; push (the gate runs).
+- [x] Install; record; mark from the screen, the PiP window and the notification (three marks, three captions); stop; Summary shows three highlights with the right sentences; tap one → transcript + playback; × removes one; export Markdown → Highlights section leads. Loud: play the Mac at full volume 10 cm from the phone → "Too loud" within 3 s, clears after. Faint: whisper the script at 2 m → "Voices are faint" after ~15 s of speech. Storage: unit-tested only (state so).
+  Done 15 Sep on the Pixel 7 Pro — see the spec's "Device verification". Two defects found and fixed in the run (notification Mark stopped the meeting; the caption never reverted). Loud is not provokable from a speaker on the Pixel (clip=0 at full volume); unit-tested. Faint provoked at 50 % Mac volume.
+- [x] Record the run in the spec (`## Device verification`), update NEXT.md §2 (bookmark ✓, warnings ✓, live transcript — decided against), memory. Commit; push (the gate runs).
