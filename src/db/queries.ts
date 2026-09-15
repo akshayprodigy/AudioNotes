@@ -493,6 +493,17 @@ export const db = {
   removeTag: (meetingId: string, name: string) =>
     run('DELETE FROM tags WHERE meeting_id = ? AND name = ?', [meetingId, name]),
 
+  // ---- Marks: moments tapped while recording ----------------------------------------------
+  // Written natively while recording (CaptureController.mark); read here, resolved to words by
+  // src/screens/meeting/highlights.ts at render time.
+  marks: (meetingId: string) =>
+    run<{ id: number; at_ms: number }>(
+      'SELECT id, at_ms FROM marks WHERE meeting_id = ? ORDER BY at_ms, id',
+      [meetingId],
+    ).then(rows => rows.map(r => ({ id: r.id, atMs: r.at_ms }))),
+
+  removeMark: (id: number) => run('DELETE FROM marks WHERE id = ?', [id]),
+
   // ---- User edits of pipeline-written text ------------------------------------------------
 
   edits: (meetingId: string) =>

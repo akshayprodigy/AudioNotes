@@ -97,6 +97,15 @@ class SchemaTest {
   }
 
   @Test fun itemsTableExists() = assertTrue(schema.contains("CREATE TABLE IF NOT EXISTS items"))
+
+  // Marks: a moment tapped while recording, keyed on the capture clock so a reprocess cannot lose
+  // it. Both mirrors carry it; src/db/__tests__/schema.test.ts pins the same four columns.
+  @Test fun marksTableExists() = assertTrue(schema.contains("CREATE TABLE IF NOT EXISTS marks"))
+  @Test fun marksHasExpectedColumnsAndCascades() {
+    val ddl = schema.substringAfter("CREATE TABLE IF NOT EXISTS marks").substringBefore(";")
+    for (col in listOf("id", "meeting_id", "at_ms", "created_at")) assertTrue(col, ddl.contains(col))
+    assertTrue("cascade", ddl.contains("ON DELETE CASCADE"))
+  }
   @Test fun itemSourcesTableExists() =
     assertTrue(schema.contains("CREATE TABLE IF NOT EXISTS item_sources"))
   @Test fun itemDoneTableExists() =

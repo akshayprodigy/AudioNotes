@@ -357,3 +357,15 @@ describe('schema.ts evidence tables (executed in real SQLite)', () => {
     });
   });
 });
+
+describe('marks', () => {
+  it('exists, keyed on time, cascading with the meeting', () => {
+    const ddl = ddlFor('marks');
+    for (const col of ['id', 'meeting_id', 'at_ms', 'created_at']) expect(ddl).toContain(col);
+    expect(ddl).toContain('ON DELETE CASCADE');
+    const db = new DatabaseSync(':memory:');
+    db.exec(ddlFor('meetings'));
+    db.exec(ddl);
+    db.exec(indexDdlFor('idx_marks_meeting'));
+  });
+});

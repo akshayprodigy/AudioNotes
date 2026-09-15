@@ -174,7 +174,17 @@ export const SCHEMA = [
      sent INTEGER NOT NULL DEFAULT 0,     -- request BODY bytes; headers are excluded
      received INTEGER NOT NULL DEFAULT 0,
      detail TEXT                   -- 'token refresh', 'ggml-base-q5_1.bin'
-   );`, // onboarding flag + simple prefs
+   );`,
+  // A moment somebody marked while recording. Keyed on TIME (the capture clock), not on any item
+  // or utterance, so a reprocess has nothing to reconcile and can never lose one; the sentence it
+  // lands on is resolved when it is shown (src/screens/meeting/highlights.ts).
+  `CREATE TABLE IF NOT EXISTS marks (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+     at_ms INTEGER NOT NULL,
+     created_at INTEGER NOT NULL
+   );`,
+  `CREATE INDEX IF NOT EXISTS idx_marks_meeting ON marks(meeting_id, at_ms);`, // onboarding flag + simple prefs
   `CREATE VIRTUAL TABLE IF NOT EXISTS meetings_fts
      USING fts5(meeting_id UNINDEXED, text);`,
 ];

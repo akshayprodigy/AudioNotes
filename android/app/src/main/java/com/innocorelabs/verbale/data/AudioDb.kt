@@ -405,6 +405,29 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     db.execSQL("UPDATE meetings SET diar_skipped_reason=? WHERE id=?", arrayOf<Any?>(reason, id))
   }
 
+  // ---- Marks: moments tapped while recording ------------------------------------------------
+
+  data class Mark(val id: Long, val atMs: Long)
+
+  /** A mark at [atMs] on the capture clock. Returns the new row id. */
+  fun addMark(meetingId: String, atMs: Long): Long {
+    db.execSQL(
+      "INSERT INTO marks(meeting_id, at_ms, created_at) VALUES(?,?,?)",
+      arrayOf<Any?>(meetingId, atMs, System.currentTimeMillis()),
+    )
+    db.rawQuery("SELECT last_insert_rowid()", null).use { c ->
+      return if (c.moveToFirst()) c.getLong(0) else -1L
+    }
+  }
+
+  fun marks(meetingId: String): List<Mark> {
+    val out = ArrayList<Mark>()
+    db.rawQuery(
+      "SELECT id, at_ms FROM marks WHERE meeting_id=? ORDER BY at_ms, id", arrayOf(meetingId),
+    ).use { c -> while (c.moveToNext()) out.add(Mark(c.getLong(0), c.getLong(1))) }
+    return out
+  }
+
   /** Null when this meeting carries no announcement. */
   fun announcedAt(id: String): Long? {
     db.rawQuery("SELECT announced_at FROM meetings WHERE id=?", arrayOf(id)).use { c ->
@@ -2179,6 +2202,16 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
            meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
            name TEXT NOT NULL,
            PRIMARY KEY (meeting_id, name));""",
+      // A moment somebody marked while recording. Keyed on TIME (the capture clock), not on any
+      // item or utterance, so a reprocess has nothing to reconcile and can never lose one; the
+      // sentence it lands on is resolved when it is shown. created_at is wall clock, for the
+      // order of taps within the same second.
+      """CREATE TABLE IF NOT EXISTS marks(
+           id INTEGER PRIMARY KEY AUTOINCREMENT,
+           meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+           at_ms INTEGER NOT NULL,
+           created_at INTEGER NOT NULL);""",
+      """CREATE INDEX IF NOT EXISTS idx_marks_meeting ON marks(meeting_id, at_ms);""",
       // User-authored replacements for pipeline-written text.
       //
       // Deliberately a SIDE table rather than an UPDATE of the row being edited. Ticked actions
