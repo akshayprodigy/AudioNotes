@@ -61,8 +61,13 @@ object PipController {
   fun enterIfRecording(activity: Activity): Boolean {
     if (!CaptureController.isRecording || !isSupported(activity)) return false
     return try {
-      activity.enterPictureInPictureMode(buildParams(activity))
-    } catch (_: Exception) {
+      val entered = activity.enterPictureInPictureMode(buildParams(activity))
+      if (!entered) android.util.Log.w("PipController", "enterPictureInPictureMode returned false")
+      entered
+    } catch (e: Exception) {
+      // Logged, not swallowed: on the Pixel 7 Pro (Android 17) PiP silently never appeared, and
+      // a catch that says nothing is how that stayed unexplained for an afternoon.
+      android.util.Log.w("PipController", "enterPictureInPictureMode threw", e)
       false
     }
   }
