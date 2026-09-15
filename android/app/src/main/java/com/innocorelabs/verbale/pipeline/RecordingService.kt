@@ -78,6 +78,7 @@ class RecordingService : Service(), CaptureListener {
 
     /** How often the capture loop re-checks free space (in 4 KB reads; ~8 per second). */
     private const val DISK_CHECK_EVERY_READS = 256
+    private const val WARN_CHECK_EVERY_READS = 8
 
     /** Why capture ended, surfaced on the meeting so the UI can explain a short recording. */
     const val END_NORMAL = "normal"
@@ -140,6 +141,7 @@ class RecordingService : Service(), CaptureListener {
 
   override fun onPausedChanged(paused: Boolean) = refreshNotification()
   override fun onMarked(atMs: Long) = refreshNotification()
+  override fun onWarningChanged(warning: CaptureWarnings.Warning?) = refreshNotification()
   override fun onSilencedChanged(silenced: Boolean) = refreshNotification()
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -353,6 +355,11 @@ class RecordingService : Service(), CaptureListener {
                   written += n
                   CaptureController.capturedMs = written / BYTES_PER_MS
                   CaptureController.level = computeLevel(buf, n, CaptureController.level)
+                  CaptureController.noteBuffer(
+                    CaptureController.capturedMs,
+                    CaptureWarnings.rmsOf(buf, n),
+                    CaptureWarnings.clippedFraction(buf, n),
+                  )
                   if (prefix != null && prefixLen < prefix.size) {
                     val take = minOf(n, prefix.size - prefixLen)
                     System.arraycopy(buf, 0, prefix, prefixLen, take)
@@ -376,6 +383,8 @@ class RecordingService : Service(), CaptureListener {
             // One increment for both checks below. Incrementing in each condition would make
             // every check fire half as often as its name says.
             ++reads
+            // About once a second (buffers are 128 ms): cheap, and a warning a second late is fine.
+            if (reads % WARN_CHECK_EVERY_READS == 0) CaptureController.refreshWarning(filesDir.usableSpace)
             if (capMs > 0L && reads % DISK_CHECK_EVERY_READS == 0) {
               val capturedMs = File(path).length() / BYTES_PER_MS
               if (capturedMs >= capMs) {
@@ -699,12 +708,18 @@ class RecordingService : Service(), CaptureListener {
       paused -> getString(R.string.notif_title_paused)
       else -> getString(R.string.notif_title_recording)
     }
+    val warning = CaptureController.warning
     val markMs = CaptureController.lastMarkMs
     val markFresh = markMs >= 0 && CaptureController.capturedMs - markMs < MARK_CAPTION_MS
     val body = when {
       silenced -> getString(R.string.notif_body_silenced)
       paused -> getString(R.string.notif_body_paused)
       markFresh -> getString(R.string.notif_body_marked, stamp(markMs))
+      warning != null -> when (warning.kind) {
+        CaptureWarnings.Kind.STORAGE -> getString(R.string.notif_warn_storage, warning.minutesLeft)
+        CaptureWarnings.Kind.LOUD -> getString(R.string.notif_warn_loud)
+        CaptureWarnings.Kind.FAINT -> getString(R.string.notif_warn_faint)
+      }
       else -> getString(R.string.notif_body_recording)
     }
 

@@ -150,6 +150,9 @@ class LiveTranscriber(
 
         for (v in NativeBridge.nativeVadFeed(vad, audioPath, tailBytes, grown)) spans.add(v)
         tailBytes += grown
+        // The faint-speech warning asks how loud the VOICES were, not the room: hand the
+        // controller every speech span so far, on the capture clock.
+        CaptureController.noteSpeechSpans(spanPairs(spans), tailBytes / RecordingService.BYTES_PER_MS)
         cached += decodeReadyWindows(db, asr, vad, spans, tailBytes / RecordingService.BYTES_PER_MS,
                                      modelKey, threads, stopping = false)
       }
@@ -225,6 +228,9 @@ class LiveTranscriber(
     }
     return n
   }
+
+  private fun spanPairs(flat: List<Long>): List<Pair<Long, Long>> =
+    (0 until flat.size - 1 step 2).map { flat[it] to flat[it + 1] }
 
   private fun backOff(): Boolean = LiveBudget.shouldBackOff(
     LiveBudget.thermalStatus(ctx), LiveBudget.batteryPercent(ctx), LiveBudget.isCharging(ctx),

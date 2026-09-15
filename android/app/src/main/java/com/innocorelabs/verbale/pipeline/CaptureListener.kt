@@ -34,4 +34,6 @@ interface CaptureListener {
   fun onSilencedChanged(silenced: Boolean) {}
   /** A mark was made at [atMs] on the capture clock — from the screen, the PiP window or the notification. */
   fun onMarked(atMs: Long) {}
+  /** The capture warning changed: null when none applies. */
+  fun onWarningChanged(warning: CaptureWarnings.Warning?) {}
 }

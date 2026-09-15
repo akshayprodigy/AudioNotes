@@ -43,6 +43,15 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
     override fun onCaptureEnded(meetingId: String, reason: String) = emitState()
     override fun onPausedChanged(paused: Boolean) = emitState()
     override fun onSilencedChanged(silenced: Boolean) = emitState()
+    override fun onWarningChanged(warning: CaptureWarnings.Warning?) {
+      val map = WritableNativeMap().apply {
+        if (warning == null) putNull("kind") else putString("kind", warning.kind.name.lowercase())
+        putDouble("minutesLeft", (warning?.minutesLeft ?: 0L).toDouble())
+      }
+      try {
+        ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java).emit("onCaptureWarning", map)
+      } catch (_: Exception) {}
+    }
     // A mark made from the PiP window or the notification reaches a visible record screen too.
     override fun onMarked(atMs: Long) {
       val map = WritableNativeMap().apply { putDouble("atMs", atMs.toDouble()) }

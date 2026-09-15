@@ -54,6 +54,18 @@ const PROMISES: { icon: IconName; label: string; tone: 'primaryDeep' | 'success'
   { icon: 'list', label: 'You delete', tone: 'warning' },
 ];
 
+/** The three sentences the record screen may show, matching the notification's (strings.xml). */
+export function warningText(w: { kind: string; minutesLeft: number }): string {
+  switch (w.kind) {
+    case 'storage':
+      return `About ${w.minutesLeft} minutes of storage left.`;
+    case 'loud':
+      return 'Too loud — move the phone a little further from the speakers.';
+    default:
+      return 'Voices are faint — move the phone closer to the people talking.';
+  }
+}
+
 export default function RecordScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const st = useMemo(() => makeStyles(colors), [colors]);
@@ -111,6 +123,22 @@ export default function RecordScreen({ navigation }: Props) {
       if (markTimer.current) clearTimeout(markTimer.current);
     };
   }, [flashMark]);
+  // One warning at a time, from native (CaptureWarnings): too loud, faint, or storage. Amber and
+  // non-blocking — the recording is the thing being protected, and it is not interrupted.
+  const [warning, setWarning] = useState<{ kind: string; minutesLeft: number } | null>(null);
+  useEffect(() => {
+    const emitter = new NativeEventEmitter(NativeModules.AudioPipeline);
+    const sub = emitter.addListener(
+      'onCaptureWarning',
+      (e: { kind: string | null; minutesLeft: number }) =>
+        setWarning(e.kind ? { kind: e.kind, minutesLeft: e.minutesLeft } : null),
+    );
+    return () => sub.remove();
+  }, []);
+  useEffect(() => {
+    if (!isRecording) setWarning(null);
+  }, [isRecording]);
+
   const onMark = useCallback(() => {
     AudioPipeline.mark()
       .then(at => {
@@ -402,6 +430,14 @@ export default function RecordScreen({ navigation }: Props) {
           <View style={[st.meter, { opacity: isRecording && !paused ? 1 : 0 }]}>
             <LiveWaveform levelRef={levelRef} active={isRecording && !paused} height={70} />
           </View>
+          {isRecording && warning ? (
+            <View style={[st.warn, { backgroundColor: colors.warningSoft }]}>
+              <Icon name="alert" size={s(16)} color={colors.warning} />
+              <Txt variant="chip" color={colors.warning} style={st.warnText}>
+                {warningText(warning)}
+              </Txt>
+            </View>
+          ) : null}
 
           <MicVisualizer active={isRecording} paused={paused} onPress={onToggle} size={148} />
         </View>
@@ -463,6 +499,18 @@ function makeStyles(c: Colors) {
     meter: { marginTop: sv(22), marginBottom: sv(6) },
 
     footer: { flexDirection: 'row', gap: s(10), minHeight: s(52) },
+    warn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: s(8),
+      alignSelf: 'center',
+      paddingHorizontal: s(14),
+      paddingVertical: s(8),
+      borderRadius: radius.pill,
+      marginTop: s(10),
+      maxWidth: '92%',
+    },
+    warnText: { flexShrink: 1 },
     privacy: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: s(6) },
 
     consentScroll: { flexGrow: 1, justifyContent: 'center', paddingBottom: s(8) },

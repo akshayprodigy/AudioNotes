@@ -37,6 +37,33 @@ object CaptureWarnings {
     return clipped.toDouble() / n
   }
 
+  /** The same, straight off the capture buffer: PCM16 little-endian bytes, [n] bytes valid. */
+  fun clippedFraction(buf: ByteArray, n: Int): Double {
+    val samples = n / 2
+    if (samples <= 0) return 0.0
+    var clipped = 0
+    var i = 0
+    while (i + 1 < n) {
+      val v = ((buf[i].toInt() and 0xff) or (buf[i + 1].toInt() shl 8)).toShort().toInt()
+      if (v >= Short.MAX_VALUE - 1 || v <= Short.MIN_VALUE + 1) clipped++
+      i += 2
+    }
+    return clipped.toDouble() / samples
+  }
+
+  /** RMS of a PCM16 little-endian buffer as 0..1 — the raw level, before the meter's gain and smoothing. */
+  fun rmsOf(buf: ByteArray, n: Int): Double {
+    var sum = 0.0
+    var count = 0
+    var i = 0
+    while (i + 1 < n) {
+      val v = ((buf[i].toInt() and 0xff) or (buf[i + 1].toInt() shl 8)).toShort().toInt()
+      sum += (v * v).toDouble(); count++
+      i += 2
+    }
+    return if (count == 0) 0.0 else Math.sqrt(sum / count) / 32768.0
+  }
+
   fun isFaint(speechMs: Long, meanRmsDuringSpeech: Double): Boolean =
     speechMs >= FAINT_MIN_SPEECH_MS && meanRmsDuringSpeech < FAINT_RMS
 

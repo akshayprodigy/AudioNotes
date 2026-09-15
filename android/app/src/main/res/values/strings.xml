@@ -14,6 +14,9 @@
     <string name="notif_body_marked">Marked %1$s</string>
     <string name="pip_action_mark">Mark</string>
     <string name="pip_action_mark_desc">Mark this moment</string>
+    <string name="notif_warn_loud">Too loud — move the phone a little further from the speakers.</string>
+    <string name="notif_warn_faint">Voices are faint — move the phone closer to the people talking.</string>
+    <string name="notif_warn_storage">About %1$d minutes of storage left.</string>
     <string name="notif_title_paused">Verbale — paused</string>
     <string name="notif_title_silenced">Verbale — mic unavailable</string>
 

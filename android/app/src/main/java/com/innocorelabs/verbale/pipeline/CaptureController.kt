@@ -44,6 +44,8 @@ object CaptureController {
 
   private val main = Handler(Looper.getMainLooper())
   private val listeners = CopyOnWriteArraySet<CaptureListener>()
+  /** Warn about storage at three times the service's hard stop (RecordingService.MIN_FREE_BYTES), in minutes of capture. */
+  private const val STORAGE_WARN_MINUTES = 3L * 50L * 1024 * 1024 / (32L * 60_000L)
 
   /** Set once from any entry point so the snapshot can be written without a Context to hand. */
   @Volatile private var prefs: SharedPreferences? = null
@@ -95,6 +97,58 @@ object CaptureController {
 
   /** Bytes written so far ÷ 32: the capture clock, pause-adjusted, the one the transcript uses. */
   @Volatile var capturedMs: Long = 0L
+
+  // ---- Capture warnings (CaptureWarnings has the rules; this has the state) ---------------------
+
+  /** The warning in force, or null. Read by the notification and pushed to the record screen. */
+  @Volatile var warning: CaptureWarnings.Warning? = null
+  private val rms = RmsRing(60_000)
+  private val clip = ClipWindow(2_000)
+  @Volatile private var speechMsIn60s = 0L
+  @Volatile private var meanRmsInSpeech = 0.0
+
+  /** From the capture thread, per buffer. */
+  fun noteBuffer(atMs: Long, rmsLevel: Double, clippedFraction: Double) {
+    rms.add(atMs, rmsLevel)
+    clip.add(atMs, clippedFraction)
+  }
+
+  /** From LiveTranscriber, after each VAD feed: every speech span so far, on the capture clock. */
+  fun noteSpeechSpans(spans: List<Pair<Long, Long>>, nowMs: Long) {
+    val recent = spans.filter { it.second > nowMs - 60_000 }
+    speechMsIn60s = recent.sumOf { it.second - it.first }
+    meanRmsInSpeech = rms.meanIn(recent)
+  }
+
+  /** Recompute from the three signals. Logs every transition with its numbers; fans out on change. */
+  fun refreshWarning(freeBytes: Long) {
+    val loud = clip.mean() > CaptureWarnings.CLIP_FRACTION
+    val faint = CaptureWarnings.isFaint(speechMsIn60s, meanRmsInSpeech)
+    val next = CaptureWarnings.pick(
+      storageMinutesLeft = CaptureWarnings.minutesLeft(freeBytes),
+      loud = loud,
+      faint = faint,
+      storageWarnAtMinutes = STORAGE_WARN_MINUTES,
+    )
+    val before = warning
+    if (next?.kind != before?.kind) {
+      Log.i(
+        TAG,
+        "warning ${before?.kind} -> ${next?.kind}: clip=%.4f speechMs=%d meanRms=%.4f free=%dMB"
+          .format(clip.mean(), speechMsIn60s, meanRmsInSpeech, freeBytes / 1048576),
+      )
+      warning = next
+      fanOut { it.onWarningChanged(next) }
+    } else if (next != null && next.minutesLeft != before?.minutesLeft) {
+      warning = next // same kind, fresher number; the screen re-reads it on the next event
+    }
+  }
+
+  private fun clearWarnings() {
+    warning = null
+    speechMsIn60s = 0L
+    meanRmsInSpeech = 0.0
+  }
 
   /** The last mark made, for the record screen's caption and the notification. -1 when none. */
   @Volatile var lastMarkMs: Long = -1L
@@ -289,6 +343,7 @@ object CaptureController {
     level = 0f
     capturedMs = 0L
     lastMarkMs = -1L
+    clearWarnings()
     silenced = false
     stopping = false
     clearPersisted()
