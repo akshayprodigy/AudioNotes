@@ -140,6 +140,13 @@ attempt() {
   INSTALL_ERR=""
   build_or_die "${1:-}"
   echo "==> installing (-r keeps app data, and with it the downloaded models)"
+  # Not while the app is on screen. Android 15+ relaunches a foreground app's activity after an
+  # in-place update, and the debug build carries no JS bundle (Metro's job), so the relaunched
+  # MainActivity died with "Unable to load script" in the very process the first test class was
+  # instrumenting — reported as "Process crashed" with nothing else to read. Seen on the Pixel,
+  # 15 Sep, when the gate ran with the Library open.
+  "$ADB" shell am force-stop com.innocorelabs.verbale >/dev/null 2>&1 || true
+  "$ADB" shell input keyevent KEYCODE_HOME >/dev/null 2>&1 || true
   install_apk "$APK" && install_apk "$TEST_APK"
 }
 
@@ -160,6 +167,7 @@ fi
 
 FAILED=0
 : > /tmp/instr.skips
+: > /tmp/instr-run.out
 for CLASS in "${CLASSES[@]}"; do
   if [ -n "$FILTER" ] && [[ "$CLASS" != *"$FILTER"* ]]; then continue; fi
   echo
@@ -170,7 +178,13 @@ for CLASS in "${CLASSES[@]}"; do
   "$ADB" shell am instrument -w -r -e class "$CLASS" \
     com.innocorelabs.verbale.test/androidx.test.runner.AndroidJUnitRunner 2>&1 \
     | tee /tmp/instr.out | grep -E "^INSTRUMENTATION_STATUS: (test|class|stack)=|OK \(|FAILURES|Tests run" || true
-  grep -q "FAILURES\|Process crashed" /tmp/instr.out && FAILED=1 || true
+  # /tmp/instr.out is this class only; the whole run accumulates in /tmp/instr-run.out, so a
+  # crash in the first class is still readable after the last one has overwritten instr.out.
+  { echo "==> $CLASS"; cat /tmp/instr.out; } >> /tmp/instr-run.out
+  if grep -q "FAILURES\|Process crashed" /tmp/instr.out; then
+    FAILED=1
+    grep -m1 -E "INSTRUMENTATION_RESULT: (shortMsg|longMsg)=.*" /tmp/instr.out | sed 's/^/  /' || true
+  fi
   # A run that matched no class reports "OK (0 tests)" and exits clean, which is how a stale
   # class name went unnoticed. Nothing here is allowed to pass by not running.
   if grep -q "OK (0 tests)" /tmp/instr.out; then
@@ -199,7 +213,7 @@ done
 
 echo
 if [ "$FAILED" = "1" ]; then
-  echo "FAILED — full output in /tmp/instr.out"
+  echo "FAILED — full output in /tmp/instr-run.out (every class, in order)"
   exit 1
 fi
 echo "passed. What this run is actually gating:"
