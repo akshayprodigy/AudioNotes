@@ -1,0 +1,4 @@
+#!/bin/sh
+# Runs the gate before anything leaves this machine. Installed by `npm run hooks:install`
+# (git config core.hooksPath scripts/hooks). `git push --no-verify` bypasses it on purpose.
+exec "$(git rev-parse --show-toplevel)/scripts/gate.sh"
