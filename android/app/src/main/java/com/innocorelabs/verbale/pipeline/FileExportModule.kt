@@ -75,6 +75,9 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
    * only in how they lay the same document out — which is the property that makes "the Markdown
    * and the PDF are the same document" checkable rather than merely intended.
    */
+  /** A moment somebody marked while recording, resolved to what was said there (null: nothing). */
+  data class ExportHighlight(val atMs: Long, val text: String?)
+
   data class Content(
     val title: String,
     val createdAt: Long,
@@ -82,6 +85,7 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
     val narrative: String?,
     val items: List<ExportItem>,
     val turns: List<ExportTurn>,
+    val highlights: List<ExportHighlight> = emptyList(),
   )
 
   /**
@@ -170,13 +174,15 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
 
     // Read once, rendered four ways. Every format below gets the same corrections, the same merge
     // and the same order, because there is only one place any of that is decided.
+    val turns = turnsOf(utterances, nameById, edits)
     val content = Content(
       title = title,
       createdAt = createdAt,
       summary = summaryOf(minutes, edits),
       narrative = narrativeOf(minutes, edits),
       items = exportItems(items, minutes, edits),
-      turns = turnsOf(utterances, nameById, edits),
+      turns = turns,
+      highlights = highlightsFor(db.marks(meetingId).map { it.atMs }, turns),
     )
 
     if (format == "pdf") {
@@ -542,6 +548,27 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
      * however far somebody rewrites the wording, the moment it was said stays exactly where it was:
      * the one part of the line the user does not own is the one part that makes it checkable.
      */
+    /** How far ahead a mark may reach for the next words. Mirrors GAP_MS in highlights.ts. */
+    const val HIGHLIGHT_GAP_MS = 15_000L
+
+    /**
+     * Resolve marks to what was said — the Kotlin twin of `highlightsFor` in
+     * src/screens/meeting/highlights.ts, kept identical by ExportItemsTest replaying that file's
+     * fixture. Inside a turn takes the turn; a gap takes the next turn if it starts within
+     * HIGHLIGHT_GAP_MS; otherwise the time alone.
+     */
+    fun highlightsFor(marksMs: List<Long>, turns: List<ExportTurn>): List<ExportHighlight> {
+      val sorted = turns.sortedBy { it.startMs }
+      return marksMs.sorted().map { at ->
+        val inside = sorted.firstOrNull { it.startMs <= at && at <= it.endMs }
+        val hit = inside ?: sorted.firstOrNull { it.startMs > at && it.startMs - at <= HIGHLIGHT_GAP_MS }
+        ExportHighlight(at, hit?.text?.trim())
+      }
+    }
+
+    private fun highlightLine(h: ExportHighlight): String =
+      "[" + stamp(h.atMs) + "] " + (h.text ?: "(nothing said here yet)")
+
     private fun bullet(item: ExportItem): String =
       if (item.anchorStartMs == null) item.text else "[" + stamp(item.anchorStartMs) + "] " + item.text
 
@@ -551,6 +578,11 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
       sb.append("_").append(dateStr(c.createdAt)).append("_\n\n")
       c.summary?.let { sb.append(it).append("\n\n") }
       c.narrative?.let { sb.append("## Minutes\n\n").append(it).append("\n\n") }
+      if (c.highlights.isNotEmpty()) {
+        sb.append("## Highlights\n\n")
+        for (h in c.highlights) sb.append("- ").append(highlightLine(h)).append("\n")
+        sb.append("\n")
+      }
       for ((kind, heading) in SECTIONS) {
         val items = c.items.filter { it.kind == kind }
         if (items.isNotEmpty()) {
@@ -571,6 +603,11 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
       sb.append(c.title).append("\n").append(dateStr(c.createdAt)).append("\n\n")
       c.summary?.let { sb.append(it).append("\n\n") }
       c.narrative?.let { sb.append("MINUTES\n").append(it).append("\n\n") }
+      if (c.highlights.isNotEmpty()) {
+        sb.append("HIGHLIGHTS\n")
+        for (h in c.highlights) sb.append("  - ").append(highlightLine(h)).append("\n")
+        sb.append("\n")
+      }
       for ((kind, heading) in SECTIONS) {
         val items = c.items.filter { it.kind == kind }
         if (items.isNotEmpty()) {
@@ -634,6 +671,12 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
         blocks.add(PdfExport.Block(it, 11f, spaceBefore = 8f))
       }
 
+      if (c.highlights.isNotEmpty()) {
+        blocks.add(PdfExport.Block("Highlights", 14f, bold = true, spaceBefore = 22f))
+        for (h in c.highlights) {
+          blocks.add(PdfExport.Block("•  " + highlightLine(h), 11f, spaceBefore = 6f, indent = 8f))
+        }
+      }
       for ((kind, heading) in SECTIONS) {
         val items = c.items.filter { it.kind == kind }
         if (items.isEmpty()) continue

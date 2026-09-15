@@ -714,4 +714,51 @@ class ExportItemsTest {
     )
     assertEquals("- [1:30] A decision in between\n", sectionOf(md, "Decisions"))
   }
+
+  /**
+   * Marks: a moment tapped while recording. The document leads with them, before the decisions,
+   * each with its stamp — a highlight the reader forwards is exactly the thing they marked.
+   */
+  @Test fun highlightsLeadWithTheirStampAndComeBeforeDecisions() {
+    val c = FileExportModule.Content(
+      "T", 0L, null, null,
+      listOf(FileExportModule.ExportItem("decision", "We ship Friday.", 61_000L)),
+      emptyList(),
+      highlights = listOf(FileExportModule.ExportHighlight(2_500L, "First thing.")),
+    )
+    val md = FileExportModule.renderMarkdown(c)
+    assertTrue(md.contains("## Highlights"))
+    assertTrue(md.indexOf("## Highlights") < md.indexOf("## Decisions"))
+    assertTrue(md.contains("- [0:02] First thing."))
+    val txt = FileExportModule.renderText(c)
+    assertTrue(txt.contains("HIGHLIGHTS"))
+    assertTrue(txt.contains("[0:02] First thing."))
+    val blocks = FileExportModule.pdfBlocks(c).map { it.text }
+    assertTrue(blocks.indexOf("Highlights") in 0 until blocks.indexOf("Decisions"))
+    assertTrue(blocks.any { it.contains("[0:02] First thing.") })
+  }
+
+  @Test fun noMarksMeansNoHighlightsSection() {
+    val c = FileExportModule.Content("T", 0L, null, null, emptyList(), emptyList())
+    assertFalse(FileExportModule.renderMarkdown(c).contains("Highlights"))
+    assertFalse(FileExportModule.renderText(c).contains("HIGHLIGHTS"))
+  }
+
+  /**
+   * The same three-turn fixture as src/screens/__tests__/highlights.test.ts, the same three marks,
+   * the same answers: inside takes the turn, a gap takes the next turn within 15 s, nothing near
+   * gives no words. If the two rules drift, the exported document and the screen disagree about
+   * what somebody marked, and this is the test that says so.
+   */
+  @Test fun highlightsResolveExactlyAsTheScreenDoes() {
+    val turns = listOf(
+      FileExportModule.ExportTurn("S1", "First thing.", 1_000L, 4_000L),
+      FileExportModule.ExportTurn("S1", "Second thing.", 9_000L, 12_000L),
+      FileExportModule.ExportTurn("S1", "Third.", 30_000L, 33_000L),
+    )
+    val h = FileExportModule.highlightsFor(listOf(2_500L, 6_000L, 14_000L), turns)
+    assertEquals(listOf("First thing.", "Second thing.", null), h.map { it.text })
+    assertEquals(listOf(2_500L, 6_000L, 14_000L), h.map { it.atMs })
+    assertEquals(15_000L, FileExportModule.HIGHLIGHT_GAP_MS)
+  }
 }
