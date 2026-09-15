@@ -54,17 +54,24 @@ stage_cpp() {
 }
 
 # The phone is included when it is there and never required. Exactly one authorised device runs
-# the suite; anything else is reported and passed — a missing phone is a fact about the desk.
+# the suite — or the one ANDROID_SERIAL names, when emulators crowd the list (adb honours the
+# variable, so the suite lands on that phone). Anything else is reported and passed — a missing
+# phone is a fact about the desk. A suite that RUNS and fails fails the stage: an unconditional
+# `return 0` here once printed "FAILED — full output in /tmp/instr.out" and then "all clear".
 stage_device() {
   if [ -z "$ADB" ] || [ ! -x "$ADB" ]; then
     echo "    no adb — device tests skipped"; return 0
   fi
-  local listing authorised unauthorised
+  local listing authorised unauthorised named
   listing=$("$ADB" devices 2>/dev/null | tail -n +2 | awk 'NF')
   authorised=$(printf '%s\n' "$listing" | awk '$2=="device"' | wc -l | tr -d ' ')
   unauthorised=$(printf '%s\n' "$listing" | awk '$2=="unauthorized"' | wc -l | tr -d ' ')
-  if [ "$authorised" = "1" ]; then
-    npm run -s test:device
+  named=$(printf '%s\n' "$listing" | awk -v s="${ANDROID_SERIAL:-}" '$1==s && $2=="device"' | wc -l | tr -d ' ')
+  if [ "$named" = "1" ]; then
+    echo "    device tests on ${ANDROID_SERIAL} (ANDROID_SERIAL)"
+    npm run -s test:device; return $?
+  elif [ "$authorised" = "1" ]; then
+    npm run -s test:device; return $?
   elif [ "$unauthorised" != "0" ]; then
     echo "    phone attached but not authorised — accept the USB debugging prompt; device tests skipped"
   elif [ "$authorised" = "0" ]; then

@@ -62,8 +62,10 @@ npm run gate:test       # the gate's own test: it can fail, and it can skip
 `scripts/gate.sh` runs, in order and stopping at the first failure: TypeScript, jest, the scans
 (`check:egress`, `check:fence` and their tests, diarization constants, engine encapsulation, the
 live-transcript invariant), the 31 reconciler mutations, the Kotlin unit tests, the C++ build and
-ctest, and — **only if exactly one authorised phone is on adb** — `npm run test:device`. No phone
-is a skip with a message, never a failure.
+ctest, and — **only if exactly one authorised phone is on adb, or `ANDROID_SERIAL` names one of
+several** — `npm run test:device`. No phone is a skip with a message, never a failure. With the
+two emulators that usually sit next to the Pixel, that means `ANDROID_SERIAL=36091FDH30034G git
+push` (or export it in the shell) is what gets the device suite run.
 
 `git push --no-verify` bypasses it. That is deliberate; use it when you know why.
 
