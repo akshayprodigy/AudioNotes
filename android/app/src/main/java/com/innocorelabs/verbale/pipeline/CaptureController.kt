@@ -122,6 +122,12 @@ object CaptureController {
 
   /** Recompute from the three signals. Logs every transition with its numbers; fans out on change. */
   fun refreshWarning(freeBytes: Long) {
+    // Once every ~30 s, the numbers behind a warning that did NOT fire. The thresholds are first
+    // guesses argued with per phone (a Mac at full volume 20 cm from a Pixel 7 Pro clips nothing),
+    // and a transition log alone says nothing about how far from the line a quiet room sat.
+    if (++warningChecks % LEVEL_LOG_EVERY == 0) {
+      Log.d(TAG, "levels: clip=%.4f speechMs=%d meanRms=%.4f".format(clip.mean(), speechMsIn60s, meanRmsInSpeech))
+    }
     val loud = clip.mean() > CaptureWarnings.CLIP_FRACTION
     val faint = CaptureWarnings.isFaint(speechMsIn60s, meanRmsInSpeech)
     val next = CaptureWarnings.pick(
@@ -143,6 +149,10 @@ object CaptureController {
       warning = next // same kind, fresher number; the screen re-reads it on the next event
     }
   }
+
+  private var warningChecks = 0
+  /** refreshWarning runs about once a second (RecordingService.WARN_CHECK_EVERY_READS). */
+  private const val LEVEL_LOG_EVERY = 30
 
   private fun clearWarnings() {
     warning = null
