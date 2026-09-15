@@ -500,6 +500,7 @@ export function TextPrompt({
               { borderColor: colors.line, color: colors.ink, backgroundColor: colors.cardAlt },
             ]}
             multiline={multiline}
+            maxLength={multiline ? undefined : TextPrompt.SINGLE_LINE_MAX}
             autoFocus
             selectTextOnFocus={!multiline}
             returnKeyType={multiline ? 'default' : 'done'}
@@ -543,6 +544,11 @@ export function TextPrompt({
     </Modal>
   );
 }
+/**
+ * What a single-line prompt will hold. A title or a tag is a line; a whole document pasted into
+ * "Rename this meeting" once grew the field past the buttons, with no way out but emptying it.
+ */
+TextPrompt.SINGLE_LINE_MAX = 120;
 
 // ---------------------------------------------------------------------------------------------
 // Badges / chips
