@@ -10,6 +10,8 @@
 
 Spec: `docs/superpowers/specs/2026-09-15-local-gate-design.md`.
 
+> **SHIPPED 15 September 2026** — commits `dc86e41`, `f23625b`, `4a8f07e`, and the timings commit after them. Hook installed on this machine; first real push went out behind it.
+
 ---
 
 ## File structure
@@ -30,7 +32,7 @@ Nothing in `scripts/__tests__/test_gate.py` is discovered by the gate's own scan
 - Create: `scripts/__tests__/test_gate.py`
 - Create: `scripts/gate.sh`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 """
@@ -96,12 +98,12 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `python3 -m unittest discover -s scripts/__tests__ -p 'test_gate.py' -v`
 Expected: 3 errors, each `FileNotFoundError` for `scripts/gate.sh`.
 
-- [ ] **Step 3: Write the gate**
+- [x] **Step 3: Write the gate**
 
 ```bash
 #!/bin/bash
@@ -223,12 +225,12 @@ Then make it executable:
 
 Run: `chmod +x scripts/gate.sh`
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest discover -s scripts/__tests__ -p 'test_gate.py' -v`
 Expected: `Ran 3 tests ... OK`. The failing-stage test finishes in under a second (nothing real runs); the scans test in ~10 s; the device test in under a second.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/gate.sh scripts/__tests__/test_gate.py
@@ -243,7 +245,7 @@ git commit -m "feat(gate): one script for every check, and a test that watches i
 - Create: `scripts/hooks/pre-push`
 - Modify: `package.json` (the `scripts` block)
 
-- [ ] **Step 1: Write the hook**
+- [x] **Step 1: Write the hook**
 
 ```sh
 #!/bin/sh
@@ -254,7 +256,7 @@ exec "$(git rev-parse --show-toplevel)/scripts/gate.sh"
 
 Run: `chmod +x scripts/hooks/pre-push`
 
-- [ ] **Step 2: Add the npm scripts**
+- [x] **Step 2: Add the npm scripts**
 
 In `package.json`, inside `"scripts"`, after the `"test:device"` line, add:
 
@@ -264,17 +266,17 @@ In `package.json`, inside `"scripts"`, after the `"test:device"` line, add:
     "hooks:install": "git config core.hooksPath scripts/hooks && echo 'pre-push hook installed (scripts/hooks). git push --no-verify bypasses it.'",
 ```
 
-- [ ] **Step 3: Install and verify the hook is wired**
+- [x] **Step 3: Install and verify the hook is wired**
 
 Run: `npm run hooks:install && git config core.hooksPath && ls -l scripts/hooks/pre-push`
 Expected: `scripts/hooks`, and the file listed with `x` permission.
 
-- [ ] **Step 4: Prove the hook refuses a failing push without touching origin**
+- [x] **Step 4: Prove the hook refuses a failing push without touching origin**
 
 Run: `GATE_STAGES=scans GATE_FAKE_FAIL=scans git push --dry-run origin main; echo "exit=$?"`
 Expected: the gate output ending `gate: scans failed ... push refused`, and `exit=1`. (The hook inherits the environment, so the overrides reach it; `--dry-run` would not have sent anything anyway.)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/hooks/pre-push package.json
@@ -288,7 +290,7 @@ git commit -m "feat(gate): pre-push hook, and npm run gate / gate:test / hooks:i
 **Files:**
 - Modify: `docs/ANDROID_TESTING.md` — insert after the "Verifying the native core" section (after the paragraph that ends "...so pushed files show up as installed.")
 
-- [ ] **Step 1: Add the section**
+- [x] **Step 1: Add the section**
 
 ```markdown
 ---
@@ -310,7 +312,7 @@ is a skip with a message, never a failure. About three minutes without a phone, 
 `git push --no-verify` bypasses it. That is deliberate; use it when you know why.
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add docs/ANDROID_TESTING.md
@@ -323,17 +325,17 @@ git commit -m "docs: the gate, in the testing guide"
 
 **Files:** none — this is verification.
 
-- [ ] **Step 1: Full run by hand, phone attached**
+- [x] **Step 1: Full run by hand, phone attached**
 
 Run: `npm run gate 2>&1 | tail -30`
 Expected: seven `ok` lines and `gate: all clear in Ns`. Note each stage's time; the device stage should report 72 tests across 10 classes with zero skips (device-verify prints its own summary).
 
-- [ ] **Step 2: Push, and let the hook be the gate**
+- [x] **Step 2: Push, and let the hook be the gate**
 
 Run: `git push origin main`
 Expected: the gate runs again (the hook), ends `all clear`, then the push proceeds. If the phone was unplugged between steps, the device stage says so and passes.
 
-- [ ] **Step 3: Record the timings in the spec**
+- [x] **Step 3: Record the timings in the spec**
 
 Append to `docs/superpowers/specs/2026-09-15-local-gate-design.md`:
 
