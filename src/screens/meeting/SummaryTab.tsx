@@ -1,7 +1,10 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Icon, { type IconName } from '../../components/Icon';
-import { Raised, Slide, SoftButton, Txt } from '../../components/ui';
+import { IconButton, Raised, Slide, SoftButton, Txt } from '../../components/ui';
+import { ProvenanceButton } from './ItemProvenance';
+import { SectionHead } from './shared';
+import type { Highlight } from './highlights';
 import { radius, s, useTheme, type Colors } from '../../theme';
 import type { EditTarget, Item, Minute, Speaker } from '../../pipeline/types';
 import Llm from '../../native/NativeLlm';
@@ -38,6 +41,10 @@ export default function SummaryTab({
   minutes,
   speakers,
   speechMs,
+  highlights,
+  onOpenProvenance,
+  canPlay,
+  onRemoveMark,
   onWrite,
   onOpenTab,
   onCopy,
@@ -70,6 +77,11 @@ export default function SummaryTab({
   /** Open the paywall. Only ever reached from the locked card, which is the moment it means something. */
   onUpgrade?: () => void;
   writing: boolean;
+  /** Moments marked while recording, resolved to what was said (highlightsFor). */
+  highlights: Highlight[];
+  onOpenProvenance: (ms: number) => void;
+  canPlay: boolean;
+  onRemoveMark: (id: number) => void;
 }) {
   const { colors } = useTheme();
   const st = React.useMemo(() => makeStyles(colors), [colors]);
@@ -152,6 +164,28 @@ export default function SummaryTab({
 
   return (
     <ScrollView contentContainerStyle={st.pad} showsVerticalScrollIndicator={false}>
+      {highlights.length > 0 ? (
+        <View style={st.highlights}>
+          <SectionHead label="HIGHLIGHTS" count={highlights.length} colors={colors} />
+          {highlights.map(h => (
+            <Raised key={h.id} edge={colors.line} fill={colors.card} rad={radius.card} depth={4}>
+              <View style={st.highlight}>
+                <View style={st.flex}>
+                  <Txt variant="body" color={h.text ? colors.ink : colors.inkSoft}>
+                    {h.text ?? 'Nothing said here yet'}
+                  </Txt>
+                  <ProvenanceButton
+                    anchorStartMs={h.anchorStartMs}
+                    onOpen={onOpenProvenance}
+                    canPlay={canPlay}
+                  />
+                </View>
+                <IconButton icon="x" label="Remove this mark" onPress={() => onRemoveMark(h.id)} />
+              </View>
+            </Raised>
+          ))}
+        </View>
+      ) : null}
       <Slide>
         <Raised
           edge={colors.primaryEdge}
@@ -356,6 +390,9 @@ function Glance({
 function makeStyles(_c: Colors) {
   return StyleSheet.create({
     pad: { paddingHorizontal: s(16), paddingBottom: s(30), gap: s(14) },
+    highlights: { gap: s(10) },
+    highlight: { flexDirection: 'row', gap: s(10), padding: s(14), alignItems: 'flex-start' },
+    flex: { flex: 1, gap: s(8) },
     gist: { padding: s(18), gap: s(12) },
     headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     dim: { opacity: 0.8 },

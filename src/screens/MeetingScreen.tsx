@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { highlightsFor, type Mark } from './meeting/highlights';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { db } from '../db/queries';
 import { PipelineController } from '../pipeline/PipelineController';
@@ -83,6 +84,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const [items, setItems] = useState<Item[]>([]);
   const [utterances, setUtterances] = useState<Utterance[]>([]);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
+  const [marks, setMarks] = useState<Mark[]>([]);
   const [speechMs, setSpeechMs] = useState(0);
   const [reprocessing, setReprocessing] = useState(false);
   const [stage, setStage] = useState<string | null>(null);
@@ -233,7 +235,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
 
   const refresh = useCallback(async () => {
     await migrate();
-    const [mtg, mins, its, utts, segs, spk, eds, tgs] = await Promise.all([
+    const [mtg, mins, its, utts, segs, spk, eds, tgs, mks] = await Promise.all([
       db.getMeeting(meetingId),
       db.minutes(meetingId),
       // After `migrate()`, so a meeting recorded before items existed has been given them. A
@@ -245,6 +247,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
       db.speakers(meetingId),
       db.edits(meetingId).catch(() => []),
       db.tagsFor(meetingId).catch(() => []),
+      db.marks(meetingId).catch(() => []),
     ]);
     setMeeting(mtg ?? null);
     setMinutes(mins);
@@ -253,6 +256,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
     setSpeakers(spk);
     setEdits(toEditMap(eds));
     setTags(tgs);
+    setMarks(mks);
     setSpeechMs(segs.reduce((a, x) => a + (x.end_ms - x.start_ms), 0));
     // "Is there anything written about this meeting yet", which is the SAME question
     // `nothingWritten` asks below and the poll under this hook stops on. It returned `mins.length`,
@@ -263,6 +267,18 @@ export default function MeetingScreen({ route, navigation }: Props) {
     // looks wrong — `working` and `empty` read both tables — it is silent waste on the phone.
     return mins.length + its.length;
   }, [meetingId, migrate]);
+
+  // Marks are moments; the words at each moment are resolved here, at render time, so a
+  // reprocess that rewrites the transcript never touches the mark — see highlightsFor.
+  const highlights = useMemo(() => highlightsFor(marks, utterances), [marks, utterances]);
+  const onRemoveMark = useCallback(
+    (id: number) => {
+      db.removeMark(id)
+        .then(() => refresh())
+        .catch(() => {});
+    },
+    [refresh],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -1015,6 +1031,10 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 minutes={minutes}
                 speakers={speakers}
                 speechMs={speechMs}
+                highlights={highlights}
+                onOpenProvenance={openProvenance}
+                canPlay={player.available}
+                onRemoveMark={onRemoveMark}
                 onWrite={() => onReprocess(true)}
                 onOpenTab={setTab}
                 onCopy={text => copyText(text, 'Summary')}

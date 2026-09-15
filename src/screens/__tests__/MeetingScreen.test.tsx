@@ -58,6 +58,8 @@ beforeEach(() => {
   (db.speakers as jest.Mock).mockResolvedValue([]);
   (db.edits as jest.Mock).mockResolvedValue([]);
   (db.tagsFor as jest.Mock).mockResolvedValue([]);
+  (db.marks as jest.Mock).mockResolvedValue([]);
+  (db.removeMark as jest.Mock).mockResolvedValue(undefined);
   (db.getSetting as jest.Mock).mockResolvedValue(null);
   (db.setSetting as jest.Mock).mockResolvedValue(undefined);
 });
@@ -239,4 +241,22 @@ test('the export picker offers all four formats, subtitles included', async () =
   expect(picker!.props.actions.map((a: { label: string }) => a.label)).toEqual([
     'PDF', 'Markdown', 'Plain text', 'Subtitles (.srt)',
   ]);
+});
+
+/**
+ * A moment marked while recording comes back as a highlight: the sentence said there, on the
+ * Summary tab, with its anchor. The resolution rule lives in highlightsFor and has its own tests;
+ * this pins that the screen reads marks at all and hands them to the tab.
+ */
+test('a marked moment shows as a highlight with the sentence said there', async () => {
+  (db.marks as jest.Mock).mockResolvedValue([{ id: 1, atMs: 2500 }]);
+  (db.utterances as jest.Mock).mockResolvedValue([
+    { id: 'u1', meetingId: 'm1', speakerId: 'S1', startMs: 1000, endMs: 4000, text: 'We ship Friday.' },
+  ]);
+  const tree = await render();
+  const texts = tree.root
+    .findAll(n => typeof n.props.children === 'string')
+    .map(n => n.props.children as string);
+  expect(texts).toContain('HIGHLIGHTS');
+  expect(texts).toContain('We ship Friday.');
 });
