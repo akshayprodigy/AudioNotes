@@ -93,6 +93,45 @@ object CaptureController {
   /** Live input level 0..1, updated by RecordingService each buffer; read by the UI meter. */
   @Volatile var level: Float = 0f
 
+  /** Bytes written so far ÷ 32: the capture clock, pause-adjusted, the one the transcript uses. */
+  @Volatile var capturedMs: Long = 0L
+
+  /** The last mark made, for the record screen's caption and the notification. -1 when none. */
+  @Volatile var lastMarkMs: Long = -1L
+
+  /**
+   * Mark the current moment. Returns the moment, or -1 when nothing is recording.
+   *
+   * Writes the row itself so every entry point — the screen, the PiP window, the notification —
+   * lands in one place, and vibrates once so a tap made blind on a phone face-down on the table
+   * is felt. A mark while paused records the current position; it is harmless.
+   */
+  fun mark(ctx: Context): Long {
+    val id = currentMeetingId ?: return -1L
+    if (!isRecording) return -1L
+    val at = capturedMs
+    try {
+      AudioDb.get(ctx).addMark(id, at)
+    } catch (e: Exception) {
+      Log.w(TAG, "mark not stored", e)
+      return -1L
+    }
+    lastMarkMs = at
+    try {
+      val vib = ctx.getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+      if (vib != null) {
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
+          vib.vibrate(android.os.VibrationEffect.createOneShot(40, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+        } else {
+          @Suppress("DEPRECATION") vib.vibrate(40)
+        }
+      }
+    } catch (_: Exception) { /* no haptics is not a failed mark */ }
+    Log.i(TAG, "marked ${at}ms in $id")
+    fanOut { it.onMarked(at) }
+    return at
+  }
+
   /**
    * True while the system has muted our capture (phone call, privacy toggle, or another app
    * holding the mic). The recording is still running and the file still grows — with silence —
@@ -248,6 +287,8 @@ object CaptureController {
     pausedTotalMs = 0L
     pausedAtMs = 0L
     level = 0f
+    capturedMs = 0L
+    lastMarkMs = -1L
     silenced = false
     stopping = false
     clearPersisted()

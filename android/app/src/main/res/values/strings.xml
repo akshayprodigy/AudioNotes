@@ -10,6 +10,10 @@
     <string name="notif_channel_recording_desc">Shown while Verbale is recording a meeting</string>
 
     <string name="notif_title_recording">Verbale — recording</string>
+    <string name="notif_action_mark">Mark</string>
+    <string name="notif_body_marked">Marked %1$s</string>
+    <string name="pip_action_mark">Mark</string>
+    <string name="pip_action_mark_desc">Mark this moment</string>
     <string name="notif_title_paused">Verbale — paused</string>
     <string name="notif_title_silenced">Verbale — mic unavailable</string>
 

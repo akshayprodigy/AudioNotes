@@ -43,6 +43,13 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
     override fun onCaptureEnded(meetingId: String, reason: String) = emitState()
     override fun onPausedChanged(paused: Boolean) = emitState()
     override fun onSilencedChanged(silenced: Boolean) = emitState()
+    // A mark made from the PiP window or the notification reaches a visible record screen too.
+    override fun onMarked(atMs: Long) {
+      val map = WritableNativeMap().apply { putDouble("atMs", atMs.toDouble()) }
+      try {
+        ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java).emit("onCaptureMark", map)
+      } catch (_: Exception) {}
+    }
   }
 
   private fun emitState() {
@@ -251,6 +258,13 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
   fun setPaused(paused: Boolean, promise: Promise) {
     CaptureController.applyPause(paused)
     promise.resolve(CaptureController.paused)
+  }
+
+  /** Mark this moment. Resolves the moment on the capture clock, or null when nothing is recording. */
+  @ReactMethod
+  fun mark(promise: Promise) {
+    val at = CaptureController.mark(reactApplicationContext)
+    if (at < 0) promise.resolve(null) else promise.resolve(at.toDouble())
   }
 
   /**

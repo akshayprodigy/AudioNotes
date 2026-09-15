@@ -32,4 +32,6 @@ interface CaptureListener {
 
   /** The system muted or unmuted our input (call, privacy toggle, another app took the mic). */
   fun onSilencedChanged(silenced: Boolean) {}
+  /** A mark was made at [atMs] on the capture clock — from the screen, the PiP window or the notification. */
+  fun onMarked(atMs: Long) {}
 }

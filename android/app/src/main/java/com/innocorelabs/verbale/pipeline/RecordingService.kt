@@ -40,6 +40,13 @@ class RecordingService : Service(), CaptureListener {
     const val EXTRA_CAP_MS = "capMs"
     const val SAMPLE_RATE = 16000
     const val BYTES_PER_MS = 32 // 16000 samples/s * 2 bytes / 1000 ms
+    /** How long "Marked m:ss" stays in the notification body before the normal line returns. */
+    private const val MARK_CAPTION_MS = 5_000L
+    /** m:ss, or h:mm:ss past the hour — the same shape provenanceLabel prints on screen. */
+    fun stamp(ms: Long): String {
+      val total = maxOf(0L, ms / 1000); val sec = total % 60; val min = (total / 60) % 60; val hr = total / 3600
+      return if (hr > 0) "%d:%02d:%02d".format(hr, min, sec) else "%d:%02d".format(min, sec)
+    }
     // ".v2" because importance cannot be raised on a channel that exists. The first version was
     // IMPORTANCE_LOW, and on the Pixel 7 Pro running Android 17 that meant the recording
     // notification — the only place Pause and Stop live once the app is in the background —
@@ -89,6 +96,7 @@ class RecordingService : Service(), CaptureListener {
     /** Sent by the notification's buttons. */
     const val ACTION_STOP = "com.innocorelabs.verbale.action.STOP_RECORDING"
     const val ACTION_PAUSE = "com.innocorelabs.verbale.action.PAUSE_RECORDING"
+    const val ACTION_MARK = "com.innocorelabs.verbale.action.MARK_RECORDING"
     const val ACTION_RESUME = "com.innocorelabs.verbale.action.RESUME_RECORDING"
   }
 
@@ -131,6 +139,7 @@ class RecordingService : Service(), CaptureListener {
   }
 
   override fun onPausedChanged(paused: Boolean) = refreshNotification()
+  override fun onMarked(atMs: Long) = refreshNotification()
   override fun onSilencedChanged(silenced: Boolean) = refreshNotification()
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -161,6 +170,7 @@ class RecordingService : Service(), CaptureListener {
         }.start()
         return START_NOT_STICKY
       }
+      ACTION_MARK -> CaptureController.mark(applicationContext)
       ACTION_PAUSE, ACTION_RESUME -> {
         val want = intent.action == ACTION_PAUSE
         if (!CaptureController.applyPause(want)) {
@@ -326,6 +336,7 @@ class RecordingService : Service(), CaptureListener {
           }
         }
         var reads = 0
+        var written = 0L
         try {
           while (recording) {
             val n = record.read(buf, 0, buf.size)
@@ -339,6 +350,8 @@ class RecordingService : Service(), CaptureListener {
                   CaptureController.level = 0f
                 } else {
                   out.write(buf, 0, n)
+                  written += n
+                  CaptureController.capturedMs = written / BYTES_PER_MS
                   CaptureController.level = computeLevel(buf, n, CaptureController.level)
                   if (prefix != null && prefixLen < prefix.size) {
                     val take = minOf(n, prefix.size - prefixLen)
@@ -686,9 +699,12 @@ class RecordingService : Service(), CaptureListener {
       paused -> getString(R.string.notif_title_paused)
       else -> getString(R.string.notif_title_recording)
     }
+    val markMs = CaptureController.lastMarkMs
+    val markFresh = markMs >= 0 && CaptureController.capturedMs - markMs < MARK_CAPTION_MS
     val body = when {
       silenced -> getString(R.string.notif_body_silenced)
       paused -> getString(R.string.notif_body_paused)
+      markFresh -> getString(R.string.notif_body_marked, stamp(markMs))
       else -> getString(R.string.notif_body_recording)
     }
 
@@ -727,6 +743,7 @@ class RecordingService : Service(), CaptureListener {
     } else {
       b.addAction(0, getString(R.string.notif_action_pause), serviceIntent(ACTION_PAUSE, 1))
     }
+    b.addAction(0, getString(R.string.notif_action_mark), serviceIntent(ACTION_MARK, 4))
     b.addAction(0, getString(R.string.notif_action_stop), serviceIntent(ACTION_STOP, 3))
 
     applyPromotedOngoing(b, paused, silenced)

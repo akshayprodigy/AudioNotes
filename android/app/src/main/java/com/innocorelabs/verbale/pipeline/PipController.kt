@@ -19,6 +19,7 @@ import com.innocorelabs.verbale.R
 object PipController {
   private const val REQ_PAUSE = 1
   private const val REQ_STOP = 2
+  private const val REQ_MARK = 3
 
   /** Phone PiP is effectively API 26+; guard so API 24-25 (minSdk) and PiP-disabled devices fall back. */
   fun isSupported(activity: Activity): Boolean =
@@ -39,9 +40,15 @@ object PipController {
       activity.getString(R.string.pip_action_stop_desc),
       pending(activity, REQ_STOP, PipActionReceiver.ACTION_STOP),
     )
+    val mark = RemoteAction(
+      Icon.createWithResource(activity, R.drawable.ic_pip_mark),
+      activity.getString(R.string.pip_action_mark),
+      activity.getString(R.string.pip_action_mark_desc),
+      pending(activity, REQ_MARK, PipActionReceiver.ACTION_MARK),
+    )
     return PictureInPictureParams.Builder()
       .setAspectRatio(Rational(16, 9))
-      .setActions(listOf(toggle, stop))
+      .setActions(listOf(toggle, mark, stop))
       .build()
   }
 

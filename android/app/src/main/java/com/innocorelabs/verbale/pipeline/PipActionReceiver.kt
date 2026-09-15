@@ -19,6 +19,7 @@ class PipActionReceiver : BroadcastReceiver() {
         // Swap the icon (Pause -> Resume) while still in PiP.
         MainActivity.current?.let { PipController.updateParams(it) }
       }
+      ACTION_MARK -> CaptureController.mark(context.applicationContext)
       ACTION_RESUME -> {
         CaptureController.applyPause(false)
         MainActivity.current?.let { PipController.updateParams(it) }
@@ -52,5 +53,6 @@ class PipActionReceiver : BroadcastReceiver() {
     const val ACTION_PAUSE = "com.innocorelabs.verbale.pip.PAUSE"
     const val ACTION_RESUME = "com.innocorelabs.verbale.pip.RESUME"
     const val ACTION_STOP = "com.innocorelabs.verbale.pip.STOP"
+    const val ACTION_MARK = "com.innocorelabs.verbale.pip.MARK"
   }
 }

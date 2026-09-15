@@ -69,6 +69,10 @@ export interface Spec extends TurboModule {
   // was private. `elapsedMs` excludes paused time so the timer matches the audio on disk.
   setPaused(paused: boolean): Promise<boolean>;
 
+  // Mark this moment on the capture clock. Null when nothing is recording. The same call the
+  // PiP window and the notification make; all three land in CaptureController.mark.
+  mark(): Promise<number | null>;
+
   // Delete audio for meetings past the retention window (Settings > Keep the audio). Returns how
   // many were swept. Never touches a meeting without a transcript — the audio is the only copy of
   // a meeting that failed to transcribe — nor the one being recorded right now.
