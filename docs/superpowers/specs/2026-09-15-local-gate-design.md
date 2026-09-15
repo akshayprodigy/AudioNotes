@@ -55,3 +55,17 @@ another claim nothing can see.
 
 `docs/ANDROID_TESTING.md` gains a short "The gate" section: how to install the hook, how to run
 it by hand, what it skips without a phone, and that `--no-verify` exists.
+
+## Measured, 15 September
+
+Two runs on the development Mac, warm caches, no phone attached (the Pixel had just dropped off
+USB): by hand `npm run gate` **114 s**; by the hook on the next push **87 s**. Per stage: types
+2–3 s · jest 2–5 s (362 tests; jest's cache makes an unchanged tree cheap — a real change costs
+~40 s) · scans 2–3 s · reconciler mutations 70–78 s (the floor of every run: 31 gradle test
+invocations) · Kotlin 4–5 s when up to date, ~60 s after a change · C++ 3–24 s · device 0 s
+skipped. With the Pixel attached the device stage adds the 72-test suite, measured at about five
+minutes the previous evening. So: **about two minutes without a phone, about seven with**, and the
+mutation harness is where any future speed-up lives.
+
+The hook has refused a push once already, in Task 2's dry run with a forced failing stage, and
+passed one for real: `8020e1d..4a8f07e main -> main` went out behind an all-clear.
