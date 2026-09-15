@@ -14,7 +14,9 @@ import android.media.AudioRecord
 import android.media.AudioRecordingConfiguration
 import android.media.MediaRecorder
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
@@ -99,6 +101,15 @@ class RecordingService : Service(), CaptureListener {
     const val ACTION_PAUSE = "com.innocorelabs.verbale.action.PAUSE_RECORDING"
     const val ACTION_MARK = "com.innocorelabs.verbale.action.MARK_RECORDING"
     const val ACTION_RESUME = "com.innocorelabs.verbale.action.RESUME_RECORDING"
+
+    /** See [StartRoute]. Control actions route on their name; anything else needs a meeting to capture. */
+    fun routeFor(action: String?, hasMeeting: Boolean): StartRoute = when (action) {
+      ACTION_STOP -> StartRoute.STOP
+      ACTION_MARK -> StartRoute.MARK
+      ACTION_PAUSE -> StartRoute.PAUSE
+      ACTION_RESUME -> StartRoute.RESUME
+      else -> if (hasMeeting) StartRoute.CAPTURE else StartRoute.BAIL
+    }
   }
 
   @Volatile private var recording = false
@@ -140,23 +151,38 @@ class RecordingService : Service(), CaptureListener {
   }
 
   override fun onPausedChanged(paused: Boolean) = refreshNotification()
-  override fun onMarked(atMs: Long) = refreshNotification()
+  /**
+   * Show "Marked m:ss" now, and take it down again when its window closes. The body is only ever
+   * rebuilt on an event or the minute tick, so without the second refresh the caption stood until
+   * the next tick — "Marked 2:32" was still in the shade a full minute later on the Pixel.
+   */
+  override fun onMarked(atMs: Long) {
+    refreshNotification()
+    mainHandler.postDelayed({ if (recording) refreshNotification() }, MARK_CAPTION_MS + 250L)
+  }
   override fun onWarningChanged(warning: CaptureWarnings.Warning?) = refreshNotification()
   override fun onSilencedChanged(silenced: Boolean) = refreshNotification()
 
+  /**
+   * Where an intent goes. A notification or PiP button carries an action and no meeting extras,
+   * so every control action must be routed on its name alone — one that is not falls to BAIL and
+   * stopSelf() ends the meeting, which is how Mark stopped a recording on the Pixel. Decided here,
+   * as a pure function, so StartRouteTest can hold every action against hasMeeting=false.
+   */
+  enum class StartRoute { STOP, MARK, PAUSE, RESUME, CAPTURE, BAIL }
+
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    // ---- Control actions ----
-    //
-    // These MUST be handled before the meeting/path guard below: a notification button carries an
-    // action and no extras, so falling through would hit that guard and stopSelf() — the Pause
-    // button would end the meeting.
-    when (intent?.action) {
-      ACTION_STOP -> {
+    val id = intent?.getStringExtra(EXTRA_MEETING_ID)
+    val path = intent?.getStringExtra(EXTRA_AUDIO_PATH)
+    // One expression, one start mode per route: a branch cannot forget to return and run on into
+    // another's code, which is the shape the fall-through bug had.
+    return when (routeFor(intent?.action, id != null && path != null)) {
+      StartRoute.STOP -> {
         // Tear the service down here rather than relying on CaptureController.stop(), which
         // returns at its first line whenever currentMeetingId is null — exactly the state a
         // process restart used to leave behind, making this button permanently inert.
         Thread {
-          val id = try { CaptureController.stop(applicationContext) } catch (e: Exception) {
+          val stopped = try { CaptureController.stop(applicationContext) } catch (e: Exception) {
             Log.e(TAG, "stop failed", e)
             null
           }
@@ -164,50 +190,52 @@ class RecordingService : Service(), CaptureListener {
           // headlessly, not just a 'captured' meeting waiting on the app to be reopened.
           // Guarded: a background-FGS-start rejection must not crash this service — the
           // Library sweep is the fallback that picks it up later.
-          if (id != null) {
-            try { ProcessingService.enqueue(applicationContext, id) }
-            catch (e: Exception) { Log.w(TAG, "auto-enqueue after notification stop failed for $id", e) }
+          if (stopped != null) {
+            try { ProcessingService.enqueue(applicationContext, stopped) }
+            catch (e: Exception) { Log.w(TAG, "auto-enqueue after notification stop failed for $stopped", e) }
           }
           stopSelfSafely()
         }.start()
-        return START_NOT_STICKY
+        START_NOT_STICKY
       }
-      ACTION_MARK -> CaptureController.mark(applicationContext)
-      ACTION_PAUSE, ACTION_RESUME -> {
-        val want = intent.action == ACTION_PAUSE
+      StartRoute.MARK -> {
+        CaptureController.mark(applicationContext)
+        START_STICKY
+      }
+      StartRoute.PAUSE, StartRoute.RESUME -> {
+        val want = intent!!.action == ACTION_PAUSE
         if (!CaptureController.applyPause(want)) {
           Log.w(TAG, "pause=$want ignored (recording=${CaptureController.isRecording}, already=${CaptureController.paused})")
         }
         refreshNotification()
-        return START_STICKY
+        START_STICKY
+      }
+      StartRoute.BAIL -> {
+        // START_REDELIVER_INTENT should always hand the original intent back, so a null one means
+        // we have nothing to capture into. Showing a "Recording" notification while writing nothing
+        // is worse than not running at all — bail out instead of becoming a zombie service.
+        Log.w(TAG, "onStartCommand with no meeting/audio path; stopping instead of running idle")
+        stopSelf()
+        START_NOT_STICKY
+      }
+      StartRoute.CAPTURE -> {
+        meetingId = id
+        audioPath = path
+        capMs = intent?.getLongExtra(EXTRA_CAP_MS, 0L) ?: 0L
+        // Rehydrate the shared state BEFORE the notification is built, or a service restarted by
+        // START_REDELIVER_INTENT runs the microphone while CaptureController still reads "idle" —
+        // which is what made Stop a no-op and let a second session open over this same file.
+        CaptureController.adopt(applicationContext, id!!, System.currentTimeMillis(), path!!)
+        startInForeground()
+        acquireWakeLock()
+        if (!recording) startCapture(path)
+        startNotificationTicker()
+        // REDELIVER (not STICKY): if the process is killed, Android restarts us with THIS intent, so
+        // meetingId/audioPath survive and capture actually resumes. With START_STICKY the intent comes
+        // back null and the service would run without ever calling startCapture().
+        START_REDELIVER_INTENT
       }
     }
-
-    val id = intent?.getStringExtra(EXTRA_MEETING_ID)
-    val path = intent?.getStringExtra(EXTRA_AUDIO_PATH)
-    if (id == null || path == null) {
-      // START_REDELIVER_INTENT should always hand the original intent back, so a null one means
-      // we have nothing to capture into. Showing a "Recording" notification while writing nothing
-      // is worse than not running at all — bail out instead of becoming a zombie service.
-      Log.w(TAG, "onStartCommand with no meeting/audio path; stopping instead of running idle")
-      stopSelf()
-      return START_NOT_STICKY
-    }
-    meetingId = id
-    audioPath = path
-    capMs = intent?.getLongExtra(EXTRA_CAP_MS, 0L) ?: 0L
-    // Rehydrate the shared state BEFORE the notification is built, or a service restarted by
-    // START_REDELIVER_INTENT runs the microphone while CaptureController still reads "idle" —
-    // which is what made Stop a no-op and let a second session open over this same file.
-    CaptureController.adopt(applicationContext, id, System.currentTimeMillis(), path)
-    startInForeground()
-    acquireWakeLock()
-    if (!recording) startCapture(path)
-    startNotificationTicker()
-    // REDELIVER (not STICKY): if the process is killed, Android restarts us with THIS intent, so
-    // meetingId/audioPath survive and capture actually resumes. With START_STICKY the intent comes
-    // back null and the service would run without ever calling startCapture().
-    return START_REDELIVER_INTENT
   }
 
   // Keep the CPU running so capture continues with the screen off / device idle. The foreground
@@ -626,6 +654,7 @@ class RecordingService : Service(), CaptureListener {
    * that does not exist.
    */
   @Volatile private var foregrounded = false
+  private val mainHandler = Handler(Looper.getMainLooper())
 
   private fun refreshNotification() {
     if (!foregrounded) return
