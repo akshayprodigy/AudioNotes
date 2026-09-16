@@ -178,12 +178,24 @@ class ProcessingService : Service() {
   private fun startForegroundSafe() {
     createChannel()
     val n = buildNotification(LABEL_TRANSCRIBING)
+    notificationText = LABEL_TRANSCRIBING
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
       startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
     else startForeground(NOTIF_ID, n)
   }
-  private fun updateNotification(text: String) =
+  /**
+   * What the notification currently says. Posted only on a change: onStage now fires once per
+   * ASR window and once per diarization chunk (585 of them on a five-minute meeting), and
+   * Android rate-limits updates at five a second — "Shedding notify (update) … rate limit (5.0)
+   * exceeded" — dropping whichever post came next, which on the Pixel was the pause line.
+   */
+  @Volatile private var notificationText: String? = null
+
+  private fun updateNotification(text: String) {
+    if (text == notificationText) return
+    notificationText = text
     NotificationManagerCompat.from(this).notify(NOTIF_ID, buildNotification(text))
+  }
   private fun buildNotification(text: String): android.app.Notification =
     NotificationCompat.Builder(this, CHANNEL_ID)
       .setSmallIcon(R.drawable.ic_notification_rec)
