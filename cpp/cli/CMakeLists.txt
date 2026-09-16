@@ -265,6 +265,12 @@ audionotes_add_test(test_evidence_record
   ${CORE}/minutes/evidence_record.cpp
   ${CORE}/minutes/fence.cpp)
 
+# Sub-project 5: the Ask prompt and its validator, off a device and off a model.
+audionotes_add_test(test_ask
+  ${CORE}/tests/test_ask.cpp
+  ${CORE}/minutes/ask.cpp
+  ${CORE}/minutes/fence.cpp)
+
 # Sub-project 5: sentence embeddings against the real model (skips itself without the file).
 audionotes_add_test(test_embed
   ${CORE}/tests/test_embed.cpp

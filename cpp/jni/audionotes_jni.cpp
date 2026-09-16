@@ -34,6 +34,7 @@
 #include "diar/span_map.h"
 #include "llm/embed_engine.h"
 #include "llm/llama_engine.h"
+#include "minutes/ask.h"
 #include "minutes/evidence.h"
 #include "minutes/evidence_record.h"
 #include "minutes/llm_minutes.h"
@@ -726,6 +727,46 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeValidateRecord(
   const audionotes::ItemRecord v =
       audionotes::validateRecord(r, windowFrom(env, jOrdinals, jSpeakers, jTexts));
   return env->NewStringUTF(audionotes::toJson(v).c_str());
+}
+
+// ---- Ask this meeting (sub-project 5) ------------------------------------------------------
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeAskNothing(JNIEnv* env, jobject) {
+  return env->NewStringUTF(audionotes::kAskNothing);
+}
+
+// Parallel arrays: speakers[i], startMs[i], texts[i] are passage i+1.
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeAskPrompt(
+    JNIEnv* env, jobject /*thiz*/, jstring jQuestion, jobjectArray jSpeakers, jlongArray jStartMs,
+    jobjectArray jTexts) {
+  const auto speakers = jstrArray(env, jSpeakers);
+  const auto starts = jlongVec(env, jStartMs);
+  const auto texts = jstrArray(env, jTexts);
+  std::vector<audionotes::AskPassage> passages;
+  for (size_t i = 0; i < texts.size() && i < speakers.size() && i < starts.size(); ++i) {
+    passages.push_back({speakers[i], static_cast<long>(starts[i]), texts[i]});
+  }
+  return env->NewStringUTF(audionotes::askPrompt(jstr(env, jQuestion), passages).c_str());
+}
+
+// {"text":…,"cites":[…],"nothing":bool}
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeValidateAnswer(
+    JNIEnv* env, jobject /*thiz*/, jstring jText, jint nPassages) {
+  const audionotes::AskAnswer a = audionotes::validateAnswer(jstr(env, jText), static_cast<int>(nPassages));
+  std::string esc;
+  jsonEscape(a.text, esc);
+  std::string out = "{\"text\":\"" + esc + "\",\"cites\":[";
+  for (size_t i = 0; i < a.cites.size(); ++i) {
+    if (i) out += ",";
+    out += std::to_string(a.cites[i]);
+  }
+  out += "],\"nothing\":";
+  out += a.nothing ? "true" : "false";
+  out += "}";
+  return env->NewStringUTF(out.c_str());
 }
 
 }  // namespace

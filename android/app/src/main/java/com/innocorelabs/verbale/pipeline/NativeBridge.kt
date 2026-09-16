@@ -217,6 +217,14 @@ object NativeBridge {
    * a date not found in a cited turn comes back blank with confidence low.
    */
   external fun nativeValidateRecord(json: String, ordinals: IntArray, speakers: Array<String>, texts: Array<String>): String
+
+  // ---- Ask this meeting (sub-project 5). The prompt is built in C++ so the fence scan sees it. ----
+  /** The refusal phrase the model is told to write and the validator treats as "no answer". */
+  external fun nativeAskNothing(): String
+  /** Passages numbered [1]..[n] from the parallel arrays, then the question; both fenced. */
+  external fun nativeAskPrompt(question: String, speakers: Array<String>, startMs: LongArray, texts: Array<String>): String
+  /** `{"text":…,"cites":[…],"nothing":bool}` — out-of-range cites removed, none left → nothing. */
+  external fun nativeValidateAnswer(text: String, nPassages: Int): String
   external fun nativeLlmFree(handle: Long)
 
   // ---- Embeddings: meaning search and Ask's retrieval. Same load/use/free shape as the LLM. ----
