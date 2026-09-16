@@ -37,4 +37,14 @@ class StageRatesTest {
   @Test fun theKeyIsNamespacedSoTheQueryCanFindEveryStageAtOnce() {
     assertEquals("rate.asr", StageRates.key("asr"))
   }
+
+  /**
+   * A thermal pause is wall time, not work. On the Pixel the first run's diarization stage sat
+   * paused for 110 s of a 335 s meeting and would have taught 0.33x of pure waiting.
+   */
+  @Test fun timeSpentPausedIsNotTheStagesSpeed() {
+    assertEquals(0.30, StageRates.measured(stageMs = 210_500L, pausedMs = 110_000L, audioMs = 335_000L), 1e-9)
+    assertEquals(0.0, StageRates.measured(stageMs = 5_000L, pausedMs = 9_000L, audioMs = 335_000L), 1e-9)
+    assertEquals(0.0, StageRates.measured(stageMs = 5_000L, pausedMs = 0L, audioMs = 0L), 1e-9)
+  }
 }

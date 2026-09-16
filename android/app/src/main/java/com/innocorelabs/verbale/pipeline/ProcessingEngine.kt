@@ -79,11 +79,14 @@ class ProcessingEngine(
       // stage happened to log next — enough to make a stage look 10x slower than it measures in
       // isolation.
       val audioMs = File(audioPath).length() / 32
-      fun stageDone(stage: String, startedAt: Long) {
+      // [pausedAtStart] is `pausedMs` when the stage began: a thermal pause inside the stage is
+      // wall time, not work, and must not teach the ETA that this phone is slow.
+      fun stageDone(stage: String, startedAt: Long, pausedAtStart: Long) {
         val ms = System.currentTimeMillis() - startedAt
-        val rt = if (audioMs > 0) ms.toDouble() / audioMs else 0.0
-        Log.i(TAG, "stage=%s %dms (%.2fx realtime) audio=%ds %s"
-          .format(stage, ms, rt, audioMs / 1000, meetingId))
+        val paused = pausedMs - pausedAtStart
+        val rt = StageRates.measured(ms, paused, audioMs)
+        Log.i(TAG, "stage=%s %dms (%.2fx realtime, %dms paused) audio=%ds %s"
+          .format(stage, ms, rt, paused, audioMs / 1000, meetingId))
         // What this phone learns for the next ETA. Never on a cancelled stage: a run cut short
         // measures the cut, not the stage.
         if (!cancelled) {
@@ -95,9 +98,9 @@ class ProcessingEngine(
         awaitClearance()
         listener.onStage("vad", 0, 1)
         val modelPath = ensureVadModel()
-        val t0 = System.currentTimeMillis()
+        val t0 = System.currentTimeMillis(); val p0 = pausedMs
         val seg = NativeBridge.nativeVad(audioPath, modelPath, RecordingService.SAMPLE_RATE)
-        stageDone("vad", t0)
+        stageDone("vad", t0, p0)
         db.replaceSegments(meetingId, seg)
         db.setStatus(meetingId, "vad")
         listener.onStage("vad", 1, 1)
@@ -123,7 +126,7 @@ class ProcessingEngine(
           val n = spans.size / 2
           val starts = LongArray(n) { spans[it * 2] }
           val ends = LongArray(n) { spans[it * 2 + 1] }
-          val t0 = System.currentTimeMillis()
+          val t0 = System.currentTimeMillis(); val p0 = pausedMs
 
           // The language SPOKEN in the meeting, from Settings, resolved HERE rather than at
           // capture. Every entry point then behaves the same — a recording started from the app,
@@ -155,7 +158,7 @@ class ProcessingEngine(
           // leave `status = asr` over a partial transcript, and the next run's ResumePlan would
           // skip ASR and build minutes on half a meeting. Cancelled means nothing is written.
           if (checkCancelled()) return
-          stageDone("asr", t0)
+          stageDone("asr", t0, p0)
 
           // The core answers with an object, not a bare array, so that "we refused to read this"
           // is tellable from "nobody spoke". Both would otherwise arrive as an empty list and the
@@ -249,7 +252,7 @@ class ProcessingEngine(
           } else {
             awaitClearance()
             listener.onStage("diarize", 0, 1)
-            val t0 = System.currentTimeMillis()
+            val t0 = System.currentTimeMillis(); val p0 = pausedMs
             // Hand VAD's spans over rather than the whole recording: worth 13-38% of the audio on
             // a real meeting and measurably better for attribution (mean DER 20.4 -> 20.0). It is
             // NOT a bound — most of a meeting is speech — which is what the check above is for.
@@ -258,7 +261,7 @@ class ProcessingEngine(
               audioPath, segModel.absolutePath, embModel.absolutePath, RecordingService.SAMPLE_RATE, 0,
               spans, windowMs, progressFor("diarize"),
             )
-            stageDone("diarize", t0)
+            stageDone("diarize", t0, p0)
             val m = tri.size / 3
             if (m > 0) {
               val ds = LongArray(m) { tri[it * 3] }
@@ -285,7 +288,7 @@ class ProcessingEngine(
       if (utts.isNotEmpty()) {
         awaitClearance()
         listener.onStage("minutes", 0, 1)
-        val tMinutes = System.currentTimeMillis()
+        val tMinutes = System.currentTimeMillis(); val pMinutes = pausedMs
         val speakers = db.speakers(meetingId)
         val minutes = Minutes.extract(utts, speakers)
         db.replaceMinutes(meetingId, "rule", minutes)
@@ -302,7 +305,7 @@ class ProcessingEngine(
         db.replaceItems(meetingId, Minutes.RULES_GEN, items)
 
         retitleFromTranscript(meetingId, utts)
-        stageDone("minutes", tMinutes)
+        stageDone("minutes", tMinutes, pMinutes)
         listener.onStage("minutes", 1, 1)
         Log.i(TAG, "Minutes produced ${minutes.size} rows and ${items.size} items for $meetingId")
 
@@ -319,7 +322,7 @@ class ProcessingEngine(
         // costs the meeting nothing it already had.
         if (Stage.NARRATE in remaining) {
           awaitClearance()
-          val t0 = System.currentTimeMillis()
+          val t0 = System.currentTimeMillis(); val p0 = pausedMs
           val narrated = try {
             Narrator.run(ctx, meetingId, object : Narrator.Progress {
               override fun onStage(stage: String, done: Int, total: Int) {
@@ -336,7 +339,7 @@ class ProcessingEngine(
             Log.w(TAG, "narration failed for $meetingId", e)
             false
           }
-          if (narrated) stageDone("narrate", t0)
+          if (narrated) stageDone("narrate", t0, p0)
           if (checkCancelled()) return
         }
 
@@ -383,15 +386,20 @@ class ProcessingEngine(
   /** Blocks while the phone is too hot or too flat, announcing the pause and the resume once each. */
   private fun awaitClearance() {
     var reason = reasonToPause(null) ?: return
+    val since = System.currentTimeMillis()
     Log.i(TAG, "pause $reason: ${budgetLine()} $meetingId")
     listener.onPause(reason)
     while (!cancelled) {
       Thread.sleep(ProcessingBudget.POLL_MS)
       reason = reasonToPause(reason) ?: break
     }
-    Log.i(TAG, "resume: ${budgetLine()} $meetingId")
+    pausedMs += System.currentTimeMillis() - since
+    Log.i(TAG, "resume after ${System.currentTimeMillis() - since}ms: ${budgetLine()} $meetingId")
     listener.onPause(null)
   }
+
+  /** Wall time this run has spent paused so far; each stage measures itself net of it. */
+  @Volatile private var pausedMs = 0L
 
   private fun reasonToPause(current: ProcessingBudget.PauseReason?) = ProcessingBudget.reasonToPause(
     LiveBudget.thermalStatus(ctx), LiveBudget.batteryPercent(ctx), LiveBudget.isCharging(ctx), current,

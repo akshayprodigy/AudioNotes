@@ -18,6 +18,17 @@ object StageRates {
   fun key(stage: String): String = "rate.$stage"
 
   /**
+   * Seconds of work per second of audio for one stage: its wall time minus the time it spent
+   * paused for the phone's sake, which is waiting, not work. Never negative; 0 when nothing can
+   * be said (no audio, or a pause longer than the stage — a clock that moved during a pause).
+   */
+  fun measured(stageMs: Long, pausedMs: Long, audioMs: Long): Double {
+    if (audioMs <= 0L) return 0.0
+    val work = stageMs - pausedMs
+    return if (work <= 0L) 0.0 else work.toDouble() / audioMs
+  }
+
+  /**
    * The value to store, or null when this run says nothing worth keeping. [measured] is
    * stage milliseconds over audio milliseconds; [previous] is what `settings` holds, if anything.
    */
