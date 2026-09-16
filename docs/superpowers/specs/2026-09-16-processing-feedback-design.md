@@ -136,3 +136,45 @@ mutation-checked before it is trusted (the house rule).
 ## Out of scope
 
 Per-model rates; an ETA on the Library card; a "nothing heard" warning; the Quick Settings tile.
+
+## Device verification — Pixel 7 Pro, Android 17, 16 Sep 2026
+
+Release APK over the real library; speech from the Mac's speakers.
+
+**Actions entry.** Library showed "96 open actions · across 11 meetings" with the checklist
+icon in the header; tap → the tracker; a tick there, then the meeting title → that meeting on
+its **Actions** tab reading "1 of 13 done" (same tick store); back to the Library: "95 open
+actions". Header icon → tracker.
+
+**Progress and ETA.** First meeting (335 s): ASR ran 20 s (0.06x — the live pass had cached
+it), then "Speakers separated · 70 of 585" counting up through diarization. Second meeting
+(206 s), same stage: first meeting's pill read "10% · about 7 min left" on the shipped
+constants; the second's read "3% · about 3 min left" from the learned rates — this phone's
+`rate.asr` is 0.06–0.21 against a shipped 0.34. Stage log lines now carry the paused time:
+`stage=diarize 28293ms (0.28x realtime, 0ms paused)`.
+
+**Pause.** `adb shell cmd thermalservice override-status 3` during diarization → within one
+chunk: `pause HEAT: thermal=3 battery=92 charging=true`; the screen: "Paused for a moment /
+Paused to let the phone cool — it resumes on its own.", the pill "13%" with no ETA, a pause
+glyph on the active row; the Library card badge PAUSED. `override-status 0` → `resume after
+110 s`, the card back to TRANSCRIBING, the transcript complete.
+
+**Three defects found in the run, all fixed in-branch.**
+
+1. *The notification did not say paused.* `onStage` now fires per window and per chunk and the
+   service rebuilt the notification on every one; Android sheds updates past five a second
+   ("Shedding notify (update) … rate limit (5.0) exceeded") and the pause line was among the
+   shed. The notification is posted only when its text changes. Re-verified on the second
+   meeting: "Paused to let the phone cool — it resumes on its own." in the shade.
+2. *A paused stage taught a rate that included the pause.* The first run's diarization sat
+   paused 110 s of a 335 s meeting — 0.33x of waiting. `StageRates.measured` now takes the wall
+   time net of paused time; mutation-checked.
+3. *Delete during diarization wrote speakers for a deleted meeting.* The engine was cancelled
+   but sherpa cannot abort mid-call; on return `assignSpeakers` raised FOREIGN KEY constraint
+   failed (caught — no crash). Cancelled now writes nothing, the same guard ASR has.
+
+**Not exercised.** ASR window counts on the phone: the live pass caches the whole recording,
+so post-hoc ASR finishes in ~20 s and never shows a count worth reading; the callback is the
+same one diarization proved and the CLI printed `[asr] 1/2, 2/2` for. An import (no live
+cache) is where the ASR count will be visible. Battery pause: unit-tested only; the phone was
+on a charger.

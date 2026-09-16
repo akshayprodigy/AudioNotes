@@ -109,18 +109,19 @@ Small, high-value, and each one answers a complaint the whole category gets.
   Until diarization improves, this screen is the mitigation, and India is a named market.
 - **Provenance.** Tap a decision, land on the transcript turn, play from there. This is what
   "minutes you would forward without editing" actually means. Research §2.3 #10.
-- **An honest ETA while processing — and the right stage.** **Measured 6 Sep on a 90-minute
-  import, and this may belong in §1 rather than here.** Two defects, both only visible on a long
-  meeting. (1) The screen showed the spinner on stage 1, "Audio cleaned up", for twenty-four
-  minutes after VAD had actually finished — so the longest stage, ASR, renders as if nothing has
-  started. (2) The ETA is not measured at all: `MeetingScreen.tsx:70-79` holds hard-coded
-  ×realtime constants, and "236 min left" is exactly `2.618 × 5400 s` falling out of them. The ASR
-  constant is 1.47× realtime, from whisper-base at 0.68×; this same phone measured **0.30×** the
-  same day, so the estimate is roughly five times pessimistic on top of being anchored to the
-  wrong stage. A first-time user watching a 90-minute meeting claim four hours closes the app.
-  **This also disguises the fast paths:** a silent recording already skips ASR and diarization
-  entirely (`ProcessingEngine.kt:180`, "no speech detected") and finishes in about a minute — but
-  the screen spends that minute insisting on four hours, so the early exit reads as a hang.
+- ~~**An honest ETA while processing.**~~ **Shipped 16 Sep, device-verified on the Pixel.** Each
+  phone learns its own per-stage speeds (`rate.<stage>` in settings, blended 70/30, net of any
+  pause); ASR reports per window and diarization per chunk through JNI, so the long stages show
+  "Words written down · 14 of 40" and the ETA falls as work happens. Spec:
+  `superpowers/specs/2026-09-16-processing-feedback-design.md`. Still open from the 6 Sep
+  measurement: diarization's shipped 0.67x is unmeasured — moot now that the phone measures it.
+- ~~**Thermal pause.**~~ **Shipped with the ETA, same spec.** At SEVERE heat, or under 15 %
+  battery unplugged, the pipeline finishes its current window and waits; the screen, the
+  notification and the Library badge say so; it resumes on its own (≤ MODERATE, ≥ 20 % or a
+  charger). MODERATE never pauses — the Pixel reads MODERATE on a desk while charging.
+- ~~**The action tracker's front door.**~~ **Shipped, same spec.** "N open actions · across M
+  meetings" on the Library (hidden at zero) and a header icon; the tracker's meeting row opens
+  the meeting on its Actions tab.
 - **Meeting types.** Stand-up, one-to-one, client call, interview, lecture, site walk. On device
   these are prompt and section variants. Research §2.4 #13.
 - **Share sheet and DOCX export.** Exports are Markdown, text, SRT and PDF. DOCX is what a

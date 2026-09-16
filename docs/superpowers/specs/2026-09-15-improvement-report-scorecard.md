@@ -21,7 +21,7 @@ Legend: ✅ done · ◐ partly · ✗ not built · ⛔ tried and rejected on evi
 | Clipping / weak-speech / interrupted / low-storage warnings | ✗ | sub-project 3 |
 | Provisional transcript shown during recording | ✗ | the live pass exists only as a decode cache; nothing on screen |
 | Recording survives heavy processing | ✅ | separate foreground services; verified A07 + Pixel, screen off |
-| Status after recording: processing / draft / final | ◐ | status badges (QUEUED, TRANSCRIBING, READY, NOT ENGLISH, NO SPEECH); no "draft" state; ETA is hard-coded and wrong (NEXT §2) |
+| Status after recording: processing / draft / final | ◐ | status badges (QUEUED, TRANSCRIBING, PAUSED, READY, NOT ENGLISH, NO SPEECH); no "draft" state; ETA learned per phone with live counts (shipped 16 Sep) |
 | Summary, decisions, actions, questions, transcript | ✅ | four tabs |
 | Every item opens its passage and plays the audio | ✅ | evidence spine; verified both phones |
 | Review queue for uncertain names / numbers / dates / speakers | ✗ | Phase C of the spine spec |
@@ -76,7 +76,7 @@ Legend: ✅ done · ◐ partly · ✗ not built · ⛔ tried and rejected on evi
 | Review queue | First release | ✗ |
 | Speaker merge, split, rename | First release | ◐ (no split) |
 | Dictation mode | First release | ✗ |
-| Local action tracker | First release | ◐ (screen exists, unreachable — a product decision) |
+| Local action tracker | First release | ✅ (Library card + header icon, shipped 16 Sep) |
 | Ask this meeting | Next | ✗ |
 | Keyword + meaning-based search | Next | ◐ keyword ✅ (Pro), semantic ✗ |
 | Meeting templates | Next | ✗ |
@@ -90,7 +90,7 @@ Legend: ✅ done · ◐ partly · ✗ not built · ⛔ tried and rejected on evi
 |---|---|---|
 | Durable chunk queue during recording | ◐ | live pass reads the growing file and caches decoded windows |
 | Model loaded across chunks | ◐ | during capture yes (one handle); post-hoc still one engine per meeting |
-| Thermal / battery / memory scheduling | ◐ | `LiveBudget` backs the live pass off; post-hoc runs regardless |
+| Thermal / battery / memory scheduling | ✅ | `LiveBudget` backs the live pass off; `ProcessingBudget` pauses post-hoc at SEVERE / low battery and resumes (shipped 16 Sep) |
 | Draft output before refinement finishes | ✗ | |
 | Foreground-service time limits handled | ◐ | `dataSync` type, resume-by-stage; the 6-hour limit not designed for |
 
