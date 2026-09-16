@@ -59,8 +59,14 @@ object BackupManager {
     // A backup written before these tables existed has no columns to intersect for them, so the
     // per-table catch in [import] logs one line and the rest of the restore proceeds — which is
     // the same path an older backup already takes for a column added since.
+    //
+    // "marks" (the Highlights, sub-project 2A) was missing until 16 Sep — the same regression
+    // shape as item_done: a mark a person made survived nothing. "asks" (sub-project 5) is a
+    // person's questions and the meeting's answers, carried for the same reason the summary is.
+    // "search_vec" is deliberately NOT here: 8 MB of vectors that the restoring phone re-embeds
+    // itself — reindexImported resets embedded_at, and the sweep's backfill does the rest.
     "meetings", "segments", "utterances", "speakers", "minutes", "items", "item_sources",
-    "item_done", "action_done", "edits", "tags", "settings",
+    "item_done", "action_done", "marks", "asks", "edits", "tags", "settings",
   )
 
   /**

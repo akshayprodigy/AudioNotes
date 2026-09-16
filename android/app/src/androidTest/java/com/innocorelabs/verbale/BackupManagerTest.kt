@@ -84,6 +84,8 @@ class BackupManagerTest {
       db.replaceItems(m, Minutes.RULES_GEN, listOf(anItem))
       val id = db.items(m).single().id
       db.setItemDone(m, id, true)
+      db.addMark(m, 61_000L)
+      db.insertAsk(m, "ask-$m", "who owns the mapping?", "Ana [1].", """[{"n":1,"refId":"u1","startMs":61000,"speaker":"Ana"}]""")
       file = BackupManager.export(ctx, PASS)
       body(m, file)
     } finally {
@@ -118,6 +120,9 @@ class BackupManagerTest {
         "the item came back unticked: the person's finished work did not survive their new phone",
         db.doneItemIds(m).contains(restored.id),
       )
+      // The two tables that hang off a meeting and were, or would have been, left behind.
+      assertEquals("the Highlight did not travel", listOf(61_000L), db.marks(m).map { it.atMs })
+      assertTrue("the ask did not travel", db.asksJson(m).contains("who owns the mapping?"))
     }
   }
 

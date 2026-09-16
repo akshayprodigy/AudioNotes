@@ -43,7 +43,11 @@ export const SCHEMA = [
      -- actions or questions, and such a meeting is indistinguishable from an unmigrated one by
      -- looking at the items table. Without it a meeting comes back in every sweep batch forever
      -- and the backlog never drains. NULL — no DEFAULT — is what every existing row starts with.
-     items_migrated_at INTEGER
+     items_migrated_at INTEGER,
+     -- When this meeting's current words were last all embedded for meaning search (sub-project
+     -- 5). NULL — no DEFAULT — is what every existing row starts with and what every writer of
+     -- transcript, items or summary resets it to; Embedder.fill stamps it.
+     embedded_at INTEGER
    );`,
   `CREATE TABLE IF NOT EXISTS utterances (
      id TEXT PRIMARY KEY,
@@ -187,6 +191,33 @@ export const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS idx_marks_meeting ON marks(meeting_id, at_ms);`, // onboarding flag + simple prefs
   `CREATE VIRTUAL TABLE IF NOT EXISTS meetings_fts
      USING fts5(meeting_id UNINDEXED, text);`,
+  // Meaning search (sub-project 5): one row per chunk of a meeting's transcript, items and
+  // summary; `vec` is an int8 + scale quantised unit vector (VecCodec.kt); `hash` is FNV-1a of
+  // `text` so a re-index re-embeds only what changed. No foreign key, like search_fts —
+  // deleteMeeting removes these rows by hand.
+  `CREATE TABLE IF NOT EXISTS search_vec (
+     meeting_id TEXT NOT NULL,
+     kind TEXT NOT NULL,            -- turn | item | summary
+     ref_id TEXT,                   -- first utterance id, item id, or the meeting id
+     start_ms INTEGER NOT NULL,
+     end_ms INTEGER NOT NULL,
+     speaker_id TEXT,
+     text TEXT NOT NULL,
+     hash INTEGER NOT NULL,
+     vec BLOB NOT NULL,
+     model TEXT NOT NULL
+   );`,
+  `CREATE INDEX IF NOT EXISTS search_vec_meeting ON search_vec(meeting_id);`,
+  // What a person asked a meeting and what it answered — a derived document like the summary,
+  // inside the privacy boundary, gone with the meeting.
+  `CREATE TABLE IF NOT EXISTS asks (
+     id TEXT PRIMARY KEY,
+     meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+     question TEXT NOT NULL,
+     answer TEXT NOT NULL,
+     cites_json TEXT NOT NULL,      -- [{n, refId, startMs, speaker}]
+     asked_at INTEGER NOT NULL
+   );`,
 ];
 
 export const MIGRATIONS: string[][] = [SCHEMA];

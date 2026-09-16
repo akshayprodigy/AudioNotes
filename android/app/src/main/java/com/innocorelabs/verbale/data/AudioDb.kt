@@ -429,6 +429,33 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     return out
   }
 
+  // ---- Asks (sub-project 5): what a person asked a meeting, and what it answered ----------
+
+  fun insertAsk(meetingId: String, id: String, question: String, answer: String, citesJson: String) {
+    db.execSQL(
+      "INSERT INTO asks(id, meeting_id, question, answer, cites_json, asked_at) VALUES(?,?,?,?,?,?)",
+      arrayOf<Any?>(id, meetingId, question, answer, citesJson, System.currentTimeMillis()),
+    )
+  }
+
+  /** The thread, oldest first, as the Ask screen reads it: `cites` is the parsed cites_json. */
+  fun asksJson(meetingId: String): String {
+    val out = JSONArray()
+    db.rawQuery(
+      "SELECT id, question, answer, cites_json, asked_at FROM asks WHERE meeting_id=? ORDER BY asked_at, rowid",
+      arrayOf(meetingId),
+    ).use { c ->
+      while (c.moveToNext()) {
+        out.put(
+          JSONObject().put("id", c.getString(0)).put("question", c.getString(1)).put("answer", c.getString(2))
+            .put("cites", runCatching { JSONArray(c.getString(3)) }.getOrDefault(JSONArray()))
+            .put("askedAt", c.getLong(4)),
+        )
+      }
+    }
+    return out.toString()
+  }
+
   /** Null when this meeting carries no announcement. */
   fun announcedAt(id: String): Long? {
     db.rawQuery("SELECT announced_at FROM meetings WHERE id=?", arrayOf(id)).use { c ->
@@ -2331,6 +2358,23 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       "CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(" +
         "meeting_id UNINDEXED, kind UNINDEXED, ref_id UNINDEXED, start_ms UNINDEXED, text, " +
         "tokenize='unicode61 remove_diacritics 2');",
+      // Meaning search (sub-project 5). One row per chunk (SearchChunker) of a meeting's
+      // transcript, items and summary; `vec` is VecCodec's int8 + scale of a unit vector; `hash`
+      // is FNV-1a of `text`, so a re-index re-embeds only the chunks whose words changed. No
+      // foreign key, like search_fts — deleteMeeting deletes these rows by hand, and the
+      // restore's backfill re-embeds a restored meeting (embedded_at travels with it as NULL-able
+      // truth: the vectors do not travel, the marker says so). Mirrored in src/db/schema.ts.
+      "CREATE TABLE IF NOT EXISTS search_vec(" +
+        "meeting_id TEXT NOT NULL, kind TEXT NOT NULL, ref_id TEXT, start_ms INTEGER NOT NULL, " +
+        "end_ms INTEGER NOT NULL, speaker_id TEXT, text TEXT NOT NULL, hash INTEGER NOT NULL, " +
+        "vec BLOB NOT NULL, model TEXT NOT NULL);",
+      "CREATE INDEX IF NOT EXISTS search_vec_meeting ON search_vec(meeting_id);",
+      // What a person asked a meeting and what it answered — a derived document like the
+      // summary, inside the privacy boundary, gone with the meeting. `cites_json` is the list of
+      // {n, refId, startMs, speaker} the answer points at.
+      "CREATE TABLE IF NOT EXISTS asks(" +
+        "id TEXT PRIMARY KEY, meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE, " +
+        "question TEXT NOT NULL, answer TEXT NOT NULL, cites_json TEXT NOT NULL, asked_at INTEGER NOT NULL);",
     )
 
     fun get(context: Context): AudioDb =
@@ -2398,6 +2442,12 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       // was migrated on the donor phone, and the restore's own reindex/backfill picks it up if
       // not. A single global flag is what would arrive already set with nothing behind it.
       Triple("meetings", "items_migrated_at", "INTEGER"),
+      // NULL = this meeting's current words are not all embedded (sub-project 5). Every writer
+      // of transcript, items or summary resets it; Embedder.fill stamps it. The same shape and
+      // the same reasoning as items_migrated_at: nullable, no default, per meeting, travels
+      // with its meeting — and since the vectors themselves do not travel in a backup, the
+      // restore path resets it so the backfill re-embeds what arrived.
+      Triple("meetings", "embedded_at", "INTEGER"),
     )
 
     /** The schema, for a unit test that must not open an encrypted database. */

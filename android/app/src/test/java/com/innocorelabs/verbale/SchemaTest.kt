@@ -184,6 +184,29 @@ class SchemaTest {
    * meeting's transcript", and it is the value every existing row starts with. A DEFAULT would
    * stamp the whole library as already migrated on the ALTER.
    */
+  /** Sub-project 5: the meaning-index marker reaches every existing library the same way. */
+  @Test fun theEmbeddingMarkerIsAnAddedColumn() =
+    assertTrue(
+      "embedded_at is missing from ADDED_COLUMNS: no phone that already has a database would " +
+        "gain the column, and unembeddedMeetings names it in its WHERE clause",
+      AudioDb.addedColumnsForTest().contains(Triple("meetings", "embedded_at", "INTEGER")),
+    )
+
+  @Test fun searchVecAndAsksExist() {
+    assertTrue(schema.contains("CREATE TABLE IF NOT EXISTS search_vec("))
+    assertTrue(schema.contains("CREATE INDEX IF NOT EXISTS search_vec_meeting ON search_vec(meeting_id)"))
+    val asks = AudioDb.schemaForTest().first { it.startsWith("CREATE TABLE IF NOT EXISTS asks(") }
+    assertTrue(asks.contains("REFERENCES meetings(id) ON DELETE CASCADE"))
+    assertEquals(
+      listOf("id", "meeting_id", "question", "answer", "cites_json", "asked_at").sorted(),
+      columnsOf(asks).sorted(),
+    )
+    assertEquals(
+      listOf("meeting_id", "kind", "ref_id", "start_ms", "end_ms", "speaker_id", "text", "hash", "vec", "model").sorted(),
+      columnsOf(ddlFor("search_vec")).sorted(),
+    )
+  }
+
   @Test fun theItemsMigrationMarkerIsAnAddedColumn() =
     assertTrue(
       "items_migrated_at is missing from ADDED_COLUMNS: no phone that already has a database " +
@@ -209,13 +232,14 @@ class SchemaTest {
    * is also inlined into the CREATE TABLE for fresh installs. Comparing either half alone would
    * assert a table that exists on no device.
    */
-  @Test fun meetingsHasTheSameEighteenColumnsAsTheJavaScriptMirror() {
+  @Test fun meetingsHasTheSameNineteenColumnsAsTheJavaScriptMirror() {
     val expected = listOf(
       "id", "title", "created_at", "duration_ms", "language", "status", "tier_used",
       "audio_path", "audio_retained", "archived_at", "summary_line", "title_edited_at",
       "transcribe_forced_at", "forced_from_language", "announced_at", "announced_lag_ms",
       "diar_skipped_reason",
       "items_migrated_at",
+      "embedded_at",
     )
     val actual = (
       columnsOf(ddlFor("meetings")) +

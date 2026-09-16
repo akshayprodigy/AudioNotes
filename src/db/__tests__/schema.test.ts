@@ -27,6 +27,9 @@ function freshDb(): DatabaseSync {
   db.exec(indexDdlFor('idx_items_meeting'));
   db.exec(ddlFor('item_sources'));
   db.exec(ddlFor('item_done'));
+  db.exec(ddlFor('search_vec'));
+  db.exec(indexDdlFor('search_vec_meeting'));
+  db.exec(ddlFor('asks'));
   return db;
 }
 
@@ -95,7 +98,7 @@ describe('schema.ts evidence tables (executed in real SQLite)', () => {
           'id', 'title', 'created_at', 'duration_ms', 'language', 'status', 'tier_used',
           'audio_path', 'audio_retained', 'archived_at', 'summary_line', 'title_edited_at',
           'transcribe_forced_at', 'forced_from_language', 'announced_at', 'announced_lag_ms', 'diar_skipped_reason',
-          'items_migrated_at',
+          'items_migrated_at', 'embedded_at',
         ].sort(),
       );
     });
@@ -114,6 +117,47 @@ describe('schema.ts evidence tables (executed in real SQLite)', () => {
       expect(col.type).toBe('INTEGER');
       expect(col.notnull).toBe(0);
       expect(col.dflt_value).toBe(null);
+    });
+
+    /**
+     * The meaning-index marker, the same shape for the same reason: NULL is "this meeting's
+     * current words are not all embedded", which is what every existing row starts as and what
+     * every writer of words resets it to. A DEFAULT would declare the whole library indexed.
+     */
+    it('embedded_at is a nullable INTEGER with no default', () => {
+      const col = column(columnsOf(freshDb(), 'meetings'), 'embedded_at');
+      expect(col.type).toBe('INTEGER');
+      expect(col.notnull).toBe(0);
+      expect(col.dflt_value).toBe(null);
+    });
+  });
+
+  /** Sub-project 5: the vectors behind meaning search, and what a meeting was asked. */
+  describe('search_vec and asks', () => {
+    it('search_vec has the columns the retriever scans, and no foreign key (like search_fts)', () => {
+      const db = freshDb();
+      const cols = columnsOf(db, 'search_vec').map(c => c.name).sort();
+      expect(cols).toEqual(
+        ['meeting_id', 'kind', 'ref_id', 'start_ms', 'end_ms', 'speaker_id', 'text', 'hash', 'vec', 'model'].sort(),
+      );
+      expect(foreignKeysOf(db, 'search_vec')).toEqual([]);
+      expect(column(columnsOf(db, 'search_vec'), 'vec').type).toBe('BLOB');
+      expect(column(columnsOf(db, 'search_vec'), 'hash').notnull).toBe(1);
+    });
+
+    it('search_vec is indexed by meeting, which is how Ask narrows the scan', () => {
+      const idx = freshDb().prepare('PRAGMA index_info(search_vec_meeting)').all() as { name: string }[];
+      expect(idx.map(i => i.name)).toEqual(['meeting_id']);
+    });
+
+    it('asks cascade with their meeting', () => {
+      const db = freshDb();
+      const cols = columnsOf(db, 'asks').map(c => c.name).sort();
+      expect(cols).toEqual(['id', 'meeting_id', 'question', 'answer', 'cites_json', 'asked_at'].sort());
+      const fk = foreignKeysOf(db, 'asks');
+      expect(fk).toHaveLength(1);
+      expect(fk[0].table).toBe('meetings');
+      expect(fk[0].on_delete).toBe('CASCADE');
     });
   });
 
