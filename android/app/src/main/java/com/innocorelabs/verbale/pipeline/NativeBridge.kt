@@ -219,6 +219,13 @@ object NativeBridge {
   external fun nativeValidateRecord(json: String, ordinals: IntArray, speakers: Array<String>, texts: Array<String>): String
   external fun nativeLlmFree(handle: Long)
 
+  // ---- Embeddings: meaning search and Ask's retrieval. Same load/use/free shape as the LLM. ----
+  external fun nativeEmbedLoad(modelPath: String, nThreads: Int): Long
+  external fun nativeEmbedDim(handle: Long): Int
+  /** Flat `dim * texts.size` floats, unit vectors in order; an all-zero row is a text that failed. */
+  external fun nativeEmbedTexts(handle: Long, texts: Array<String>): FloatArray
+  external fun nativeEmbedFree(handle: Long)
+
   /**
    * Transcript split into prompt-sized chunks by the shared core (transcriptLines +
    * chunkTranscript). Same parallel-array shape as [nativeMinutes].

@@ -24,4 +24,14 @@ class MainApplication : Application(), ReactApplication {
     super.onCreate()
     loadReactNative(this)
   }
+
+  /**
+   * The embedding model is the one native handle kept resident between uses (EmbedRuntime); it
+   * is the first thing to give back when the system asks. The writer is never resident outside
+   * a narration or an open Ask screen, so there is nothing else to drop here.
+   */
+  override fun onTrimMemory(level: Int) {
+    super.onTrimMemory(level)
+    if (level >= TRIM_MEMORY_RUNNING_LOW) com.innocorelabs.verbale.pipeline.EmbedRuntime.release()
+  }
 }

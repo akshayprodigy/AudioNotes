@@ -32,6 +32,7 @@
 #endif
 #include "diar/diarizer.h"
 #include "diar/span_map.h"
+#include "llm/embed_engine.h"
 #include "llm/llama_engine.h"
 #include "minutes/evidence.h"
 #include "minutes/evidence_record.h"
@@ -526,6 +527,7 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmFree(
   delete engine;
 }
 
+
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeDiarize(
     JNIEnv* env, jobject /*thiz*/, jstring jPcmPath, jstring jSegModel, jstring jEmbModel,
@@ -646,6 +648,59 @@ std::vector<audionotes::ClassifyTurn> windowFrom(JNIEnv* env, jintArray jOrdinal
   return window;
 }
 }  // namespace
+
+// ---- Embeddings (bge-small over llama.cpp): meaning search and Ask's retrieval -------------
+// Same load/use/free shape as the LLM above; one handle, held by EmbedRuntime.kt.
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeEmbedLoad(
+    JNIEnv* env, jobject /*thiz*/, jstring jModelPath, jint nThreads) {
+  const std::string path = jstr(env, jModelPath);
+  auto* engine = new audionotes::EmbedEngine();
+  if (!engine->load(path, static_cast<int>(nThreads))) {
+    delete engine;
+    return 0;
+  }
+  return reinterpret_cast<jlong>(engine);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeEmbedDim(
+    JNIEnv* /*env*/, jobject /*thiz*/, jlong handle) {
+  auto* engine = reinterpret_cast<audionotes::EmbedEngine*>(handle);
+  return engine ? engine->dim() : 0;
+}
+
+// Flat: dim * n floats, text i at [i*dim, (i+1)*dim). A text that failed to embed is all zeros,
+// which a caller can tell apart (a unit vector is never zero) without a second array of flags.
+extern "C" JNIEXPORT jfloatArray JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeEmbedTexts(
+    JNIEnv* env, jobject /*thiz*/, jlong handle, jobjectArray jTexts) {
+  auto* engine = reinterpret_cast<audionotes::EmbedEngine*>(handle);
+  const std::vector<std::string> texts = jstrArray(env, jTexts);
+  const int dim = engine ? engine->dim() : 0;
+  std::vector<float> flat(static_cast<size_t>(dim) * texts.size(), 0.0f);
+  if (engine && dim > 0) {
+    const auto vecs = engine->embed(texts);
+    for (size_t i = 0; i < vecs.size() && i < texts.size(); ++i) {
+      if (vecs[i].size() == static_cast<size_t>(dim)) {
+        std::copy(vecs[i].begin(), vecs[i].end(),
+                  flat.begin() + static_cast<std::ptrdiff_t>(i * static_cast<size_t>(dim)));
+      }
+    }
+  }
+  jfloatArray out = env->NewFloatArray(static_cast<jsize>(flat.size()));
+  if (out && !flat.empty()) {
+    env->SetFloatArrayRegion(out, 0, static_cast<jsize>(flat.size()), flat.data());
+  }
+  return out;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeEmbedFree(
+    JNIEnv* /*env*/, jobject /*thiz*/, jlong handle) {
+  delete reinterpret_cast<audionotes::EmbedEngine*>(handle);
+}
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeClassifyGrammar(JNIEnv* env, jobject) {
