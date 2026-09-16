@@ -128,9 +128,11 @@ pinned-line skip AND the re-apply loop together fails (each alone is redundant w
 by design — belt and braces). No meeting in the library had diarization skipped, so a
 re-diarization through the app itself was not exercised; the instrumentation test is the proof.
 
-**One defect found in the run, fixed.** On every opening of the picker after the first, Android
-shrank the first chip and cut its text to "Just this". `flexShrink: 0` on the chips; verified on
-the next opening. (The Pixel dropped off USB before the opening after that could be captured.)
+**One defect found in the run, fixed.** On every opening of the picker after the first, the
+first scope read "Just this": Android measured the label a few pixels short of how it rendered,
+wrapped "line" to a second line and clipped it — on a chip, on a remounted chip, and in a row.
+The scopes are now radio rows whose label fills the row (`flex: 1`), so there is nothing to wrap
+against; verified on three consecutive openings.
 
 **Not exercised.** Reassigning on a meeting whose audio was deleted (the Script's long press
 still works there — the gesture does not depend on the player).

@@ -59,21 +59,25 @@ export default function SpeakerPicker({
           {title}
         </Txt>
         {scopes ? (
-          <View style={st.chips}>
+          <View style={st.scopes}>
             {SCOPES.map(x => {
               const on = scope === x.key;
               return (
                 <Pressable
                   key={x.key}
-                  accessibilityRole="button"
+                  accessibilityRole="radio"
                   accessibilityLabel={x.label}
-                  accessibilityState={{ selected: on }}
+                  accessibilityState={{ selected: on, checked: on }}
                   onPress={() => setScope(x.key)}
-                  style={[
-                    st.chip,
-                    { backgroundColor: on ? colors.primarySoft : colors.cardAlt, borderColor: on ? colors.primary : colors.line },
-                  ]}>
-                  <Txt variant="chipSoft" color={on ? colors.primary : colors.inkSoft}>
+                  style={st.scopeRow}>
+                  <View style={[st.radio, { borderColor: on ? colors.primary : colors.line }]}>
+                    {on ? <View style={[st.radioDot, { backgroundColor: colors.primary }]} /> : null}
+                  </View>
+                  {/* flex 1, not the text's measured width: Android measured "Just this line" a
+                      few pixels short of how it rendered, wrapped "line" to a second line and
+                      clipped it — on every opening but the first, on a chip or in a row. A text
+                      that fills the row has nothing to wrap against. */}
+                  <Txt variant="chipSoft" color={on ? colors.primary : colors.inkSoft} style={st.flex}>
                     {x.label}
                   </Txt>
                 </Pressable>
@@ -134,10 +138,11 @@ function makeStyles(_c: Colors) {
     },
     grip: { alignSelf: 'center', width: s(42), height: s(5), borderRadius: 999, marginBottom: s(4) },
     title: { paddingHorizontal: s(2) },
-    chips: { flexDirection: 'row', flexWrap: 'wrap', gap: s(8) },
-    // flexShrink 0: in a wrapping row Android shrank the first chip and cut its text to "Just
-    // this" on every opening after the first. A chip keeps its width and wraps to the next line.
-    chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: s(12), paddingVertical: s(7), flexShrink: 0 },
+    // Rows, not chips: a row can give its label the whole width (see the Txt above).
+    scopes: { gap: s(2) },
+    scopeRow: { flexDirection: 'row', alignItems: 'center', gap: s(10), paddingVertical: s(8) },
+    radio: { width: s(20), height: s(20), borderRadius: 999, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+    radioDot: { width: s(10), height: s(10), borderRadius: 999 },
     list: { flexGrow: 0 },
     row: {
       flexDirection: 'row',
