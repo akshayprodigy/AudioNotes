@@ -319,6 +319,43 @@ class NativePipelineTest {
    * Asserts only that generation produces text: summary QUALITY from a 1.5B model is exactly why
    * the rule-based minutes are the guaranteed floor and the LLM is best-effort enhancement.
    */
+  /**
+   * The classifier's grammar compiles in llama.cpp and constrains the answer: the model, asked
+   * about the improvement report's lead example, returns a string the validator accepts — one JSON
+   * object of enums and quoted spans. Quality (request/contradicted) is printed, not asserted:
+   * a 1.5B model's reading is best-effort by design, the SHAPE is the guarantee.
+   */
+  @Test
+  fun classifier_grammar_constrains_the_answer() {
+    val gguf = ModelCatalog.fileFor(ctx, "llm-qwen")?.takeIf { it.exists() }
+    assumeTrue("Qwen GGUF not installed", gguf != null)
+    val handle = NativeBridge.nativeLlmLoad(gguf!!.absolutePath, 2048, 4, true, 1.15f)
+    assertTrue("llama failed to load the model (handle=0)", handle != 0L)
+    try {
+      val ordinals = intArrayOf(0, 1, 2)
+      val speakers = arrayOf("Priya", "Rahul", "Priya")
+      val texts = arrayOf(
+        "Can you send the proposal Friday?",
+        "Only a draft; the final version needs another week.",
+        "Fine, a draft then.",
+      )
+      val prompt = NativeBridge.nativeClassifyPrompt("Can you send the proposal Friday?", ordinals, speakers, texts)
+      val started = System.currentTimeMillis()
+      val raw = NativeBridge.nativeLlmGenerateConstrained(handle, prompt, 96, NativeBridge.nativeClassifyGrammar())
+      val genMs = System.currentTimeMillis() - started
+      println("CLASSIFIER: raw in ${genMs}ms -> $raw")
+      assertTrue("constrained generation returned nothing (grammar failed to parse?)", raw.isNotBlank())
+      val validated = NativeBridge.nativeValidateRecord(raw, ordinals, speakers, texts)
+      println("CLASSIFIER: validated -> $validated")
+      assertTrue("the grammar-constrained answer did not parse: $raw", validated.isNotEmpty())
+      val type = org.json.JSONObject(validated).getString("type")
+      assertTrue("type outside the enum: $type",
+        type in setOf("proposal", "agreement", "commitment", "request", "rejection", "unresolved", "uncertain"))
+    } finally {
+      NativeBridge.nativeLlmFree(handle)
+    }
+  }
+
   @Test
   fun llm_loads_and_generates() {
     val gguf = ModelCatalog.fileFor(ctx, "llm-qwen")?.takeIf { it.exists() }
