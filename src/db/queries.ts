@@ -488,6 +488,9 @@ export const db = {
   /** Index meetings recorded before the index covered more than the transcript. Returns the backlog. */
   backfillSearch: (limit = 25) => Storage.backfillSearch(limit),
 
+  /** Give up to `limit` meetings their meaning vectors (Pro). Returns the backlog; 0 asks for the count. */
+  backfillEmbeddings: (limit = 3) => Storage.backfillEmbeddings(limit),
+
   /**
    * Give one meeting its items if it was recorded before items existed.
    *

@@ -129,6 +129,26 @@ class StorageModule(private val ctx: ReactApplicationContext) :
   }
 
   /**
+   * Embed up to `limit` meetings whose vectors are stale, newest first; resolves with the true
+   * backlog. Nothing at all without Pro and the model — the JS loop reads the count and stops
+   * asking. Off the module thread: each meeting is seconds of CPU on the embedding model.
+   */
+  @ReactMethod
+  fun backfillEmbeddings(limit: Double, promise: Promise) {
+    Thread {
+      try {
+        val db = AudioDb.get(ctx)
+        if (EmbedRuntime.available(ctx)) {
+          for (id in db.unembeddedMeetings(limit.toInt())) Embedder.fill(ctx, id)
+        }
+        promise.resolve(db.unembeddedCount().toDouble())
+      } catch (e: Throwable) {
+        promise.reject("db_embed", e)
+      }
+    }.start()
+  }
+
+  /**
    * Migrate meetings recorded before items existed, a batch at a time.
    *
    * The library-wide half of [ensureItems], and the reason both exist is that they serve different

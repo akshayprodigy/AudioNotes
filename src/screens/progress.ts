@@ -35,6 +35,10 @@ export const STAGES: Stage[] = [
   { key: 'diarize', label: 'Speakers separated', rate: 0.67 },
   { key: 'minutes', label: 'Pulling out the minutes', rate: 0.11 },
   { key: 'narrate', label: 'Written up in plain English', rate: 0.32 },
+  // bge-small over ~150 windows of a 60-minute meeting: seconds, not minutes. Pro only — a free
+  // phone never reports this stage, and the ETA is one stage generous for it, which is the safe
+  // direction.
+  { key: 'embed', label: 'Indexed for meaning', rate: 0.01 },
 ];
 
 /**

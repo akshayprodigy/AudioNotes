@@ -264,6 +264,7 @@ class PipelineControllerImpl {
     }
     await this.sweepRetention();
     await this.backfillSearch();
+    await this.backfillEmbeddings();
     const pending = await db.pendingMeetings();
     for (const m of pending) {
       if (this.inFlight.has(m.id)) continue;
@@ -325,6 +326,20 @@ class PipelineControllerImpl {
       if (remaining > 0) console.warn(`[pipeline] search backfill: ${remaining} meeting(s) to go`);
     } catch {
       // An unindexed meeting is missing from search results, not broken. Never fail a sweep on it.
+    }
+  }
+
+  /**
+   * The meaning index for the library recorded before it existed — three meetings a pass,
+   * newest first, each a few seconds on the embedding model. Native does nothing without Pro and
+   * the model, so on a free phone this is one cheap count per sweep.
+   */
+  private async backfillEmbeddings(): Promise<void> {
+    try {
+      const remaining = await db.backfillEmbeddings(3);
+      if (remaining > 0) console.warn(`[pipeline] meaning index: ${remaining} meeting(s) to go`);
+    } catch {
+      // A meeting without vectors is missing from meaning search, not broken.
     }
   }
 

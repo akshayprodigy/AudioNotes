@@ -210,6 +210,10 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     db.beginTransaction()
     try {
       db.execSQL("DELETE FROM search_fts WHERE meeting_id=?", arrayOf<Any?>(meetingId))
+      // The vectors are NOT deleted here — the hash diff in Embedder.fill keeps what is still
+      // true and re-embeds only what changed. Unstamping is what puts the meeting back in the
+      // sweep's queue, which is also how a restored meeting (reindexImported) gets its vectors.
+      unstampEmbedded(meetingId)
       db.rawQuery(
         "SELECT id, start_ms, text FROM utterances WHERE meeting_id=? ORDER BY start_ms",
         arrayOf(meetingId),
@@ -245,6 +249,99 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     ).use { c -> while (c.moveToNext()) out.add(c.getString(0)) }
     return out
   }
+
+  // ---- Meaning index (sub-project 5) ---------------------------------------------------------
+
+  data class VecRow(
+    val kind: String, val refId: String, val startMs: Long, val endMs: Long, val speakerId: String?,
+    val text: String, val hash: Long, val vec: ByteArray, val model: String,
+  )
+  data class IndexItem(val id: String, val startMs: Long, val text: String)
+  /** A vector row's identity: these words (hash) at this moment (ref_id). */
+  data class VecKey(val hash: Long, val refId: String)
+
+  fun vecKeys(meetingId: String): Set<VecKey> {
+    val out = HashSet<VecKey>()
+    db.rawQuery("SELECT hash, ref_id FROM search_vec WHERE meeting_id=?", arrayOf(meetingId)).use { c ->
+      while (c.moveToNext()) out.add(VecKey(c.getLong(0), c.getString(1) ?: ""))
+    }
+    return out
+  }
+
+  fun deleteVecs(meetingId: String, keys: Set<VecKey>) {
+    for (k in keys) {
+      db.execSQL(
+        "DELETE FROM search_vec WHERE meeting_id=? AND hash=? AND ref_id=?",
+        arrayOf<Any?>(meetingId, k.hash, k.refId),
+      )
+    }
+  }
+
+  fun insertVecs(meetingId: String, rows: List<VecRow>) {
+    db.beginTransaction()
+    try {
+      for (r in rows) {
+        db.execSQL(
+          "INSERT INTO search_vec(meeting_id,kind,ref_id,start_ms,end_ms,speaker_id,text,hash,vec,model) " +
+            "VALUES(?,?,?,?,?,?,?,?,?,?)",
+          arrayOf<Any?>(meetingId, r.kind, r.refId, r.startMs, r.endMs, r.speakerId, r.text, r.hash, r.vec, r.model),
+        )
+      }
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
+  }
+
+  fun stampEmbedded(meetingId: String) =
+    db.execSQL("UPDATE meetings SET embedded_at=? WHERE id=?", arrayOf<Any?>(System.currentTimeMillis(), meetingId))
+
+  /** Every writer of words calls this inside its transaction: the vectors no longer describe the meeting. */
+  private fun unstampEmbedded(meetingId: String) =
+    db.execSQL("UPDATE meetings SET embedded_at=NULL WHERE id=?", arrayOf<Any?>(meetingId))
+
+  /** Items as the embedder wants them: the same rows and the same moment rule as indexItems. */
+  fun itemsForIndex(meetingId: String): List<IndexItem> {
+    val out = ArrayList<IndexItem>()
+    db.rawQuery(
+      "SELECT id, CASE WHEN gen_version=? THEN 0 ELSE anchor_start_ms END, text FROM items " +
+        "WHERE meeting_id=? AND review<>'rejected' ORDER BY anchor_start_ms",
+      arrayOf(Gen.USER, meetingId),
+    ).use { c -> while (c.moveToNext()) out.add(IndexItem(c.getString(0), c.getLong(1), c.getString(2))) }
+    return out
+  }
+
+  /** The narrated summary's plain text, else the rule one's, else null. */
+  fun summaryText(meetingId: String): String? {
+    for (source in listOf("llm", "rule")) {
+      db.rawQuery(
+        "SELECT content_json FROM minutes WHERE meeting_id=? AND source=? AND kind='summary' ORDER BY rowid LIMIT 1",
+        arrayOf(meetingId, source),
+      ).use { c -> if (c.moveToFirst()) return plainText(c.getString(0)).ifBlank { null } }
+    }
+    return null
+  }
+
+  /**
+   * Meetings whose words are not all embedded, newest first — the backfill driver. Derived from
+   * the marker rather than from the vectors for the reason unindexedMeetings gives, and because
+   * "has some vectors" cannot tell a half-finished fill from a finished one.
+   */
+  fun unembeddedMeetings(limit: Int): List<String> {
+    val out = ArrayList<String>()
+    db.rawQuery("SELECT id $UNEMBEDDED ORDER BY created_at DESC LIMIT ?", arrayOf(limit.toString()))
+      .use { c -> while (c.moveToNext()) out.add(c.getString(0)) }
+    return out
+  }
+
+  /** The true backlog, not `unembeddedMeetings(1).size` — see unmigratedCount for why. */
+  fun unembeddedCount(): Int {
+    db.rawQuery("SELECT count(*) $UNEMBEDDED", null).use { c -> return if (c.moveToFirst()) c.getInt(0) else 0 }
+  }
+
+  private val UNEMBEDDED =
+    "FROM meetings m WHERE m.embedded_at IS NULL " +
+      "AND EXISTS(SELECT 1 FROM utterances u WHERE u.meeting_id=m.id)"
 
   /**
    * Re-index every meeting that just arrived from an attached backup.
@@ -648,6 +745,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     try {
       db.execSQL("DELETE FROM utterances WHERE meeting_id=?", arrayOf<Any?>(meetingId))
       indexDelete(meetingId, "utterance")
+      unstampEmbedded(meetingId)
       for (i in 0 until arr.length()) {
         val o = arr.getJSONObject(i)
         val text = o.getString("text").trim()
@@ -878,6 +976,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     try {
       db.execSQL("DELETE FROM minutes WHERE meeting_id=? AND source=?",
                  arrayOf<Any?>(meetingId, source))
+      if (rows.any { it.kind == "summary" }) unstampEmbedded(meetingId)
       for (r in rows) {
         db.execSQL(
           "INSERT INTO minutes(id,meeting_id,kind,content_json,source) VALUES(?,?,?,?,?)",
@@ -1040,8 +1139,10 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
   fun deleteMeeting(id: String) {
     db.beginTransaction()
     try {
-      // search_fts is an FTS5 virtual table, so it has no foreign key and never cascades.
+      // search_fts is an FTS5 virtual table, so it has no foreign key and never cascades; and
+      // search_vec has none on purpose (see SCHEMA), so it is deleted by hand too.
       db.execSQL("DELETE FROM search_fts WHERE meeting_id=?", arrayOf<Any?>(id))
+      db.execSQL("DELETE FROM search_vec WHERE meeting_id=?", arrayOf<Any?>(id))
       db.execSQL("DELETE FROM meetings WHERE id=?", arrayOf<Any?>(id))
       db.setTransactionSuccessful()
     } finally {
@@ -1473,6 +1574,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       "UPDATE items SET item_type=?,status=?,owner_json=?,date_said=?,date_norm=?,review=?,gen_version=? WHERE id=?",
       arrayOf<Any?>(c.itemType, c.status, c.ownerJson, c.dateSaid, c.dateNorm, review, genVersion, id),
     )
+    // The words did not change, so no vector did either; nothing to unstamp here.
   }
 
   fun replaceItems(meetingId: String, genVersion: String, incoming: List<Minutes.Item>) {
@@ -1518,6 +1620,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       // would let a rollback — or a kill — between the two leave search hits for items that never
       // landed, which is a hit that opens onto nothing. Both land or neither does.
       indexItems(meetingId)
+      unstampEmbedded(meetingId)
 
       // Ticks whose item is gone: drop them, or they accumulate forever against nothing. This is
       // also the line that makes a wrongly dropped row destructive rather than merely annoying,

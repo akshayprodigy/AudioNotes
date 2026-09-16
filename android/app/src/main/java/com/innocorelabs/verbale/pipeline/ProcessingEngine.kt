@@ -347,6 +347,29 @@ class ProcessingEngine(
           if (checkCancelled()) return
         }
 
+        // ---- Meaning index (Pro): vectors for search and Ask ----
+        //
+        // After narration so the summary it embeds is the written one. Idempotent by hash, so a
+        // reprocess re-embeds only the windows whose words changed; a free user or a phone
+        // without the model skips it silently, and the JS sweep's backfill is the retry. Not a
+        // ResumePlan stage: a meeting without vectors is complete, not resumable.
+        if (EmbedRuntime.available(ctx)) {
+          awaitClearance()
+          val t0 = System.currentTimeMillis(); val p0 = pausedMs
+          val embedded = try {
+            Embedder.fill(
+              ctx, meetingId,
+              onProgress = { d, t -> listener.onStage("embed", d, t) },
+              pause = { awaitClearance() },
+            )
+          } catch (e: Throwable) {
+            Log.w(TAG, "embedding failed for $meetingId", e)
+            false
+          }
+          if (embedded) stageDone("embed", t0, p0)
+          if (checkCancelled()) return
+        }
+
         if (!audioGone) applyRetention(meetingId, utts.size)
         db.setStatus(meetingId, "done")
       } else {

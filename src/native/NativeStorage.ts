@@ -37,6 +37,11 @@ export interface Spec extends TurboModule {
   // outstanding. Driven from the app's sweep so an existing library becomes searchable without a
   // blocking migration at open() — which, on a Quick Settings cold start, runs on the main thread.
   backfillSearch(limit: number): Promise<number>;
+  // Embed up to `limit` meetings whose words are not all in the meaning index (sub-project 5),
+  // newest first; resolves with the true backlog. Does nothing without Pro and the embedding
+  // model, and `limit` 0 is a way to ask for the count alone. Driven from the sweep like the two
+  // above; three per pass rather than twenty-five, because each is seconds of model time.
+  backfillEmbeddings(limit: number): Promise<number>;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('Storage');
