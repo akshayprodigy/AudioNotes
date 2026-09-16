@@ -1,0 +1,30 @@
+{
+  "note": "A spoken date phrase resolved against the meeting's date: Wednesday 16 Sep 2026, 15:00 in Asia/Kolkata. `norm` is the resolved local day, or null when the phrase cannot honestly be pinned to a day. Read by DateNormTest.kt and dateNorm.test.ts; the two implementations must agree on every row.",
+  "meetingAt": 1789551000000,
+  "timeZone": "Asia/Kolkata",
+  "cases": [
+    { "said": "tomorrow", "norm": "2026-09-17" },
+    { "said": "today", "norm": "2026-09-16" },
+    { "said": "by tomorrow", "norm": "2026-09-17" },
+    { "said": "Friday", "norm": "2026-09-18" },
+    { "said": "this Friday", "norm": "2026-09-18" },
+    { "said": "by Friday", "norm": "2026-09-18" },
+    { "said": "on friday", "norm": "2026-09-18" },
+    { "said": "next Friday", "norm": "2026-09-25" },
+    { "said": "Wednesday", "norm": "2026-09-23" },
+    { "said": "next Wednesday", "norm": "2026-09-30" },
+    { "said": "end of the week", "norm": "2026-09-18" },
+    { "said": "by end of week", "norm": "2026-09-18" },
+    { "said": "on the 21st", "norm": "2026-09-21" },
+    { "said": "by the 3rd", "norm": "2026-10-03" },
+    { "said": "the 16th", "norm": "2026-10-16" },
+    { "said": "in two weeks", "norm": "2026-09-30" },
+    { "said": "in 3 days", "norm": "2026-09-19" },
+    { "said": "next week", "norm": null },
+    { "said": "another week", "norm": null },
+    { "said": "soon", "norm": null },
+    { "said": "after the launch", "norm": null },
+    { "said": "Friday or Monday", "norm": null },
+    { "said": "", "norm": null }
+  ]
+}
