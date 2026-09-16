@@ -99,6 +99,10 @@ class ProcessingService : Service() {
               try { updateNotification(stageLabel(stage)) } catch (_: Exception) {}
               AudioPipelineBridge.emitProgress(id, stage, done, total)
             }
+            override fun onPause(reason: ProcessingBudget.PauseReason?) {
+              try { updateNotification(if (reason == null) LABEL_TRANSCRIBING else pauseLabel(reason)) } catch (_: Exception) {}
+              AudioPipelineBridge.emitPause(id, reason?.name?.lowercase())
+            }
             override fun onComplete(outcome: String, message: String?) {
               AudioPipelineBridge.emitComplete(id, outcome, message)
               // ProcessingEngine reports the run outcome as "done" even for terminal-but-empty
@@ -204,6 +208,11 @@ class ProcessingService : Service() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE)
     else @Suppress("DEPRECATION") stopForeground(true)
   }
+  private fun pauseLabel(reason: ProcessingBudget.PauseReason) = when (reason) {
+    ProcessingBudget.PauseReason.HEAT -> "Paused to let the phone cool — it resumes on its own."
+    ProcessingBudget.PauseReason.BATTERY -> "Paused until the phone is charging or has more battery."
+  }
+
   private fun stageLabel(stage: String) = when (stage) {
     "vad" -> "Cleaning up audio…"; "asr" -> "Writing words down…"; "diarize" -> "Separating speakers…"; "minutes" -> "Pulling out the minutes…"; else -> LABEL_TRANSCRIBING
   }

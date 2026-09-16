@@ -8,7 +8,7 @@ import java.lang.ref.WeakReference
 /** Lets the background ProcessingService emit RN events without owning the module. Best-effort:
  *  a no-op when JS is gone (app killed) — the service + notification are the durable channel.
  *
- *  Emits onStageProgress / onStageComplete / onError to JS via RCTDeviceEventEmitter; best-effort
+ *  Emits onStageProgress / onStageComplete / onError / onProcessingPause to JS via RCTDeviceEventEmitter; best-effort
  *  no-op when JS is gone. */
 object AudioPipelineBridge {
   @Volatile private var ref: WeakReference<ReactApplicationContext>? = null
@@ -27,6 +27,14 @@ object AudioPipelineBridge {
       putString("meetingId", meetingId); putString("outcome", outcome); if (message != null) putString("message", message)
     }
     emit(if (outcome == "error") "onError" else "onStageComplete", m)
+  }
+
+  /** Processing paused for [reason] ("heat" | "battery"), or resumed (null). */
+  fun emitPause(meetingId: String, reason: String?) {
+    val m = Arguments.createMap().apply {
+      putString("meetingId", meetingId); if (reason != null) putString("reason", reason) else putNull("reason")
+    }
+    emit("onProcessingPause", m)
   }
 
   private fun emit(event: String, map: com.facebook.react.bridge.WritableMap) {

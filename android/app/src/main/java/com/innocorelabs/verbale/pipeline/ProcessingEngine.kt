@@ -26,6 +26,8 @@ class ProcessingEngine(
   interface Listener {
     fun onStage(stage: String, done: Int, total: Int)
     fun onComplete(outcome: String, message: String? = null) // "done" | "cancelled" | "error"
+    /** A pause began ([reason] non-null) or ended (null). Only ever sent on a change. */
+    fun onPause(reason: ProcessingBudget.PauseReason?) {}
   }
 
   @Volatile var cancelled = false
@@ -90,6 +92,7 @@ class ProcessingEngine(
       }
 
       if (Stage.VAD in remaining && !audioGone) {
+        awaitClearance()
         listener.onStage("vad", 0, 1)
         val modelPath = ensureVadModel()
         val t0 = System.currentTimeMillis()
@@ -115,6 +118,7 @@ class ProcessingEngine(
       if (Stage.ASR in remaining && !audioGone) {
         val asrFile = ModelCatalog.fileFor(ctx, ModelCatalog.asrIdForModel(model))
         if (spans.isNotEmpty() && asrFile != null && asrFile.exists()) {
+          awaitClearance()
           listener.onStage("asr", 0, 1)
           val n = spans.size / 2
           val starts = LongArray(n) { spans[it * 2] }
@@ -145,8 +149,12 @@ class ProcessingEngine(
           val json = NativeBridge.nativeTranscribe(
             audioPath, asrFile.absolutePath, RecordingService.SAMPLE_RATE, starts, ends, 0, language,
             if (qwen3Dir.isDirectory) qwen3Dir.absolutePath else "", forced,
-            cachedRanges, cachedJson,
+            cachedRanges, cachedJson, progressFor("asr"),
           )
+          // An abort between windows returns the windows decoded so far. Persisting them would
+          // leave `status = asr` over a partial transcript, and the next run's ResumePlan would
+          // skip ASR and build minutes on half a meeting. Cancelled means nothing is written.
+          if (checkCancelled()) return
           stageDone("asr", t0)
 
           // The core answers with an object, not a bare array, so that "we refused to read this"
@@ -239,6 +247,7 @@ class ProcessingEngine(
             // only diagnosable if they are in the log next to the decision.
             Log.w(TAG, "Diarization skipped for $meetingId: ${DiarBudget.describe(freeBytes, speechMs)}")
           } else {
+            awaitClearance()
             listener.onStage("diarize", 0, 1)
             val t0 = System.currentTimeMillis()
             // Hand VAD's spans over rather than the whole recording: worth 13-38% of the audio on
@@ -247,7 +256,7 @@ class ProcessingEngine(
             // `spans` is the same flat array ASR already works from.
             val tri = NativeBridge.nativeDiarize(
               audioPath, segModel.absolutePath, embModel.absolutePath, RecordingService.SAMPLE_RATE, 0,
-              spans, windowMs,
+              spans, windowMs, progressFor("diarize"),
             )
             stageDone("diarize", t0)
             val m = tri.size / 3
@@ -274,6 +283,7 @@ class ProcessingEngine(
       // yet) and the meeting still deserves a full MOM from whatever transcript it has.
       val utts = db.utterances(meetingId)
       if (utts.isNotEmpty()) {
+        awaitClearance()
         listener.onStage("minutes", 0, 1)
         val tMinutes = System.currentTimeMillis()
         val speakers = db.speakers(meetingId)
@@ -308,11 +318,14 @@ class ProcessingEngine(
         // a later sweep can try again. It also writes source='llm' rows only, so a failure here
         // costs the meeting nothing it already had.
         if (Stage.NARRATE in remaining) {
+          awaitClearance()
           val t0 = System.currentTimeMillis()
           val narrated = try {
             Narrator.run(ctx, meetingId, object : Narrator.Progress {
-              override fun onStage(stage: String, done: Int, total: Int) =
+              override fun onStage(stage: String, done: Int, total: Int) {
                 listener.onStage(stage, done, total)
+                awaitClearance()
+              }
 
               override fun isCancelled(): Boolean = cancelled
             })
@@ -366,6 +379,33 @@ class ProcessingEngine(
     }
   }
 
+
+  /** Blocks while the phone is too hot or too flat, announcing the pause and the resume once each. */
+  private fun awaitClearance() {
+    var reason = reasonToPause(null) ?: return
+    Log.i(TAG, "pause $reason: ${budgetLine()} $meetingId")
+    listener.onPause(reason)
+    while (!cancelled) {
+      Thread.sleep(ProcessingBudget.POLL_MS)
+      reason = reasonToPause(reason) ?: break
+    }
+    Log.i(TAG, "resume: ${budgetLine()} $meetingId")
+    listener.onPause(null)
+  }
+
+  private fun reasonToPause(current: ProcessingBudget.PauseReason?) = ProcessingBudget.reasonToPause(
+    LiveBudget.thermalStatus(ctx), LiveBudget.batteryPercent(ctx), LiveBudget.isCharging(ctx), current,
+  )
+
+  private fun budgetLine() =
+    "thermal=${LiveBudget.thermalStatus(ctx)} battery=${LiveBudget.batteryPercent(ctx)} charging=${LiveBudget.isCharging(ctx)}"
+
+  /** Between units of work inside a native stage: report, wait out a pause, say whether to go on. */
+  private fun progressFor(stage: String) = NativeBridge.StageProgress { done, total ->
+    listener.onStage(stage, done, total)
+    awaitClearance()
+    !cancelled
+  }
 
   private fun checkCancelled(): Boolean {
     if (!cancelled) return false
