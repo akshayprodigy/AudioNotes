@@ -412,7 +412,7 @@ class ItemsDbTest {
 
   /** Every item hit for one meeting, from the real search path JS calls. */
   private fun itemHits(meetingId: String, term: String): List<JSONObject> {
-    val all = JSONArray(db.searchJson(term))
+    val all = JSONArray(db.searchJson(InstrumentationRegistry.getInstrumentation().targetContext, term))
     val out = ArrayList<JSONObject>()
     for (i in 0 until all.length()) {
       val row = all.getJSONObject(i)

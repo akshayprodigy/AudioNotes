@@ -233,6 +233,22 @@ export default function SearchScreen({ navigation }: Props) {
       });
   }, [query, attempt]);
 
+  /**
+   * How many meetings the meaning index has not reached yet. A count, no work: native does
+   * nothing for a limit of 0, and nothing at all without Pro and the model — so on a free phone
+   * this stays 0 and the line never shows. Read once per opening; the sweep drains it.
+   */
+  const [unembedded, setUnembedded] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    db.backfillEmbeddings(0)
+      .then(n => alive && setUnembedded(n))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const filtersOn = range !== 'all' || onlyActions;
 
   const groups = useMemo<Group[]>(() => {
@@ -312,7 +328,7 @@ export default function SearchScreen({ navigation }: Props) {
         onPress={() => openHit(hit)}>
         <View
           accessibilityRole="button"
-          accessibilityLabel={`${k.label.toLowerCase()}: ${plain(hit.snippet)}`}
+          accessibilityLabel={`${k.label.toLowerCase()}${hit.byMeaning ? ' (by meaning)' : ''}: ${plain(hit.snippet)}`}
           style={st.hit}>
           <View style={st.hitTop}>
             <View style={[st.kind, { backgroundColor: k.soft }]}>
@@ -329,6 +345,13 @@ export default function SearchScreen({ navigation }: Props) {
             <Icon name="chevronRight" size={s(16)} color={colors.inkFaint} strokeWidth={2.4} />
           </View>
           <Txt variant="body" numberOfLines={3}>
+            {/* "≈": found by meaning, not by these words — so nothing below is highlighted,
+                and that is not a bug in the highlighter. */}
+            {hit.byMeaning ? (
+              <Text style={st.approx} accessibilityLabel="found by meaning">
+                {'≈ '}
+              </Text>
+            ) : null}
             {runsOf(hit.snippet).map((run, i) =>
               run.hit ? (
                 <Text key={i} style={st.mark}>
@@ -564,6 +587,11 @@ export default function SearchScreen({ navigation }: Props) {
           {groups.length === 1 ? '' : 's'}
         </Txt>
       ) : null}
+      {unembedded > 0 ? (
+        <Txt variant="chipSoft" color={colors.inkFaint} style={st.count}>
+          Meaning search is still indexing {unembedded} meeting{unembedded === 1 ? '' : 's'}
+        </Txt>
+      ) : null}
 
       <FlatList
         data={groups}
@@ -588,6 +616,7 @@ function makeStyles(c: Colors) {
     root: { flex: 1, backgroundColor: c.canvas },
     flex: { flex: 1 },
     nav: { flexDirection: 'row', alignItems: 'center', gap: s(12), paddingHorizontal: s(20) },
+    approx: { color: c.inkSoft, fontFamily: font.black },
     searchBox: {
       flexDirection: 'row',
       alignItems: 'center',

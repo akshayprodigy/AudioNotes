@@ -210,7 +210,7 @@ class StorageModule(private val ctx: ReactApplicationContext) :
   @ReactMethod
   fun search(term: String, promise: Promise) {
     try {
-      promise.resolve(AudioDb.get(ctx).searchJson(term))
+      promise.resolve(AudioDb.get(ctx).searchJson(ctx, term))
     } catch (e: Exception) {
       promise.reject("db_search", e)
     }

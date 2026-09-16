@@ -162,6 +162,12 @@ export interface SearchHit {
   startMs: number;
   snippet: string;
   score: number;
+  /**
+   * Found by meaning alone (sub-project 5): the words typed are not in this passage, its vector
+   * is close. The screen marks such a row "≈" so a reader knows why their word is not
+   * highlighted. Absent on a keyword hit and on every hit before the meaning index existed.
+   */
+  byMeaning?: boolean;
 }
 
 /**

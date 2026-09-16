@@ -2,7 +2,10 @@ package com.innocorelabs.verbale.data
 
 import android.content.Context
 import com.innocorelabs.verbale.pipeline.DraftMinute
+import com.innocorelabs.verbale.pipeline.EmbedRuntime
 import com.innocorelabs.verbale.pipeline.Minutes
+import com.innocorelabs.verbale.pipeline.Retriever
+import com.innocorelabs.verbale.pipeline.VecCodec
 import com.innocorelabs.verbale.pipeline.Reconciler
 import com.innocorelabs.verbale.pipeline.ResumePlan
 import com.innocorelabs.verbale.pipeline.Spk
@@ -77,15 +80,88 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    * `snippet(search_fts, 4, ...)` marks the matched terms inside the returned excerpt; 4 is the
    * index of the `text` column and the UNINDEXED columns occupy 0-3.
    */
-  fun searchJson(term: String): String {
-    val match = ftsQuery(term) ?: return "[]"
-    val sql =
-      "SELECT meeting_id AS meetingId, kind AS kind, ref_id AS refId, start_ms AS startMs, " +
-        "snippet(search_fts, 4, '\u0002', '\u0003', '…', 14) AS snippet, " +
-        "bm25(search_fts, 0.0, 0.0, 0.0, 0.0, 1.0) AS score " +
-        "FROM search_fts WHERE search_fts MATCH ? ORDER BY score LIMIT 120"
-    return rawQueryJson(sql, arrayOf(match))
+  fun searchJson(ctx: Context, term: String, meetingId: String? = null): String {
+    val out = JSONArray()
+    for (h in searchHits(ctx, term, meetingId)) {
+      out.put(
+        JSONObject().put("meetingId", h.meetingId).put("kind", h.kind).put("refId", h.refId ?: JSONObject.NULL)
+          .put("startMs", h.startMs).put("snippet", h.snippet).put("score", h.score).put("byMeaning", h.byMeaning),
+      )
+    }
+    return out.toString()
   }
+
+  /**
+   * The fused list (Retriever): the keyword hits as before, plus — when the embedding model can
+   * be used — the closest vectors, one list by reciprocal rank. `meetingId` narrows both to one
+   * meeting, which is how Ask retrieves. Without Pro or the model this is exactly the old
+   * keyword search.
+   */
+  fun searchHits(ctx: Context, term: String, meetingId: String? = null): List<Retriever.Hit> {
+    val keyword = keywordHits(term, meetingId)
+    val meaning = meaningHits(ctx, term, meetingId, MEANING_TOP)
+    return Retriever.fuse(keyword, meaning)
+  }
+
+  private fun keywordHits(term: String, meetingId: String?): List<Retriever.Hit> {
+    val match = ftsQuery(term) ?: return emptyList()
+    val scope = if (meetingId == null) "" else " AND meeting_id=?"
+    val sql =
+      "SELECT meeting_id, kind, ref_id, start_ms, " +
+        "snippet(search_fts, 4, '\u0002', '\u0003', '…', 14), " +
+        "bm25(search_fts, 0.0, 0.0, 0.0, 0.0, 1.0) AS score " +
+        "FROM search_fts WHERE search_fts MATCH ?$scope ORDER BY score LIMIT 120"
+    val out = ArrayList<Retriever.Hit>()
+    db.rawQuery(sql, if (meetingId == null) arrayOf(match) else arrayOf(match, meetingId)).use { c ->
+      while (c.moveToNext()) {
+        out.add(
+          Retriever.Hit(
+            c.getString(0), c.getString(1), c.getString(2), c.getLong(3), c.getLong(3),
+            c.getString(4), c.getDouble(5), byMeaning = false,
+          ),
+        )
+      }
+    }
+    return out
+  }
+
+  /**
+   * The `top` closest chunks by cosine, or nothing when the model cannot be used. A full scan of
+   * search_vec — 8 MB for twenty thousand chunks, tens of milliseconds in Kotlin — kept as a
+   * bounded heap so the memory is `top` rows, not the table. `turn` rows come back as
+   * `utterance` so the screen's kind labels and deep links apply unchanged.
+   */
+  private fun meaningHits(ctx: Context, term: String, meetingId: String?, top: Int): List<Retriever.Hit> {
+    val q = term.trim()
+    if (q.isEmpty()) return emptyList()
+    val vec = EmbedRuntime.embed(ctx, listOf(q))?.firstOrNull() ?: return emptyList()
+    if (vec.none { it != 0f }) return emptyList()
+    val heap = java.util.PriorityQueue<Retriever.Hit>(top + 1, compareBy { it.score })
+    val scope = if (meetingId == null) "" else " WHERE meeting_id=?"
+    db.rawQuery(
+      "SELECT meeting_id, kind, ref_id, start_ms, end_ms, text, vec FROM search_vec$scope",
+      if (meetingId == null) null else arrayOf(meetingId),
+    ).use { c ->
+      while (c.moveToNext()) {
+        val score = VecCodec.dot(vec, c.getBlob(6)).toDouble()
+        if (heap.size >= top && score <= heap.peek()!!.score) continue
+        val kind = if (c.getString(1) == "turn") "utterance" else c.getString(1)
+        val text = c.getString(5)
+        heap.add(
+          Retriever.Hit(
+            c.getString(0), kind, c.getString(2), c.getLong(3), c.getLong(4),
+            if (text.length > SNIPPET_CHARS) text.substring(0, SNIPPET_CHARS).trimEnd() + "…" else text,
+            score, byMeaning = true,
+          ),
+        )
+        if (heap.size > top) heap.poll()
+      }
+    }
+    return heap.sortedByDescending { it.score }
+  }
+
+  private val MEANING_TOP = 40
+  private val SNIPPET_CHARS = 120
 
   // ---- Full-text index maintenance -------------------------------------------------------
   //
