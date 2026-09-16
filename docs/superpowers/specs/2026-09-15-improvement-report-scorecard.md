@@ -50,7 +50,7 @@ Legend: ✅ done · ◐ partly · ✗ not built · ⛔ tried and rejected on evi
 | Word-level alignment to speaker turns | ◐ | segment-level, limitation preserved |
 | "Uncertain" speaker label | ✗ | sub-project 2 |
 | Overlapping speech represented honestly | ✗ | sub-project 2 |
-| Rename / merge / split / reassign passages, preview, preserve confirmed on reprocess | ◐ | rename ✅ merge ✅ (not exercised this week); split ✗ reassign ✗; corrections and ticks survive reprocess ✅ |
+| Rename / merge / split / reassign passages, preview, preserve confirmed on reprocess | ✅ | rename ✅ merge ✅; split / reassign ✅ (one gesture, three scopes, shipped 16 Sep); speaker corrections survive re-diarization ✅; corrections and ticks survive reprocess ✅ |
 | Remembered voices, enrolment, deletable | ✗ | NEXT §3, with the BIPA/GDPR note |
 
 ## Dictation mode — ✗ entirely (sub-project 5)
@@ -74,7 +74,7 @@ Legend: ✅ done · ◐ partly · ✗ not built · ⛔ tried and rejected on evi
 |---|---|---|
 | Source playback from every note | First release | ✅ |
 | Review queue | First release | ✗ |
-| Speaker merge, split, rename | First release | ◐ (no split) |
+| Speaker merge, split, rename | First release | ✅ (split = reassign from a line on, shipped 16 Sep) |
 | Dictation mode | First release | ✗ |
 | Local action tracker | First release | ✅ (Library card + header icon, shipped 16 Sep) |
 | Ask this meeting | Next | ✗ |

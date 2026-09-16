@@ -102,11 +102,14 @@ Small, high-value, and each one answers a complaint the whole category gets.
   clock, Mark and Pause; the live ASR pass stays a cache for the final transcript, not a display.
   (Distinct from §4 #1, which is about transcribing during capture to shorten the wait — that
   stands.)
-- **Reassign the speaker on a turn, and split or merge turns.** Text is editable today; who said
-  it is not. Wrong attribution is the top diarization complaint in every review. Research §2.3 #11.
-  **Item 4 turned this into a measured defect rather than a category complaint:** Indian-accented
-  English scores 79.1% attribution against 92.6% for American — same recogniser, same settings.
-  Until diarization improves, this screen is the mitigation, and India is a named market.
+- ~~**Reassign the speaker on a turn, and split or merge turns.**~~ **Shipped 16 Sep,
+  device-verified on the Pixel.** Long-press a line → "Change who said it" (this line / from here
+  to the end of the turn / the whole turn — the split and the merge are both scopes of one
+  gesture) or tap a turn's name; "Someone new" for a voice diarization never separated. Written
+  through to the transcript and recorded as a `speaker` edit, so re-diarization keeps every
+  renamed or created voice and every line a person spoke for. Spec:
+  `superpowers/specs/2026-09-16-speaker-repair-design.md`. The 79.1 % vs 92.6 % attribution gap
+  on Indian-accented English now has its mitigation.
 - **Provenance.** Tap a decision, land on the transcript turn, play from there. This is what
   "minutes you would forward without editing" actually means. Research §2.3 #10.
 - ~~**An honest ETA while processing.**~~ **Shipped 16 Sep, device-verified on the Pixel.** Each

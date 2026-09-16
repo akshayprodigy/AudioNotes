@@ -100,3 +100,37 @@ Every new test mutation-checked.
 
 Splitting a line mid-sentence; propagating a reassignment into already-extracted items' owners;
 voice enrolment ("remembered voices" is sub-project 7); undo.
+
+## Device verification — Pixel 7 Pro, Android 17, 16 Sep 2026
+
+Release APK; the 3-minute two-voice meeting recorded earlier that day, which diarization had
+returned as **one** speaker — the exact case this exists for.
+
+**Gestures and scopes.** Long-press "Sure." → the two-action sheet titled with the line →
+"Change who said it" → the picker: title "Who said “Sure.”?", three chips ("Just this line"
+selected), Speaker 1 ticked, "Someone new". "Someone new" → "Who is this?" → "Daniel" → Add:
+Daniel appears as a turn. Long-press "After looking at…" → "From here to the end of the turn"
+→ Daniel: the rest of Speaker 1's turn moved and merged into Daniel's turn (the split and a
+merge, from one regrouping). Tap the "Daniel" turn head → picker with no chips, Daniel ticked →
+Speaker 1: the whole turn moved back and merged with the turn above. Long-press "Sure." → Daniel
+again for the export check.
+
+**Everywhere else.** Summary header: "2 speakers". Speakers screen lists Daniel with the merge
+control like any other voice. Copy (the Markdown document): `**Daniel:** Sure.` between Speaker
+1 lines — write-through, no export code touched.
+
+**Durability.** `SpeakerRepairDbTest` on the phone (2 tests, listed in device-verify): a
+renamed speaker keeps its id and name across a second `assignSpeakers` that re-clusters
+everything the other way, the line a person spoke for keeps its speaker, the untouched lines
+are re-clustered, no two speakers share a name, a human-created voice with no lines is kept.
+Mutation-checked on the phone: removing the protected delete fails both tests; removing the
+pinned-line skip AND the re-apply loop together fails (each alone is redundant with the other,
+by design — belt and braces). No meeting in the library had diarization skipped, so a
+re-diarization through the app itself was not exercised; the instrumentation test is the proof.
+
+**One defect found in the run, fixed.** On every opening of the picker after the first, Android
+shrank the first chip and cut its text to "Just this". `flexShrink: 0` on the chips; verified on
+the next opening. (The Pixel dropped off USB before the opening after that could be captured.)
+
+**Not exercised.** Reassigning on a meeting whose audio was deleted (the Script's long press
+still works there — the gesture does not depend on the player).

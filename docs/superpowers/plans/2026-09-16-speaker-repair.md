@@ -1,5 +1,7 @@
 # Speaker Repair — Implementation Plan
 
+> **SHIPPED 16 Sep 2026.** All eight tasks done; device-verified on the Pixel 7 Pro (spec §"Device verification").
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Change who said a line, a run of lines, or a whole turn from the Script — including "someone new" — and keep those corrections when diarization runs again.
@@ -718,7 +720,7 @@ Render, next to the other `Sheet`/`TextPrompt`s:
 **Files:**
 - Modify: `src/screens/SpeakersScreen.tsx` (only if it filters on `clusterLabel`)
 
-- [ ] Read `SpeakersScreen.tsx`; if it derives anything from `clusterLabel` (grep `clusterLabel`), make a `'human'` row render and merge like the rest. If it does not, this task is a no-op — record that in the commit of Task 8.
+- [x] Read `SpeakersScreen.tsx`; (no-op — it never reads `clusterLabel`) if it derives anything from `clusterLabel` (grep `clusterLabel`), make a `'human'` row render and merge like the rest. If it does not, this task is a no-op — record that in the commit of Task 8.
 
 ---
 
@@ -726,8 +728,8 @@ Render, next to the other `Sheet`/`TextPrompt`s:
 
 `export ANDROID_SERIAL=36091FDH30034G`; `npm run apk`; force-stop; install.
 
-- [ ] Open a two-voice meeting ("Good afternoon everyone", 10 min). Script: long-press a line in the middle of a turn → sheet with both actions → "Change who said it" → chips shown, "Just this line" selected → pick the other speaker → the turn splits into three (before / the line / after). Long-press the first line of that middle turn → "The whole turn" → the original speaker → the three turns merge back into one. Long-press a line → "From here to the end of the turn" → the other speaker → the turn splits in two.
-- [ ] Tap a turn's name → picker without chips → pick → the turn changes hands.
-- [ ] "Someone new" → name "Rahul" → assigned; Speakers screen lists Rahul; Export → Copy → the Markdown transcript carries `**Rahul:**`.
-- [ ] Durability: run the device suite's `SpeakerRepairDbTest` (Task 2) via `scripts/device-verify.sh SpeakerRepair`; and, on a meeting whose diarization was skipped or a meeting recorded with the models absent if one exists, Redo → corrections and the name survive. If no such meeting exists, the instrumentation test is the proof; say so.
-- [ ] Record the run in the spec (`## Device verification`); NEXT.md §2 (reassign/split/merge → shipped); scorecard row; memory. Commit; the push is the founder's.
+- [x] Open a two-voice meeting ("Good afternoon everyone", 10 min). Script: long-press a line in the middle of a turn → sheet with both actions → "Change who said it" → chips shown, "Just this line" selected → pick the other speaker → the turn splits into three (before / the line / after). Long-press the first line of that middle turn → "The whole turn" → the original speaker → the three turns merge back into one. Long-press a line → "From here to the end of the turn" → the other speaker → the turn splits in two.
+- [x] Tap a turn's name → picker without chips → pick → the turn changes hands.
+- [x] "Someone new" → name "Rahul" → assigned; Speakers screen lists Rahul; Export → Copy → the Markdown transcript carries `**Rahul:**`.
+- [x] Durability: run the device suite's `SpeakerRepairDbTest` (Task 2) via `scripts/device-verify.sh SpeakerRepair`; and, on a meeting whose diarization was skipped or a meeting recorded with the models absent if one exists, Redo → corrections and the name survive. If no such meeting exists, the instrumentation test is the proof; say so.
+- [x] Record the run in the spec (`## Device verification`); NEXT.md §2 (reassign/split/merge → shipped); scorecard row; memory. Commit; the push is the founder's.
