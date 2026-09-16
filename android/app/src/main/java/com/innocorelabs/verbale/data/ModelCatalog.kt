@@ -52,6 +52,9 @@ import java.io.File
  *                               Revisit if that comes up. Reverting is this one ModelSpec: no
  *                               code depends on which embedding model is used.
  *   llm-qwen      Apache-2.0    Qwen2.5-1.5B-Instruct
+ *   embed-bge-small  MIT        BAAI bge-small-en-v1.5 (text embeddings, 384-d, English). The
+ *                               GGUF is CompendiumLabs' conversion; the hash below is the
+ *                               Hugging Face LFS oid for the q8_0 file, read 2026-09-16.
  *   qwen3-asr     Apache-2.0    Qwen3-ASR-0.6B. The ONNX export is a third-party conversion
  *                               (github.com/Wasser1462/Qwen3-ASR-onnx, mirrored on ModelScope);
  *                               the weights it converts are Alibaba's under Apache-2.0. The
@@ -257,6 +260,21 @@ object ModelCatalog {
       "llm", false, "qwen-instruct-q4_k_m.gguf",
       "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf",
       "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e", 1_117_320_736L,
+    ),
+    // The embedding model behind meaning search and Ask. BAAI bge-small-en-v1.5 (MIT), 33 M
+    // parameters, 384 dimensions, English — the launch language. q8_0 from CompendiumLabs' GGUF
+    // conversion; runs through the same llama.cpp as the writer (EmbedEngine).
+    //
+    // kind = "llm" on purpose, though it writes nothing: everything that gates, offers and
+    // downloads "the writer" keys on that kind — needsSubscription, the onboarding switch, the
+    // trial's download loop — and this model is useless without the writer and vice versa. One
+    // bundle, one rule, no second list to drift. Narrator still asks for "llm-qwen" by id.
+    ModelSpec(
+      "embed-bge-small", "Meaning index",
+      "Finds what was meant, not only the words said", "Without it search matches words only, and a meeting cannot be asked.",
+      "llm", false, "bge-small-en-v1.5-q8_0.gguf",
+      "https://huggingface.co/CompendiumLabs/bge-small-en-v1.5-gguf/resolve/main/bge-small-en-v1.5-q8_0.gguf",
+      "ec38e8da142596baa913124ae50550de284b6916bf59577ef2f0cb9660c2f514", 36_806_944L,
     ),
   )
 

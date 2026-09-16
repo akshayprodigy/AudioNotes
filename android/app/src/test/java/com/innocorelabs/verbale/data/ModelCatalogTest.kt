@@ -20,7 +20,9 @@ class ModelCatalogTest {
     // In catalog order, which is the order they are offered during onboarding. Deliberately an
     // exact list rather than a contains-check: adding a model to the paid side is a pricing
     // decision, and it should not be possible to make one by editing a boolean.
-    assertEquals(listOf("whisper-small", "qwen3-asr", "llm-qwen"), gated)
+    // embed-bge-small joined on 2026-09-16 (sub-project 5): meaning search and Ask are Pro, and
+    // the model is useless without the writer it rides with.
+    assertEquals(listOf("whisper-small", "qwen3-asr", "llm-qwen", "embed-bge-small"), gated)
   }
 
   /**
@@ -158,5 +160,18 @@ class ModelCatalogTest {
           part.upstream.startsWith("https://"))
       }
     }
+  }
+
+  @Test
+  fun `the embedding model is part of the writer bundle`() {
+    // Same kind as the writer, so the paid gate, the onboarding switch and the trial's download
+    // loop carry it without a second list of "what Pro fetches" to drift.
+    val e = ModelCatalog.byId("embed-bge-small") ?: error("embed-bge-small is not catalogued")
+    assertEquals("llm", e.kind)
+    assertFalse(e.required)
+    assertTrue(ModelCatalog.needsSubscription(e))
+    assertEquals("bge-small-en-v1.5-q8_0.gguf", e.filename)
+    assertEquals(36_806_944L, e.sizeBytes)
+    assertEquals("ec38e8da142596baa913124ae50550de284b6916bf59577ef2f0cb9660c2f514", e.parts.single().sha256)
   }
 }
