@@ -27,6 +27,7 @@ add_library(audionotes SHARED
   diar/span_map.cpp
   diar/speaker_match.cpp
   llm/llama_engine.cpp
+  llm/embed_engine.cpp
   # Rule-based minutes, shared with the CLI and minutes.ts (see jni nativeMinutes). The rest of
   # the core's upper layers (pipeline/, capi/) are NOT built here: Android drives the stages from
   # Kotlin because ProcessingEngine owns DB-backed resume-by-stage, which the capture-agnostic

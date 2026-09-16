@@ -265,6 +265,14 @@ audionotes_add_test(test_evidence_record
   ${CORE}/minutes/evidence_record.cpp
   ${CORE}/minutes/fence.cpp)
 
+# Sub-project 5: sentence embeddings against the real model (skips itself without the file).
+audionotes_add_test(test_embed
+  ${CORE}/tests/test_embed.cpp
+  ${CORE}/llm/embed_engine.cpp)
+target_include_directories(test_embed PRIVATE ${TP}/llama.cpp/include)
+target_compile_definitions(test_embed PRIVATE HAVE_LLAMA=1)
+target_link_libraries(test_embed PRIVATE llama ${CMAKE_DL_LIBS})
+
 audionotes_add_test(test_llm_minutes
   ${CORE}/tests/test_llm_minutes.cpp
   ${CORE}/minutes/llm_minutes.cpp
