@@ -34,6 +34,7 @@
 #include "diar/span_map.h"
 #include "llm/llama_engine.h"
 #include "minutes/evidence.h"
+#include "minutes/evidence_record.h"
 #include "minutes/llm_minutes.h"
 #include "minutes/minutes_extractor.h"
 #include "vad/silero_vad.h"
@@ -499,6 +500,25 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmGenerate(
   return env->NewStringUTF(out.c_str());
 }
 
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmGenerateConstrained(
+    JNIEnv* env, jobject /*thiz*/, jlong handle, jstring jPrompt, jint maxTokens,
+    jstring jGrammar) {
+  auto* engine = reinterpret_cast<audionotes::LlamaEngine*>(handle);
+  if (!engine) return env->NewStringUTF("");
+  const std::string prompt = jstr(env, jPrompt);
+  const std::string grammar = jstr(env, jGrammar);
+  std::string out;
+  try {
+    out = engine->generateConstrained(prompt, static_cast<int>(maxTokens), grammar);
+  } catch (const std::exception& e) {
+    throwRuntime(env, e.what());
+    return env->NewStringUTF("");
+  }
+  return env->NewStringUTF(out.c_str());
+}
+
+
 extern "C" JNIEXPORT void JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmFree(
     JNIEnv* /*env*/, jobject /*thiz*/, jlong handle) {
@@ -602,6 +622,55 @@ std::vector<int64_t> jlongVec(JNIEnv* env, jlongArray arr) {
   out.assign(p, p + n);
   env->ReleaseLongArrayElements(arr, p, JNI_ABORT);
   return out;
+}
+
+// ---- The typed record (evidence Phase B) ---------------------------------------------------
+// The window arrives as three parallel arrays — ordinals, speaker names, texts — the same shape
+// the other JNI seams use, because nlohmann is kept off Android and Kotlin has org.json.
+
+namespace {
+std::vector<audionotes::ClassifyTurn> windowFrom(JNIEnv* env, jintArray jOrdinals,
+                                                 jobjectArray jSpeakers, jobjectArray jTexts) {
+  std::vector<audionotes::ClassifyTurn> window;
+  const std::vector<std::string> speakers = jstrArray(env, jSpeakers);
+  const std::vector<std::string> texts = jstrArray(env, jTexts);
+  const jsize n = jOrdinals ? env->GetArrayLength(jOrdinals) : 0;
+  std::vector<jint> ordinals(static_cast<size_t>(n));
+  if (n > 0) env->GetIntArrayRegion(jOrdinals, 0, n, ordinals.data());
+  for (jsize i = 0; i < n && i < static_cast<jsize>(texts.size()); ++i) {
+    window.push_back(audionotes::ClassifyTurn{
+        static_cast<int>(ordinals[i]),
+        i < static_cast<jsize>(speakers.size()) ? speakers[i] : std::string("Speaker"),
+        texts[i]});
+  }
+  return window;
+}
+}  // namespace
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeClassifyGrammar(JNIEnv* env, jobject) {
+  return env->NewStringUTF(audionotes::kClassifyGrammar);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeClassifyPrompt(
+    JNIEnv* env, jobject /*thiz*/, jstring jItemText, jintArray jOrdinals, jobjectArray jSpeakers,
+    jobjectArray jTexts) {
+  const std::string prompt =
+      audionotes::classifyPrompt(jstr(env, jItemText), windowFrom(env, jOrdinals, jSpeakers, jTexts));
+  return env->NewStringUTF(prompt.c_str());
+}
+
+// Empty when the answer did not parse — the caller logs and moves on; the item keeps no record.
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeValidateRecord(
+    JNIEnv* env, jobject /*thiz*/, jstring jJson, jintArray jOrdinals, jobjectArray jSpeakers,
+    jobjectArray jTexts) {
+  audionotes::ItemRecord r;
+  if (!audionotes::parseRecord(jstr(env, jJson), &r)) return env->NewStringUTF("");
+  const audionotes::ItemRecord v =
+      audionotes::validateRecord(r, windowFrom(env, jOrdinals, jSpeakers, jTexts));
+  return env->NewStringUTF(audionotes::toJson(v).c_str());
 }
 
 }  // namespace

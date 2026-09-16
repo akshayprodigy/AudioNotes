@@ -29,6 +29,14 @@ class LlamaEngine {
   // each call, so calls are independent (stateless map/reduce steps).
   std::string generate(const std::string& prompt, int max_tokens);
 
+  // The same, with the output bounded by a GBNF grammar (llama_sampler_init_grammar): every
+  // token the grammar does not admit is masked before the greedy pick, so the model cannot
+  // answer with anything but a string the grammar accepts. Empty when the grammar fails to
+  // parse — logged, never thrown, because a classifier that cannot run costs a label, not a
+  // meeting. The repetition penalty is kept: a grammar bounds the shape, not the loop.
+  std::string generateConstrained(const std::string& prompt, int max_tokens,
+                                  const std::string& grammar);
+
  private:
   struct Impl;
   Impl* impl_;

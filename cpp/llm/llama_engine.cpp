@@ -24,6 +24,7 @@ struct LlamaEngine::Impl {
   llama_context* ctx = nullptr;
   const llama_vocab* vocab = nullptr;
   llama_sampler* smpl = nullptr;
+  float repeat_penalty_cached = 1.0f;
   int n_ctx_cached = 0;
 #endif
 
@@ -50,6 +51,7 @@ struct LlamaEngine::Impl {
     ctx = llama_init_from_model(model, cparams);
     if (!ctx) return false;
 
+    repeat_penalty_cached = repeat_penalty;
     smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
     if (greedy) {
       // Argmax alone degenerates. Measured 2026-08-26 on the real NeoSym recording: greedy
@@ -86,9 +88,47 @@ struct LlamaEngine::Impl {
   }
 
   std::string generate(const std::string& prompt, int max_tokens) {
-    std::string out;
 #ifdef HAVE_LLAMA
-    if (!ready) return out;
+    return run(prompt, max_tokens, smpl);
+#else
+    (void)prompt;
+    (void)max_tokens;
+    return "";
+#endif
+  }
+
+  std::string generateConstrained(const std::string& prompt, int max_tokens,
+                                  const std::string& grammar) {
+#ifdef HAVE_LLAMA
+    if (!ready) return "";
+    llama_sampler* g = llama_sampler_init_grammar(vocab, grammar.c_str(), "root");
+    if (!g) {
+      std::fprintf(stderr, "llama: grammar failed to parse — constrained generation skipped\n");
+      return "";
+    }
+    // Grammar first, greedy after: the grammar masks, greedy picks among what is left.
+    llama_sampler* chain = llama_sampler_chain_init(llama_sampler_chain_default_params());
+    llama_sampler_chain_add(chain, g);
+    if (repeat_penalty_cached > 1.0f) {
+      llama_sampler_chain_add(chain, llama_sampler_init_penalties(256, repeat_penalty_cached, 0.0f, 0.0f));
+    }
+    llama_sampler_chain_add(chain, llama_sampler_init_greedy());
+    const std::string out = run(prompt, max_tokens, chain);
+    llama_sampler_free(chain);  // frees the grammar sampler with it
+    return out;
+#else
+    (void)prompt;
+    (void)max_tokens;
+    (void)grammar;
+    return "";
+#endif
+  }
+
+#ifdef HAVE_LLAMA
+  // One decode loop for both samplers: the loaded chain, or a per-call constrained one.
+  std::string run(const std::string& prompt, int max_tokens, llama_sampler* sampler) {
+    std::string out;
+    if (!ready || !sampler) return out;
 
     // Independent calls: clear the KV cache so token positions reset each generation.
     // Map/reduce summarisation issues many unrelated generations against one loaded model;
@@ -124,7 +164,7 @@ struct LlamaEngine::Impl {
     int decoded = 0;
     while (decoded < max_tokens) {
       if (llama_decode(ctx, batch) != 0) break;
-      cur = llama_sampler_sample(smpl, ctx, -1);
+      cur = llama_sampler_sample(sampler, ctx, -1);
       if (llama_vocab_is_eog(vocab, cur)) break;
 
       char buf[512];
@@ -134,16 +174,13 @@ struct LlamaEngine::Impl {
       batch = llama_batch_get_one(&cur, 1);
       decoded++;
     }
-#else
-    (void)prompt;
-    (void)max_tokens;
-#endif
     // Generation that stops mid-character (max_tokens, or EOG right after a partial piece)
     // leaves a trailing fragment. Sanitize the FINISHED string, never the individual pieces: a
     // BPE token is routinely half a character, so per-piece scrubbing would delete every
     // non-ASCII character in the output.
     return sanitizeUtf8(out);
   }
+#endif
 
   ~Impl() {
 #ifdef HAVE_LLAMA
@@ -166,6 +203,11 @@ bool LlamaEngine::load(const std::string& model_path, int n_ctx, int n_threads,
 
 std::string LlamaEngine::generate(const std::string& prompt, int max_tokens) {
   return impl_->generate(prompt, max_tokens);
+}
+
+std::string LlamaEngine::generateConstrained(const std::string& prompt, int max_tokens,
+                                             const std::string& grammar) {
+  return impl_->generateConstrained(prompt, max_tokens, grammar);
 }
 
 }  // namespace audionotes

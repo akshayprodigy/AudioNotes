@@ -194,6 +194,29 @@ object NativeBridge {
     repeatPenalty: Float,
   ): Long
   external fun nativeLlmGenerate(handle: Long, prompt: String, maxTokens: Int): String
+
+  /**
+   * Generation bounded by a GBNF [grammar]: the sampler masks every token the grammar does not
+   * admit, so the answer IS a string the grammar accepts or "" (a grammar that failed to parse —
+   * logged in the core, never thrown here: a classifier that cannot run costs a label).
+   */
+  external fun nativeLlmGenerateConstrained(handle: Long, prompt: String, maxTokens: Int, grammar: String): String
+
+  // ---- The typed record (evidence Phase B). The window is the source line and the replies
+  // after it, as parallel arrays: ordinals (0 = the source), speaker names, texts. ----
+
+  /** The grammar the classifier answers through. */
+  external fun nativeClassifyGrammar(): String
+
+  /** The prompt: window and statement fenced as recorded speech, then the question. */
+  external fun nativeClassifyPrompt(itemText: String, ordinals: IntArray, speakers: Array<String>, texts: Array<String>): String
+
+  /**
+   * Parse + validate an answer against the window. The validated record as JSON — the same shape
+   * the grammar produces — or "" when the answer did not parse. Only verbatim survives: a name or
+   * a date not found in a cited turn comes back blank with confidence low.
+   */
+  external fun nativeValidateRecord(json: String, ordinals: IntArray, speakers: Array<String>, texts: Array<String>): String
   external fun nativeLlmFree(handle: Long)
 
   /**
