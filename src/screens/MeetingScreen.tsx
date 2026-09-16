@@ -1098,6 +1098,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 speechMs={speechMs}
                 highlights={highlights}
                 onOpenProvenance={openProvenance}
+                onReview={() => navigation.navigate('Review', { meetingId })}
                 canPlay={player.available}
                 onRemoveMark={onRemoveMark}
                 onWrite={() => onReprocess(true)}

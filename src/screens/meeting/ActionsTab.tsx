@@ -9,6 +9,7 @@ import {
   Empty,
   EditedTag,
   MineTag,
+  RecordChips,
   SectionHead,
   ToolButton,
   editTargetOf,
@@ -21,6 +22,7 @@ import {
   type ItemRow,
 } from './shared';
 import { ProvenanceButton } from './ItemProvenance';
+import { labelsFor, type Labels } from './recordLabels';
 
 /**
  * Re-exported, not reimplemented.
@@ -47,6 +49,7 @@ function Item({
   onRevert,
   onRemove,
   provenance,
+  labels,
 }: {
   on: boolean;
   onToggle: () => void;
@@ -60,9 +63,13 @@ function Item({
   onRemove?: () => void;
   /** The way back to the moment it was said. Absent on a row that never claimed one. */
   provenance?: React.ReactNode;
+  /** The typed record's chips (labelsFor). Empty for an unclassified row. */
+  labels?: Labels;
 }) {
   const st = React.useMemo(() => makeStyles(colors), [colors]);
   const { text, owner, due } = splitAction(content);
+  const lab = labels ?? {};
+  const wears = Boolean(lab.type || lab.status || lab.day);
   return (
     <Pressable
       accessibilityRole="checkbox"
@@ -103,8 +110,9 @@ function Item({
                 section of every evidence link it had. Checking an item off is exactly when a
                 reader wants to verify it, and the Done disclosure is what somebody returning to a
                 list opens. It stays whether the box is ticked or not. */}
-            {(!on && (owner || due)) || provenance ? (
+            {(!on && (owner || due || wears)) || provenance ? (
               <View style={st.tags}>
+                {!on ? <RecordChips labels={lab} colors={colors} /> : null}
                 {!on && owner ? (
                   <View style={[st.tag, { backgroundColor: colors.primarySoft }]}>
                     <Icon name="users" size={s(11)} color={colors.primary} strokeWidth={2.6} />
@@ -306,6 +314,7 @@ export default function ActionsTab({
         content={shown(r)}
         edited={isEdited(ed, t.kind, t.key)}
         mine={r.mine}
+        labels={labelsFor(r.record)}
         onEdit={onEditItem ? () => onEditItem(r) : undefined}
         onRevert={onRevertItem ? () => onRevertItem(r) : undefined}
         // `r.mine` and nothing else. The old gate also asked for `r.minuteId`, which a hand-typed

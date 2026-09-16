@@ -30,6 +30,8 @@ export type RootStackParamList = {
    */
   Meeting: { meetingId: string; tab?: MeetingTab; atMs?: number; fromNotification?: boolean };
   Speakers: { meetingId: string };
+  /** The review queue for one meeting: what the classifier could not settle, one card at a time. */
+  Review: { meetingId: string };
   Search: undefined;
   Settings: undefined;
   Archive: undefined;

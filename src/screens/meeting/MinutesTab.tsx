@@ -18,6 +18,7 @@ import {
   type ItemRow,
 } from './shared';
 import { ProvenanceButton } from './ItemProvenance';
+import { labelsFor } from './recordLabels';
 
 /**
  * MOM — the document you would send someone.
@@ -101,6 +102,7 @@ export default function MinutesTab({
       content={editedText(ed, t.kind, t.key, r.text) ?? r.text}
       edited={isEdited(ed, t.kind, t.key)}
       mine={r.mine}
+      labels={labelsFor(r.record)}
       onEdit={onEditItem ? () => onEditItem(r) : undefined}
       onRevert={onRevertItem ? () => onRevertItem(r) : undefined}
       // `r.mine` and nothing else. The old gate also asked for `r.minuteId`, which a hand-typed

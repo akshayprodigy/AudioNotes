@@ -53,6 +53,7 @@ export default function SummaryTab({
   onRevert,
   onUpgrade,
   writing,
+  onReview,
 }: {
   /**
    * Taken for the COUNTERS alone — the prose still comes from `minutes`, which is where it lives.
@@ -82,6 +83,8 @@ export default function SummaryTab({
   onOpenProvenance: (ms: number) => void;
   canPlay: boolean;
   onRemoveMark: (id: number) => void;
+  /** Open the review queue. The banner that calls it is drawn only when there is something to review. */
+  onReview?: () => void;
 }) {
   const { colors } = useTheme();
   const st = React.useMemo(() => makeStyles(colors), [colors]);
@@ -162,8 +165,36 @@ export default function SummaryTab({
     };
   }, [prose]);
 
+  // Classified AND flagged: the queue holds what the model could not settle, so an item with no
+  // record — every free-tier item, and a free-tier ambiguous reconciliation — never counts.
+  const needsLook = items.filter(i => i.review === 'needs_review' && i.itemType !== null).length;
+
   return (
     <ScrollView contentContainerStyle={st.pad} showsVerticalScrollIndicator={false}>
+      {needsLook > 0 && onReview ? (
+        <View style={st.reviewWrap}>
+          <Raised edge={colors.warning} fill={colors.warningSoft} rad={radius.card} depth={4}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Review"
+              onPress={onReview}
+              style={st.reviewBanner}>
+              <Icon name="alert" size={s(20)} color={colors.warning} strokeWidth={2.4} />
+              <View style={st.flex}>
+                <Txt variant="bodyBlack">
+                  {needsLook} item{needsLook === 1 ? '' : 's'} need{needsLook === 1 ? 's' : ''} a look
+                </Txt>
+                <Txt variant="chipSoft" color={colors.inkSoft}>
+                  What the model could not settle.
+                </Txt>
+              </View>
+              <Txt variant="chip" color={colors.primary}>
+                Review
+              </Txt>
+            </Pressable>
+          </Raised>
+        </View>
+      ) : null}
       {highlights.length > 0 ? (
         <View style={st.highlights}>
           <SectionHead label="HIGHLIGHTS" count={highlights.length} colors={colors} />
@@ -390,6 +421,8 @@ function Glance({
 function makeStyles(_c: Colors) {
   return StyleSheet.create({
     pad: { paddingHorizontal: s(16), paddingBottom: s(30), gap: s(14) },
+    reviewWrap: { marginBottom: s(14) },
+    reviewBanner: { flexDirection: 'row', alignItems: 'center', gap: s(12), padding: s(14) },
     highlights: { gap: s(10) },
     highlight: { flexDirection: 'row', gap: s(10), padding: s(14), alignItems: 'flex-start' },
     flex: { flex: 1, gap: s(8) },

@@ -4,6 +4,7 @@ import Icon, { type IconName } from '../../components/Icon';
 import { Raised, Txt } from '../../components/ui';
 import { radius, s, type Colors } from '../../theme';
 import { MINUTE_SOURCE_USER, USER_GEN } from '../../pipeline/types';
+import { labelsFor, type Labels, type RecordSummary } from './recordLabels';
 import type { Edit, EditTarget, Item, ItemKind, Minute } from '../../pipeline/types';
 
 /**
@@ -169,6 +170,8 @@ export type ItemRow = {
   mine: boolean;
   /** When it was said, or null for a row that never claimed to have been said at all. */
   anchorStartMs: number | null;
+  /** The typed record's visible part, or null until the Pro classifier has read the item. */
+  record: RecordSummary | null;
 };
 
 /**
@@ -218,6 +221,7 @@ export function toItemRows(items: Item[], minutes: Minute[]): ItemRow[] {
     // Already null for a hand-typed row: db.items derives it there, at the database boundary, so
     // nothing here has to know that the column is NOT NULL and holds a sentinel.
     anchorStartMs: it.anchorStartMs,
+    record: it.itemType ? { itemType: it.itemType, status: it.status, dateNorm: it.dateNorm } : null,
   }));
 
   // "Have the RULES produced items for this meeting" — see the note above for why it is not
@@ -239,6 +243,7 @@ export function toItemRows(items: Item[], minutes: Minute[]): ItemRow[] {
       // MINUTE_SOURCE_USER, not USER_GEN. Two vocabularies, two constants — see the constant.
       mine: m.source === MINUTE_SOURCE_USER,
       anchorStartMs: null,
+      record: null,
     });
   }
   return rows;
@@ -559,6 +564,40 @@ export function Prose({
  * gesture exists in a line above the list, and the accessibility action offers the same thing to
  * anyone who cannot make a long-press.
  */
+/**
+ * What a typed item wears: its type, a status when a later turn changed it, the pinned day.
+ * Nothing at all for an unclassified row — a free-tier item never grows labels it did not earn.
+ */
+export function RecordChips({ labels, colors }: { labels: Labels; colors: Colors }) {
+  const st = React.useMemo(() => makeStyles(colors), [colors]);
+  if (!labels.type && !labels.status && !labels.day) return null;
+  return (
+    <>
+      {labels.type ? (
+        <View style={[st.recordChip, { backgroundColor: colors.primarySoft }]} accessibilityLabel={labels.type}>
+          <Txt variant="chipSm" color={colors.primary}>
+            {labels.type}
+          </Txt>
+        </View>
+      ) : null}
+      {labels.status ? (
+        <View style={[st.recordChip, { backgroundColor: colors.warningSoft }]} accessibilityLabel={labels.status}>
+          <Txt variant="chipSm" color={colors.warning}>
+            {labels.status}
+          </Txt>
+        </View>
+      ) : null}
+      {labels.day ? (
+        <View style={[st.recordChip, { backgroundColor: colors.cardAlt }]} accessibilityLabel={`→ ${labels.day}`}>
+          <Txt variant="chipSm" color={colors.inkSoft}>
+            → {labels.day}
+          </Txt>
+        </View>
+      ) : null}
+    </>
+  );
+}
+
 export function DocItem({
   kind,
   colors,
@@ -569,6 +608,7 @@ export function DocItem({
   onRevert,
   onRemove,
   provenance,
+  labels,
 }: {
   kind: string;
   colors: Colors;
@@ -582,22 +622,27 @@ export function DocItem({
   onRemove?: () => void;
   /** The way back to the moment it was said. Absent on a row that never claimed one. */
   provenance?: React.ReactNode;
+  /** The typed record's chips (labelsFor). Empty for an unclassified row. */
+  labels?: Labels;
 }) {
   const st = React.useMemo(() => makeStyles(colors), [colors]);
   const meta = kindMeta(kind, colors);
   const { text, owner, due } = splitAction(content);
+  const lab = labels ?? {};
+  const wears = Boolean(lab.type || lab.status || lab.day);
   const body = (
     <View style={st.docRow}>
       <View style={[st.rule, { backgroundColor: meta.color }]} />
       <View style={st.flex}>
         <Txt variant="prose">{sentenceCase(text)}</Txt>
-        {owner || due || provenance ? (
+        {owner || due || provenance || wears ? (
           <View style={st.metaRow}>
             {owner || due ? (
               <Txt variant="chipSoft" color={colors.inkDim}>
                 {[owner, due].filter(Boolean).join(' · ')}
               </Txt>
             ) : null}
+            <RecordChips labels={lab} colors={colors} />
             {provenance}
           </View>
         ) : null}
@@ -720,6 +765,7 @@ function makeStyles(_c: Colors) {
     li: { flexDirection: 'row', gap: s(10), alignItems: 'flex-start' },
     // Nudged down onto the first line's optical centre rather than its box top.
     dot: { width: s(6), height: s(6), borderRadius: s(3), marginTop: s(10) },
+    recordChip: { paddingHorizontal: s(8), paddingVertical: s(3), borderRadius: s(8) },
     docRow: { flexDirection: 'row', gap: s(12), alignItems: 'stretch' },
     rule: { width: s(3), borderRadius: s(2) },
     metaRow: {

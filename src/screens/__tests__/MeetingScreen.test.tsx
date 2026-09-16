@@ -380,3 +380,39 @@ describe('who said this', () => {
     expect(db.setLineSpeaker).toHaveBeenCalledWith('m1', ['u1'], 's9');
   });
 });
+
+/**
+ * The review banner counts what the classifier could not settle — classified AND flagged. A
+ * free-tier item never has a record, so a free-tier reconciliation flag never draws it.
+ */
+describe('the review banner', () => {
+  const base = {
+    meetingId: 'm1', kind: 'action', text: 'Send the proposal Friday — Priya', genVersion: 'rules@3',
+    anchorStartMs: 1000, anchorEndMs: 2000, sources: [], ownerJson: null, dateSaid: null, dateNorm: null,
+  };
+
+  it('counts classified items that need a look and opens the queue', async () => {
+    (db.items as jest.Mock).mockResolvedValue([
+      { ...base, id: 'i1', review: 'needs_review', itemType: 'request', status: 'contradicted' },
+      { ...base, id: 'i2', review: 'suggested', itemType: 'commitment', status: 'open' },
+      { ...base, id: 'i3', review: 'needs_review', itemType: 'uncertain', status: 'open' },
+    ]);
+    const tree = await render();
+    const banner = tree.root.findAllByProps({ accessibilityLabel: 'Review' }, { deep: false })[0];
+    // Text children arrive as template pieces; join them before reading.
+    const lines = banner.findAllByType(require('react-native').Text).map(t => [].concat(t.props.children).join(''));
+    expect(lines).toContain('2 items need a look');
+    await act(async () => {
+      banner.props.onPress();
+    });
+    expect(nav.navigate).toHaveBeenCalledWith('Review', { meetingId: 'm1' });
+  });
+
+  it('draws nothing for a flagged item with no record (free tier)', async () => {
+    (db.items as jest.Mock).mockResolvedValue([
+      { ...base, id: 'i1', review: 'needs_review', itemType: null, status: null },
+    ]);
+    const tree = await render();
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Review' }, { deep: false })).toHaveLength(0);
+  });
+});

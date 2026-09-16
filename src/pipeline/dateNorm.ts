@@ -85,11 +85,15 @@ export function resolveDay(said: string, meetingAtMs: number, timeZone: string):
   return d ? isoDay(d) : null;
 }
 
-/** A day as the label the queue shows: "Fri 18 Sep". */
-export function dayLabel(isoOrMs: string | number, timeZone?: string): string {
+const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * A day as the label the queue shows: "Fri 18 Sep". Fixed tables rather than Intl: ICU spells
+ * September "Sept" in en-GB on some engines, and a label must read the same on every phone.
+ * A number is a stored local midnight, read in UTC (see recordLabels); a string is YYYY-MM-DD.
+ */
+export function dayLabel(isoOrMs: string | number): string {
   const dt = typeof isoOrMs === 'number' ? new Date(isoOrMs) : new Date(`${isoOrMs}T00:00:00Z`);
-  return new Intl.DateTimeFormat('en-GB', {
-    weekday: 'short', day: 'numeric', month: 'short',
-    ...(typeof isoOrMs === 'number' ? (timeZone ? { timeZone } : {}) : { timeZone: 'UTC' }),
-  }).format(dt);
+  return `${WEEKDAY_SHORT[dt.getUTCDay()]} ${dt.getUTCDate()} ${MONTH_SHORT[dt.getUTCMonth()]}`;
 }
