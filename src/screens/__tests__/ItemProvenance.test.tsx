@@ -396,6 +396,8 @@ beforeEach(() => {
   (db.marks as jest.Mock).mockResolvedValue([]);
   (db.removeMark as jest.Mock).mockResolvedValue(undefined);
   (db.stageRates as jest.Mock).mockResolvedValue({});
+  (db.setLineSpeaker as jest.Mock).mockResolvedValue(undefined);
+  (db.addSpeaker as jest.Mock).mockResolvedValue(null);
   (db.getSetting as jest.Mock).mockResolvedValue(null);
   (db.setSetting as jest.Mock).mockResolvedValue(undefined);
 

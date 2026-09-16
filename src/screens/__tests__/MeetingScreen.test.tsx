@@ -63,6 +63,8 @@ beforeEach(() => {
   (db.getSetting as jest.Mock).mockResolvedValue(null);
   (db.setSetting as jest.Mock).mockResolvedValue(undefined);
   (db.stageRates as jest.Mock).mockResolvedValue({});
+  (db.setLineSpeaker as jest.Mock).mockResolvedValue(undefined);
+  (db.addSpeaker as jest.Mock).mockResolvedValue(null);
 });
 
 /** A native event, delivered the way the phone would deliver it (jest.setup.js). */
@@ -306,5 +308,75 @@ describe('a paused pipeline', () => {
     text = JSON.stringify(tree.toJSON());
     expect(text).not.toContain('Paused');
     expect(text).toContain('min left');
+  });
+});
+
+/** "Who said this" from the Script: the line sheet, the picker, and the writes they end in. */
+describe('who said this', () => {
+  const utts = [
+    { id: 'u1', meetingId: 'm1', startMs: 0, endMs: 2000, speakerId: 's1', text: 'Hello there.' },
+    { id: 'u2', meetingId: 'm1', startMs: 2500, endMs: 4000, speakerId: 's1', text: 'Second line.' },
+  ];
+  const spks = [
+    { id: 's1', meetingId: 'm1', clusterLabel: 'S0', displayName: 'Speaker 1' },
+    { id: 's2', meetingId: 'm1', clusterLabel: 'S1', displayName: 'Speaker 2' },
+  ];
+  const press = async (tree: renderer.ReactTestRenderer, label: string) => {
+    const n = tree.root.findAllByProps({ accessibilityLabel: label }, { deep: false })[0];
+    await act(async () => {
+      n.props.onPress();
+    });
+  };
+  const openScript = async (tree: renderer.ReactTestRenderer) => {
+    const tab = tree.root.findAllByProps({ accessibilityRole: 'tab', accessibilityLabel: 'Script' })[0];
+    await act(async () => {
+      tab.props.onPress();
+    });
+  };
+  const longPress = async (tree: renderer.ReactTestRenderer, text: string) => {
+    const line = tree.root.findAllByProps({ accessibilityLabel: text }, { deep: false })[0];
+    await act(async () => {
+      line.props.onLongPress();
+    });
+  };
+
+  beforeEach(() => {
+    (db.utterances as jest.Mock).mockResolvedValue(utts);
+    (db.speakers as jest.Mock).mockResolvedValue(spks);
+    (db.setLineSpeaker as jest.Mock).mockResolvedValue(undefined);
+  });
+
+  it('reassigns the whole turn from the line sheet', async () => {
+    const tree = await render();
+    await openScript(tree);
+    await longPress(tree, 'Second line.');
+    await press(tree, 'Change who said it');
+    await press(tree, 'The whole turn');
+    await press(tree, 'Speaker 2');
+    expect(db.setLineSpeaker).toHaveBeenCalledWith('m1', ['u1', 'u2'], 's2');
+  });
+
+  it('someone new: adds the speaker, then assigns', async () => {
+    (db.addSpeaker as jest.Mock).mockResolvedValue({
+      id: 's9', meetingId: 'm1', clusterLabel: 'human', displayName: 'Rahul',
+    });
+    const tree = await render();
+    await openScript(tree);
+    await longPress(tree, 'Hello there.');
+    await press(tree, 'Change who said it');
+    await press(tree, 'Someone new');
+    const input = tree.root
+      .findAllByType(require('react-native').TextInput)
+      .find(i => i.props.placeholder === 'Name');
+    await act(async () => {
+      input!.props.onChangeText('Rahul');
+    });
+    // The prompt's confirm is a SoftButton, labelled by its `label` prop rather than an a11y label.
+    const add = tree.root.findAllByProps({ label: 'Add' }, { deep: false })[0];
+    await act(async () => {
+      add.props.onPress();
+    });
+    expect(db.addSpeaker).toHaveBeenCalledWith('m1', 'Rahul');
+    expect(db.setLineSpeaker).toHaveBeenCalledWith('m1', ['u1'], 's9');
   });
 });

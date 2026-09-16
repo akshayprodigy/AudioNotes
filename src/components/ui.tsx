@@ -401,6 +401,8 @@ export function Sheet({
                 a.onPress();
               }}
               accessibilityRole="button"
+              accessibilityLabel={a.label}
+              accessibilityHint={a.hint}
               style={({ pressed }) => [
                 styles.sheetRow,
                 { backgroundColor: pressed ? colors.cardAlt : 'transparent' },

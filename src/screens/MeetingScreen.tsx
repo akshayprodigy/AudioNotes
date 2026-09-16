@@ -38,7 +38,9 @@ import {
 import SummaryTab from './meeting/SummaryTab';
 import MinutesTab from './meeting/MinutesTab';
 import ActionsTab from './meeting/ActionsTab';
-import TranscriptTab from './meeting/TranscriptTab';
+import TranscriptTab, { type Turn } from './meeting/TranscriptTab';
+import SpeakerPicker from './meeting/SpeakerPicker';
+import { linesForScope, nextSpeakerName, type Scope } from './meeting/speakerRepair';
 import PlayerBar from './meeting/PlayerBar';
 import { usePlayer } from './meeting/usePlayer';
 import type {
@@ -138,6 +140,12 @@ export default function MeetingScreen({ route, navigation }: Props) {
     add?: MinuteKind;
     extraPlaceholder?: string;
   } | null>(null);
+  /** The line whose long press opened the two-action sheet, with the turn it sits in. */
+  const [lineSheet, setLineSheet] = useState<{ part: { id: string; text: string }; turn: Turn } | null>(null);
+  /** The speaker picker: the line it is for, its turn, and whether the scope chips apply. */
+  const [picker, setPicker] = useState<{ lineId: string; text: string; turn: Turn; scopes: boolean } | null>(null);
+  /** "Someone new" is waiting for a name; remembers the scope chosen before the prompt. */
+  const [naming, setNaming] = useState<{ scope: Scope } | null>(null);
 
   const player = usePlayer(meetingId);
 
@@ -675,6 +683,34 @@ export default function MeetingScreen({ route, navigation }: Props) {
   // be backed out of. The app's own sheet has no such limit and carries a line per row.
   const [exportSheet, setExportSheet] = useState(false);
   const onExport = () => setExportSheet(true);
+  /**
+   * Who said these lines. Splitting and merging turns are both this: the scope picks the ids,
+   * setLineSpeaker writes through and records the edit, and the Script regroups on refresh.
+   */
+  const applySpeaker = useCallback(
+    async (speakerId: string, scope: Scope) => {
+      if (!picker) return;
+      const ids = linesForScope(picker.turn, picker.lineId, scope);
+      setPicker(null);
+      if (ids.length === 0) return;
+      await db.setLineSpeaker(meetingId, ids, speakerId).catch(() => {});
+      refresh();
+    },
+    [picker, meetingId, refresh],
+  );
+  const onSomeoneNew = useCallback((scope: Scope) => setNaming({ scope }), []);
+  const onNamed = useCallback(
+    async (name: string) => {
+      const scope = naming?.scope ?? 'line';
+      setNaming(null);
+      const sp = await db
+        .addSpeaker(meetingId, name.trim() || nextSpeakerName(speakers.map(x => x.displayName)))
+        .catch(() => null);
+      if (sp) await applySpeaker(sp.id, scope);
+    },
+    [naming, meetingId, speakers, applySpeaker],
+  );
+
   const exportActions: SheetAction[] = [
     { icon: 'share', label: 'PDF', hint: 'The one that looks the same wherever it lands.',
       onPress: () => FileExport.share(meetingId, 'pdf') },
@@ -1118,14 +1154,9 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 scrollSeq={scrollTo?.seq}
                 onCopy={() => copyDoc('transcript', 'Transcript')}
                 edits={edits}
-                onEditLine={(id, initial) =>
-                  setEditing({
-                    title: 'Correct this line',
-                    hint: 'Fixes a mis-heard word. The recording is untouched, and you can put the original back.',
-                    initial,
-                    multiline: true,
-                    target: { kind: 'utterance', key: id },
-                  })
+                onLineActions={(part, turn) => setLineSheet({ part, turn })}
+                onReassignTurn={turn =>
+                  setPicker({ lineId: turn.parts[0].id, text: turn.parts[0].text, turn, scopes: false })
                 }
                 onRevertLine={id => onRevertEdit('utterance', id)}
               />
@@ -1217,6 +1248,65 @@ export default function MeetingScreen({ route, navigation }: Props) {
         placeholder="Meeting name"
         onCancel={() => setRenaming(false)}
         onSubmit={onRename}
+      />
+
+      {/* Long press on a line: the two things a person can do to it. Sheet closes itself before
+          calling the action, so the prompt or the picker opens over a clean screen. */}
+      <Sheet
+        visible={lineSheet !== null}
+        title={lineSheet ? lineSheet.part.text : undefined}
+        actions={[
+          {
+            icon: 'edit',
+            label: 'Correct the words',
+            hint: 'Fixes a mis-heard word. The recording is untouched.',
+            onPress: () => {
+              if (!lineSheet) return;
+              setEditing({
+                title: 'Correct this line',
+                hint: 'Fixes a mis-heard word. The recording is untouched, and you can put the original back.',
+                initial: lineSheet.part.text,
+                multiline: true,
+                target: { kind: 'utterance', key: lineSheet.part.id },
+              });
+            },
+          },
+          {
+            icon: 'users',
+            label: 'Change who said it',
+            hint: 'This line, the rest of the turn, or the whole turn.',
+            onPress: () => {
+              if (!lineSheet) return;
+              setPicker({
+                lineId: lineSheet.part.id,
+                text: lineSheet.part.text,
+                turn: lineSheet.turn,
+                scopes: lineSheet.turn.parts.length > 1,
+              });
+            },
+          },
+        ]}
+        onClose={() => setLineSheet(null)}
+      />
+      <SpeakerPicker
+        visible={picker !== null && naming === null}
+        lineText={picker?.text ?? ''}
+        speakers={speakers}
+        currentId={picker ? utterances.find(u => u.id === picker.lineId)?.speakerId ?? null : null}
+        scopes={picker?.scopes ?? false}
+        onPick={applySpeaker}
+        onNew={onSomeoneNew}
+        onClose={() => setPicker(null)}
+      />
+      <TextPrompt
+        visible={naming !== null}
+        title="Who is this?"
+        hint="A name for a voice the app did not separate. You can rename or merge it later on the Speakers screen."
+        initial=""
+        placeholder="Name"
+        confirmLabel="Add"
+        onCancel={() => setNaming(null)}
+        onSubmit={onNamed}
       />
     </View>
   );

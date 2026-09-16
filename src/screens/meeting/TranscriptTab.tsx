@@ -14,7 +14,7 @@ import {
   type EditMap,
 } from './shared';
 
-type Turn = {
+export type Turn = {
   key: string;
   who: string;
   idx: number;
@@ -130,7 +130,8 @@ export default function TranscriptTab({
   scrollSeq,
   onCopy,
   edits,
-  onEditLine,
+  onLineActions,
+  onReassignTurn,
   onRevertLine,
 }: {
   utterances: Utterance[];
@@ -154,8 +155,14 @@ export default function TranscriptTab({
   /** Copy the record itself: attributed, no minutes above it, no subtitle timings in it. */
   onCopy?: () => void;
   edits?: EditMap;
-  /** Correct a mis-heard line. Keyed on the utterance id, which is what the edits table holds. */
-  onEditLine?: (utteranceId: string, initial: string) => void;
+  /**
+   * Long press on a line: the line (id, current text) and the turn it sits in. The caller offers
+   * "correct the words" (keyed on the utterance id, which is what the edits table holds) and
+   * "change who said it" (which needs the turn, for its scopes).
+   */
+  onLineActions?: (part: { id: string; text: string }, turn: Turn) => void;
+  /** Tap on the name at the head of a turn: change who said the whole turn. */
+  onReassignTurn?: (turn: Turn) => void;
   onRevertLine?: (utteranceId: string) => void;
 }) {
   const { colors } = useTheme();
@@ -222,11 +229,11 @@ export default function TranscriptTab({
           <View style={st.head}>
             <Txt variant="chipSoft" color={colors.inkFaint} style={st.flex}>
               {onPlayTurn
-                ? onEditLine
-                  ? 'Tap a line to hear it. Long press to correct it.'
+                ? onLineActions
+                  ? 'Tap a line to hear it. Long press to correct it or change who said it.'
                   : 'Tap any line to hear it.'
-                : onEditLine
-                  ? 'The recording has been deleted. Long press a line to correct it.'
+                : onLineActions
+                  ? 'The recording has been deleted. Long press a line to correct it or change who said it.'
                   : 'The recording for this meeting has been deleted.'}
             </Txt>
             {onCopy ? (
@@ -286,24 +293,24 @@ export default function TranscriptTab({
                     ) : null}
                   </View>
                 );
-                if (!onPlayTurn && !onEditLine) return <View key={part.id}>{line}</View>;
+                if (!onPlayTurn && !onLineActions) return <View key={part.id}>{line}</View>;
                 return (
                   <Pressable
                     key={part.id}
                     onPress={onPlayTurn ? () => onPlayTurn(part.startMs) : undefined}
-                    onLongPress={onEditLine ? () => onEditLine(part.id, text) : undefined}
+                    onLongPress={onLineActions ? () => onLineActions({ id: part.id, text }, t) : undefined}
                     accessibilityRole="button"
                     accessibilityLabel={text}
                     accessibilityHint={
-                      onEditLine
-                        ? 'Plays from here. Long press to correct this line.'
+                      onLineActions
+                        ? 'Plays from here. Long press to correct this line or change who said it.'
                         : 'Plays from here'
                     }
                     accessibilityActions={
-                      onEditLine ? [{ name: 'longpress', label: 'Correct this line' }] : undefined
+                      onLineActions ? [{ name: 'longpress', label: 'Correct this line or change who said it' }] : undefined
                     }
                     onAccessibilityAction={e => {
-                      if (e.nativeEvent.actionName === 'longpress') onEditLine?.(part.id, text);
+                      if (e.nativeEvent.actionName === 'longpress') onLineActions?.({ id: part.id, text }, t);
                     }}>
                     {line}
                   </Pressable>
@@ -320,9 +327,17 @@ export default function TranscriptTab({
                   {initials(t.who)}
                 </Txt>
               </View>
-              <Txt variant="chip" color={tint}>
-                {t.who}
-              </Txt>
+              {/* The name is the way to say the whole turn was somebody else. */}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${t.who} — change who said this`}
+                onPress={onReassignTurn ? () => onReassignTurn(t) : undefined}
+                disabled={!onReassignTurn}
+                hitSlop={8}>
+                <Txt variant="chip" color={tint}>
+                  {t.who}
+                </Txt>
+              </Pressable>
               <Txt variant="chipSoft" color={on ? colors.primaryDeep : colors.inkFaint}>
                 {stamp(t.startMs)}
               </Txt>
