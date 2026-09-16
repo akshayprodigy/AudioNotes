@@ -188,6 +188,44 @@ class ExportItemsTest {
     )
   }
 
+  // ---- What the model read ----------------------------------------------------------------
+
+  /**
+   * A classified row wears its labels in the document too, after the text and its stamp: the
+   * whole point of "Contradicted" is that the person who was not in the room learns the request
+   * was pushed back on. An unclassified row — every free-tier row — is printed exactly as before.
+   */
+  @Test fun aClassifiedRowWearsItsLabelsInTheDocument() {
+    val items = FileExportModule.exportItems(
+      rows(
+        itemRow("it-1", "action", "Send the proposal — Unassigned (due Friday)", 5_000L)
+          .put("item_type", "request").put("status", "contradicted"),
+        itemRow("it-2", "action", "Send the deck — Priya", 9_000L)
+          .put("item_type", "commitment").put("status", "open").put("date_norm", 1789689600000L),
+        itemRow("it-3", "decision", "Ship it", 12_000L),
+      ),
+      rows(),
+      emptyMap(),
+    )
+    val md = FileExportModule.renderMarkdown(content(items = items))
+    assertTrue(md, md.contains("- [0:05] Send the proposal — Unassigned (due Friday) · Request · Contradicted\n"))
+    assertTrue(md, md.contains("- [0:09] Send the deck — Priya · Commitment · → Fri 18 Sep\n"))
+    assertTrue(md, md.contains("- [0:12] Ship it\n"))
+    val txt = FileExportModule.renderText(content(items = items))
+    assertTrue(txt, txt.contains("[0:05] Send the proposal — Unassigned (due Friday) · Request · Contradicted"))
+  }
+
+  /** A correction replaces the words, not the record: the labels stay on the corrected line. */
+  @Test fun aCorrectedRowStillWearsItsLabels() {
+    val items = FileExportModule.exportItems(
+      rows(itemRow("it-1", "action", "Send the proposal — Unassigned", 5_000L).put("item_type", "request").put("status", "contradicted")),
+      rows(),
+      mapOf("item/it-1" to "Send the proposal — Rahul"),
+    )
+    val md = FileExportModule.renderMarkdown(content(items = items))
+    assertTrue(md, md.contains("- [0:05] Send the proposal — Rahul · Request · Contradicted\n"))
+  }
+
   // ---- Where the rows come from -----------------------------------------------------------
 
   /**

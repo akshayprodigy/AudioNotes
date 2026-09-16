@@ -57,7 +57,11 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
    * 10 applies on screen — an item with no evidence is not a failure to find any; it is an item
    * that never claimed any.
    */
-  data class ExportItem(val kind: String, val text: String, val anchorStartMs: Long?)
+  /**
+   * `labels` is what the model read, as the bullet's tail (RecordLabels.suffix): "" for a row
+   * nothing has classified, which is every free-tier row and every row before the narrator ran.
+   */
+  data class ExportItem(val kind: String, val text: String, val anchorStartMs: Long?, val labels: String = "")
 
   /** One turn of the transcript, attributed and with its correction already applied. */
   data class ExportTurn(
@@ -129,8 +133,8 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
         // gen_version comes back because it is what decides whether a row HAS a moment: the
         // column is NOT NULL, a hand-typed row stores AudioDb.Gen.NO_ANCHOR, and exportItems
         // derives "no anchor" from the gen and never from the number.
-        "SELECT id,kind,text,anchor_start_ms,gen_version FROM items WHERE meeting_id=? " +
-          "AND review<>'rejected' ORDER BY anchor_start_ms, rowid",
+        "SELECT id,kind,text,anchor_start_ms,gen_version,item_type,status,date_norm FROM items " +
+          "WHERE meeting_id=? AND review<>'rejected' ORDER BY anchor_start_ms, rowid",
         arrayOf(meetingId),
       ),
     )
@@ -420,6 +424,13 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
             // a fabricated claim that sends a reader of a forwarded document to the top of the
             // recording for a sentence nobody spoke. `bullet` omits the stamp for a null.
             if (typed) null else o.getLong("anchor_start_ms"),
+            // isNull first, every time: Android's org.json spells a SQL NULL "null" through
+            // optString, and the row would wear a label reading "null".
+            RecordLabels.suffix(
+              if (o.isNull("item_type")) null else o.getString("item_type"),
+              if (o.isNull("status")) null else o.getString("status"),
+              if (o.isNull("date_norm")) null else o.getLong("date_norm"),
+            ),
           ),
         )
       }
@@ -570,7 +581,7 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
       "[" + stamp(h.atMs) + "] " + (h.text ?: "(nothing said here yet)")
 
     private fun bullet(item: ExportItem): String =
-      if (item.anchorStartMs == null) item.text else "[" + stamp(item.anchorStartMs) + "] " + item.text
+      (if (item.anchorStartMs == null) item.text else "[" + stamp(item.anchorStartMs) + "] " + item.text) + item.labels
 
     fun renderMarkdown(c: Content): String {
       val sb = StringBuilder()

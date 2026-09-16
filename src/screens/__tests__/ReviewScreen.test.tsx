@@ -75,6 +75,8 @@ beforeEach(() => {
   (db.setItemDate as jest.Mock).mockResolvedValue(undefined);
   (db.setItemType as jest.Mock).mockResolvedValue(undefined);
   (db.addSpeaker as jest.Mock).mockResolvedValue({ id: 's9', meetingId: 'm1', clusterLabel: 'human', displayName: 'Meera' });
+  (db.edits as jest.Mock).mockResolvedValue([]);
+  (db.putEdit as jest.Mock).mockResolvedValue(undefined);
 });
 
 /**
@@ -116,6 +118,33 @@ describe('ReviewScreen', () => {
     await press(tree, 'Who owns it');
     await press(tree, 'Rahul');
     expect(db.setItemOwner).toHaveBeenCalledWith('i1', JSON.stringify({ kind: 'speaker', id: 's2', confidence: 'high' }));
+    // And the correction every tab and export already honour: the text says who, now.
+    expect(db.putEdit).toHaveBeenCalledWith('m1', 'item', 'i1', 'Can you send the proposal Friday? — Rahul');
+  });
+
+  it('an owner fix keeps an earlier correction of the words and the due date, and replaces its owner', async () => {
+    (db.edits as jest.Mock).mockResolvedValue([
+      { meetingId: 'm1', targetKind: 'item', targetKey: 'i1', content: 'Send the proposal — Priya (due Friday)' },
+    ]);
+    const tree = await render();
+    await press(tree, 'Fix');
+    await press(tree, 'Who owns it');
+    await press(tree, 'Rahul');
+    expect(db.putEdit).toHaveBeenCalledWith('m1', 'item', 'i1', 'Send the proposal — Rahul (due Friday)');
+  });
+
+  it('a typed name becomes a speaker row, the owner, and the correction', async () => {
+    const tree = await render();
+    await press(tree, 'Fix');
+    await press(tree, 'Who owns it');
+    await press(tree, 'Someone new');
+    const prompt = tree.root.findAllByProps({ title: 'Who owns it?' }, { deep: false })[0];
+    await act(async () => {
+      prompt.props.onSubmit('Meera', '');
+    });
+    expect(db.addSpeaker).toHaveBeenCalledWith('m1', 'Meera');
+    expect(db.setItemOwner).toHaveBeenCalledWith('i1', JSON.stringify({ kind: 'speaker', id: 's9', confidence: 'high' }));
+    expect(db.putEdit).toHaveBeenCalledWith('m1', 'item', 'i1', 'Can you send the proposal Friday? — Meera');
   });
 
   it('Fix on an unpinned date offers days from the meeting date, and No date', async () => {

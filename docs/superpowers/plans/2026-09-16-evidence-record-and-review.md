@@ -688,6 +688,25 @@ Label chips in `shared.tsx`'s item row (next to the owner/due chips): type (`sen
 
 ---
 
+### Task 8b: A fix reaches the rows and the exports
+
+*Added 16 Sep, after Task 8: spec §2 promises "on the Actions tab and in exports, the same row
+as before, with its label chips and — for a fixed owner or date — the person's value", and Task 7
+only put the chips on screen. The row's owner chip and every export read the item's TEXT
+(`splitAction`), so an owner fixed on a card was invisible everywhere but `owner_json`.*
+
+**Files:**
+- Modify: `src/screens/ReviewScreen.tsx` (an owner fix also writes the correction), test.
+- Create: `cpp/tests/golden/record_labels.json`; `android/.../pipeline/RecordLabels.kt` + `RecordLabelsTest.kt`; extend `src/screens/meeting/__tests__/recordLabels.test.ts` to read the golden.
+- Modify: `FileExportModule.kt` (`document` selects `item_type,status,date_norm`; `ExportItem.labels`; `bullet` appends them), `ExportItemsTest.kt`.
+
+- [x] **Step 1: An owner fix is a correction.** Failing test: picking "Rahul" on card 1 also calls `db.putEdit('m1', 'item', 'i1', 'Can you send the proposal Friday? — Rahul')` — `composeAction(splitAction(current).text, name, splitAction(current).due)` where `current` is the item's edited text when it has a correction, else its stored text. The edits table is what every tab and every export already honour, so one write reaches all of them; a Revert puts the rule's text back and `owner_json` stays the structured record. A typed name ("Someone new") takes the same path. The day and the kind do not touch the text: the day is a chip from `date_norm` on screen and a label in the export; the spoken phrase stays as said.
+- [x] **Step 2: One label table, two languages.** `record_labels.json`: cases of `{itemType, status, dateNorm}` → `{type, status, day}` and the export `suffix` string (" · Request · Contradicted · → Thu 17 Sep"; "" for an unclassified row; no status for `open`; "Not sure" for `uncertain`). `RecordLabels.kt` mirrors `recordLabels.ts`; both tests read the golden.
+- [x] **Step 3: The export wears them.** `document` selects the three columns; `exportItems` fills `ExportItem.labels = RecordLabels.suffix(...)`; `bullet` appends it after the text (every format that uses `bullet`: Markdown, text, PDF). Test: a classified item's bullet ends with the suffix; an unclassified one is unchanged.
+- [x] **Step 4: Run; mutation-check** (the edit written with the old owner; suffix on an unclassified row; day label local not UTC). Commit — `git commit -m "feat(review): a fixed owner reaches every row and export; exports wear the labels"`
+
+---
+
 ### Task 9: Prove it on the Pixel (Pro entitlement on the phone)
 
 - [ ] **Grammar on device.** Add to `NativePipelineTest`: load the LLM (same helper as `llm_loads_and_generates`), build the lead-example window through `nativeClassifyPrompt`, generate with `nativeLlmGenerateConstrained` + `nativeClassifyGrammar`, assert `nativeValidateRecord` returns non-empty and its `type` is one of the seven — the grammar compiled and constrained. Run `scripts/device-verify.sh NativePipeline`.

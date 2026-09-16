@@ -41,3 +41,14 @@ export function labelsFor(r: RecordSummary | null): Labels {
   if (r.dateNorm !== null && r.dateNorm !== undefined) out.day = dayLabel(r.dateNorm);
   return out;
 }
+
+/**
+ * The same labels as one trailing string, the way an exported bullet wears them:
+ * " · Request · Contradicted · → Fri 18 Sep". Empty for an unclassified row. The phone renders
+ * every export in Kotlin (RecordLabels.suffix); this is its mirror, pinned by the one golden.
+ */
+export function labelSuffix(r: RecordSummary | null): string {
+  const l = labelsFor(r);
+  const parts = [l.type, l.status, l.day ? `→ ${l.day}` : undefined].filter(Boolean);
+  return parts.length ? ' · ' + parts.join(' · ') : '';
+}

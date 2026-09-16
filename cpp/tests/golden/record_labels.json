@@ -1,0 +1,14 @@
+{
+  "note": "What a typed item wears, in the words a person reads: the type, a status only when a later turn changed it, the pinned day as 'Fri 18 Sep' (UTC, the day date_norm holds). `suffix` is the export's trailing form. Nothing at all for an unclassified row — a free-tier item never grows labels it did not earn. Read by RecordLabelsTest.kt and recordLabels.test.ts. dateNorm is epoch ms at UTC midnight.",
+  "cases": [
+    { "name": "unclassified", "itemType": null, "status": null, "dateNorm": null, "type": null, "statusLabel": null, "day": null, "suffix": "" },
+    { "name": "request contradicted, no day", "itemType": "request", "status": "contradicted", "dateNorm": null, "type": "Request", "statusLabel": "Contradicted", "day": null, "suffix": " · Request · Contradicted" },
+    { "name": "commitment open with a day", "itemType": "commitment", "status": "open", "dateNorm": 1789689600000, "type": "Commitment", "statusLabel": null, "day": "Fri 18 Sep", "suffix": " · Commitment · → Fri 18 Sep" },
+    { "name": "qualified with a day", "itemType": "proposal", "status": "qualified", "dateNorm": 1789603200000, "type": "Proposal", "statusLabel": "Qualified", "day": "Thu 17 Sep", "suffix": " · Proposal · Qualified · → Thu 17 Sep" },
+    { "name": "withdrawn agreement", "itemType": "agreement", "status": "withdrawn", "dateNorm": null, "type": "Agreement", "statusLabel": "Withdrawn", "day": null, "suffix": " · Agreement · Withdrawn" },
+    { "name": "rejection", "itemType": "rejection", "status": "open", "dateNorm": null, "type": "Rejection", "statusLabel": null, "day": null, "suffix": " · Rejection" },
+    { "name": "unresolved", "itemType": "unresolved", "status": "open", "dateNorm": null, "type": "Unresolved", "statusLabel": null, "day": null, "suffix": " · Unresolved" },
+    { "name": "not sure", "itemType": "uncertain", "status": "open", "dateNorm": null, "type": "Not sure", "statusLabel": null, "day": null, "suffix": " · Not sure" },
+    { "name": "a day at new year, in UTC", "itemType": "commitment", "status": "open", "dateNorm": 1798761600000, "type": "Commitment", "statusLabel": null, "day": "Fri 1 Jan", "suffix": " · Commitment · → Fri 1 Jan" }
+  ]
+}

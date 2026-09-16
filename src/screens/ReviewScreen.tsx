@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import type { Item, Meeting, Speaker, Utterance } from '../pipeline/types';
+import type { Edit, Item, Meeting, Speaker, Utterance } from '../pipeline/types';
 import { db } from '../db/queries';
 import { REASON_TEXT, reviewReason, type ReviewReason } from '../pipeline/reviewRule';
 import { dayLabel } from '../pipeline/dateNorm';
@@ -12,7 +12,7 @@ import { IconButton, Raised, Sheet, TextPrompt, Txt, type SheetAction } from '..
 import { ProvenanceButton } from './meeting/ItemProvenance';
 import SpeakerPicker from './meeting/SpeakerPicker';
 import { labelsFor } from './meeting/recordLabels';
-import { sentenceCase, splitAction } from './meeting/shared';
+import { composeAction, editedText, sentenceCase, splitAction, toEditMap } from './meeting/shared';
 import { usePlayer } from './meeting/usePlayer';
 import { radius, s, useTheme, type Colors } from '../theme';
 
@@ -77,6 +77,7 @@ export default function ReviewScreen({ route, navigation }: Props) {
   const [utterances, setUtterances] = useState<Utterance[]>([]);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
   const [meeting, setMeeting] = useState<Meeting | null>(null);
+  const [edits, setEdits] = useState<Edit[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [at, setAt] = useState(0);
   const [fixing, setFixing] = useState<'menu' | 'owner' | 'date' | 'type' | null>(null);
@@ -84,13 +85,17 @@ export default function ReviewScreen({ route, navigation }: Props) {
 
   useEffect(() => {
     let alive = true;
-    Promise.all([db.items(meetingId), db.utterances(meetingId), db.speakers(meetingId), db.getMeeting(meetingId)])
-      .then(([items, utts, spks, mtg]) => {
+    Promise.all([
+      db.items(meetingId), db.utterances(meetingId), db.speakers(meetingId), db.getMeeting(meetingId),
+      db.edits(meetingId).catch(() => [] as Edit[]),
+    ])
+      .then(([items, utts, spks, mtg, eds]) => {
         if (!alive) return;
         setQueue(items.filter(i => i.review === 'needs_review' && i.itemType !== null));
         setUtterances(utts);
         setSpeakers(spks);
         setMeeting(mtg ?? null);
+        setEdits(eds);
         setLoaded(true);
       })
       .catch(() => alive && setLoaded(true));
@@ -147,13 +152,22 @@ export default function ReviewScreen({ route, navigation }: Props) {
     advance();
   }, [card, advance]);
 
+  /**
+   * The person's owner, written twice on purpose: `owner_json` is the record, and a correction
+   * of the text is what every tab and every export already read the owner from — one write
+   * through the edits table reaches all of them, and a Revert there puts the rule's words back.
+   * The day and the kind never touch the text: the spoken phrase stays as said.
+   */
   const setOwner = useCallback(
-    async (ownerJson: string) => {
+    async (ownerJson: string, name: string) => {
       if (!card) return;
+      const current = editedText(toEditMap(edits), 'item', card.id, card.text) ?? card.text;
+      const { text, due } = splitAction(current);
       await db.setItemOwner(card.id, ownerJson).catch(() => {});
+      await db.putEdit(meetingId, 'item', card.id, composeAction(text, name, due ?? undefined)).catch(() => {});
       advance();
     },
-    [card, advance],
+    [card, edits, meetingId, advance],
   );
 
   const setDay = useCallback(
@@ -178,7 +192,7 @@ export default function ReviewScreen({ route, navigation }: Props) {
     async (name: string) => {
       setNaming(false);
       const sp = await db.addSpeaker(meetingId, name.trim()).catch(() => null);
-      if (sp) await setOwner(JSON.stringify({ kind: 'speaker', id: sp.id, confidence: 'high' }));
+      if (sp) await setOwner(JSON.stringify({ kind: 'speaker', id: sp.id, confidence: 'high' }), sp.displayName);
     },
     [meetingId, setOwner],
   );
@@ -306,7 +320,12 @@ export default function ReviewScreen({ route, navigation }: Props) {
         speakers={speakers}
         currentId={null}
         scopes={false}
-        onPick={id => setOwner(JSON.stringify({ kind: 'speaker', id, confidence: 'high' }))}
+        onPick={id =>
+          setOwner(
+            JSON.stringify({ kind: 'speaker', id, confidence: 'high' }),
+            speakers.find(x => x.id === id)?.displayName ?? '',
+          )
+        }
         onNew={() => setNaming(true)}
         onClose={() => setFixing(null)}
       />
