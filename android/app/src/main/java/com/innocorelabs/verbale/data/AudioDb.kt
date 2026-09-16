@@ -1434,6 +1434,12 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    * run for it. The window is exactly as wide as it was. Left here rather than deleted because a
    * forward promise that quietly stops being true is worse than one that was never made.
    */
+  /** When the meeting was recorded — the date a spoken "Friday" is resolved against. */
+  fun meetingCreatedAt(meetingId: String): Long? =
+    db.rawQuery("SELECT created_at FROM meetings WHERE id=?", arrayOf(meetingId)).use { c ->
+      if (c.moveToFirst()) c.getLong(0) else null
+    }
+
   /** The classifier's reading of one item, with the review the rule decided and the gen it ran as. */
   fun classifyItem(id: String, c: Classified, review: String, genVersion: String) {
     db.execSQL(

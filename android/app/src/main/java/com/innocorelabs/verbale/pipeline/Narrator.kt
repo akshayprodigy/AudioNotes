@@ -212,13 +212,33 @@ object Narrator {
       fun gen(prompt: String, maxTokens: Int): String =
         NativeBridge.nativeLlmGenerate(handle, prompt, maxTokens).trim()
 
-      // 3 for the condensation chain; digests only exist when the meeting needs more than one chunk.
-      val total = (if (chunks.size == 1) 0 else chunks.size) + 3
+      // 3 for the condensation chain; digests only exist when the meeting needs more than one
+      // chunk; one per item the classifier has still to read.
+      val toClassify = ItemClassifier.pending(db, meetingId).size
+      val total = (if (chunks.size == 1) 0 else chunks.size) + 3 + toClassify
       var step = 0
       fun tick(): Boolean {
         if (progress.isCancelled()) return true
         progress.onStage("narrate", step, total)
         return false
+      }
+
+      // The typed record first (evidence Phase B): a bounded, grammar-constrained reading of
+      // each item over the turns that replied to it. Before the prose, so the narrator's
+      // validator can hold what it writes against typed items. A failure here costs labels,
+      // never the notes — it is caught and logged, and narration goes on.
+      if (toClassify > 0) {
+        val meetingAt = db.meetingCreatedAt(meetingId) ?: System.currentTimeMillis()
+        val classified = try {
+          ItemClassifier.run(db, meetingId, meetingAt, { p, n, g ->
+            NativeBridge.nativeLlmGenerateConstrained(handle, p, n, g)
+          }) { step++; tick() }
+        } catch (e: Exception) {
+          Log.w(TAG, "classifier failed for $meetingId", e)
+          0
+        }
+        Log.i(TAG, "classified $classified of $toClassify item(s) for $meetingId")
+        if (progress.isCancelled()) return false
       }
 
       // What the prose is written FROM decides how it reads. Fed the DECISIONS/ACTIONS/QUESTIONS
