@@ -163,6 +163,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
   private val MEANING_TOP = 40
   private val SNIPPET_CHARS = 120
 
+
   // ---- Full-text index maintenance -------------------------------------------------------
   //
   // Every writer of indexed content calls the matching index* helper. They are scoped by `kind`
@@ -191,7 +192,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
   fun indexMinutes(meetingId: String) {
     indexDelete(meetingId, "minute")
     db.rawQuery(
-      "SELECT id, kind, content_json FROM minutes WHERE meeting_id=? AND kind <> 'summary'",
+      "SELECT id, kind, content_json FROM minutes WHERE meeting_id=? AND " + minuteKindsToIndex(hasRuleItems(meetingId)),
       arrayOf(meetingId),
     ).use { c ->
       while (c.moveToNext()) {
@@ -317,14 +318,23 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    */
   fun unindexedMeetings(limit: Int = 25): List<String> {
     val out = ArrayList<String>()
-    db.rawQuery(
-      "SELECT id FROM meetings m WHERE EXISTS(SELECT 1 FROM utterances u WHERE u.meeting_id=m.id) " +
-        "AND NOT EXISTS(SELECT 1 FROM search_fts f WHERE f.meeting_id=m.id) " +
-        "ORDER BY created_at DESC LIMIT ?",
-      arrayOf(limit.toString()),
-    ).use { c -> while (c.moveToNext()) out.add(c.getString(0)) }
+    db.rawQuery("SELECT id $UNINDEXED ORDER BY created_at DESC LIMIT ?", arrayOf(limit.toString()))
+      .use { c -> while (c.moveToNext()) out.add(c.getString(0)) }
     return out
   }
+
+  /**
+   * The true backlog. StorageModule.backfillSearch used to resolve `unindexedMeetings(1).size`,
+   * which can only be 0 or 1 — so a library of any size reported "1 to go" pass after pass. Same
+   * predicate once, like unmigratedCount, for the reason given there.
+   */
+  fun unindexedCount(): Int {
+    db.rawQuery("SELECT count(*) $UNINDEXED", null).use { c -> return if (c.moveToFirst()) c.getInt(0) else 0 }
+  }
+
+  private val UNINDEXED =
+    "FROM meetings m WHERE EXISTS(SELECT 1 FROM utterances u WHERE u.meeting_id=m.id) " +
+      "AND NOT EXISTS(SELECT 1 FROM search_fts f WHERE f.meeting_id=m.id)"
 
   // ---- Meaning index (sub-project 5) ---------------------------------------------------------
 
@@ -1696,6 +1706,10 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       // would let a rollback — or a kill — between the two leave search hits for items that never
       // landed, which is a hit that opens onto nothing. Both land or neither does.
       indexItems(meetingId)
+      // And the minutes index again, now that items exist: the pipeline writes minutes first,
+      // and at that moment the rule decisions had nowhere else to be indexed from. This is the
+      // second half of the duplicate-card fix (minuteKindsToIndex is the first).
+      indexMinutes(meetingId)
       unstampEmbedded(meetingId)
 
       // Ticks whose item is gone: drop them, or they accumulate forever against nothing. This is
@@ -2342,6 +2356,20 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
   }
 
   companion object {
+    /**
+     * Which `minutes` rows the index carries as "minute" cards.
+     *
+     * The decisions, actions and questions of a migrated meeting live in `items` too, and
+     * indexItems already carries those — so every rule decision was a card twice, once from each
+     * table. When the rules have produced items, only the kinds items do NOT hold (the narrative,
+     * the headline) are indexed from `minutes`; an unmigrated meeting still has everything there
+     * and keeps every kind. The summary is its own index kind either way. Pure, so a test can
+     * pin both branches without a database.
+     */
+    @JvmStatic
+    fun minuteKindsToIndex(hasRuleItems: Boolean): String =
+      if (hasRuleItems) "kind NOT IN ('summary','decision','action','question')" else "kind <> 'summary'"
+
     @Volatile private var instance: AudioDb? = null
 
     private val SCHEMA = arrayOf(

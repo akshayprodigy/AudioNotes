@@ -122,7 +122,7 @@ class StorageModule(private val ctx: ReactApplicationContext) :
     try {
       val db = AudioDb.get(ctx)
       for (id in db.unindexedMeetings(limit.toInt())) db.reindexMeeting(id)
-      promise.resolve(db.unindexedMeetings(1).size.toDouble())
+      promise.resolve(db.unindexedCount().toDouble())
     } catch (e: Throwable) {
       promise.reject("db_backfill", e)
     }
