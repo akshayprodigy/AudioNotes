@@ -65,6 +65,8 @@ CLASSES=(
   # tables, a tick re-keyed, a correction re-keyed and a delete: SQLite from end to end, so none
   # of it can be a JVM test.
   com.innocorelabs.verbale.UserItemsMigrationTest
+  # Re-diarization keeps a person's speaker work: SQL against SQLCipher, so not a JVM test.
+  com.innocorelabs.verbale.SpeakerRepairDbTest
 )
 
 if ! "$ADB" devices | grep -qE "device$"; then

@@ -639,7 +639,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       // deleted and re-minted with fresh UUIDs, so the old keys point at nothing. Dropping them
       // here is what stops a stale edit reattaching itself to an unrelated turn.
       db.execSQL(
-        "DELETE FROM edits WHERE meeting_id=? AND target_kind='utterance'",
+        "DELETE FROM edits WHERE meeting_id=? AND target_kind IN ('utterance','speaker')",
         arrayOf<Any?>(meetingId),
       )
       db.setTransactionSuccessful()
@@ -661,7 +661,28 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     if (starts.isEmpty()) return
     db.beginTransaction()
     try {
-      db.execSQL("DELETE FROM speakers WHERE meeting_id=?", arrayOf<Any?>(meetingId))
+      // What a person has done to this meeting's speakers, and the lines they have spoken for.
+      // The clusterer works around both — see SpeakerRepair. Before this, a Redo that reached
+      // diarization deleted every speaker row and reassigned every line: renames, new voices and
+      // "no, she said that" all gone.
+      val rows = ArrayList<SpeakerRepair.SpeakerRow>()
+      db.rawQuery(
+        "SELECT id, cluster_label, display_name FROM speakers WHERE meeting_id=?",
+        arrayOf(meetingId),
+      ).use { c ->
+        while (c.moveToNext()) rows.add(SpeakerRepair.SpeakerRow(c.getString(0), c.getString(1), c.getString(2)))
+      }
+      val speakerEdits = HashMap<String, String>()
+      db.rawQuery(
+        "SELECT target_key, content FROM edits WHERE meeting_id=? AND target_kind='speaker'",
+        arrayOf(meetingId),
+      ).use { c -> while (c.moveToNext()) speakerEdits[c.getString(0)] = c.getString(1) }
+      val protected = SpeakerRepair.protectedIds(rows, speakerEdits)
+      val pinned = SpeakerRepair.pinnedLines(speakerEdits)
+      // A SQL list of the protected ids, or a value no id can equal when there are none.
+      val protectedList = if (protected.isEmpty()) "('')" else protected.joinToString(",", "(", ")") { "'${it.replace("'", "''")}'" }
+
+      db.execSQL("DELETE FROM speakers WHERE meeting_id=? AND id NOT IN $protectedList", arrayOf<Any?>(meetingId))
 
       // One speaker row per distinct cluster.
       val idFor = HashMap<Int, String>()
@@ -687,6 +708,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       }
 
       for (u in utts) {
+        if (u.id in pinned) continue // a person has spoken for this line
         val overlapByCluster = HashMap<Int, Long>()
         for (i in starts.indices) {
           val ov = minOf(u.e, ends[i]) - maxOf(u.s, starts[i])
@@ -697,6 +719,15 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
         db.execSQL(
           "UPDATE utterances SET speaker_id=? WHERE id=?",
           arrayOf<Any?>(sid, u.id),
+        )
+      }
+
+      // A person's word outranks the clusterer's. Every protected speaker survived the delete
+      // above, so every edit is re-applicable; the filter is belt and braces.
+      for ((lineId, sid) in SpeakerRepair.reapplicable(speakerEdits, protected + idFor.values)) {
+        db.execSQL(
+          "UPDATE utterances SET speaker_id=? WHERE id=? AND meeting_id=?",
+          arrayOf<Any?>(sid, lineId, meetingId),
         )
       }
 
@@ -711,21 +742,36 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       //
       // Renumbering matters too: without it the survivors keep their original ordinals, so a
       // two-speaker meeting shows "Speaker 1" and "Speaker 3" and the missing 2 looks like a bug.
+      // Protected rows are exempt from both: a person's voice with no lines is still theirs, and
+      // a name they typed is not renumbered.
       db.execSQL(
-        "DELETE FROM speakers WHERE meeting_id=? AND id NOT IN " +
+        "DELETE FROM speakers WHERE meeting_id=? AND id NOT IN $protectedList AND id NOT IN " +
           "(SELECT speaker_id FROM utterances WHERE meeting_id=? AND speaker_id IS NOT NULL)",
         arrayOf<Any?>(meetingId, meetingId),
       )
       val survivors = ArrayList<String>()
       db.rawQuery(
-        "SELECT id FROM speakers WHERE meeting_id=? ORDER BY cluster_label",
+        "SELECT id FROM speakers WHERE meeting_id=? AND id NOT IN $protectedList " +
+          "AND cluster_label != '${SpeakerRepair.HUMAN_CLUSTER}' ORDER BY cluster_label",
         arrayOf(meetingId),
       ).use { c -> while (c.moveToNext()) survivors.add(c.getString(0)) }
-      survivors.forEachIndexed { i, sid ->
-        db.execSQL(
-          "UPDATE speakers SET display_name=? WHERE id=?",
-          arrayOf<Any?>("Speaker ${i + 1}", sid),
-        )
+      // Numbers a protected row already holds ("Speaker 2" kept because a line was assigned to
+      // it) are skipped, so two rows never share a name.
+      val taken = HashSet<Int>()
+      db.rawQuery(
+        "SELECT display_name FROM speakers WHERE meeting_id=? AND id IN $protectedList",
+        arrayOf(meetingId),
+      ).use { c ->
+        while (c.moveToNext()) {
+          val name = c.getString(0)
+          if (SpeakerRepair.isMachineName(name)) taken.add(name.removePrefix("Speaker ").toInt())
+        }
+      }
+      var next = 1
+      for (sid in survivors) {
+        while (next in taken) next++
+        db.execSQL("UPDATE speakers SET display_name=? WHERE id=?", arrayOf<Any?>("Speaker $next", sid))
+        next++
       }
 
       db.setTransactionSuccessful()
