@@ -135,7 +135,9 @@ function makeStyles(_c: Colors) {
     grip: { alignSelf: 'center', width: s(42), height: s(5), borderRadius: 999, marginBottom: s(4) },
     title: { paddingHorizontal: s(2) },
     chips: { flexDirection: 'row', flexWrap: 'wrap', gap: s(8) },
-    chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: s(12), paddingVertical: s(7) },
+    // flexShrink 0: in a wrapping row Android shrank the first chip and cut its text to "Just
+    // this" on every opening after the first. A chip keeps its width and wraps to the next line.
+    chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: s(12), paddingVertical: s(7), flexShrink: 0 },
     list: { flexGrow: 0 },
     row: {
       flexDirection: 'row',
