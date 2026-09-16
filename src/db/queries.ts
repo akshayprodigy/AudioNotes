@@ -214,9 +214,11 @@ export const db = {
   items: async (meetingId: string): Promise<Item[]> => {
     const rows = await run<Omit<Item, 'sources'>>(
       'SELECT id, meeting_id AS meetingId, kind, text, review, gen_version AS genVersion, ' +
+        'item_type AS itemType, status, owner_json AS ownerJson, date_said AS dateSaid, date_norm AS dateNorm, ' +
         `CASE WHEN gen_version = '${USER_GEN}' THEN NULL ELSE anchor_start_ms END AS anchorStartMs, ` +
         `CASE WHEN gen_version = '${USER_GEN}' THEN NULL ELSE anchor_end_ms END AS anchorEndMs ` +
-        'FROM items WHERE meeting_id = ? ORDER BY anchor_start_ms, rowid',
+        // A rejected row is a person's "no": kept in the table for the Reconciler, shown nowhere.
+        "FROM items WHERE meeting_id = ? AND review <> 'rejected' ORDER BY anchor_start_ms, rowid",
       [meetingId],
     );
     const srcs = await run<ItemSource & { itemId: string }>(
@@ -608,6 +610,21 @@ export const db = {
    * anchor is NO_ANCHOR rather than 0 — see the constant, and db.items, which is where the
    * sentinel becomes the `null` every reader actually sees.
    */
+  // ---- The review queue's writes (evidence Phase C). date_said is never written: it is what
+  // was said, and a fix chooses the day, not the words. --------------------------------------
+
+  setItemReview: (id: string, review: 'confirmed' | 'rejected') =>
+    run('UPDATE items SET review = ? WHERE id = ?', [review, id]),
+
+  setItemOwner: (id: string, ownerJson: string) =>
+    run("UPDATE items SET owner_json = ?, review = 'confirmed' WHERE id = ?", [ownerJson, id]),
+
+  setItemDate: (id: string, dateNorm: number | null) =>
+    run("UPDATE items SET date_norm = ?, review = 'confirmed' WHERE id = ?", [dateNorm, id]),
+
+  setItemType: (id: string, itemType: string) =>
+    run("UPDATE items SET item_type = ?, review = 'confirmed' WHERE id = ?", [itemType, id]),
+
   addUserItem: async (meetingId: string, kind: ItemKind, text: string): Promise<Item> => {
     // The id shape addUserMinute already used, random suffix included: two actions typed in one
     // sitting can land in the same millisecond, and a bare Date.now() id collides on the primary
@@ -631,6 +648,11 @@ export const db = {
       text,
       review: 'confirmed',
       genVersion: USER_GEN,
+      itemType: null,
+      status: null,
+      ownerJson: null,
+      dateSaid: null,
+      dateNorm: null,
       // What db.items would hand back for this row, so a caller that uses the return value and one
       // that re-reads see the same thing. Never the sentinel: that number exists only on disk.
       anchorStartMs: null,

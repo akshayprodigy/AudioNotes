@@ -291,6 +291,18 @@ export interface Item {
   review: 'suggested' | 'needs_review' | 'confirmed' | 'rejected';
   genVersion: string;
   /**
+   * The typed record (evidence Phase B), all five null until the Pro classifier has read the
+   * item — and always null on free, where nothing ever classifies. `dateSaid` is the phrase as
+   * spoken and is never rewritten; `dateNorm` is that phrase pinned to a local midnight, or null
+   * when it honestly cannot be (DateNorm); `ownerJson` is {kind: speaker|person|unassigned, id?,
+   * name?, confidence?}.
+   */
+  itemType: string | null;
+  status: string | null;
+  ownerJson: string | null;
+  dateSaid: string | null;
+  dateNorm: number | null;
+  /**
    * When it was said, or `null` for a row that never claimed to have been said at all.
    *
    * NULLABLE because a hand-typed row is an `items` row now, and the column it comes out of is

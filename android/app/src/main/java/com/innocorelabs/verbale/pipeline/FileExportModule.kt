@@ -130,7 +130,7 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
         // column is NOT NULL, a hand-typed row stores AudioDb.Gen.NO_ANCHOR, and exportItems
         // derives "no anchor" from the gen and never from the number.
         "SELECT id,kind,text,anchor_start_ms,gen_version FROM items WHERE meeting_id=? " +
-          "ORDER BY anchor_start_ms, rowid",
+          "AND review<>'rejected' ORDER BY anchor_start_ms, rowid",
         arrayOf(meetingId),
       ),
     )

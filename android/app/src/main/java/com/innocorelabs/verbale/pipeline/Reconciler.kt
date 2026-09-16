@@ -64,6 +64,8 @@ object Reconciler {
     val review: String,
     val createdAt: Long?,
     val genVersion: String?,
+    /** The typed record the stored row carried, or null for a fresh row. Never made here. */
+    val record: AudioDb.Classified? = null,
   )
 
   data class Plan(val rows: List<Row>)
@@ -216,7 +218,7 @@ object Reconciler {
         !negationChanged(old.text, incoming[i].text) &&
         !tied[i]
       val review = if (confident) old.review else Review.NEEDS_REVIEW
-      rows.add(Row(old.id, incoming[i], review, old.createdAt, null))
+      rows.add(Row(old.id, incoming[i], review, old.createdAt, null, old.record))
     }
 
     // Rule 4. Whatever is left matched nothing. Iterating `existing` rather than `candidates`
@@ -255,7 +257,7 @@ object Reconciler {
         // record of it, so it is kept and flagged rather than deleted.
         else -> Review.NEEDS_REVIEW
       }
-      rows.add(Row(old.id, preserved, review, old.createdAt, old.genVersion))
+      rows.add(Row(old.id, preserved, review, old.createdAt, old.genVersion, old.record))
     }
     return Plan(rows)
   }

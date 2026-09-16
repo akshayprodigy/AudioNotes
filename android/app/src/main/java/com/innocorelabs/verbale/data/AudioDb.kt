@@ -160,7 +160,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     indexDelete(meetingId, "item")
     db.rawQuery(
       "SELECT id, CASE WHEN gen_version=? THEN 0 ELSE anchor_start_ms END, text FROM items " +
-        "WHERE meeting_id=? ORDER BY anchor_start_ms",
+        "WHERE meeting_id=? AND review<>'rejected' ORDER BY anchor_start_ms",
       arrayOf(Gen.USER, meetingId),
     ).use { c ->
       while (c.moveToNext()) {
@@ -1297,6 +1297,21 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     val sources: List<StoredSource>,
     val createdAt: Long,
     val touched: Boolean,
+    /** The classifier's five columns, as one — null until the Pro classifier has read the item. */
+    val record: Classified? = null,
+  )
+
+  /**
+   * The typed record (evidence Phase B): item_type, status, owner_json, date_said, date_norm.
+   * Carried as one value so a reprocess cannot drop four of the five — the exact silence the
+   * warning in [replaceItems] used to describe.
+   */
+  data class Classified(
+    val itemType: String?,
+    val status: String?,
+    val ownerJson: String?,
+    val dateSaid: String?,
+    val dateNorm: Long?,
   )
 
   /**
@@ -1341,7 +1356,9 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
         // Named, not because SQL needs it but because the two locals below are read positionally
         // and this is where a reader checks the count. APPEND a fifth signal's column; inserting
         // one anywhere above silently re-points both flags one column left, with no compile error.
-        "i.created_at,d.item_id IS NOT NULL AS ticked,e.target_key IS NOT NULL AS edited " +
+        "i.created_at,d.item_id IS NOT NULL AS ticked,e.target_key IS NOT NULL AS edited," +
+        // APPENDED, per the note above: the classifier's five, read positionally at 10..14.
+        "i.item_type,i.status,i.owner_json,i.date_said,i.date_norm " +
         "FROM items i " +
         // Both joins are on a primary key, so neither can multiply the rows.
         "LEFT JOIN item_done d ON d.meeting_id=i.meeting_id AND d.item_id=i.id " +
@@ -1373,6 +1390,11 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
               ticked ||                                   // ticked, by the item's id
               tickedByText.contains(ItemKey.of(text)) ||  // ticked before Task 8 migrated it
               edited,                                     // rewritten by hand
+            record = if (c.isNull(10)) null else Classified(
+              c.getString(10), if (c.isNull(11)) null else c.getString(11),
+              if (c.isNull(12)) null else c.getString(12), if (c.isNull(13)) null else c.getString(13),
+              if (c.isNull(14)) null else c.getLong(14),
+            ),
           ),
         )
       }
@@ -1412,6 +1434,14 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    * run for it. The window is exactly as wide as it was. Left here rather than deleted because a
    * forward promise that quietly stops being true is worse than one that was never made.
    */
+  /** The classifier's reading of one item, with the review the rule decided and the gen it ran as. */
+  fun classifyItem(id: String, c: Classified, review: String, genVersion: String) {
+    db.execSQL(
+      "UPDATE items SET item_type=?,status=?,owner_json=?,date_said=?,date_norm=?,review=?,gen_version=? WHERE id=?",
+      arrayOf<Any?>(c.itemType, c.status, c.ownerJson, c.dateSaid, c.dateNorm, review, genVersion, id),
+    )
+  }
+
   fun replaceItems(meetingId: String, genVersion: String, incoming: List<Minutes.Item>) {
     db.beginTransaction()
     try {
@@ -1422,16 +1452,13 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
 
       val now = System.currentTimeMillis()
       for (r in plan.rows) {
-        // WARNING for whoever writes Phase B. This names 9 of the table's 14 columns, so
-        // item_type, status, owner_json, date_said and date_norm are DROPPED on every reprocess.
-        // Harmless today only because nothing writes them — they are the Pro classifier's, and it
-        // does not exist. The moment it does, this statement has to name them and carry them
-        // forward the way created_at and gen_version are carried, and NOTHING WILL FAIL TO
-        // COMPILE if it does not: a classified owner simply becomes NULL again after the next
-        // reprocess, which is the same silence [StoredItem.touched] exists to end.
+        // All 14 columns, named. The classifier's five are carried from the plan's row (null on a
+        // fresh row) — Phase A left a warning here that a reprocess dropped them silently, and
+        // this is where that stopped.
         db.execSQL(
           "INSERT INTO items(id,meeting_id,kind,text,review,gen_version," +
-            "anchor_start_ms,anchor_end_ms,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+            "anchor_start_ms,anchor_end_ms,created_at,item_type,status,owner_json,date_said,date_norm) " +
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
           arrayOf<Any?>(
             r.id, meetingId, r.item.kind, r.item.text, r.review,
             // Null means "this content came from this run, stamp it". Non-null means the content
@@ -1441,6 +1468,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
             r.genVersion ?: genVersion,
             r.item.anchorStartMs, r.item.anchorEndMs,
             r.createdAt ?: now,
+            r.record?.itemType, r.record?.status, r.record?.ownerJson, r.record?.dateSaid, r.record?.dateNorm,
           ),
         )
         r.item.sources.forEachIndexed { i, s ->

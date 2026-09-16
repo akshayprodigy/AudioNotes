@@ -631,4 +631,40 @@ class ReconcilerTest {
     )
     assertNull(plan.rows.first { it.id == "id-1" }.item.sources[0].utteranceId)
   }
+
+  // ---------------------------------------------------------------------------------------------
+  // Phase B: the classifier's five columns ride the same paths as review and created_at. The
+  // warning Phase A left in replaceItems named this exactly: "a classified owner simply becomes
+  // NULL again after the next reprocess" — and nothing would fail to compile.
+  // ---------------------------------------------------------------------------------------------
+
+  private val classified = AudioDb.Classified(
+    "request", "contradicted", """{"kind":"person","name":"Rahul","confidence":"high"}""", "Friday", null,
+  )
+
+  @Test fun aConfidentMatchCarriesTheTypedRecord() {
+    val old = stored("a", "Send the proposal Friday", 1000, 2000, review = "confirmed").copy(record = classified)
+    val plan = Reconciler.reconcile(listOf(old), listOf(incoming("Send the proposal Friday", 1000, 2000)))
+    assertEquals(classified, plan.rows.single().record)
+    assertEquals("confirmed", plan.rows.single().review)
+  }
+
+  @Test fun anAmbiguousMatchCarriesTheRecordAndReQueues() {
+    val old = stored("a", "Send the proposal on Friday", 1000, 2000, review = "confirmed").copy(record = classified)
+    val plan = Reconciler.reconcile(listOf(old), listOf(incoming("Do not send the proposal on Friday", 1000, 2000)))
+    assertEquals(classified, plan.rows.single().record)
+    assertEquals("needs_review", plan.rows.single().review)
+  }
+
+  @Test fun aPreservedRowKeepsItsRecord() {
+    // No incoming item at all: rule 4 keeps a row a person touched, record and all.
+    val old = stored("a", "Send the proposal Friday", 1000, 2000, review = "confirmed").copy(record = classified)
+    val plan = Reconciler.reconcile(listOf(old), emptyList())
+    assertEquals(classified, plan.rows.single().record)
+  }
+
+  @Test fun aFreshRowHasNoRecord() {
+    val plan = Reconciler.reconcile(emptyList(), listOf(incoming("Send it", 1000, 2000)))
+    assertNull(plan.rows.single().record)
+  }
 }
