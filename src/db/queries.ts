@@ -1,5 +1,6 @@
 // Typed query layer over the Storage TurboModule. Screens/state call these, never raw SQL.
 import Storage from '../native/NativeStorage';
+import Llm from '../native/NativeLlm';
 import { NO_ANCHOR, USER_GEN } from '../pipeline/types';
 import type {
   ActionRow,
@@ -47,6 +48,38 @@ const MEETING_ORDER: Record<MeetingSort, string> = {
  * three separate filters that each hold part of the answer. Folded to lower case and collapsed,
  * which is the same normalisation the item key uses and for the same reason.
  */
+/** One passage an answer points at (sub-project 5): the moment, and who was speaking. */
+export interface AskCite {
+  n: number;
+  refId: string;
+  startMs: number;
+  speaker: string;
+}
+
+/** One exchange with a meeting, as the Ask screen shows it. */
+export interface Ask {
+  id: string;
+  question: string;
+  answer: string;
+  cites: AskCite[];
+  /** The model could not ground an answer: `answer` is the refusal phrase, `cites` the closest passages. */
+  nothing: boolean;
+  askedAt: number;
+}
+
+export type AskRefusal = 'NOT_PRO' | 'NO_MODEL' | 'NOT_CAPABLE' | 'BUSY';
+
+export interface AskResult {
+  refusal: AskRefusal | null;
+  id: string | null;
+  answer: string;
+  cites: AskCite[];
+  nothing: boolean;
+}
+
+/** Mirrors kAskNothing in cpp/minutes/ask.cpp — what a stored "nothing" answer reads. */
+export const ASK_NOTHING = 'Nothing in this meeting settles that.';
+
 export function normaliseTag(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 32);
 }
@@ -490,6 +523,21 @@ export const db = {
 
   /** Give up to `limit` meetings their meaning vectors (Pro). Returns the backlog; 0 asks for the count. */
   backfillEmbeddings: (limit = 3) => Storage.backfillEmbeddings(limit),
+
+  // ---- Ask this meeting (sub-project 5). Native owns the gate, the retrieval and the writer. ----
+
+  /** The meeting's past asks, oldest first. A stored row's `nothing` is derived: the refusal phrase is the answer. */
+  asks: (meetingId: string): Promise<Ask[]> =>
+    Llm.asks(meetingId).then(r =>
+      (JSON.parse(r) as Omit<Ask, 'nothing'>[]).map(a => ({
+        ...a,
+        nothing: a.answer === ASK_NOTHING,
+      })),
+    ),
+
+  /** Ask; resolves with the answer or a refusal. Loads the writer if needed and keeps it until Llm.unload(). */
+  ask: (meetingId: string, question: string): Promise<AskResult> =>
+    Llm.ask(meetingId, question).then(r => JSON.parse(r) as AskResult),
 
   /**
    * Give one meeting its items if it was recorded before items existed.

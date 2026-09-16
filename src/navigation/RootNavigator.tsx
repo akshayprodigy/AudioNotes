@@ -20,6 +20,7 @@ import PaywallScreen from '../screens/PaywallScreen';
 import ConsentCardScreen from '../screens/ConsentCardScreen';
 import PrivacyScreen from '../screens/PrivacyScreen';
 import ReviewScreen from '../screens/ReviewScreen';
+import AskScreen from '../screens/AskScreen';
 
 export type RootStackParamList = {
   Onboarding: undefined;
@@ -33,6 +34,8 @@ export type RootStackParamList = {
   Speakers: { meetingId: string };
   /** The review queue for one meeting: what the classifier could not settle, one card at a time. */
   Review: { meetingId: string };
+  /** Ask this meeting: a thread of answers that cite the transcript (sub-project 5). */
+  Ask: { meetingId: string };
   Search: undefined;
   Settings: undefined;
   Archive: undefined;
@@ -167,6 +170,7 @@ export default function RootNavigator() {
           />
           <Stack.Screen name="Actions" component={ActionsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Review" component={ReviewScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Ask" component={AskScreen} options={{ headerShown: false }} />
           <Stack.Screen
             name="Paywall"
             component={PaywallScreen}

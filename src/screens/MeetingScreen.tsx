@@ -756,6 +756,12 @@ export default function MeetingScreen({ route, navigation }: Props) {
    */
   const sheetActions: SheetAction[] = [
     {
+      icon: 'chat',
+      label: 'Ask this meeting',
+      hint: 'A question, answered from the transcript, with the moments it came from.',
+      onPress: () => navigation.navigate('Ask', { meetingId }),
+    },
+    {
       icon: 'users',
       label: 'Speakers',
       hint: 'Rename people, or merge two speakers the app split apart.',
@@ -997,6 +1003,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
         {meeting?.status === 'done' ? (
           <Badge label="READY" color={colors.success} soft={colors.successSoft} small />
         ) : null}
+        <IconButton icon="chat" label="Ask this meeting" onPress={() => navigation.navigate('Ask', { meetingId })} />
         <IconButton icon="more" label="More actions" onPress={() => setSheet(true)} />
       </View>
 

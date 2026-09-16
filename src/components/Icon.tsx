@@ -37,6 +37,7 @@ export type IconName =
   | 'more'
   | 'sliders'
   | 'help'
+  | 'chat'
   | 'x'
   | 'play'
   | 'copy'
@@ -282,6 +283,11 @@ function render(name: IconName, c: object, color: string) {
           <Circle cx="15" cy="12" r="2" {...c} fill={color} />
           <Circle cx="8" cy="17" r="2" {...c} fill={color} />
         </>
+      );
+    case 'chat':
+      // A speech bubble: Ask this meeting.
+      return (
+        <Path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.4 0-2.8-.3-4-.9L3 21l1.9-5.5A8.5 8.5 0 1 1 21 11.5z" {...c} />
       );
     case 'help':
       return (
