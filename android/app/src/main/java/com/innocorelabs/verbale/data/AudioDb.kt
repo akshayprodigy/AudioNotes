@@ -621,6 +621,13 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     )
   }
 
+  /** The speaker id of one utterance, or null. */
+  fun utteranceSpeaker(utteranceId: String): String? {
+    db.rawQuery("SELECT speaker_id FROM utterances WHERE id=?", arrayOf(utteranceId)).use { c ->
+      return if (c.moveToFirst() && !c.isNull(0)) c.getString(0) else null
+    }
+  }
+
   /** The thread, oldest first, as the Ask screen reads it: `cites` is the parsed cites_json. */
   fun asksJson(meetingId: String): String {
     val out = JSONArray()
