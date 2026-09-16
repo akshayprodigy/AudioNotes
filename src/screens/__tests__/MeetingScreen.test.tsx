@@ -62,7 +62,11 @@ beforeEach(() => {
   (db.removeMark as jest.Mock).mockResolvedValue(undefined);
   (db.getSetting as jest.Mock).mockResolvedValue(null);
   (db.setSetting as jest.Mock).mockResolvedValue(undefined);
+  (db.stageRates as jest.Mock).mockResolvedValue({});
 });
+
+/** A native event, delivered the way the phone would deliver it (jest.setup.js). */
+const emit = (name: string, payload: unknown) => (global as any).__TEST_EMIT__(name, payload);
 
 /**
  * Opening a meeting is what migrates it.
@@ -259,4 +263,28 @@ test('a marked moment shows as a highlight with the sentence said there', async 
     .map(n => n.props.children as string);
   expect(texts).toContain('HIGHLIGHTS');
   expect(texts).toContain('We ship Friday.');
+});
+
+/** The processing screen, mid-run: what the running stage's own counts do to it. */
+describe('progress inside a stage', () => {
+  /** The "10% · about 13 min left" pill, from the rendered tree rather than component props. */
+  const pill = (tree: renderer.ReactTestRenderer) =>
+    JSON.stringify(tree.toJSON()).match(/"children":\["(\d+)","%","([^"]*)"\]/)?.[0];
+
+  it("shows the running stage's own counts and prices the wait from them", async () => {
+    (db.getMeeting as jest.Mock).mockResolvedValue({
+      id: 'm1', title: 'Standup', createdAt: 1, durationMs: 600_000, status: 'vad',
+      tierUsed: 'free', language: 'en', audioPath: null, audioRetained: 1,
+    });
+    (db.minutes as jest.Mock).mockResolvedValue([]); // nothing written yet: the screen is waiting
+    const tree = await render();
+    const before = pill(tree);
+    expect(before).toBeTruthy();
+    await act(async () => {
+      emit('onStageProgress', { meetingId: 'm1', stage: 'asr', chunk: 14, total: 40 });
+    });
+    expect(JSON.stringify(tree.toJSON())).toContain('14 of 40');
+    // 14 of 40 through ASR is less than the 40% guess, so the ETA grew and the pill moved.
+    expect(pill(tree)).not.toEqual(before);
+  });
 });

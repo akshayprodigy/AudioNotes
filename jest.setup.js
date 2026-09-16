@@ -134,16 +134,27 @@ jest.mock('react-native/Libraries/TurboModule/TurboModuleRegistry', () => {
 // NativeEventEmitter is constructed at import time by PipelineController and would
 // otherwise assert on a null native module. It is an ESM default export, so the
 // mock has to preserve that shape.
-jest.mock('react-native/Libraries/EventEmitter/NativeEventEmitter', () => ({
-  __esModule: true,
-  default: class MockNativeEventEmitter {
-    addListener() {
-      return {remove: jest.fn()};
+jest.mock('react-native/Libraries/EventEmitter/NativeEventEmitter', () => {
+  // One registry for every instance: PipelineController's emitter is built at import time and
+  // AudioPipeline.addListener callers build their own, and a test wants to reach all of them.
+  // `global.__TEST_EMIT__(name, payload)` is how a screen test delivers a native event.
+  const listeners = new Map();
+  class MockNativeEventEmitter {
+    addListener(name, cb) {
+      if (!listeners.has(name)) listeners.set(name, new Set());
+      listeners.get(name).add(cb);
+      return {remove: () => listeners.get(name)?.delete(cb)};
     }
-    removeAllListeners() {}
-    emit() {}
-  },
-}));
+    removeAllListeners(name) {
+      listeners.delete(name);
+    }
+    emit(name, payload) {
+      for (const cb of listeners.get(name) ?? []) cb(payload);
+    }
+  }
+  global.__TEST_EMIT__ = (name, payload) => new MockNativeEventEmitter().emit(name, payload);
+  return {__esModule: true, default: MockNativeEventEmitter};
+});
 
 // Crashlytics is a native module with no JS fallback, so it throws the moment it is touched under
 // Jest. Mocking is the right answer regardless: no test wants a real crash SDK, and what these

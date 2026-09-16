@@ -88,6 +88,10 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const [speechMs, setSpeechMs] = useState(0);
   const [reprocessing, setReprocessing] = useState(false);
   const [stage, setStage] = useState<string | null>(null);
+  /** The running stage's own counts, when it reports them; null after a stage change. */
+  const [counts, setCounts] = useState<{ done: number; total: number } | null>(null);
+  /** Seconds of work per second of audio, as this phone has measured them. */
+  const [rates, setRates] = useState<Partial<Record<string, number>>>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [settled, setSettled] = useState(false);
   const [sheet, setSheet] = useState(false);
@@ -235,7 +239,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
 
   const refresh = useCallback(async () => {
     await migrate();
-    const [mtg, mins, its, utts, segs, spk, eds, tgs, mks] = await Promise.all([
+    const [mtg, mins, its, utts, segs, spk, eds, tgs, mks, rts] = await Promise.all([
       db.getMeeting(meetingId),
       db.minutes(meetingId),
       // After `migrate()`, so a meeting recorded before items existed has been given them. A
@@ -248,8 +252,10 @@ export default function MeetingScreen({ route, navigation }: Props) {
       db.edits(meetingId).catch(() => []),
       db.tagsFor(meetingId).catch(() => []),
       db.marks(meetingId).catch(() => []),
+      db.stageRates().catch(() => ({})),
     ]);
     setMeeting(mtg ?? null);
+    setRates(rts);
     setMinutes(mins);
     setItems(its);
     setUtterances(utts);
@@ -321,7 +327,10 @@ export default function MeetingScreen({ route, navigation }: Props) {
 
   useEffect(() => {
     const offProgress = PipelineController.onProgress(p => {
-      if (p.meetingId === meetingId) setStage(p.stage);
+      if (p.meetingId !== meetingId) return;
+      setStage(p.stage);
+      // 0/1 and 1/1 are "started" and "finished", not counts; only a total above 1 is progress.
+      setCounts(p.total > 1 ? { done: p.chunk, total: p.total } : null);
     });
     const offComplete = PipelineController.onComplete(e => {
       if (e.meetingId !== meetingId) return;
@@ -798,6 +807,8 @@ export default function MeetingScreen({ route, navigation }: Props) {
       liveStage: stage,
       status: meeting?.status,
       audioSec: (meeting?.durationMs ?? 0) / 1000,
+      rates,
+      fraction: counts ? counts.done / counts.total : undefined,
     });
 
     return (
@@ -866,6 +877,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
                           variant={state === 'active' ? 'bodyBlack' : 'bodyStrong'}
                           color={state === 'active' ? colors.primary : state === 'todo' ? colors.inkDim : colors.ink}>
                           {x.label}
+                          {state === 'active' && counts ? ` · ${counts.done} of ${counts.total}` : ''}
                         </Txt>
                       </View>
                     </View>
