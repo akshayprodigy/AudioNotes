@@ -7,6 +7,7 @@ import com.innocorelabs.verbale.pipeline.Reconciler
 import com.innocorelabs.verbale.pipeline.ResumePlan
 import com.innocorelabs.verbale.pipeline.Spk
 import com.innocorelabs.verbale.pipeline.Utt
+import com.innocorelabs.verbale.pipeline.StageRates
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 import org.json.JSONArray
 import org.json.JSONObject
@@ -545,6 +546,11 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
   fun putSetting(key: String, value: String) {
     db.execSQL("INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)", arrayOf<Any?>(key, value))
   }
+
+  /** The learned realtime rate for a stage, or null when this phone has not run it yet. */
+  fun stageRate(stage: String): Double? = getSetting(StageRates.key(stage))?.toDoubleOrNull()
+
+  fun setStageRate(stage: String, rate: Double) = putSetting(StageRates.key(stage), rate.toString())
 
   fun getAudioPath(id: String): String? {
     db.rawQuery("SELECT audio_path FROM meetings WHERE id=?", arrayOf(id)).use { c ->

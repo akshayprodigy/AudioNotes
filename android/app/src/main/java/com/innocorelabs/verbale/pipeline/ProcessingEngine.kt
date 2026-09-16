@@ -82,6 +82,11 @@ class ProcessingEngine(
         val rt = if (audioMs > 0) ms.toDouble() / audioMs else 0.0
         Log.i(TAG, "stage=%s %dms (%.2fx realtime) audio=%ds %s"
           .format(stage, ms, rt, audioMs / 1000, meetingId))
+        // What this phone learns for the next ETA. Never on a cancelled stage: a run cut short
+        // measures the cut, not the stage.
+        if (!cancelled) {
+          StageRates.next(db.stageRate(stage), rt, audioMs)?.let { db.setStageRate(stage, it) }
+        }
       }
 
       if (Stage.VAD in remaining && !audioGone) {
@@ -270,6 +275,7 @@ class ProcessingEngine(
       val utts = db.utterances(meetingId)
       if (utts.isNotEmpty()) {
         listener.onStage("minutes", 0, 1)
+        val tMinutes = System.currentTimeMillis()
         val speakers = db.speakers(meetingId)
         val minutes = Minutes.extract(utts, speakers)
         db.replaceMinutes(meetingId, "rule", minutes)
@@ -286,6 +292,7 @@ class ProcessingEngine(
         db.replaceItems(meetingId, Minutes.RULES_GEN, items)
 
         retitleFromTranscript(meetingId, utts)
+        stageDone("minutes", tMinutes)
         listener.onStage("minutes", 1, 1)
         Log.i(TAG, "Minutes produced ${minutes.size} rows and ${items.size} items for $meetingId")
 

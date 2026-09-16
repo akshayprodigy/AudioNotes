@@ -398,6 +398,22 @@ export const db = {
     run('INSERT OR REPLACE INTO settings(key, value) VALUES(?, ?)', [key, value]),
 
   /**
+   * The realtime rates this phone has learned, keyed by stage ('vad' | 'asr' | …). Missing
+   * stages have never run here; progress.ts falls back to the shipped constants for those.
+   */
+  stageRates: () =>
+    run<{ key: string; value: string }>("SELECT key, value FROM settings WHERE key LIKE 'rate.%'").then(
+      rows => {
+        const out: Record<string, number> = {};
+        for (const r of rows) {
+          const n = Number(r.value);
+          if (Number.isFinite(n) && n > 0) out[r.key.slice('rate.'.length)] = n;
+        }
+        return out;
+      },
+    ),
+
+  /**
    * Raw query, for the network ledger only.
    *
    * Everything else on this object is a named, typed helper and should stay that way. The ledger
