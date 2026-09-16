@@ -37,8 +37,6 @@ export const STAGES: Stage[] = [
   { key: 'narrate', label: 'Written up in plain English', rate: 0.32 },
 ];
 
-const TOTAL_RATE = STAGES.reduce((a, x) => a + x.rate, 0);
-
 /**
  * The stage that is RUNNING, given the last one that finished.
  *
@@ -68,6 +66,16 @@ export interface ProgressInput {
   status: string | null | undefined;
   /** The recording's own length. Remaining work is priced from this, never from elapsed time. */
   audioSec: number;
+  /**
+   * Seconds of work per second of audio, as this phone has measured them (db.stageRates()).
+   * A stage missing here falls back to the shipped constant, which is one Pixel's number.
+   */
+  rates?: Partial<Record<string, number>>;
+  /**
+   * How far the running stage is, 0..1, from its own counts (ASR windows, diarization chunks,
+   * narrator steps). undefined when the stage has only said it started.
+   */
+  fraction?: number;
 }
 
 export interface Progress {
@@ -75,6 +83,15 @@ export interface Progress {
   pct: number;
   etaSec: number;
 }
+
+/** A stage's rate on this phone, or the shipped one. */
+export function rateFor(stage: Stage, rates?: Partial<Record<string, number>>): number {
+  const learned = rates?.[stage.key];
+  return typeof learned === 'number' && Number.isFinite(learned) && learned > 0 ? learned : stage.rate;
+}
+
+/** A stage that reports only that it started is treated as 40% through. */
+const RUNNING_GUESS = 0.4;
 
 /**
  * Where we are and how much is left.
@@ -84,23 +101,21 @@ export interface Progress {
  * than assuming the first stage. Assuming was the bug: for a 90-minute meeting the next event was
  * half an hour away, so the screen claimed the first stage for half an hour.
  */
-export function progressFor({ liveStage, status, audioSec }: ProgressInput): Progress {
+export function progressFor({ liveStage, status, audioSec, rates, fraction }: ProgressInput): Progress {
   const key = liveStage ?? stageFromStatus(status);
   const found = STAGES.findIndex(x => x.key === key);
   const index = found < 0 ? 0 : found;
+  const through = typeof fraction === 'number' ? Math.min(1, Math.max(0, fraction)) : RUNNING_GUESS;
 
-  // A stage reports only that it started, so treat the running one as 40% through.
-  const RUNNING = 0.4;
-  const doneRate = STAGES.slice(0, index).reduce((a, x) => a + x.rate, 0);
-  const pct = Math.min(
-    99,
-    Math.round(((doneRate + STAGES[index].rate * RUNNING) / TOTAL_RATE) * 100),
-  );
+  const rate = (x: Stage) => rateFor(x, rates);
+  const total = STAGES.reduce((a, x) => a + rate(x), 0);
+  const doneRate = STAGES.slice(0, index).reduce((a, x) => a + rate(x), 0);
+  const runningRate = rate(STAGES[index]);
+  const pct = Math.min(99, Math.round(((doneRate + runningRate * through) / total) * 100));
 
   // Remaining work priced from the recording's own length rather than from elapsed time, which is
   // what made a transcript-only re-run promise a finish it was nowhere near.
-  const remainingRate =
-    STAGES.slice(index).reduce((a, x) => a + x.rate, 0) - STAGES[index].rate * RUNNING;
+  const remainingRate = STAGES.slice(index).reduce((a, x) => a + rate(x), 0) - runningRate * through;
   const etaSec = audioSec > 0 ? Math.max(1, Math.round(remainingRate * audioSec)) : 0;
 
   return { index, pct, etaSec };

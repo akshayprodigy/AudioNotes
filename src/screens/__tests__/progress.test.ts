@@ -79,3 +79,49 @@ describe('what the screen shows while it waits', () => {
     expect(asr.rate).toBeCloseTo(0.34, 2);
   });
 });
+
+describe('rates learned on this phone', () => {
+  const base = { liveStage: 'asr', status: 'vad', audioSec: 600 };
+
+  it('prices from the learned rate when there is one', () => {
+    const shipped = progressFor({ ...base, rates: {}, fraction: 0 });
+    const learned = progressFor({ ...base, rates: { asr: 0.1 }, fraction: 0 });
+    // ASR at 0.1x instead of 0.34x on a 10-minute recording: 144 s less to wait.
+    expect(shipped.etaSec - learned.etaSec).toBe(Math.round(0.24 * 600));
+  });
+
+  it('falls back to the shipped constant for a stage this phone has not run', () => {
+    const shipped = progressFor({ ...base, rates: {}, fraction: 0 });
+    const partial = progressFor({ ...base, rates: { narrate: 0.5 }, fraction: 0 });
+    expect(partial.etaSec).toBeGreaterThan(shipped.etaSec); // only narrate moved
+    expect(partial.etaSec - shipped.etaSec).toBe(Math.round((0.5 - 0.32) * 600));
+  });
+});
+
+describe('progress inside the running stage', () => {
+  const base = { liveStage: 'asr', status: 'vad', audioSec: 600, rates: {} };
+
+  it('prices a stage that has reported counts by how far it is', () => {
+    const start = progressFor({ ...base, fraction: 0 });
+    const half = progressFor({ ...base, fraction: 0.5 });
+    const done = progressFor({ ...base, fraction: 1 });
+    expect(start.etaSec).toBeGreaterThan(half.etaSec);
+    expect(half.etaSec).toBeGreaterThan(done.etaSec);
+    // 40 of 40 windows: the stage is priced as finished, nothing of it remains.
+    expect(done.etaSec).toBe(start.etaSec - Math.round(0.34 * 600));
+    expect(done.pct).toBeGreaterThan(half.pct);
+  });
+
+  it('guesses 40% for a stage that has only said it started', () => {
+    // undefined fraction = no counts yet; must equal the old behaviour exactly.
+    const guessed = progressFor({ ...base, fraction: undefined });
+    const explicit = progressFor({ ...base, fraction: 0.4 });
+    expect(guessed).toEqual(explicit);
+  });
+
+  it('never claims 100% while a stage is still running', () => {
+    expect(
+      progressFor({ liveStage: 'narrate', status: 'diarized', audioSec: 600, rates: {}, fraction: 1 }).pct,
+    ).toBeLessThanOrEqual(99);
+  });
+});
