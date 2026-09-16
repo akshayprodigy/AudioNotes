@@ -114,6 +114,7 @@ struct Diarizer::Impl {
   std::string seg_model;
   std::string emb_model;
   bool ok = false;
+  DiarProgressFn progress;
 #ifdef HAVE_SHERPA
   const SherpaOnnxOfflineSpeakerDiarization* sd = nullptr;
   // The same embedding model the diarizer clusters with, reachable on its own. Windows are
@@ -189,11 +190,20 @@ struct Diarizer::Impl {
 #ifdef HAVE_SHERPA
   // Diarize one buffer. Timestamps come back in that buffer's own milliseconds, which for a
   // window means concatenated-window time and not the recording's.
+  static int32_t onProgress(int32_t done, int32_t total, void* arg) {
+    auto* self = static_cast<Impl*>(arg);
+    if (self && self->progress) self->progress(static_cast<int>(done), static_cast<int>(total));
+    return 0;  // ignored by sherpa; documented as such in c-api.h
+  }
+
   std::vector<DiarSegment> diarize(const std::vector<float>& samples) {
     std::vector<DiarSegment> out;
     const SherpaOnnxOfflineSpeakerDiarizationResult* result =
-        SherpaOnnxOfflineSpeakerDiarizationProcess(sd, samples.data(),
-                                                   static_cast<int32_t>(samples.size()));
+        progress ? SherpaOnnxOfflineSpeakerDiarizationProcessWithCallback(
+                       sd, samples.data(), static_cast<int32_t>(samples.size()),
+                       &Impl::onProgress, this)
+                 : SherpaOnnxOfflineSpeakerDiarizationProcess(sd, samples.data(),
+                                                              static_cast<int32_t>(samples.size()));
     if (!result) return out;
     const int32_t n = SherpaOnnxOfflineSpeakerDiarizationResultGetNumSegments(result);
     const SherpaOnnxOfflineSpeakerDiarizationSegment* segs =
@@ -285,6 +295,7 @@ Diarizer::Diarizer(const std::string& seg_model, const std::string& emb_model,
 
 Diarizer::~Diarizer() { delete impl_; }
 bool Diarizer::ok() const { return impl_->ok; }
+void Diarizer::setProgress(DiarProgressFn fn) { if (impl_) impl_->progress = std::move(fn); }
 
 std::vector<DiarSegment> Diarizer::process(const std::string& pcm_path) {
   return process(pcm_path, {});

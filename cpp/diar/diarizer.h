@@ -2,6 +2,7 @@
 // This is the category's weak spot; the manual Speakers screen is the guaranteed fallback.
 #pragma once
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -14,6 +15,10 @@ struct DiarSegment {
   int64_t end_ms;
   int speaker;  // cluster index
 };
+
+// done/total chunks, from inside sherpa's process call, on the calling thread. May block: a
+// thermal pause on the phone is a callback that waits, and the chunk in flight is never lost.
+using DiarProgressFn = std::function<void(int, int)>;
 
 class Diarizer {
  public:
@@ -34,6 +39,9 @@ class Diarizer {
   ~Diarizer();
 
   bool ok() const;  // false if sherpa-onnx is not compiled in or models failed to load
+
+  // Reported once per chunk while a buffer is being diarized; nothing without it.
+  void setProgress(DiarProgressFn fn);
 
   // pcm_path: 16 kHz mono PCM16. Returns segments sorted by start time.
   //

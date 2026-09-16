@@ -187,6 +187,7 @@ bool Pipeline::run(const std::string& pcm_path, PipelineResult* out,
       std::vector<Span> spans;
       spans.reserve(out->segments.size());
       for (const auto& seg : out->segments) spans.push_back(Span{seg.start_ms, seg.end_ms});
+      d.setProgress([&report](int done, int total) { report("diarize", done, total); });
       if (d.ok()) diar = d.process(pcm_path, spans, cfg_.diar_window_ms);
     } catch (const std::exception&) {
       // Best-effort: a diarization failure never sinks a good transcript.

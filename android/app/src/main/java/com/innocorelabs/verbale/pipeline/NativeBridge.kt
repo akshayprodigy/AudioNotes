@@ -100,6 +100,14 @@ object NativeBridge {
    * {start_ms, end_ms, text} utterances with timestamps re-anchored to the meeting timeline.
    */
   /**
+   * Called on the native thread between units of work — after each ASR window, each diarization
+   * chunk. Return false to abort (ASR honours it before the next window; sherpa's diarizer
+   * ignores it, so a diarize abort lands at the stage boundary). The callback may block: that is
+   * how a thermal pause holds the pipeline without losing the unit in flight.
+   */
+  fun interface StageProgress { fun onProgress(done: Int, total: Int): Boolean }
+
+  /**
    * @param threads 0 = automatic (big.LITTLE-aware default); >0 pins the count, for benchmarks.
    * @param language a whisper language code ("en", "hi", ...), or "auto"/"" to detect.
    *
@@ -130,6 +138,7 @@ object NativeBridge {
     // built against different VAD spans costs a decode and never a wrong word.
     cachedRangesMs: LongArray = LongArray(0),
     cachedWindowsJson: Array<String> = emptyArray(),
+    progress: StageProgress? = null,
   ): String
 
   /**
@@ -161,6 +170,7 @@ object NativeBridge {
      * ever passes [DiarBudget.SKIP]: that means "do not call this at all".
      */
     windowMs: Long,
+    progress: StageProgress? = null,
   ): LongArray
 
   // ---- LLM (llama.cpp). Handle-based: load once, generate many, then free. ----

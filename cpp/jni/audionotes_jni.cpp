@@ -48,6 +48,30 @@ std::string jstr(JNIEnv* env, jstring s) {
   return out;
 }
 
+// A Kotlin NativeBridge.StageProgress, callable from the thread that entered JNI. `env` is that
+// thread's and stays valid for the whole synchronous call the callback rides inside.
+struct JProgress {
+  JNIEnv* env = nullptr;
+  jobject obj = nullptr;
+  jmethodID mid = nullptr;
+  bool aborted = false;
+
+  JProgress(JNIEnv* e, jobject o) : env(e), obj(o) {
+    if (!obj) return;
+    jclass cls = env->GetObjectClass(obj);
+    mid = cls ? env->GetMethodID(cls, "onProgress", "(II)Z") : nullptr;
+    if (cls) env->DeleteLocalRef(cls);
+    if (!mid) { env->ExceptionClear(); obj = nullptr; }
+  }
+  // Reports, and remembers a request to stop. An exception thrown by the callback counts as one.
+  void call(int done, int total) {
+    if (!obj) return;
+    const jboolean go = env->CallBooleanMethod(obj, mid, static_cast<jint>(done), static_cast<jint>(total));
+    if (env->ExceptionCheck()) { env->ExceptionClear(); aborted = true; return; }
+    if (!go) aborted = true;
+  }
+};
+
 void throwRuntime(JNIEnv* env, const char* msg) {
   jclass ex = env->FindClass("java/lang/RuntimeException");
   if (ex) env->ThrowNew(ex, msg);
@@ -310,7 +334,7 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeTranscribe(
     JNIEnv* env, jobject /*thiz*/, jstring jPcmPath, jstring jModelPath, jint sampleRate,
     jlongArray jStarts, jlongArray jEnds, jint threads, jstring jLanguage,
     jstring jQwen3Dir, jboolean jForceLanguage, jlongArray jCachedRanges,
-    jobjectArray jCachedJson) {
+    jobjectArray jCachedJson, jobject jProgress) {
   const std::string pcm = jstr(env, jPcmPath);
   const std::string model = jstr(env, jModelPath);
   // Empty when Qwen3-ASR is not installed, which is the normal case today. The factory then falls
@@ -375,8 +399,13 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeTranscribe(
     }
     // All six arguments spelled out: defaults on a virtual are resolved by static type, so the
     // interface deliberately declares none.
+    // Progress and cancellation are the same Kotlin object: it reports each window and may say
+    // stop, which the core honours before the next one. Without it, both are null as before.
+    JProgress jp(env, jProgress);
+    const audionotes::AsrProgressFn progress = [&jp](int done, int total) { jp.call(done, total); };
+    const audionotes::AsrCancelFn cancel = [&jp]() { return jp.aborted; };
     audionotes::AsrRun run = asr->transcribe(pcm, segs, static_cast<int>(sampleRate),
-                                             static_cast<int>(threads), nullptr, nullptr);
+                                             static_cast<int>(threads), progress, cancel);
     if (run.allChunksFailed()) {
       throwRuntime(env, "every ASR chunk failed to decode");
       return env->NewStringUTF("[]");
@@ -480,7 +509,7 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmFree(
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeDiarize(
     JNIEnv* env, jobject /*thiz*/, jstring jPcmPath, jstring jSegModel, jstring jEmbModel,
-    jint sampleRate, jint numSpeakers, jlongArray jSpans, jlong windowMs) {
+    jint sampleRate, jint numSpeakers, jlongArray jSpans, jlong windowMs, jobject jProgress) {
   const std::string pcm = jstr(env, jPcmPath);
   const std::string seg = jstr(env, jSegModel);
   const std::string emb = jstr(env, jEmbModel);
@@ -503,6 +532,8 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeDiarize(
   std::vector<jlong> flat;  // [start_ms, end_ms, speaker, ...]
   try {
     audionotes::Diarizer diar(seg, emb, static_cast<int>(sampleRate), static_cast<int>(numSpeakers));
+    JProgress jp(env, jProgress);
+    diar.setProgress([&jp](int done, int total) { jp.call(done, total); });
     // The window is the caller's, not ours: only Kotlin can see how much memory this phone has
     // free right now, and that is what decides whether a long meeting is diarized in pieces,
     // diarized in one go, or skipped entirely. See DiarBudget.
