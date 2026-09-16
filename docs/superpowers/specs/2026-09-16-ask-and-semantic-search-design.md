@@ -175,3 +175,26 @@ Every new test mutation-checked.
 A global ask across meetings; streaming tokens; conversation memory across questions
 (each ask stands alone); re-ranking by a cross-encoder; Hindi or any second language for the
 embedding model; quantised search on a GPU.
+
+## Device verification
+
+*Pending — the Pixel was not on adb on 16 September. Code complete (`3338513`), the gate green
+(types · js · scans · mutations · kotlin · cpp, with `test_embed` against the real GGUF on the
+Mac: near 0.68 / far 0.46). Written for the phone, not yet run:*
+
+- [ ] `scripts/device-verify.sh NativePipeline` — `embedding_is_a_unit_vector_and_near_beats_far`
+      (needs the model installed), `ask_prompt_is_fenced_and_the_validator_strips_bad_cites`.
+- [ ] `scripts/device-verify.sh SearchIndexDb` — one card not two, the count, the marker resets,
+      deleteMeeting sweeping vectors, the diff by words and moment.
+- [ ] `scripts/device-verify.sh BackupManager` — marks and asks travel.
+- [ ] Settings shows "Meaning index · 37 MB" beside the writer; install it (Pro).
+- [ ] Process the lead-example meeting → logcat `Embed: embedded N chunk(s)`; stage "Indexed for
+      meaning" appears in the processing notification.
+- [ ] Search "push back" → the Rahul turn, marked "≈"; "Meaning search is still indexing N
+      meetings" while the library catches up, gone after.
+- [ ] Ask "did we agree on a date for the proposal?" → an answer with `[1]`/`[2]` chips; tap →
+      transcript at 0:06 and playing. Ask "who won the cup?" → "Nothing in this meeting settles
+      that." over three chips.
+- [ ] Ask while a meeting is narrating → "The writer is busy…" note. Free tier → paywall; search
+      unchanged, no "≈", no indexing line.
+

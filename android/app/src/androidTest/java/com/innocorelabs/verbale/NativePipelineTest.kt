@@ -7,6 +7,7 @@ import com.innocorelabs.verbale.data.AudioDb
 import com.innocorelabs.verbale.billing.LicenceStore
 import com.innocorelabs.verbale.data.ModelCatalog
 import com.innocorelabs.verbale.pipeline.NativeBridge
+import com.innocorelabs.verbale.pipeline.VecCodec
 import com.innocorelabs.verbale.pipeline.Narrator
 import com.innocorelabs.verbale.pipeline.ProcessingEngine
 import org.json.JSONArray
@@ -354,6 +355,66 @@ class NativePipelineTest {
     } finally {
       NativeBridge.nativeLlmFree(handle)
     }
+  }
+
+  /**
+   * Sub-project 5: the embedding model through JNI, the same three sentences the Mac test
+   * (cpp/tests/test_embed.cpp) checks — so the phone and the Mac agree that "the proposal is due
+   * on Friday" is nearer "when do we deliver the pitch" than "the coffee machine is broken".
+   * Skips itself when the model is not installed (a free phone, or before the download).
+   */
+  @Test
+  fun embedding_is_a_unit_vector_and_near_beats_far() {
+    val gguf = ModelCatalog.fileFor(ctx, "embed-bge-small")?.takeIf { it.exists() }
+    assumeTrue("bge-small GGUF not installed", gguf != null)
+    val started = System.currentTimeMillis()
+    val handle = NativeBridge.nativeEmbedLoad(gguf!!.absolutePath, 4)
+    println("EMBED: loaded in ${System.currentTimeMillis() - started}ms")
+    assertTrue("embedding model failed to load (handle=0)", handle != 0L)
+    try {
+      val dim = NativeBridge.nativeEmbedDim(handle)
+      assertEquals(384, dim)
+      val t0 = System.currentTimeMillis()
+      val flat = NativeBridge.nativeEmbedTexts(
+        handle,
+        arrayOf("the proposal is due on Friday", "when do we deliver the pitch", "the coffee machine is broken"),
+      )
+      println("EMBED: three texts in ${System.currentTimeMillis() - t0}ms")
+      assertEquals(3 * dim, flat.size)
+      fun v(i: Int) = flat.copyOfRange(i * dim, (i + 1) * dim)
+      fun dot(a: FloatArray, b: FloatArray) = a.indices.sumOf { (a[it] * b[it]).toDouble() }
+      for (i in 0 until 3) assertEquals("row $i is not a unit vector", 1.0, dot(v(i), v(i)), 1e-3)
+      val near = dot(v(0), v(1)); val far = dot(v(0), v(2))
+      println("EMBED: near=$near far=$far")
+      assertTrue("near ($near) should beat far ($far) by 0.1", near > far + 0.1)
+      // The whole Kotlin path on top of it: quantise, score, and the order survives.
+      val q = v(0)
+      assertTrue(VecCodec.dot(q, VecCodec.encode(v(1))) > VecCodec.dot(q, VecCodec.encode(v(2))))
+    } finally {
+      NativeBridge.nativeEmbedFree(handle)
+    }
+  }
+
+  /**
+   * Sub-project 5: the Ask prompt and validator across JNI — the Mac's test_ask on the phone.
+   * No model needed: this is the shape, not the answer.
+   */
+  @Test
+  fun ask_prompt_is_fenced_and_the_validator_strips_bad_cites() {
+    val prompt = NativeBridge.nativeAskPrompt(
+      "did we agree on a date?",
+      arrayOf("Priya", "Rahul"), longArrayOf(5000L, 6500L),
+      arrayOf("Can you send the proposal Friday?", "Only a draft; the final version needs another week."),
+    )
+    assertTrue(prompt.contains("[1] Priya (0:05): Can you send the proposal Friday?"))
+    assertTrue(prompt.contains("[2] Rahul (0:06): Only a draft"))
+    assertTrue(prompt.contains("RECORD OF A MEETING"))
+    assertTrue(prompt.contains(NativeBridge.nativeAskNothing()))
+    val v = org.json.JSONObject(NativeBridge.nativeValidateAnswer("Friday [9], said Rahul [1].", 2))
+    assertEquals("Friday, said Rahul [1].", v.getString("text"))
+    assertEquals(1, v.getJSONArray("cites").length())
+    assertEquals(false, v.getBoolean("nothing"))
+    assertEquals(true, org.json.JSONObject(NativeBridge.nativeValidateAnswer("They agreed.", 2)).getBoolean("nothing"))
   }
 
   @Test

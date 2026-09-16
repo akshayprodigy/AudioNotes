@@ -1,5 +1,8 @@
 # Ask This Meeting and Semantic Search — Implementation Plan
 
+> **Status 16 Sep 2026: code complete, Tasks 1–11 committed and gate-green; Task 12's device
+> half waits on the Pixel.** See the spec's "Device verification" for the phone checklist.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A Pro user can search their library by meaning and ask one meeting a question that is answered from, and cites, its own transcript — offline.
@@ -18,7 +21,7 @@
 - Modify: `android/app/src/main/java/com/innocorelabs/verbale/data/ModelCatalog.kt` (after the `llm-qwen` `ModelSpec`)
 - Test: `android/app/src/test/java/com/innocorelabs/verbale/data/ModelCatalogTest.kt`
 
-- [ ] **Step 1: Failing test** — append to `ModelCatalogTest`:
+- [x] **Step 1: Failing test** — append to `ModelCatalogTest`:
 
 ```kotlin
   /**
@@ -36,9 +39,9 @@
   }
 ```
 
-- [ ] **Step 2: Run** `cd android && ./gradlew :app:testDebugUnitTest --tests '*ModelCatalogTest*'` → FAILS (`embed-bge-small is not catalogued`).
+- [x] **Step 2: Run** `cd android && ./gradlew :app:testDebugUnitTest --tests '*ModelCatalogTest*'` → FAILS (`embed-bge-small is not catalogued`).
 
-- [ ] **Step 3: Implement** — after the `llm-qwen` spec in `ModelCatalog.ALL`:
+- [x] **Step 3: Implement** — after the `llm-qwen` spec in `ModelCatalog.ALL`:
 
 ```kotlin
     // The embedding model behind meaning search and Ask. BAAI bge-small-en-v1.5 (MIT), 33 M
@@ -60,9 +63,9 @@
 
 Then `grep -n "llm-qwen" android/app/src/main/java/com/innocorelabs/verbale/pipeline/*.kt src/**/*.ts*` — every place that means *the writer* keeps `"llm-qwen"`; nothing should select "the llm" by kind expecting one file (`PaywallScreen.onStartTrial` loops over all `kind === 'llm'` — correct, it should now fetch both).
 
-- [ ] **Step 4: Run** the test → passes. Also `npx jest src/billing` (PRO_MODEL_IDS is unaffected: the kind rule comes from native).
+- [x] **Step 4: Run** the test → passes. Also `npx jest src/billing` (PRO_MODEL_IDS is unaffected: the kind rule comes from native).
 
-- [ ] **Step 5: Fetch the file for the Mac tests** (not committed; 37 MB):
+- [x] **Step 5: Fetch the file for the Mac tests** (not committed; 37 MB):
 
 ```bash
 mkdir -p ~/.cache/verbale-models && curl -L -o ~/.cache/verbale-models/bge-small-en-v1.5-q8_0.gguf \
@@ -70,7 +73,7 @@ mkdir -p ~/.cache/verbale-models && curl -L -o ~/.cache/verbale-models/bge-small
 shasum -a 256 ~/.cache/verbale-models/bge-small-en-v1.5-q8_0.gguf   # ec38e8da…
 ```
 
-- [ ] **Step 6: Commit** — `git commit -m "feat(search): the embedding model joins the writer bundle"`
+- [x] **Step 6: Commit** — `git commit -m "feat(search): the embedding model joins the writer bundle"`
 
 ---
 
@@ -81,7 +84,7 @@ shasum -a 256 ~/.cache/verbale-models/bge-small-en-v1.5-q8_0.gguf   # ec38e8da�
 - Create: `cpp/tests/test_embed.cpp`
 - Modify: `cpp/CMakeLists.txt` (add `llm/embed_engine.cpp` next to `llm/llama_engine.cpp`), `cpp/cli/CMakeLists.txt` (register `test_embed`)
 
-- [ ] **Step 1: Failing test** — `cpp/tests/test_embed.cpp`:
+- [x] **Step 1: Failing test** — `cpp/tests/test_embed.cpp`:
 
 ```cpp
 // The embedding engine, against the real model on the Mac. Skipped — with a printed reason,
@@ -154,7 +157,7 @@ int main() {
 }
 ```
 
-- [ ] **Step 2: Header** — `cpp/llm/embed_engine.h`:
+- [x] **Step 2: Header** — `cpp/llm/embed_engine.h`:
 
 ```cpp
 // Sentence embeddings over llama.cpp (a BERT-family GGUF such as bge-small-en-v1.5). The model
@@ -189,7 +192,7 @@ class EmbedEngine {
 }  // namespace audionotes
 ```
 
-- [ ] **Step 3: Implementation** — `cpp/llm/embed_engine.cpp`:
+- [x] **Step 3: Implementation** — `cpp/llm/embed_engine.cpp`:
 
 ```cpp
 #include "llm/embed_engine.h"
@@ -307,7 +310,7 @@ std::vector<std::vector<float>> EmbedEngine::embed(const std::vector<std::string
 }  // namespace audionotes
 ```
 
-- [ ] **Step 4: CMake** — in `cpp/CMakeLists.txt` add `llm/embed_engine.cpp` beside `llm/llama_engine.cpp` in the `audionotes` sources. In `cpp/cli/CMakeLists.txt`, next to `test_evidence_record`:
+- [x] **Step 4: CMake** — in `cpp/CMakeLists.txt` add `llm/embed_engine.cpp` beside `llm/llama_engine.cpp` in the `audionotes` sources. In `cpp/cli/CMakeLists.txt`, next to `test_evidence_record`:
 
 ```cmake
 audionotes_add_test(test_embed ${CORE}/tests/test_embed.cpp)
@@ -316,7 +319,7 @@ target_compile_definitions(test_embed PRIVATE HAVE_LLAMA=1)
 
 (Check how `test_evidence_record` is registered and copy its link line exactly — the test needs the `audionotes` library and llama.)
 
-- [ ] **Step 5: Build and run**
+- [x] **Step 5: Build and run**
 
 ```bash
 CMAKE=$HOME/Library/Android/sdk/cmake/3.22.1/bin/cmake
@@ -325,9 +328,9 @@ $CMAKE --build cpp/cli/build -j 8 && (cd cpp/cli/build && VERBALE_EMBED_GGUF=$HO
 
 Expected: `test_embed: near=0.7xx far=0.3xx` and `ok`. If `near > far + 0.1` fails, print all three vectors' pairwise dots and check pooling (`llama_pooling_type(ctx)` should be CLS = 2 for bge). Then `ctest` without the variable → "skipped".
 
-- [ ] **Step 6: Mutation-check** — make `one()` skip the normalisation → the unit-length check fails; return `v[2]`'s text for every input (embed the first text only) → `near > far` fails. Restore.
+- [x] **Step 6: Mutation-check** — make `one()` skip the normalisation → the unit-length check fails; return `v[2]`'s text for every input (embed the first text only) → `near > far` fails. Restore.
 
-- [ ] **Step 7: Commit** — `git commit -m "feat(search): EmbedEngine — sentence vectors over llama.cpp, tested against the real model"`
+- [x] **Step 7: Commit** — `git commit -m "feat(search): EmbedEngine — sentence vectors over llama.cpp, tested against the real model"`
 
 ---
 
@@ -337,7 +340,7 @@ Expected: `test_embed: near=0.7xx far=0.3xx` and `ok`. If `near > far + 0.1` fai
 - Modify: `cpp/jni/audionotes_jni.cpp` (after `nativeLlmFree`), `android/app/src/main/java/com/innocorelabs/verbale/pipeline/NativeBridge.kt`
 - Create: `android/app/src/main/java/com/innocorelabs/verbale/pipeline/EmbedRuntime.kt`
 
-- [ ] **Step 1: JNI** — add to `audionotes_jni.cpp` (include `"llm/embed_engine.h"` at the top with the other llm include):
+- [x] **Step 1: JNI** — add to `audionotes_jni.cpp` (include `"llm/embed_engine.h"` at the top with the other llm include):
 
 ```cpp
 // ---- Embeddings (bge-small over llama.cpp) --------------------------------------------------
@@ -389,7 +392,7 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeEmbedFree(
 }
 ```
 
-- [ ] **Step 2: NativeBridge externs** — after `nativeLlmFree`:
+- [x] **Step 2: NativeBridge externs** — after `nativeLlmFree`:
 
 ```kotlin
   // ---- Embeddings: meaning search and Ask's retrieval. Same load/use/free shape as the LLM. ----
@@ -400,7 +403,7 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeEmbedFree(
   external fun nativeEmbedFree(handle: Long)
 ```
 
-- [ ] **Step 3: The holder** — `EmbedRuntime.kt`:
+- [x] **Step 3: The holder** — `EmbedRuntime.kt`:
 
 ```kotlin
 package com.innocorelabs.verbale.pipeline
@@ -466,9 +469,9 @@ object EmbedRuntime {
 
 Wire `release()` into `MainApplication.onTrimMemory(level >= TRIM_MEMORY_RUNNING_LOW)` (find the Application class under `android/app/src/main/java/com/innocorelabs/verbale/`; add the override if absent).
 
-- [ ] **Step 4: Build the Android native lib** — `cd android && ./gradlew :app:compileDebugKotlin` (Kotlin) and `./gradlew :app:externalNativeBuildDebug` (or the full `assembleDebug`) → BUILD SUCCESSFUL. A device test for the JNI path is Task 12 (`embedding_is_a_unit_vector` in `NativePipelineTest`, run tomorrow).
+- [x] **Step 4: Build the Android native lib** — `cd android && ./gradlew :app:compileDebugKotlin` (Kotlin) and `./gradlew :app:externalNativeBuildDebug` (or the full `assembleDebug`) → BUILD SUCCESSFUL. A device test for the JNI path is Task 12 (`embedding_is_a_unit_vector` in `NativePipelineTest`, run tomorrow).
 
-- [ ] **Step 5: Commit** — `git commit -m "feat(search): embeddings through JNI, one resident handle"`
+- [x] **Step 5: Commit** — `git commit -m "feat(search): embeddings through JNI, one resident handle"`
 
 ---
 
@@ -478,7 +481,7 @@ Wire `release()` into `MainApplication.onTrimMemory(level >= TRIM_MEMORY_RUNNING
 - Modify: `android/app/src/main/java/com/innocorelabs/verbale/data/AudioDb.kt` (`SCHEMA`, `ADDED_COLUMNS`), `src/db/schema.ts`
 - Tests: `android/app/src/test/java/com/innocorelabs/verbale/SchemaTest.kt`, `src/db/__tests__/schema.test.ts`
 
-- [ ] **Step 1: Failing tests** — in `schema.test.ts`, add `'embedded_at'` to the `meetings` column list and:
+- [x] **Step 1: Failing tests** — in `schema.test.ts`, add `'embedded_at'` to the `meetings` column list and:
 
 ```ts
   describe('search_vec and asks', () => {
@@ -516,9 +519,9 @@ In `SchemaTest.kt`: rename `meetingsHasTheSameEighteenColumnsAsTheJavaScriptMirr
   }
 ```
 
-- [ ] **Step 2: Run both** → fail.
+- [x] **Step 2: Run both** → fail.
 
-- [ ] **Step 3: Implement** — Kotlin `SCHEMA` (after the `search_fts` statement):
+- [x] **Step 3: Implement** — Kotlin `SCHEMA` (after the `search_fts` statement):
 
 ```kotlin
     // Meaning search. One row per chunk (SearchChunker) of a meeting's transcript, items and
@@ -541,7 +544,7 @@ In `SchemaTest.kt`: rename `meetingsHasTheSameEighteenColumnsAsTheJavaScriptMirr
 
 TS `schema.ts`: `embedded_at INTEGER` in `meetings`, and the two tables + index in the same words (SQL identical modulo whitespace).
 
-- [ ] **Step 4: Run both** → pass. **Commit** — `git commit -m "feat(search): search_vec, asks and the embedded_at marker, in both mirrors"`
+- [x] **Step 4: Run both** → pass. **Commit** — `git commit -m "feat(search): search_vec, asks and the embedded_at marker, in both mirrors"`
 
 ---
 
@@ -551,7 +554,7 @@ TS `schema.ts`: `embedded_at INTEGER` in `meetings`, and the two tables + index 
 - Create: `android/app/src/main/java/com/innocorelabs/verbale/pipeline/SearchChunker.kt`, `VecCodec.kt`
 - Tests: `android/app/src/test/java/com/innocorelabs/verbale/pipeline/SearchChunkerTest.kt`, `VecCodecTest.kt`
 
-- [ ] **Step 1: Failing tests**
+- [x] **Step 1: Failing tests**
 
 ```kotlin
 class SearchChunkerTest {
@@ -615,9 +618,9 @@ class VecCodecTest {
 
 (Check `AudioDb.Utterance`'s real constructor — `grep -n "data class Utterance" AudioDb.kt` — and adjust the fixture helper to its parameter order.)
 
-- [ ] **Step 2: Run** → fail (unresolved references).
+- [x] **Step 2: Run** → fail (unresolved references).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```kotlin
 package com.innocorelabs.verbale.pipeline
@@ -706,9 +709,9 @@ object VecCodec {
 }
 ```
 
-- [ ] **Step 4: Run** → pass. **Mutation-check**: `MAX_GAP_MS` → `3_000_000` (gap test fails); drop the `words >= MAX_WORDS` flush (merge test's count fails); `hash` returning `text.length.toLong()` (sensitivity test fails); `encode` forgetting the scale (round-trip fails); `dot` reading from offset 0 (orthogonal/round-trip fail). Restore each.
+- [x] **Step 4: Run** → pass. **Mutation-check**: `MAX_GAP_MS` → `3_000_000` (gap test fails); drop the `words >= MAX_WORDS` flush (merge test's count fails); `hash` returning `text.length.toLong()` (sensitivity test fails); `encode` forgetting the scale (round-trip fails); `dot` reading from offset 0 (orthogonal/round-trip fail). Restore each.
 
-- [ ] **Step 5: Commit** — `git commit -m "feat(search): chunks of a hundred words, and vectors as bytes"`
+- [x] **Step 5: Commit** — `git commit -m "feat(search): chunks of a hundred words, and vectors as bytes"`
 
 ---
 
@@ -719,7 +722,7 @@ object VecCodec {
 - Modify: `AudioDb.kt` (vec helpers; `embedded_at` resets in `replaceUtterancesJson`, `replaceMinutes`, `replaceItems`, `classifyItem`, `reindexMeeting`; deletes in `deleteMeeting` and `reindexMeeting`), `ProcessingEngine.kt` (after narrate), `StorageModule.kt` + `src/native/NativeStorage.ts` + `src/db/queries.ts` (`backfillEmbeddings`), `src/pipeline/PipelineController.ts` (sweep)
 - Tests: `android/app/src/test/java/com/innocorelabs/verbale/pipeline/EmbedderTest.kt` (the pure plan), `android/app/src/androidTest/.../AudioDbTest.kt` (phone, Task 12)
 
-- [ ] **Step 1: The pure part first — a failing test for the plan** (`EmbedderTest.kt`):
+- [x] **Step 1: The pure part first — a failing test for the plan** (`EmbedderTest.kt`):
 
 ```kotlin
 class EmbedderTest {
@@ -737,7 +740,7 @@ class EmbedderTest {
 }
 ```
 
-- [ ] **Step 2: Implement `Embedder`**
+- [x] **Step 2: Implement `Embedder`**
 
 ```kotlin
 package com.innocorelabs.verbale.pipeline
@@ -803,7 +806,7 @@ object Embedder {
 }
 ```
 
-- [ ] **Step 3: AudioDb helpers** (near the search index helpers):
+- [x] **Step 3: AudioDb helpers** (near the search index helpers):
 
 ```kotlin
   data class VecRow(val kind: String, val refId: String, val startMs: Long, val endMs: Long, val speakerId: String?,
@@ -843,7 +846,7 @@ object Embedder {
 
 Call `unstampEmbedded(meetingId)` inside the transactions of `replaceUtterancesJson`, `replaceMinutes`, `replaceItems`, and at the end of `classifyItem`; in `reindexMeeting` too. In `deleteMeeting` add `db.execSQL("DELETE FROM search_vec WHERE meeting_id=?", …)` beside the `search_fts` delete. (Do NOT delete vec rows in `reindexMeeting` — the hash diff keeps what is still true.)
 
-- [ ] **Step 4: The stage** — in `ProcessingEngine`, after the narrate block and before `applyRetention`:
+- [x] **Step 4: The stage** — in `ProcessingEngine`, after the narrate block and before `applyRetention`:
 
 ```kotlin
         // ---- Meaning index (Pro): vectors for search and Ask. Idempotent by hash; a free user
@@ -861,7 +864,7 @@ Call `unstampEmbedded(meetingId)` inside the transactions of `replaceUtterancesJ
 
 `StageRates`/`progress.ts` know stages by name: add `"embed"` wherever `"narrate"` is listed with a label ("Indexing meaning…") — `grep -rn "narrate" android/app/src/main/java/com/innocorelabs/verbale/pipeline/StageRates.kt src/pipeline/progress.ts src/screens/meeting/*.tsx` and mirror each site; the jest `progress.test.ts` gets a row for it.
 
-- [ ] **Step 5: The backfill** — `StorageModule`:
+- [x] **Step 5: The backfill** — `StorageModule`:
 
 ```kotlin
   /** Embed up to `limit` meetings whose vectors are stale, newest first; resolves with the true backlog. Nothing without Pro + the model. */
@@ -879,9 +882,9 @@ Call `unstampEmbedded(meetingId)` inside the transactions of `replaceUtterancesJ
 
 `NativeStorage.ts`: `backfillEmbeddings(limit: number): Promise<number>;` with a two-line comment. `queries.ts`: `backfillEmbeddings: (limit = 3) => Storage.backfillEmbeddings(limit),` — three, not twenty-five: each meeting is seconds of CPU. `PipelineController.sweep`: after `backfillSearch()`, `await this.backfillEmbeddings()` with the same try/catch shape, logging `meaning index: N meeting(s) to go`.
 
-- [ ] **Step 6: Run** `EmbedderTest`, `progress.test.ts`, `npx tsc --noEmit`, `./gradlew :app:compileDebugKotlin`. Mutation-check `plan`: keep every wanted chunk (test's `toEmbed` fails); never delete (`toDelete` fails).
+- [x] **Step 6: Run** `EmbedderTest`, `progress.test.ts`, `npx tsc --noEmit`, `./gradlew :app:compileDebugKotlin`. Mutation-check `plan`: keep every wanted chunk (test's `toEmbed` fails); never delete (`toDelete` fails).
 
-- [ ] **Step 7: Commit** — `git commit -m "feat(search): every processed meeting gets its vectors; the sweep catches the library up"`
+- [x] **Step 7: Commit** — `git commit -m "feat(search): every processed meeting gets its vectors; the sweep catches the library up"`
 
 ---
 
@@ -891,7 +894,7 @@ Call `unstampEmbedded(meetingId)` inside the transactions of `replaceUtterancesJ
 - Create: `android/app/src/main/java/com/innocorelabs/verbale/pipeline/Retriever.kt`, test `RetrieverTest.kt`
 - Modify: `AudioDb.kt` (`searchJson(term, meetingId: String? = null)`, `meaningHits`), `src/pipeline/types.ts` (`SearchHit.byMeaning?: boolean`), `src/screens/SearchScreen.tsx` (the mark), `src/screens/__tests__/searchKinds.test.ts` or a new `SearchScreen.test.tsx`
 
-- [ ] **Step 1: Failing tests**
+- [x] **Step 1: Failing tests**
 
 ```kotlin
 class RetrieverTest {
@@ -919,7 +922,7 @@ class RetrieverTest {
 }
 ```
 
-- [ ] **Step 2: Implement**
+- [x] **Step 2: Implement**
 
 ```kotlin
 object Retriever {
@@ -945,7 +948,7 @@ object Retriever {
 
 (`sortedByDescending` is stable, and `score` is insertion-ordered keyword-first, so ties keep the keyword order.)
 
-- [ ] **Step 3: `AudioDb.searchJson`** — keep the FTS query; convert its rows to `Retriever.Hit`; then:
+- [x] **Step 3: `AudioDb.searchJson`** — keep the FTS query; convert its rows to `Retriever.Hit`; then:
 
 ```kotlin
     val meaning = meaningHits(term, meetingId, 40)
@@ -956,9 +959,9 @@ object Retriever {
 
 `meaningHits(term, meetingId, top)`: `EmbedRuntime.embed(ctx, listOf(term))?.firstOrNull() ?: return emptyList()` (the AudioDb needs a `Context` for that — pass it in: `searchJson(ctx, term, meetingId)`, and `StorageModule.search` passes `ctx`); scan `SELECT meeting_id,kind,ref_id,start_ms,end_ms,text,vec FROM search_vec [WHERE meeting_id=?]`, score with `VecCodec.dot`, keep a bounded top-`top` list (a `PriorityQueue`), snippet = first 120 chars of `text`. `kind` maps `turn → utterance` so the screen's kind labels apply. Keyword hits keep `endMs = startMs`.
 
-- [ ] **Step 4: Screen** — `SearchHit` gains `byMeaning?: boolean`. In `SearchScreen`'s `Hit` row, before the snippet runs: `{hit.byMeaning ? <Txt variant="chipSm" color={colors.inkSoft} accessibilityLabel="found by meaning">≈ </Txt> : null}`. Under the results (or the empty state), when `db.backfillEmbeddings(0)` — a count, no work — is > 0: `Txt chipSoft` "Meaning search is still indexing N meeting(s)". Test (`SearchScreen.test.tsx`, mocking `db.search` to return one `byMeaning` hit and one not, and `db.backfillEmbeddings` → 3): the marked row's text starts with "≈", the other's does not; the note names 3.
+- [x] **Step 4: Screen** — `SearchHit` gains `byMeaning?: boolean`. In `SearchScreen`'s `Hit` row, before the snippet runs: `{hit.byMeaning ? <Txt variant="chipSm" color={colors.inkSoft} accessibilityLabel="found by meaning">≈ </Txt> : null}`. Under the results (or the empty state), when `db.backfillEmbeddings(0)` — a count, no work — is > 0: `Txt chipSoft` "Meaning search is still indexing N meeting(s)". Test (`SearchScreen.test.tsx`, mocking `db.search` to return one `byMeaning` hit and one not, and `db.backfillEmbeddings` → 3): the marked row's text starts with "≈", the other's does not; the note names 3.
 
-- [ ] **Step 5: Run** all three; mutation-check `fuse` (k=0 breaks the tie order; forgetting `byMeaning=false` on the keyword row fails the first test). Commit — `git commit -m "feat(search): keyword and meaning hits, one list"`
+- [x] **Step 5: Run** all three; mutation-check `fuse` (k=0 breaks the tie order; forgetting `byMeaning=false` on the keyword row fails the first test). Commit — `git commit -m "feat(search): keyword and meaning hits, one list"`
 
 ---
 
@@ -966,9 +969,9 @@ object Retriever {
 
 **Files:** `AudioDb.kt` (`indexMinutes`, `unindexedCount`), `StorageModule.kt` (`backfillSearch`), tests in the phone `AudioDbTest` (Task 12) and a pure `SearchIndexRulesTest.kt` for the kind filter
 
-- [ ] **Step 1:** `indexMinutes(meetingId)`: `val skip = if (hasRuleItems(meetingId)) ITEM_KINDS else emptyList()`; the SELECT adds `AND kind NOT IN (…)` when `skip` is non-empty (build the placeholders). Pull the decision into a pure `fun minuteKindsToIndex(hasRuleItems: Boolean): String` ("`kind <> 'summary'`" vs "`kind NOT IN ('summary','decision','action','question')`") and test it.
-- [ ] **Step 2:** `unindexedCount()` beside `unindexedMeetings` with the predicate written once (`private val UNINDEXED = "FROM meetings m WHERE EXISTS(...) AND NOT EXISTS(SELECT 1 FROM search_fts f WHERE f.meeting_id=m.id)"`); `StorageModule.backfillSearch` resolves `db.unindexedCount()`.
-- [ ] **Step 3:** Commit — `git commit -m "fix(search): a decision is one card, and the backlog is a count"`
+- [x] **Step 1:** `indexMinutes(meetingId)`: `val skip = if (hasRuleItems(meetingId)) ITEM_KINDS else emptyList()`; the SELECT adds `AND kind NOT IN (…)` when `skip` is non-empty (build the placeholders). Pull the decision into a pure `fun minuteKindsToIndex(hasRuleItems: Boolean): String` ("`kind <> 'summary'`" vs "`kind NOT IN ('summary','decision','action','question')`") and test it.
+- [x] **Step 2:** `unindexedCount()` beside `unindexedMeetings` with the predicate written once (`private val UNINDEXED = "FROM meetings m WHERE EXISTS(...) AND NOT EXISTS(SELECT 1 FROM search_fts f WHERE f.meeting_id=m.id)"`); `StorageModule.backfillSearch` resolves `db.unindexedCount()`.
+- [x] **Step 3:** Commit — `git commit -m "fix(search): a decision is one card, and the backlog is a count"`
 
 ---
 
@@ -978,7 +981,7 @@ object Retriever {
 - Create: `cpp/minutes/ask.h`, `cpp/minutes/ask.cpp`, `cpp/tests/test_ask.cpp`
 - Modify: `cpp/CMakeLists.txt`, `cpp/cli/CMakeLists.txt`, `cpp/jni/audionotes_jni.cpp`, `NativeBridge.kt`, `scripts/check-prompt-fencing.py` (only if its list of prompt builders is explicit — read it first)
 
-- [ ] **Step 1: Failing test** — `cpp/tests/test_ask.cpp` (the `CHECK` macro as in `test_evidence_record`):
+- [x] **Step 1: Failing test** — `cpp/tests/test_ask.cpp` (the `CHECK` macro as in `test_evidence_record`):
 
 ```cpp
 static std::vector<AskPassage> passages() {
@@ -1020,7 +1023,7 @@ static void theRefusalPhraseIsNothing() {
 }
 ```
 
-- [ ] **Step 2: Implement** — `ask.h`:
+- [x] **Step 2: Implement** — `ask.h`:
 
 ```cpp
 #pragma once
@@ -1049,11 +1052,11 @@ AskAnswer validateAnswer(const std::string& text, int n_passages);
 
 `ask.cpp`: `kAskNothing = "Nothing in this meeting settles that."`; `askPrompt` builds `"[n] Speaker (m:ss): text\n"` lines, calls `fenceTranscript(lines)` (the same helper `classifyPrompt` uses — read `cpp/minutes/fence.h` for its exact name/signature) for the passages and for the question, and writes: `"Answer the question from the numbered passages only, in at most three sentences. After each claim write the passage number in square brackets, like [2]. If the passages do not answer it, write exactly: " + kAskNothing`. `validateAnswer`: scan for `[digits]`, keep in range, erase others (and one space before), collect unique cites; `nothing = cites.empty() || text.find(kAskNothing) != npos`.
 
-- [ ] **Step 3: Register** the source and the test (copy `test_evidence_record`'s lines); build; run `test_ask` → ok; run `python3 scripts/check-prompt-fencing.py` → passes and names `askPrompt` as fenced (if the script lists prompt builders explicitly, add `askPrompt`).
+- [x] **Step 3: Register** the source and the test (copy `test_evidence_record`'s lines); build; run `test_ask` → ok; run `python3 scripts/check-prompt-fencing.py` → passes and names `askPrompt` as fenced (if the script lists prompt builders explicitly, add `askPrompt`).
 
-- [ ] **Step 4: JNI** — `nativeAskPrompt(question, speakers[], startMs[], texts[]) → String`, `nativeAskNothing() → String` (the constant, so Kotlin never spells it) and `nativeValidateAnswer(text, n) → String` (JSON `{"text":…,"cites":[…],"nothing":bool}` — hand-built like `toJson` in evidence_record; escape quotes/backslashes/newlines). Externs in `NativeBridge.kt`.
+- [x] **Step 4: JNI** — `nativeAskPrompt(question, speakers[], startMs[], texts[]) → String`, `nativeAskNothing() → String` (the constant, so Kotlin never spells it) and `nativeValidateAnswer(text, n) → String` (JSON `{"text":…,"cites":[…],"nothing":bool}` — hand-built like `toJson` in evidence_record; escape quotes/backslashes/newlines). Externs in `NativeBridge.kt`.
 
-- [ ] **Step 5: Mutation-check** (`validateAnswer` keeps `[9]`; `askPrompt` skips the fence — the `RECORD OF A MEETING` check fails). Commit — `git commit -m "feat(ask): the prompt is fenced and numbered; an answer must cite or say nothing"`
+- [x] **Step 5: Mutation-check** (`validateAnswer` keeps `[9]`; `askPrompt` skips the fence — the `RECORD OF A MEETING` check fails). Commit — `git commit -m "feat(ask): the prompt is fenced and numbered; an answer must cite or say nothing"`
 
 ---
 
@@ -1063,7 +1066,7 @@ AskAnswer validateAnswer(const std::string& text, int n_passages);
 - Create: `android/app/src/main/java/com/innocorelabs/verbale/pipeline/Asker.kt`, test `AskerTest.kt`
 - Modify: `AudioDb.kt` (`asks` helpers: `insertAsk`, `asksJson(meetingId)`), `LlmModule.kt` (`ask`, `asks`), `src/native/NativeLlm.ts`, `ProcessingService.kt` (`isBusy()` static)
 
-- [ ] **Step 1: Failing test** — the gate and the pure bits:
+- [x] **Step 1: Failing test** — the gate and the pure bits:
 
 ```kotlin
 class AskerTest {
@@ -1097,7 +1100,7 @@ class AskerTest {
 }
 ```
 
-- [ ] **Step 2: Implement** `Asker.kt`: `enum class Refusal { NOT_PRO, NO_MODEL, NOT_CAPABLE, BUSY }`, `gate(...)`, `data class AskPassageK(speaker, startMs, text, refId)`, `passages(hits, speakerOf, names)` (top 8; speaker from the utterance's speaker id → display name, else "Someone"; for `item`/`summary` kinds the speaker is "Minutes"), `citesJson(cites, passages)` → `[{n, refId, startMs, speaker}]`, and:
+- [x] **Step 2: Implement** `Asker.kt`: `enum class Refusal { NOT_PRO, NO_MODEL, NOT_CAPABLE, BUSY }`, `gate(...)`, `data class AskPassageK(speaker, startMs, text, refId)`, `passages(hits, speakerOf, names)` (top 8; speaker from the utterance's speaker id → display name, else "Someone"; for `item`/`summary` kinds the speaker is "Minutes"), `citesJson(cites, passages)` → `[{n, refId, startMs, speaker}]`, and:
 
 ```kotlin
   data class Result(val refusal: Refusal?, val answer: String, val citesJson: String, val nothing: Boolean, val askId: String?)
@@ -1127,7 +1130,7 @@ class AskerTest {
 
 `LlmModule`: `@ReactMethod fun ask(meetingId: String, question: String, promise: Promise)` on a `Thread` — `Asker.ask(ctx, meetingId, question) { ensureLoadedHandle() }` where `ensureLoadedHandle()` is the existing `load` logic made synchronous and reused; resolves the JSON `{refusal, answer, cites, nothing, id}`. `@ReactMethod fun asks(meetingId, promise)` → `asksJson`. `NativeLlm.ts`: `ask(meetingId: string, question: string): Promise<string>; asks(meetingId: string): Promise<string>;`.
 
-- [ ] **Step 3: Run** `AskerTest`; compile; mutation-check the gate order (swap NOT_PRO/NO_MODEL) and `passages` (take 9). Commit — `git commit -m "feat(ask): retrieve, ask the writer, keep the exchange"`
+- [x] **Step 3: Run** `AskerTest`; compile; mutation-check the gate order (swap NOT_PRO/NO_MODEL) and `passages` (take 9). Commit — `git commit -m "feat(ask): retrieve, ask the writer, keep the exchange"`
 
 ---
 
@@ -1138,7 +1141,7 @@ class AskerTest {
 - Modify: `src/navigation/RootNavigator.tsx` (`Ask: { meetingId: string }`, `Stack.Screen`), `src/screens/MeetingScreen.tsx` (header `IconButton icon="chat" label="Ask this meeting"` before the More button; a `sheetActions` row "Ask this meeting"), `src/components/Icon.tsx` (`'chat'`: a speech bubble — `<Path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.4 0-2.8-.3-4-.9L3 21l1.9-5.5A8.5 8.5 0 1 1 21 11.5z" />`), `src/db/queries.ts` (`asks`, `ask`)
 - Test mocks: `MeetingScreen.test.tsx` and `ItemProvenance.test.tsx` need no new `db.*` stubs unless MeetingScreen reads asks (it does not).
 
-- [ ] **Step 1: Failing test** — `AskScreen.test.tsx` (the `render`/`press`/`texts` helpers as in `ReviewScreen.test.tsx`; mock `../../native/NativeLlm` with `ask`, `asks`, `unload`):
+- [x] **Step 1: Failing test** — `AskScreen.test.tsx` (the `render`/`press`/`texts` helpers as in `ReviewScreen.test.tsx`; mock `../../native/NativeLlm` with `ask`, `asks`, `unload`):
 
 ```tsx
   it('shows the meeting’s past asks, newest last, with their citations', async () => {
@@ -1192,17 +1195,17 @@ class AskerTest {
   });
 ```
 
-- [ ] **Step 2: Implement** `AskScreen.tsx`: state `thread: Ask[]`, `draft`, `busy`; load `db.asks(meetingId)` on mount; `send()` → `db.ask(meetingId, draft)` → on `refusal`: `NOT_PRO` → `navigation.navigate('Paywall', { meetingId })`; `NO_MODEL`/`BUSY`/`NOT_CAPABLE` → a note card; else append. Each answer card: the question (`Txt bodyStrong`), the answer (`Txt prose`), citation chips `Pressable accessibilityLabel={`Play [${c.n}] ${c.speaker} at ${stamp}`}` showing `[n] Speaker · m:ss` (`provenanceLabel` from `ItemProvenance.tsx` for the stamp) → `navigation.navigate('Meeting', { meetingId, tab: 'transcript', atMs: c.startMs })`; a `nothing` answer shows the phrase in `inkSoft` over "Closest passages" chips. Bottom: `TextInput placeholder="Ask this meeting…"` + `Pressable accessibilityLabel="Ask"`; while busy the button reads "Thinking…" and is disabled. `useEffect(() => () => { Llm.unload().catch(() => {}); }, [])`. `queries.ts`: `asks: (meetingId) => Llm.asks(meetingId).then(JSON.parse)`, `ask: (meetingId, q) => Llm.ask(meetingId, q).then(JSON.parse)`.
+- [x] **Step 2: Implement** `AskScreen.tsx`: state `thread: Ask[]`, `draft`, `busy`; load `db.asks(meetingId)` on mount; `send()` → `db.ask(meetingId, draft)` → on `refusal`: `NOT_PRO` → `navigation.navigate('Paywall', { meetingId })`; `NO_MODEL`/`BUSY`/`NOT_CAPABLE` → a note card; else append. Each answer card: the question (`Txt bodyStrong`), the answer (`Txt prose`), citation chips `Pressable accessibilityLabel={`Play [${c.n}] ${c.speaker} at ${stamp}`}` showing `[n] Speaker · m:ss` (`provenanceLabel` from `ItemProvenance.tsx` for the stamp) → `navigation.navigate('Meeting', { meetingId, tab: 'transcript', atMs: c.startMs })`; a `nothing` answer shows the phrase in `inkSoft` over "Closest passages" chips. Bottom: `TextInput placeholder="Ask this meeting…"` + `Pressable accessibilityLabel="Ask"`; while busy the button reads "Thinking…" and is disabled. `useEffect(() => () => { Llm.unload().catch(() => {}); }, [])`. `queries.ts`: `asks: (meetingId) => Llm.asks(meetingId).then(JSON.parse)`, `ask: (meetingId, q) => Llm.ask(meetingId, q).then(JSON.parse)`.
 
-- [ ] **Step 3: Route + header + icon + sheet row.** `MeetingScreen.test.tsx` may need `Llm` mocked if the header renders nothing new that calls it (it does not).
+- [x] **Step 3: Route + header + icon + sheet row.** `MeetingScreen.test.tsx` may need `Llm` mocked if the header renders nothing new that calls it (it does not).
 
-- [ ] **Step 4: Run** `AskScreen.test.tsx`, `MeetingScreen.test.tsx`, `tsc`, eslint. Mutation-check: `atMs` off (cite test fails); refusal not routed (paywall test fails); unload dropped. Commit — `git commit -m "feat(ask): the Ask screen — a thread of answers that point at the transcript"`
+- [x] **Step 4: Run** `AskScreen.test.tsx`, `MeetingScreen.test.tsx`, `tsc`, eslint. Mutation-check: `atMs` off (cite test fails); refusal not routed (paywall test fails); unload dropped. Commit — `git commit -m "feat(ask): the Ask screen — a thread of answers that point at the transcript"`
 
 ---
 
 ### Task 12: Gate, docs, memory, and tomorrow's phone list
 
-- [ ] `scripts/gate.sh` all stages except device → green (`GATE_STAGES="types js scans mutations kotlin cpp"`); `test_embed` runs with `VERBALE_EMBED_GGUF` exported in the shell that runs the gate (document in `scripts/gate.sh`'s header comment).
-- [ ] Device tests written now, run tomorrow: `NativePipelineTest.embedding_is_a_unit_vector` (load the embed model via `ModelCatalog.fileFor(ctx, "embed-bge-small")`, `assumeTrue` installed; embed two texts; unit length; near > far), `AudioDbTest`: `deleteMeeting` removes `search_vec` rows; `replaceUtterancesJson` clears `embedded_at`; `indexMinutes` no duplicate for a meeting with rule items; `unindexedCount`.
-- [ ] Spec: add "Device verification" as an empty checklist headed *pending — Pixel not attached 16 Sep*; plan: no SHIPPED banner yet. `docs/NEXT.md` and the scorecard rows wait for the phone. Memory: `ask-and-semantic-search.md` (state, decisions taken alone, the checklist). Commit.
+- [x] `scripts/gate.sh` all stages except device → green (115 s, 16 Sep; `test_embed` 0.38 s against the real GGUF) (`GATE_STAGES="types js scans mutations kotlin cpp"`); `test_embed` runs with `VERBALE_EMBED_GGUF` exported in the shell that runs the gate (document in `scripts/gate.sh`'s header comment).
+- [x] Device tests written now, run tomorrow: `NativePipelineTest.embedding_is_a_unit_vector` (load the embed model via `ModelCatalog.fileFor(ctx, "embed-bge-small")`, `assumeTrue` installed; embed two texts; unit length; near > far), `AudioDbTest`: `deleteMeeting` removes `search_vec` rows; `replaceUtterancesJson` clears `embedded_at`; `indexMinutes` no duplicate for a meeting with rule items; `unindexedCount`.
+- [x] Spec: add "Device verification" as an empty checklist headed *pending — Pixel not attached 16 Sep*; plan: no SHIPPED banner yet. `docs/NEXT.md` and the scorecard rows wait for the phone. Memory: `ask-and-semantic-search.md` (state, decisions taken alone, the checklist). Commit.
 - [ ] **Tomorrow on the Pixel (Pro):** Settings → the two models install (37 MB shows); `scripts/device-verify.sh NativePipeline` and `AudioDb`; process the lead-example meeting → logcat `embedded N chunk(s)`; Search "push back" → the Rahul turn with "≈"; Ask "did we agree on a date for the proposal?" → an answer with `[1]`/`[2]` chips, tap → transcript at 0:06; Ask during narration → BUSY note; free tier → paywall; then the docs/scorecard/memory closing commit, and the founder pushes `main`.

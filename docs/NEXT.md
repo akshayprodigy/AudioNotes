@@ -10,6 +10,10 @@ the items worth doing are here, in the order to do them.
 > the four decisions taken that day are in
 > `docs/superpowers/specs/2026-09-08-improvement-report-decomposition.md`.
 > Sub-project 1 is in progress: `docs/superpowers/specs/2026-09-08-evidence-spine-design.md`.
+> **16 September:** sub-projects 1, 2A, 2B and 3 are shipped and Pixel-verified; 4 (typed record
+> + review queue) and 5 (ask this meeting + meaning search) are code complete and green through
+> the gate, waiting on one Pixel session for their device runs. Next: 6 (templates, decision
+> history, prep), 7 (remembered voices), 8 (vocabulary + dictation), 9 (no-internet build).
 >
 > The items below that are yours — the Play Console product, Play listing, staged rollout — are
 > not blocked by any of it and can proceed in parallel. Prices, Sentry and the bandwidth ceiling
@@ -111,7 +115,11 @@ Small, high-value, and each one answers a complaint the whole category gets.
   `superpowers/specs/2026-09-16-speaker-repair-design.md`. The 79.1 % vs 92.6 % attribution gap
   on Indian-accented English now has its mitigation.
 - **Provenance.** Tap a decision, land on the transcript turn, play from there. This is what
-  "minutes you would forward without editing" actually means. Research §2.3 #10.
+  "minutes you would forward without editing" actually means. Research §2.3 #10. **The typed
+  record and the review queue (sub-project 4) are code complete as of 16 Sep, Pixel run pending:**
+  a grammar-constrained classifier reads the reply to each item, only what it could not settle
+  enters a per-meeting queue (Confirm · Fix · Not an item), and a fix reaches every row and
+  export. Spec: `superpowers/specs/2026-09-16-evidence-record-and-review-design.md`.
 - ~~**An honest ETA while processing.**~~ **Shipped 16 Sep, device-verified on the Pixel.** Each
   phone learns its own per-stage speeds (`rate.<stage>` in settings, blended 70/30, net of any
   pause); ASR reports per window and diarization per chunk through JNI, so the long stages show
@@ -143,8 +151,16 @@ Small, high-value, and each one answers a complaint the whole category gets.
   does not. **Legal note for a global launch:** a stored voice embedding tied to a name is
   biometric data under Illinois BIPA and GDPR Article 9. Staying on device is most of the answer,
   but this feature needs consent copy written before it ships, not after. Research §3.1.
-- **Ask your meetings, offline.** Retrieval into the writer model, answering with citations to the
-  turns used. The category flagship, and the only private one. This is the reason to buy Pro.
+- ~~**Ask your meetings, offline.**~~ **Built 16 Sep — code complete, Pixel run pending.** Ask
+  *this* meeting (the founder's list says this-meeting; the global case is the same machinery
+  over more rows): the meeting's eight closest passages by keyword and meaning, a fenced numbered
+  prompt to the writer, and an answer that must cite `[n]` or is shown as "Nothing in this
+  meeting settles that" over the closest passages — the model can point, it cannot assert. Every
+  citation opens the transcript at the moment. Alongside it, **search by meaning**: a 37 MB
+  embedding model (bge-small-en-v1.5) rides with the writer, every processed meeting is chunked
+  and embedded, and Search fuses keyword and meaning hits into one list, marking meaning-only
+  hits "≈". Spec: `superpowers/specs/2026-09-16-ask-and-semantic-search-design.md` — §0 lists
+  seven decisions taken in the founder's absence, to overrule.
 - **Calendar-aware capture, read only.** Nudge before a meeting, pre-title it, offer invitees as
   speaker names. Invitees are the best source of speaker names that exists.
 - **The correction loop.** Names and terms fixed once become a glossary that biases both the

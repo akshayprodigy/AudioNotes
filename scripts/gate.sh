@@ -8,12 +8,16 @@
 #   GATE_FAKE_FAIL=<stage>     make that stage fail without running it (the gate's own test)
 #   ADB=/path/to/adb           where adb is; discovered from the SDK otherwise
 #   CMAKE=/path/to/cmake       where cmake is; the Android SDK's copy otherwise
+#   VERBALE_EMBED_GGUF=<file>  the bge-small GGUF for cpp's test_embed; defaults to the copy
+#                              Task 1 of the ask plan fetched to ~/.cache/verbale-models — the
+#                              test skips itself, exit 0, when the file is absent
 set -u
 cd "$(dirname "$0")/.." || exit 2
 
 STAGES="${GATE_STAGES:-types js scans mutations kotlin cpp device}"
 FAKE_FAIL="${GATE_FAKE_FAIL:-}"
 CMAKE="${CMAKE:-$HOME/Library/Android/sdk/cmake/3.22.1/bin/cmake}"
+export VERBALE_EMBED_GGUF="${VERBALE_EMBED_GGUF:-$HOME/.cache/verbale-models/bge-small-en-v1.5-q8_0.gguf}"
 NINJA="$(dirname "$CMAKE")/ninja"
 CTEST="$(dirname "$CMAKE")/ctest"
 

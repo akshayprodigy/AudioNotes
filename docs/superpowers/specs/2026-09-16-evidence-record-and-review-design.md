@@ -149,3 +149,11 @@ Every new test mutation-checked.
 Discovering items the rules missed (the classifier types what the rules found — bounded on
 purpose); the narrator consuming the typed record (validated, not rewired — spine §7); a global
 review inbox across meetings; changing item text on a card; undo.
+
+## Device verification
+
+*Pending — the Pixel was not on adb on 16 September. Code complete through Task 8b (`c8b830e`),
+gate green. The Task 9 checklist is in the plan; in short: the grammar test in
+`NativePipelineTest`, the lead example (Request · Contradicted, banner, card, Confirm, Redo), the
+clean commitment (no card, chips), free tier (no labels, no banner).*
+
