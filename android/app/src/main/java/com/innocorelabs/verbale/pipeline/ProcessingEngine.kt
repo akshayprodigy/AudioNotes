@@ -261,6 +261,10 @@ class ProcessingEngine(
               audioPath, segModel.absolutePath, embModel.absolutePath, RecordingService.SAMPLE_RATE, 0,
               spans, windowMs, progressFor("diarize"),
             )
+            // sherpa cannot abort mid-call, so a cancel (a Delete, say) lands here with a full
+            // result for a meeting that may no longer exist: writing it raised a FOREIGN KEY
+            // failure on the Pixel. Cancelled means nothing is written, as with ASR above.
+            if (checkCancelled()) return
             stageDone("diarize", t0, p0)
             val m = tri.size / 3
             if (m > 0) {
