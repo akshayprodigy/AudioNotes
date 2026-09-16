@@ -100,9 +100,39 @@ export function stripOpeningFiller(opening: string): string {
   return out;
 }
 
+export type PauseReason = 'heat' | 'battery';
+
 class PipelineControllerImpl {
   private emitter = new NativeEventEmitter(NativeModules.AudioPipeline);
   private subs: { remove(): void }[] = [];
+
+  /**
+   * Why processing is paused for a meeting right now, or nothing. Kept so a screen that mounts
+   * mid-pause can say so without waiting for the next event; cleared when the run ends.
+   */
+  private paused = new Map<string, PauseReason>();
+
+  constructor() {
+    this.subs.push(
+      this.emitter.addListener('onProcessingPause', (e: { meetingId: string; reason: PauseReason | null }) => {
+        if (e.reason) this.paused.set(e.meetingId, e.reason);
+        else this.paused.delete(e.meetingId);
+      }),
+      this.emitter.addListener('onStageComplete', (e: { meetingId: string }) => this.paused.delete(e.meetingId)),
+      this.emitter.addListener('onError', (e: { meetingId: string }) => this.paused.delete(e.meetingId)),
+    );
+  }
+
+  pausedReason(meetingId: string): PauseReason | undefined {
+    return this.paused.get(meetingId);
+  }
+
+  /** Processing paused (reason) or resumed (null) for a meeting. */
+  onPause(cb: (e: { meetingId: string; reason: PauseReason | null }) => void): () => void {
+    const s = this.emitter.addListener('onProcessingPause', cb);
+    this.subs.push(s);
+    return () => s.remove();
+  }
 
   /**
    * Start capturing.

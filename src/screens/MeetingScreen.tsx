@@ -62,6 +62,7 @@ import {
 } from './meeting/shared';
 import { radius, s, sv, useTheme, type Colors } from '../theme';
 import { STAGES, progressFor } from './progress';
+import type { PauseReason } from '../pipeline/PipelineController';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Meeting'>;
 
@@ -92,6 +93,8 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const [counts, setCounts] = useState<{ done: number; total: number } | null>(null);
   /** Seconds of work per second of audio, as this phone has measured them. */
   const [rates, setRates] = useState<Partial<Record<string, number>>>({});
+  /** Why the pipeline is paused for the phone's sake, or null. Seeded for a screen opened mid-pause. */
+  const [paused, setPaused] = useState<PauseReason | null>(PipelineController.pausedReason(meetingId) ?? null);
   const [failure, setFailure] = useState<string | null>(null);
   const [settled, setSettled] = useState(false);
   const [sheet, setSheet] = useState(false);
@@ -332,8 +335,12 @@ export default function MeetingScreen({ route, navigation }: Props) {
       // 0/1 and 1/1 are "started" and "finished", not counts; only a total above 1 is progress.
       setCounts(p.total > 1 ? { done: p.chunk, total: p.total } : null);
     });
+    const offPause = PipelineController.onPause(e => {
+      if (e.meetingId === meetingId) setPaused(e.reason);
+    });
     const offComplete = PipelineController.onComplete(e => {
       if (e.meetingId !== meetingId) return;
+      setPaused(null);
       setStage(null);
       setSettled(true);
       if (e.outcome === 'error') setFailure(e.message ?? 'Processing failed');
@@ -341,6 +348,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
     });
     return () => {
       offProgress();
+      offPause();
       offComplete();
     };
   }, [meetingId, refresh]);
@@ -830,14 +838,19 @@ export default function MeetingScreen({ route, navigation }: Props) {
               <Mascot mood="thinking" size={sv(94)} />
             </ProgressRing>
             <Txt variant="display" style={st.procTitle}>
-              Writing your notes…
+              {paused ? 'Paused for a moment' : 'Writing your notes…'}
             </Txt>
+            {/* No ETA while paused: a time that is not counting down is a promise, not an estimate. */}
             <Txt variant="sub" color={colors.inkDim} style={st.procBody}>
-              All the thinking happens on your phone, so it takes a moment.
+              {paused === 'heat'
+                ? 'Paused to let the phone cool — it resumes on its own.'
+                : paused === 'battery'
+                  ? 'Paused until the phone is charging or has more battery.'
+                  : 'All the thinking happens on your phone, so it takes a moment.'}
             </Txt>
             <View style={st.pctPill}>
               <Txt variant="metaBlack" color={colors.primary}>
-                {pct}%{etaLabel(eta)}
+                {pct}%{paused ? '' : etaLabel(eta)}
               </Txt>
             </View>
           </View>
@@ -868,8 +881,12 @@ export default function MeetingScreen({ route, navigation }: Props) {
                           <View style={[st.checkDot, { backgroundColor: colors.successSoft }]}>
                             <Icon name="check" size={s(16)} color={colors.success} strokeWidth={3.2} />
                           </View>
-                        ) : state === 'active' ? (
+                        ) : state === 'active' && !paused ? (
                           <Spinner size={s(30)} color={colors.primary} track="#DDE1F5" />
+                        ) : state === 'active' ? (
+                          <View style={[st.checkDot, { backgroundColor: colors.warningSoft }]}>
+                            <Icon name="pause" size={s(16)} color={colors.warning} strokeWidth={2.6} />
+                          </View>
                         ) : (
                           <View style={[st.checkDot, { backgroundColor: colors.cardAlt }]} />
                         )}

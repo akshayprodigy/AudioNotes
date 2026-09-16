@@ -74,6 +74,8 @@ export interface Spec extends TurboModule {
   mark(): Promise<number | null>;
   // Events (DeviceEventEmitter): onCaptureLevel {level}, onCaptureState, onCaptureMark {atMs},
   // onCaptureWarning {kind: 'loud'|'faint'|'storage'|null, minutesLeft}.
+  // Processing: onStageProgress {meetingId, stage, chunk, total}, onStageComplete, onError,
+  // onProcessingPause {meetingId, reason: 'heat'|'battery'|null}.
 
   // Delete audio for meetings past the retention window (Settings > Keep the audio). Returns how
   // many were swept. Never touches a meeting without a transcript — the audio is the only copy of

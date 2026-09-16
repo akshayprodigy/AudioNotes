@@ -288,3 +288,23 @@ describe('progress inside a stage', () => {
     expect(pill(tree)).not.toEqual(before);
   });
 });
+
+/** The pipeline stopped for the phone's sake; the screen has to say so, and stop promising a time. */
+describe('a paused pipeline', () => {
+  it('says why it is paused and hides the ETA until it resumes', async () => {
+    (db.getMeeting as jest.Mock).mockResolvedValue({
+      id: 'm1', title: 'Standup', createdAt: 1, durationMs: 600_000, status: 'vad',
+      tierUsed: 'free', language: 'en', audioPath: null, audioRetained: 1,
+    });
+    (db.minutes as jest.Mock).mockResolvedValue([]);
+    const tree = await render();
+    await act(async () => { emit('onProcessingPause', { meetingId: 'm1', reason: 'heat' }); });
+    let text = JSON.stringify(tree.toJSON());
+    expect(text).toContain('Paused to let the phone cool');
+    expect(text).not.toContain('min left');
+    await act(async () => { emit('onProcessingPause', { meetingId: 'm1', reason: null }); });
+    text = JSON.stringify(tree.toJSON());
+    expect(text).not.toContain('Paused');
+    expect(text).toContain('min left');
+  });
+});

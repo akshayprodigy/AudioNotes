@@ -395,6 +395,7 @@ beforeEach(() => {
   (db.tagsFor as jest.Mock).mockResolvedValue([]);
   (db.marks as jest.Mock).mockResolvedValue([]);
   (db.removeMark as jest.Mock).mockResolvedValue(undefined);
+  (db.stageRates as jest.Mock).mockResolvedValue({});
   (db.getSetting as jest.Mock).mockResolvedValue(null);
   (db.setSetting as jest.Mock).mockResolvedValue(undefined);
 
