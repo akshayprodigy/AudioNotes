@@ -647,9 +647,9 @@ object ItemClassifier {
 - Modify: `src/screens/meeting/SummaryTab.tsx` (banner), `src/screens/MeetingScreen.tsx` (pass `onReview`)
 - Tests: `src/screens/__tests__/MeetingScreen.test.tsx`
 
-- [ ] **Step 1: Failing test** — with items `[{…, itemType:'request', status:'contradicted', review:'needs_review'}, {…, itemType:'commitment', review:'suggested'}]`, the Summary shows "1 item needs a look" and its "Review" navigates to `Review` with `{meetingId}`; with no `needs_review` classified items, no banner; with `review:'needs_review'` but `itemType: null` (a free-tier ambiguous match), no banner.
+- [x] **Step 1: Failing test** — with items `[{…, itemType:'request', status:'contradicted', review:'needs_review'}, {…, itemType:'commitment', review:'suggested'}]`, the Summary shows "1 item needs a look" and its "Review" navigates to `Review` with `{meetingId}`; with no `needs_review` classified items, no banner; with `review:'needs_review'` but `itemType: null` (a free-tier ambiguous match), no banner.
 
-- [ ] **Step 2: Implement.** In `SummaryTab`, above the summary card:
+- [x] **Step 2: Implement.** In `SummaryTab`, above the summary card:
 
 ```tsx
       {needsLook > 0 ? (
@@ -670,7 +670,7 @@ where `needsLook = items.filter(i => i.review === 'needs_review' && i.itemType !
 
 Label chips in `shared.tsx`'s item row (next to the owner/due chips): type (`sentenceCase(itemType)`, primary soft), status when not `open` (warning soft: "Qualified" / "Contradicted" / "Withdrawn"), and `dateNorm` as "→ Fri 18 Sep" after the spoken phrase.
 
-- [ ] **Step 3: Run; mutation-check** (count `needs_review` regardless of `itemType`: the free-tier case fails). Commit — `git commit -m "feat(review): typed items wear their labels; the Summary says how many need a look"`
+- [x] **Step 3: Run; mutation-check** (count `needs_review` regardless of `itemType`: the free-tier case fails). Commit — `git commit -m "feat(review): typed items wear their labels; the Summary says how many need a look"`
 
 ---
 
@@ -680,11 +680,11 @@ Label chips in `shared.tsx`'s item row (next to the owner/due chips): type (`sen
 - Create: `src/screens/ReviewScreen.tsx`, `src/screens/__tests__/ReviewScreen.test.tsx`
 - Modify: `src/navigation/RootNavigator.tsx` (register)
 
-- [ ] **Step 1: Failing test** — mocks `db.items` (two `needs_review` classified items), `db.utterances`, `db.speakers`, `db.getMeeting`, the setters. Confirm on card 1 → `db.setItemReview('i1','confirmed')` and card 2 shows ("2 of 2"); Not an item → `setItemReview('i2','rejected')` and `navigation.goBack()`; Fix on an owner-reason card → the speaker picker → pick → `setItemOwner('i1', '{"kind":"speaker","id":"s2","confidence":"high"}')`; Fix on a date-reason card → the day list → pick a day → `setItemDate('i1', <epoch>)`; "No date" → `setItemDate('i1', null)`.
+- [x] **Step 1: Failing test** — mocks `db.items` (two `needs_review` classified items), `db.utterances`, `db.speakers`, `db.getMeeting`, the setters. Confirm on card 1 → `db.setItemReview('i1','confirmed')` and card 2 shows ("2 of 2"); Not an item → `setItemReview('i2','rejected')` and `navigation.goBack()`; Fix on an owner-reason card → the speaker picker → pick → `setItemOwner('i1', '{"kind":"speaker","id":"s2","confidence":"high"}')`; Fix on a date-reason card → the day list → pick a day → `setItemDate('i1', <epoch>)`; "No date" → `setItemDate('i1', null)`.
 
-- [ ] **Step 2: Implement.** Screen state: `queue` (items with `review === 'needs_review' && itemType`), `at` index, `fixing: 'owner' | 'date' | 'type' | null`. Card: the quote (`ProvenanceButton` from the Phase A components for play), chips (type; status with the cited turn's text and stamp when `status !== 'open'` — the cited turn is the item's first source utterance + the reply window; show the first utterance after the source whose text differs, with a play control), owner, date; the reason line from `reviewRule.decide(...)` (TS mirror); three buttons. Fix opens: owner → reuse `SpeakerPicker` (scopes=false, plus "Someone else…" → `TextPrompt` → `{kind:'person',name}`); date → a `Sheet` of the next 14 days from the meeting date labelled "Thu 17 Sep" … plus "No date" (no third-party picker; `date_said` untouched); type → a `Sheet` of the seven types. After Confirm/fix/reject: `at + 1`, or `goBack()` past the last.
+- [x] **Step 2: Implement.** Screen state: `queue` (items with `review === 'needs_review' && itemType`), `at` index, `fixing: 'owner' | 'date' | 'type' | null`. Card: the quote (`ProvenanceButton` from the Phase A components for play), chips (type; status with the cited turn's text and stamp when `status !== 'open'` — the cited turn is the item's first source utterance + the reply window; show the first utterance after the source whose text differs, with a play control), owner, date; the reason line from `reviewRule.decide(...)` (TS mirror); three buttons. Fix opens: owner → reuse `SpeakerPicker` (scopes=false, plus "Someone else…" → `TextPrompt` → `{kind:'person',name}`); date → a `Sheet` of the next 14 days from the meeting date labelled "Thu 17 Sep" … plus "No date" (no third-party picker; `date_said` untouched); type → a `Sheet` of six types (not `uncertain` — a person fixing the kind is never "not sure"). The day list leads with the meeting's own day, and every epoch is UTC midnight of the calendar day (the shape `DateNorm` stores). After Confirm/fix/reject: `at + 1`, or `goBack()` past the last.
 
-- [ ] **Step 3: Run; mutation-check** (Confirm writes `rejected`: fails). Commit — `git commit -m "feat(review): the card flow — confirm, fix, or not an item"`
+- [x] **Step 3: Run; mutation-check** (Confirm writes `rejected`: fails). Commit — `git commit -m "feat(review): the card flow — confirm, fix, or not an item"`
 
 ---
 

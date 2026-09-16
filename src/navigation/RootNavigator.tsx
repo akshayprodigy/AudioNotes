@@ -19,6 +19,7 @@ import ActionsScreen from '../screens/ActionsScreen';
 import PaywallScreen from '../screens/PaywallScreen';
 import ConsentCardScreen from '../screens/ConsentCardScreen';
 import PrivacyScreen from '../screens/PrivacyScreen';
+import ReviewScreen from '../screens/ReviewScreen';
 
 export type RootStackParamList = {
   Onboarding: undefined;
@@ -165,6 +166,7 @@ export default function RootNavigator() {
             options={{ headerShown: false }}
           />
           <Stack.Screen name="Actions" component={ActionsScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Review" component={ReviewScreen} options={{ headerShown: false }} />
           <Stack.Screen
             name="Paywall"
             component={PaywallScreen}

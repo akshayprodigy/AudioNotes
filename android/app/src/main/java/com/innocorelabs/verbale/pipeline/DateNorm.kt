@@ -4,6 +4,7 @@ import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZoneOffset
 
 /**
  * A spoken date phrase resolved against the meeting's date, or honestly null.
@@ -31,10 +32,16 @@ object DateNorm {
     return resolveDate(said, today)?.toString()
   }
 
-  /** The resolved day's local midnight as epoch ms, or null. What `items.date_norm` stores. */
+  /**
+   * The resolved calendar day as epoch ms, or null. What `items.date_norm` stores.
+   *
+   * UTC midnight of the LOCAL calendar day, on purpose: a day is a day, not a moment. Stored as
+   * local midnight it would read as the day before to anyone west of the meeting, and the
+   * screen's label (recordLabels.ts) reads it back in UTC for the same reason.
+   */
   fun resolve(said: String, meetingAtMs: Long, zone: ZoneId): Long? {
     val today = Instant.ofEpochMilli(meetingAtMs).atZone(zone).toLocalDate()
-    return resolveDate(said, today)?.atStartOfDay(zone)?.toInstant()?.toEpochMilli()
+    return resolveDate(said, today)?.atStartOfDay(ZoneOffset.UTC)?.toInstant()?.toEpochMilli()
   }
 
   fun resolveDate(said: String, today: LocalDate): LocalDate? {

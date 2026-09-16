@@ -33,9 +33,10 @@ class DateNormTest {
     }
   }
 
-  @Test fun theEpochIsThatDaysLocalMidnight() {
+  /** A day, not a moment: UTC midnight of the calendar day, so it reads the same anywhere. */
+  @Test fun theEpochIsThatCalendarDayAtUtcMidnight() {
     val zone = ZoneId.of("Asia/Kolkata")
     val ms = DateNorm.resolve("Friday", 1789551000000L, zone)!!
-    assertEquals(LocalDate.of(2026, 9, 18).atStartOfDay(zone).toInstant().toEpochMilli(), ms)
+    assertEquals(LocalDate.of(2026, 9, 18).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli(), ms)
   }
 }
