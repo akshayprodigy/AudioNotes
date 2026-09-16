@@ -1,0 +1,18 @@
+{
+  "note": "What the model could not settle. An item enters the review queue (needs_review) when the classifier was unsure of its type, a later turn pushed back on it, an action has no owner, or a date was said but could not be pinned to a day. A person's confirmed/rejected is never overwritten. Read by ReviewRuleTest.kt and reviewRule.test.ts; `reason` is the first trigger in priority order type > status > owner > date.",
+  "cases": [
+    { "name": "clean commitment", "kind": "action", "type": "commitment", "status": "open", "confidence": "high", "ownerKind": "person", "dateSaid": "Friday", "dateNorm": 1, "review": "suggested", "expect": "suggested", "reason": null },
+    { "name": "uncertain type", "kind": "action", "type": "uncertain", "status": "open", "confidence": "high", "ownerKind": "person", "dateSaid": "", "dateNorm": null, "review": "suggested", "expect": "needs_review", "reason": "type" },
+    { "name": "low confidence", "kind": "decision", "type": "agreement", "status": "open", "confidence": "low", "ownerKind": "unassigned", "dateSaid": "", "dateNorm": null, "review": "suggested", "expect": "needs_review", "reason": "type" },
+    { "name": "qualified later", "kind": "action", "type": "request", "status": "qualified", "confidence": "high", "ownerKind": "speaker", "dateSaid": "Friday", "dateNorm": 1, "review": "suggested", "expect": "needs_review", "reason": "status" },
+    { "name": "contradicted later", "kind": "action", "type": "request", "status": "contradicted", "confidence": "high", "ownerKind": "speaker", "dateSaid": "Friday", "dateNorm": null, "review": "suggested", "expect": "needs_review", "reason": "status" },
+    { "name": "action with no owner", "kind": "action", "type": "commitment", "status": "open", "confidence": "high", "ownerKind": "unassigned", "dateSaid": "", "dateNorm": null, "review": "suggested", "expect": "needs_review", "reason": "owner" },
+    { "name": "decision with no owner is fine", "kind": "decision", "type": "agreement", "status": "open", "confidence": "high", "ownerKind": "unassigned", "dateSaid": "", "dateNorm": null, "review": "suggested", "expect": "suggested", "reason": null },
+    { "name": "question with no owner is fine", "kind": "question", "type": "unresolved", "status": "open", "confidence": "high", "ownerKind": "unassigned", "dateSaid": "", "dateNorm": null, "review": "suggested", "expect": "suggested", "reason": null },
+    { "name": "date said but not pinned", "kind": "action", "type": "commitment", "status": "open", "confidence": "high", "ownerKind": "person", "dateSaid": "next week", "dateNorm": null, "review": "suggested", "expect": "needs_review", "reason": "date" },
+    { "name": "no date at all is fine", "kind": "action", "type": "commitment", "status": "open", "confidence": "high", "ownerKind": "person", "dateSaid": "", "dateNorm": null, "review": "suggested", "expect": "suggested", "reason": null },
+    { "name": "already flagged by the reconciler stays flagged", "kind": "action", "type": "commitment", "status": "open", "confidence": "high", "ownerKind": "person", "dateSaid": "", "dateNorm": null, "review": "needs_review", "expect": "needs_review", "reason": null },
+    { "name": "confirmed stays", "kind": "action", "type": "uncertain", "status": "contradicted", "confidence": "low", "ownerKind": "unassigned", "dateSaid": "soon", "dateNorm": null, "review": "confirmed", "expect": "confirmed", "reason": null },
+    { "name": "rejected stays", "kind": "action", "type": "uncertain", "status": "open", "confidence": "low", "ownerKind": "unassigned", "dateSaid": "", "dateNorm": null, "review": "rejected", "expect": "rejected", "reason": null }
+  ]
+}
