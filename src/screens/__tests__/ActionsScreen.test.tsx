@@ -116,3 +116,16 @@ test('unticking a finished item takes the tick back', async () => {
   expect(db.setItemDone).toHaveBeenCalledWith('m1', 'item-1', false);
   await act(async () => tree.unmount());
 });
+
+/**
+ * The meeting row is the way back to the meeting — on its Actions tab, where the item lives, not
+ * the Summary. This was true in code before it was tested; the test is what keeps it true.
+ */
+test('the meeting row opens that meeting on its Actions tab', async () => {
+  const tree = await render();
+  const row = tree.root.findByProps({ accessibilityLabel: 'Open Standup' });
+  await act(async () => {
+    row.props.onPress();
+  });
+  expect(nav.navigate).toHaveBeenCalledWith('Meeting', { meetingId: 'm1', tab: 'actions' });
+});

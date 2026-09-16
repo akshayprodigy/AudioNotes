@@ -221,6 +221,20 @@ export default function LibraryScreen({ navigation }: Props) {
   const [sheetFor, setSheetFor] = useState<Meeting | null>(null);
   const [archived, setArchived] = useState(0);
   const [work, setWork] = useState({ total: 0, open: 0, meetings: 0 });
+  /** Meetings the pipeline has paused for the phone's sake; their badge reads PAUSED. */
+  const [pausedIds, setPausedIds] = useState<Set<string>>(new Set());
+  useEffect(
+    () =>
+      PipelineController.onPause(e =>
+        setPausedIds(prev => {
+          const next = new Set(prev);
+          if (e.reason) next.add(e.meetingId);
+          else next.delete(e.meetingId);
+          return next;
+        }),
+      ),
+    [],
+  );
 
   /**
    * Importing lives here because the library is where the app comes back to.
@@ -268,12 +282,9 @@ export default function LibraryScreen({ navigation }: Props) {
         // tally may be stale; `false` is the latched case, where nothing on disk moved and
         // re-counting would be two library-wide queries per focus, forever, for the same answer.
         //
-        // `work` is not on screen TODAY: the tally arrived with the worklist screen (1744e1d) and
-        // the card that shows "N outstanding across M meetings" was never wired up, so nothing
-        // renders it and nothing navigates to Actions either. Both are somebody's next task, and
-        // the number they will show is computed here — a re-count that is missing on the day the
-        // card lands is a card that reads 0 over a full worklist, which is the exact failure this
-        // sweep exists to end.
+        // `work` is the "N open actions" card below the streak. A re-count that is missing here
+        // is a card that reads 0 over a full worklist on the first focus after an update, which is
+        // the exact failure this sweep exists to end.
         .then(swept => { if (swept) countActions(); })
         .then(backfillSearch)
         .catch(() => {});
@@ -377,9 +388,15 @@ export default function LibraryScreen({ navigation }: Props) {
 
   const open = (id: string) => navigation.navigate('Meeting', { meetingId: id });
 
+  /** The badge, with the pipeline's pause — runtime state, never persisted — laid over the status. */
+  const badgeFor = (m: Meeting) =>
+    pausedIds.has(m.id)
+      ? { label: 'PAUSED', color: colors.warning, soft: colors.warningSoft, live: true }
+      : statusOf(m.status, colors);
+
   /** Full-width card: tile + status + time, then title. */
   const BigCard = ({ m, i }: { m: Meeting; i: number }) => {
-    const status = statusOf(m.status, colors);
+    const status = badgeFor(m);
     return (
       <Pop index={i}>
         <Raised
@@ -461,7 +478,7 @@ export default function LibraryScreen({ navigation }: Props) {
 
   /** Narrow card used in a two-up row. */
   const SmallCard = ({ m, i, flex }: { m: Meeting; i: number; flex: number }) => {
-    const status = statusOf(m.status, colors);
+    const status = badgeFor(m);
     return (
       <Pop index={i} style={{ flex }}>
         <Raised
@@ -631,6 +648,7 @@ export default function LibraryScreen({ navigation }: Props) {
               label={paid ? 'Search meetings' : 'Search meetings (Pro)'}
               onPress={() => navigation.navigate(paid ? 'Search' : 'Paywall')}
             />
+            <IconButton icon="list" label="Actions" onPress={() => navigation.navigate('Actions')} />
             <IconButton icon="sliders" label="Settings" onPress={() => navigation.navigate('Settings')} />
           </View>
         </View>
@@ -699,6 +717,32 @@ export default function LibraryScreen({ navigation }: Props) {
               </View>
             </Raised>
           </Pop>
+        ) : null}
+
+        {/* The tracker's front door. Hidden when nothing is open — "0 open actions" is a nag. */}
+        {work.open > 0 ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open actions"
+            onPress={() => navigation.navigate('Actions')}
+            style={st.actionsWrap}>
+            <Raised edge={colors.line} fill={colors.card} rad={radius.card} depth={6}>
+              <View style={st.actionsCard}>
+                <View style={[st.actionsIcon, { backgroundColor: colors.primarySoft }]}>
+                  <Icon name="list" size={s(20)} color={colors.primary} strokeWidth={2.4} />
+                </View>
+                <View style={st.flex}>
+                  <Txt variant="bodyBlack">
+                    {work.open} open action{work.open === 1 ? '' : 's'}
+                  </Txt>
+                  <Txt variant="chipSoft" color={colors.inkSoft}>
+                    across {work.meetings} meeting{work.meetings === 1 ? '' : 's'}
+                  </Txt>
+                </View>
+                <Icon name="chevronRight" size={s(18)} color={colors.inkFaint} />
+              </View>
+            </Raised>
+          </Pressable>
         ) : null}
 
         {nudge ? (
@@ -861,6 +905,9 @@ function makeStyles(c: Colors) {
     headBtns: { flexDirection: 'row', gap: s(8) },
 
     streakWrap: { marginHorizontal: s(20), marginTop: s(16) },
+    actionsWrap: { marginHorizontal: s(20), marginTop: s(12) },
+    actionsCard: { flexDirection: 'row', alignItems: 'center', gap: s(12), padding: s(14) },
+    actionsIcon: { width: s(40), height: s(40), borderRadius: radius.ctl, alignItems: 'center', justifyContent: 'center' },
     streak: { flexDirection: 'row', alignItems: 'center', gap: s(14), paddingVertical: s(14), paddingHorizontal: s(16) },
     streakIcon: {
       width: s(46),

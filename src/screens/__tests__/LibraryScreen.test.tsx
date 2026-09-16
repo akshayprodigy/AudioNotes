@@ -25,6 +25,9 @@ jest.mock('react-native-safe-area-context', () => ({
  * the user navigated away and back.
  */
 const nav = { navigate: jest.fn(), addListener: jest.fn(() => jest.fn()) } as never;
+
+/** A native event, delivered the way the phone would deliver it (jest.setup.js). */
+const emit = (name: string, payload: unknown) => (global as any).__TEST_EMIT__(name, payload);
 const route = { key: 'library', name: 'Library', params: undefined } as never;
 
 const sweepItems = jest.fn<Promise<boolean>, []>();
@@ -143,4 +146,65 @@ test('the search sweep does not start until the item sweep has settled', async (
   expect(sweepSearch).toHaveBeenCalledTimes(1);
 
   await act(async () => tree.unmount());
+});
+
+/** A meeting the pipeline has paused reads PAUSED, not TRANSCRIBING, and goes back on resume. */
+test('badges a paused meeting PAUSED and returns it to TRANSCRIBING on resume', async () => {
+  // Through the store's own loader: focusing the library refreshes from the database, so a
+  // meeting placed straight into the store would be overwritten by the mock's empty list.
+  (db.listMeetings as jest.Mock).mockResolvedValue([{
+    id: 'm1', title: 'Standup', createdAt: Date.now(), durationMs: 600_000, language: 'en',
+    status: 'vad', tierUsed: 'free', audioRetained: 1,
+  }]);
+  const tree = await focusTheLibrary();
+  expect(JSON.stringify(tree.toJSON())).toContain('TRANSCRIBING');
+  await act(async () => { emit('onProcessingPause', { meetingId: 'm1', reason: 'battery' }); });
+  expect(JSON.stringify(tree.toJSON())).toContain('PAUSED');
+  await act(async () => { emit('onProcessingPause', { meetingId: 'm1', reason: null }); });
+  expect(JSON.stringify(tree.toJSON())).toContain('TRANSCRIBING');
+  await act(async () => tree.unmount());
+});
+
+/**
+ * The action tracker's front door. The screen existed for a month with nothing opening it; the
+ * tally that feeds this card was computed on every focus and rendered nowhere.
+ */
+describe("the action tracker's front door", () => {
+  // db.allActions rows carry no `done`; the loader joins doneItemIds (keyed meetingId NUL id) in.
+  const rows = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      meetingId: i === 0 ? 'a' : 'b', id: String(i), content: `item ${i}`, source: 'rule',
+      meetingTitle: i === 0 ? 'A' : 'B', createdAt: 1,
+    }));
+  const doneKey = (meetingId: string, id: string) => `${meetingId}${String.fromCharCode(0)}${id}`;
+
+  it('shows a card with the open count and opens the tracker', async () => {
+    (db.allActions as jest.Mock).mockResolvedValue(rows(3));
+    (db.doneItemIds as jest.Mock).mockResolvedValue(new Set([doneKey('b', '2')]));
+    const tree = await focusTheLibrary();
+    const card = tree.root.findByProps({ accessibilityLabel: 'Open actions' });
+    // Text nodes render their template pieces as separate children; join them before reading.
+    const lines = card.findAllByType(require('react-native').Text).map(t => [].concat(t.props.children).join(''));
+    expect(lines).toContain('2 open actions');
+    expect(lines).toContain('across 2 meetings');
+    await act(async () => { card.props.onPress(); });
+    expect((nav as any).navigate).toHaveBeenCalledWith('Actions');
+    await act(async () => tree.unmount());
+  });
+
+  it('shows no card when nothing is open', async () => {
+    (db.allActions as jest.Mock).mockResolvedValue(rows(1));
+    (db.doneItemIds as jest.Mock).mockResolvedValue(new Set([doneKey('a', '0')]));
+    const tree = await focusTheLibrary();
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Open actions' })).toHaveLength(0);
+    await act(async () => tree.unmount());
+  });
+
+  it('has the tracker one tap away in the header regardless', async () => {
+    const tree = await focusTheLibrary();
+    const icon = tree.root.findByProps({ label: 'Actions' });
+    await act(async () => { icon.props.onPress(); });
+    expect((nav as any).navigate).toHaveBeenCalledWith('Actions');
+    await act(async () => tree.unmount());
+  });
 });
