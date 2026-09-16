@@ -35,6 +35,8 @@ add_library(audionotes SHARED
   # The same rules again, with the provenance the extractor used to discard (Task 3 of the
   # evidence spine). Shares minutes_extractor's rules:: helpers rather than restating them.
   minutes/evidence.cpp
+  # Phase B: the typed record — the classifier's prompt (fenced), grammar, parser and validator.
+  minutes/evidence_record.cpp
   # The LLM minutes plumbing: chunking, the fold plan and every prompt. Android drives the loop
   # from Kotlin (Narrator) so it can checkpoint each chunk and honour cancellation, but it must not
   # own a word of the prompts — those live here, where the CLI and the eval harness exercise them.

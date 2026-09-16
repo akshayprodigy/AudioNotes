@@ -259,6 +259,12 @@ audionotes_add_test(test_evidence
   ${CORE}/minutes/evidence.cpp
   ${CORE}/minutes/minutes_extractor.cpp)
 
+# Phase B: the classifier's prompt, grammar, parser and validator, off a device and off a model.
+audionotes_add_test(test_evidence_record
+  ${CORE}/tests/test_evidence_record.cpp
+  ${CORE}/minutes/evidence_record.cpp
+  ${CORE}/minutes/fence.cpp)
+
 audionotes_add_test(test_llm_minutes
   ${CORE}/tests/test_llm_minutes.cpp
   ${CORE}/minutes/llm_minutes.cpp
