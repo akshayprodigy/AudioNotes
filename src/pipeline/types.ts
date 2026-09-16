@@ -121,7 +121,8 @@ export interface Minute {
  * every row of a meeting whose item migration has not run. A row somebody typed themselves was the
  * second such population until Task 12 gave it an item of its own.
  */
-export type EditTarget = 'utterance' | 'minute' | 'item' | 'summary' | 'narrative';
+/** 'speaker' edits hold a speaker id, not text: who a person says spoke the line. */
+export type EditTarget = 'utterance' | 'minute' | 'item' | 'summary' | 'narrative' | 'speaker';
 
 export interface Edit {
   meetingId: string;

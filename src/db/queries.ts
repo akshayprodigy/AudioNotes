@@ -443,6 +443,37 @@ export const db = {
   },
 
   /**
+   * A person says who spoke these lines. Written through to the utterances — every reader sees
+   * it with no new code — and recorded as a 'speaker' edit per line, which is what lets
+   * re-diarization (AudioDb.assignSpeakers) keep it. See SpeakerRepair.kt.
+   */
+  setLineSpeaker: async (meetingId: string, lineIds: string[], speakerId: string) => {
+    const now = Date.now();
+    for (const id of lineIds) {
+      await run('UPDATE utterances SET speaker_id = ? WHERE id = ? AND meeting_id = ?', [speakerId, id, meetingId]);
+      await run(
+        'INSERT OR REPLACE INTO edits(meeting_id, target_kind, target_key, content, edited_at) VALUES(?,?,?,?,?)',
+        [meetingId, 'speaker', id, speakerId, now],
+      );
+    }
+  },
+
+  /**
+   * A voice diarization never separated. `cluster_label = 'human'` is what protects it from the
+   * next clustering (SpeakerRepair.HUMAN_CLUSTER).
+   */
+  addSpeaker: async (meetingId: string, name: string): Promise<Speaker> => {
+    const id = `${meetingId}:speaker:${Date.now()}:${Math.floor(Math.random() * 1e6)}`;
+    await run('INSERT INTO speakers(id, meeting_id, cluster_label, display_name) VALUES(?,?,?,?)', [
+      id,
+      meetingId,
+      'human',
+      name,
+    ]);
+    return { id, meetingId, clusterLabel: 'human', displayName: name };
+  },
+
+  /**
    * Ranked full-text search across transcripts, minutes, titles and summaries.
    *
    * Typed deliberately. This used to return `any`, with the screen asserting a local shape over
