@@ -1,0 +1,52 @@
+package com.innocorelabs.verbale
+
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.innocorelabs.verbale.data.AudioDb
+import org.json.JSONArray
+import org.junit.Test
+import org.junit.runner.RunWith
+
+/**
+ * NOT a test — a read-only probe for a verification session: prints what the database holds for
+ * the newest meetings (status, items with their typed record, vector rows, asks) so the pipeline's
+ * result can be read over adb without touching the screen. Runs only by name
+ * (`am instrument -e class …VerificationProbeTest`); not in device-verify's CLASSES.
+ */
+@RunWith(AndroidJUnit4::class)
+class VerificationProbeTest {
+  @Test fun printTheNewestMeetings() {
+    val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+    val db = AudioDb.get(ctx)
+    val meetings = JSONArray(
+      db.rawQueryJson(
+        "SELECT id, title, status, duration_ms, embedded_at, tier_used FROM meetings ORDER BY created_at DESC LIMIT 3",
+        arrayOf(),
+      ),
+    )
+    for (i in 0 until meetings.length()) {
+      val m = meetings.getJSONObject(i)
+      val id = m.getString("id")
+      println("PROBE meeting $id status=${m.optString("status")} title=${m.optString("title")} " +
+        "duration=${m.optLong("duration_ms")} embedded_at=${m.opt("embedded_at")} tier=${m.optString("tier_used")}")
+      val items = JSONArray(
+        db.rawQueryJson(
+          "SELECT id, kind, text, review, item_type, status, owner_json, date_said, date_norm, gen_version " +
+            "FROM items WHERE meeting_id=? ORDER BY anchor_start_ms",
+          arrayOf(id),
+        ),
+      )
+      for (j in 0 until items.length()) {
+        val it = items.getJSONObject(j)
+        println("PROBE   item ${it.optString("kind")} review=${it.optString("review")} type=${it.opt("item_type")} " +
+          "status=${it.opt("status")} owner=${it.opt("owner_json")} said=${it.opt("date_said")} norm=${it.opt("date_norm")} " +
+          "gen=${it.optString("gen_version")} :: ${it.optString("text")}")
+      }
+      val vec = JSONArray(db.rawQueryJson("SELECT kind, count(*) AS n FROM search_vec WHERE meeting_id=? GROUP BY kind", arrayOf(id)))
+      println("PROBE   vectors: $vec")
+      println("PROBE   asks: ${db.asksJson(id)}")
+      val utts = db.utterances(id)
+      println("PROBE   utterances (${utts.size}): " + utts.take(12).joinToString(" | ") { "${it.startMs / 1000}s ${it.speakerId ?: "?"}: ${it.text}" })
+    }
+  }
+}

@@ -27,6 +27,14 @@ object ItemClassifier {
   fun interface Generate { fun run(prompt: String, maxTokens: Int, grammar: String): String }
 
   /** The items of a meeting the classifier has not read yet and a person has not settled. */
+  /**
+   * The date phrase for an item: the rule's reading of the statement first (DateNorm.spanIn),
+   * the model's validated phrase only where the rule finds nothing. Measured 17 Sep: the model
+   * left "Friday" and "tomorrow" unread on the Mac and the Pixel alike; the rule never does.
+   */
+  fun dateSaidFor(statement: String, modelPhrase: String): String? =
+    DateNorm.spanIn(statement) ?: modelPhrase.trim().ifBlank { null }
+
   fun pending(db: AudioDb, meetingId: String): List<AudioDb.StoredItem> =
     db.items(meetingId).filter {
       it.record == null && it.review !in AudioDb.Review.BY_A_PERSON && it.genVersion != AudioDb.Gen.USER
@@ -93,7 +101,7 @@ object ItemClassifier {
         }
         else -> JSONObject().put("kind", "unassigned")
       }
-      val dateSaid = r.getString("date_said").ifBlank { null }
+      val dateSaid = dateSaidFor(item.text, r.getString("date_said"))
       val dateNorm = dateSaid?.let { DateNorm.resolve(it, meetingAtMs, ZoneId.systemDefault()) }
       val decision = ReviewRule.decide(
         kind = item.kind, type = r.getString("type"), status = r.getString("status"),

@@ -67,6 +67,10 @@ CLASSES=(
   com.innocorelabs.verbale.UserItemsMigrationTest
   # Re-diarization keeps a person's speaker work: SQL against SQLCipher, so not a JVM test.
   com.innocorelabs.verbale.SpeakerRepairDbTest
+  # The search index's bookkeeping (sub-project 5): one card per decision, the backlog as a
+  # count, the meaning-index marker reset by every writer of words, search_vec swept by hand.
+  # FTS5 and SQLCipher from end to end, so not a JVM test.
+  com.innocorelabs.verbale.SearchIndexDbTest
 )
 
 if ! "$ADB" devices | grep -qE "device$"; then

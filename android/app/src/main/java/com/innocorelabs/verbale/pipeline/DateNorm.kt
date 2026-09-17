@@ -44,6 +44,31 @@ object DateNorm {
     return resolveDate(said, today)?.atStartOfDay(ZoneOffset.UTC)?.toInstant()?.toEpochMilli()
   }
 
+  /**
+   * The date phrase in a statement, as spoken — "Friday", "by the 3rd", "on Thursday",
+   * "tomorrow", "in two weeks", "next week" — or null. The first one in the text, with its
+   * preposition, in the statement's own casing, so it is verbatim by construction and resolves
+   * through [resolveDate] exactly as the model's phrase would. A rule, because a 1.5B model was
+   * measured leaving this empty for "Can you send the proposal Friday?"; the model's phrase is
+   * only consulted where this finds nothing.
+   */
+  fun spanIn(text: String): String? = SPAN.find(text)?.value?.trim()?.ifEmpty { null }
+
+  private const val PREP = "(?:\\b(?:by|on|for|until|till|before)\\s+)?"
+  private const val WEEKDAY = "(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)"
+  private val SPAN = Regex(
+    listOf(
+      "$PREP(?:next|this|coming)\\s+$WEEKDAY\\b(?!'s)",
+      "$PREP\\b$WEEKDAY\\b(?!'s)",
+      "$PREP(?:the\\s+)?\\b\\d{1,2}(?:st|nd|rd|th)\\b",
+      "(?:\\bby\\s+)?(?:the\\s+)?\\bend of (?:the )?(?:week|day|month)\\b",
+      "\\bin (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:days?|weeks?)\\b",
+      "\\bnext (?:week|month)\\b",
+      "$PREP\\b(?:today|tonight|tomorrow)\\b",
+    ).joinToString("|"),
+    RegexOption.IGNORE_CASE,
+  )
+
   fun resolveDate(said: String, today: LocalDate): LocalDate? {
     // Whole phrase, lower case, punctuation gone, leading "by"/"on"/"for" dropped.
     val words = said.lowercase().replace(Regex("[^a-z0-9 ]"), " ").trim().split(Regex("\\s+"))

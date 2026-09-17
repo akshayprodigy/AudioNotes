@@ -31,18 +31,55 @@ std::string classifyPrompt(const std::string& item_text, const std::vector<Class
   for (const auto& t : window) {
     turns += "[" + std::to_string(t.ordinal) + "] " + t.speaker + ": " + t.text + "\n";
   }
+  // Worked examples, on purpose and on other subjects. Measured 17 Sep on the Mac and the Pixel
+  // with the same Qwen 1.5B: without any, the model answered every statement of the lead-example
+  // meeting with the identical record — type "proposal" (the transcript's topic word, not the
+  // statement's kind), date_said "[0]" (a turn number where a phrase belongs, which the
+  // validator then blanks and marks low) — so six different statements made six identical
+  // review cards. With ONE example it copied that example's type and status onto everything.
+  // Four short ones, one per shape, are what stop a small model pattern-matching the example
+  // instead of reading the statement. The grammar only ever told it the shape of the answer;
+  // these tell it what each field means.
   return "Below are a few consecutive turns of a meeting, numbered. Turn [0] contains a statement "
-         "that was picked out as a possible decision, task or question.\n\n"
+         "that was picked out as a possible decision, task or question. Classify the STATEMENT.\n\n"
+         "Fields:\n"
+         "- type: what KIND of statement it is — commitment (the speaker says they will do it), "
+         "request (someone asks another to do it), proposal (a suggestion not yet agreed), agreement "
+         "(the group settled it), rejection (it was turned down), unresolved (a question left open), "
+         "or uncertain if you cannot tell. The topic under discussion is not the type.\n"
+         "- status: open, unless a LATER turn qualified it (added a condition or changed it), "
+         "contradicted it (said no), or withdrew it (the speaker took it back).\n"
+         "- owner: kind speaker if the speaker of [0] is the one doing it; kind person with the "
+         "exact name as written if a named person is; unassigned otherwise.\n"
+         "- date_said: the date or time WORDS in the statement, copied exactly, or empty. Never a "
+         "turn number.\n"
+         "- cited: the turn numbers you relied on; always include 0.\n"
+         "- confidence: high or low.\n\n"
+         "Examples.\n"
+         "[0] Dev: Sam, can you send the report by Friday?\n"
+         "[1] Sam: No, Friday is impossible, the data only comes in on Monday.\n"
+         "Statement: Sam, can you send the report by Friday?\n"
+         "Answer: {\"type\":\"request\",\"status\":\"contradicted\",\"owner\":{\"kind\":\"person\","
+         "\"name\":\"Sam\"},\"date_said\":\"by Friday\",\"cited\":[0,1],\"confidence\":\"high\"}\n"
+         "[0] Lina: I'll book the room tomorrow.\n"
+         "[1] Omar: Thanks.\n"
+         "Statement: I'll book the room tomorrow.\n"
+         "Answer: {\"type\":\"commitment\",\"status\":\"open\",\"owner\":{\"kind\":\"speaker\","
+         "\"name\":\"\"},\"date_said\":\"tomorrow\",\"cited\":[0],\"confidence\":\"high\"}\n"
+         "[0] Ravi: So we're agreed, the price stays at forty.\n"
+         "[1] Lina: Agreed.\n"
+         "Statement: So we're agreed, the price stays at forty.\n"
+         "Answer: {\"type\":\"agreement\",\"status\":\"open\",\"owner\":{\"kind\":\"unassigned\","
+         "\"name\":\"\"},\"date_said\":\"\",\"cited\":[0,1],\"confidence\":\"high\"}\n"
+         "[0] Omar: Where do we host the launch?\n"
+         "[1] Ravi: Let's come back to that.\n"
+         "Statement: Where do we host the launch?\n"
+         "Answer: {\"type\":\"unresolved\",\"status\":\"open\",\"owner\":{\"kind\":\"unassigned\","
+         "\"name\":\"\"},\"date_said\":\"\",\"cited\":[0,1],\"confidence\":\"high\"}\n\n"
+         "Now the real one.\n"
          "TRANSCRIPT:\n" + fenceTranscript(turns) + "\n"
          "STATEMENT:\n" + fenceTranscript(item_text) + "\n"
-         "Read the later turns for a reply that qualifies, contradicts or withdraws the statement.\n"
-         "Answer with one JSON object and nothing else:\n"
-         "- type: proposal, agreement, commitment, request, rejection, unresolved, or uncertain if you cannot tell.\n"
-         "- status: open unless a later turn qualified, contradicted or withdrew it.\n"
-         "- owner: kind speaker if the speaker of [0] is doing it; person with the exact name as written if a named person is; unassigned otherwise.\n"
-         "- date_said: the date or time phrase exactly as written, or empty.\n"
-         "- cited: the turn numbers you relied on; always include 0.\n"
-         "- confidence: high or low.\n";
+         "Answer with one JSON object and nothing else.\n";
 }
 
 namespace {

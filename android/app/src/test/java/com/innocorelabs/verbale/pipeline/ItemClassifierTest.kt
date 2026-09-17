@@ -55,4 +55,12 @@ class ItemClassifierTest {
     val utts = listOf(utt("n0", 0, "a"))
     assertNull(ItemClassifier.windowFor(item("old-id", 99_000), utts, names))
   }
+
+  /** The rule reads the date first; the model's phrase fills in only where the rule has nothing. */
+  @Test fun theRuleReadsTheDateBeforeTheModel() {
+    assertEquals("Friday", ItemClassifier.dateSaidFor("Can you send the proposal Friday?", ""))
+    assertEquals("Friday", ItemClassifier.dateSaidFor("Can you send the proposal Friday?", "[0]"))
+    assertEquals("after the launch", ItemClassifier.dateSaidFor("Let's revisit pricing after the launch", "after the launch"))
+    assertEquals(null, ItemClassifier.dateSaidFor("We also need to decide on the venue.", "  "))
+  }
 }

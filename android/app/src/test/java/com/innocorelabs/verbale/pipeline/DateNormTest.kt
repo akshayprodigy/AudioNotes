@@ -40,3 +40,36 @@ class DateNormTest {
     assertEquals(LocalDate.of(2026, 9, 18).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli(), ms)
   }
 }
+
+/**
+ * The date phrase read off the statement by rule, before the model's reading is consulted.
+ * Measured 17 Sep: the 1.5B classifier left date_said empty for "Can you send the proposal
+ * Friday?" and "Priya will send the deck tomorrow." on the Mac and the Pixel alike — and a date
+ * nobody reads is a chip nobody sees and a card nobody gets. A regex quotes better than a small
+ * model; the model's phrase is only used where the rule finds nothing.
+ */
+class DateSpanTest {
+  @Test fun findsTheKnownPhrasesWithTheirPrepositionAsSpoken() {
+    assertEquals("Friday", DateNorm.spanIn("Can you send the proposal Friday?"))
+    assertEquals("tomorrow", DateNorm.spanIn("Priya will send the deck tomorrow."))
+    assertEquals("on Thursday", DateNorm.spanIn("so let's revisit that on Thursday."))
+    assertEquals("by the 3rd", DateNorm.spanIn("We need the numbers by the 3rd, please."))
+    assertEquals("next Friday", DateNorm.spanIn("Ship it next Friday."))
+    assertEquals("by end of the week", DateNorm.spanIn("I'll have it by end of the week"))
+    assertEquals("in two weeks", DateNorm.spanIn("Let's review in two weeks."))
+    assertEquals("next week", DateNorm.spanIn("Priya will send the deck next week"))
+    assertEquals("today", DateNorm.spanIn("Can we close it today?"))
+  }
+
+  @Test fun keepsTheCasingAsSpokenAndTheFirstPhraseOnly() {
+    assertEquals("on Monday", DateNorm.spanIn("We agreed to ship on Monday, or Friday at the latest."))
+    assertEquals("On Monday", DateNorm.spanIn("On Monday we ship."))
+  }
+
+  @Test fun findsNothingWhereThereIsNoDate() {
+    assertEquals(null, DateNorm.spanIn("We also need to decide on the venue for the launch."))
+    assertEquals(null, DateNorm.spanIn("The sundae was good"))       // "sun" is not Sunday
+    assertEquals(null, DateNorm.spanIn("Monday's report was late"))  // a past reference, possessive
+    assertEquals(null, DateNorm.spanIn(""))
+  }
+}
