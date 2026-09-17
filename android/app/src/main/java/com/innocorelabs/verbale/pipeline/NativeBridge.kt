@@ -269,7 +269,9 @@ object NativeBridge {
   // `record`, not `notes` — and this declaration is the one Narrator authors read. For a meeting
   // that fits one chunk, most of them, what goes in here is the dialogue itself, which is why
   // narrativePrompt fences its input (cpp/minutes/fence.h). The old name said the opposite.
-  external fun nativeLlmNarrativePrompt(record: String): String
+  // `template` is one of TemplateSuggester's seven ids, or "" / an unrecognised id, which
+  // cpp/minutes/templates.h treats the same as "general" (today's unsectioned narrative).
+  external fun nativeLlmNarrativePrompt(record: String, template: String): String
   external fun nativeLlmSummaryPrompt(narrative: String): String
   external fun nativeLlmHeadlinePrompt(summary: String): String
 

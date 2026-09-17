@@ -1,0 +1,92 @@
+{
+  "note": "TemplateSuggester's rule: cue hits per type, normalised to per-hundred-words, plus a speaker-count nudge on one_on_one (speakers==2: +1.0; speakers>=4: -1.0). Winner is the highest score at or above THRESHOLD=1.5, else 'general'. A tie keeps whichever type was checked first, which is table order (standup, one_on_one, client, interview, lecture, site_walk) — general is never a scored winner, only the fallback. `remembered`, when not null, wins outright before any scoring runs — it is what a person chose for an earlier meeting sharing a tag, read by AudioDb.rememberedTemplate. Read by TemplateSuggesterTest.kt.",
+  "threshold": 1.5,
+  "twoSpeakerBonus": 1.0,
+  "fourPlusSpeakerPenalty": 1.0,
+  "cases": [
+    {
+      "name": "standup",
+      "transcript": "Yesterday I finished the export screen. Today I am on the paywall. My blocker is the licence server.",
+      "speakerCount": 1,
+      "remembered": null,
+      "expect": "standup"
+    },
+    {
+      "name": "one_on_one",
+      "transcript": "How are you feeling about your growth this quarter? I wanted to give you some feedback on your career path.",
+      "speakerCount": 2,
+      "remembered": null,
+      "expect": "one_on_one"
+    },
+    {
+      "name": "client",
+      "transcript": "The client asked for a quote on the new contract. We agreed on the scope and the pricing before sending the proposal.",
+      "speakerCount": 3,
+      "remembered": null,
+      "expect": "client"
+    },
+    {
+      "name": "interview",
+      "transcript": "Thanks for coming in. Can you tell me about your experience in this role? Why do you want to join us, and could you walk me through your resume?",
+      "speakerCount": 2,
+      "remembered": null,
+      "expect": "interview"
+    },
+    {
+      "name": "lecture",
+      "transcript": "Today's lecture covers chapter four. Let's start with a definition, then a theorem, for example the mean value theorem. Your homework assignment is due next week; check the syllabus.",
+      "speakerCount": 1,
+      "remembered": null,
+      "expect": "lecture"
+    },
+    {
+      "name": "site_walk",
+      "transcript": "We did a site inspection today and observed a cracked panel on the third floor. This is a safety hazard and a clear defect; flag it to the contractor as a snag.",
+      "speakerCount": 2,
+      "remembered": null,
+      "expect": "site_walk"
+    },
+    {
+      "name": "plain conversation has no cues",
+      "transcript": "We had lunch and talked about the weather. It was a nice day outside, sunny and warm.",
+      "speakerCount": 3,
+      "remembered": null,
+      "expect": "general"
+    },
+    {
+      "name": "a two-speaker chat with no cues is still general — the speaker cue alone must not decide",
+      "transcript": "We caught up over coffee and talked about our weekend plans.",
+      "speakerCount": 2,
+      "remembered": null,
+      "expect": "general"
+    },
+    {
+      "name": "a tie between client and interview breaks to whichever is checked first (table order)",
+      "transcript": "There was a quote and a role mentioned once.",
+      "speakerCount": 1,
+      "remembered": null,
+      "expect": "client"
+    },
+    {
+      "name": "a remembered tag beats a strong client cue outright",
+      "transcript": "The client asked for a quote on the new contract. We agreed on the scope and the pricing before sending the proposal.",
+      "speakerCount": 2,
+      "remembered": "standup",
+      "expect": "standup"
+    },
+    {
+      "name": "two speakers turn one weak cue into a win — the score alone (0.96) does not clear THRESHOLD, +twoSpeakerBonus (1.96) does",
+      "transcript": "We talked about growth mostly. apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple",
+      "speakerCount": 2,
+      "remembered": null,
+      "expect": "one_on_one"
+    },
+    {
+      "name": "four speakers turn the same weak cue into a loss — 0.96 minus fourPlusSpeakerPenalty stays under THRESHOLD",
+      "transcript": "We talked about growth mostly. apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple apple",
+      "speakerCount": 4,
+      "remembered": null,
+      "expect": "general"
+    }
+  ]
+}

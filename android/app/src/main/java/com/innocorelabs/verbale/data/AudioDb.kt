@@ -1180,6 +1180,64 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     }
   }
 
+  /** One of TemplateSuggester's seven ids, or null before the rule pass has suggested one. */
+  fun template(meetingId: String): String? {
+    db.rawQuery("SELECT template FROM meetings WHERE id=?", arrayOf(meetingId)).use { c ->
+      return if (c.moveToFirst()) c.getString(0) else null
+    }
+  }
+
+  /**
+   * 'suggested' (the rule wrote it and may write it again) or 'chosen' (a person picked it, and
+   * ProcessingEngine's own suggestion pass must never call setTemplate over it) — null before
+   * either has happened. What guards TemplateSuggester from overwriting a person's choice.
+   */
+  fun templateSource(meetingId: String): String? {
+    db.rawQuery("SELECT template_source FROM meetings WHERE id=?", arrayOf(meetingId)).use { c ->
+      return if (c.moveToFirst()) c.getString(0) else null
+    }
+  }
+
+  /**
+   * A person's choice, from the Summary tab's sheet — the one write TemplateSuggester must never
+   * make on its own, and the one ProcessingEngine's suggestion must never overwrite (source
+   * 'suggested' vs 'chosen').
+   */
+  fun setTemplate(meetingId: String, templateId: String, source: String) {
+    db.execSQL(
+      "UPDATE meetings SET template=?, template_source=? WHERE id=?",
+      arrayOf<Any?>(templateId, source, meetingId),
+    )
+  }
+
+  /** Every tag on a meeting, alphabetical — the order rememberedTemplate reads its keys in. */
+  fun tagsFor(meetingId: String): List<String> {
+    db.rawQuery("SELECT name FROM tags WHERE meeting_id=? ORDER BY name", arrayOf(meetingId)).use { c ->
+      val out = ArrayList<String>()
+      while (c.moveToNext()) out.add(c.getString(0))
+      return out
+    }
+  }
+
+  /**
+   * Choosing a type on a meeting with tags remembers it for every one of them, so the next
+   * meeting tagged "weekly" or "client-acme" starts already suggested the right type.
+   */
+  fun rememberTemplateForTags(meetingId: String, templateId: String) {
+    for (tag in tagsFor(meetingId)) putSetting("template.tag.$tag", templateId)
+  }
+
+  /**
+   * The first remembered type among these tags, alphabetical — TemplateSuggester.suggest takes
+   * this as its `remembered` argument and returns it outright, ahead of any cue scoring.
+   */
+  fun rememberedTemplate(tags: List<String>): String? {
+    for (tag in tags.sorted()) {
+      getSetting("template.tag.$tag")?.let { return it }
+    }
+    return null
+  }
+
   // ---- User edits ------------------------------------------------------------------------
 
   /** Store (or replace) a user's edit of one piece of pipeline-written text. */
@@ -1348,6 +1406,15 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
      * the one list that has to stay worth reading.
      */
     val BY_A_PERSON = setOf(CONFIRMED, REJECTED)
+  }
+
+  /** The `meetings.template_source` vocabulary (Phase 2, sub-project 6a). */
+  object TemplateSource {
+    /** TemplateSuggester's own answer — the one value ProcessingEngine is free to overwrite. */
+    const val SUGGESTED = "suggested"
+
+    /** A person picked it on the Summary tab's sheet. Nothing downstream may overwrite this. */
+    const val CHOSEN = "chosen"
   }
 
   /**
@@ -2662,6 +2729,13 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       // with its meeting — and since the vectors themselves do not travel in a backup, the
       // restore path resets it so the backfill re-embeds what arrived.
       Triple("meetings", "embedded_at", "INTEGER"),
+      // Sub-project 6a (meeting templates): one of TemplateSuggester's seven ids. NULL is "the
+      // rule pass has not suggested one yet", which must stay distinguishable from "general" —
+      // the suggester's own low-confidence answer — so this has no DEFAULT either.
+      Triple("meetings", "template", "TEXT"),
+      // 'suggested' or 'chosen'. A person's 'chosen' is the one value TemplateSuggester must never
+      // overwrite (§2.5 of the Phase 2 brief); NULL alongside `template` before either has run.
+      Triple("meetings", "template_source", "TEXT"),
     )
 
     /** The schema, for a unit test that must not open an encrypted database. */

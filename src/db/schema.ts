@@ -47,7 +47,14 @@ export const SCHEMA = [
      -- When this meeting's current words were last all embedded for meaning search (sub-project
      -- 5). NULL — no DEFAULT — is what every existing row starts with and what every writer of
      -- transcript, items or summary resets it to; Embedder.fill stamps it.
-     embedded_at INTEGER
+     embedded_at INTEGER,
+     -- Sub-project 6a (meeting templates): one of TemplateSuggester's seven ids, or NULL before
+     -- the rule pass has run. No DEFAULT: a suggested-but-not-yet-run meeting must read the same
+     -- as an unmigrated one, not silently as "general".
+     template TEXT,
+     -- 'suggested' (the rule ran and this is its answer) or 'chosen' (a person picked it, which
+     -- the suggester must never overwrite) — NULL alongside template before either has happened.
+     template_source TEXT
    );`,
   `CREATE TABLE IF NOT EXISTS utterances (
      id TEXT PRIMARY KEY,

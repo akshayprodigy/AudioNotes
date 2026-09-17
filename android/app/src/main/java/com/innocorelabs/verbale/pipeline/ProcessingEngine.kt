@@ -309,6 +309,29 @@ class ProcessingEngine(
         db.replaceItems(meetingId, Minutes.RULES_GEN, items)
 
         retitleFromTranscript(meetingId, utts)
+
+        // ---- Meeting type (Phase 2, sub-project 6a) ----
+        //
+        // After the rule pass, before narration — Narrator.run reads meetings.template on this
+        // same call and passes it to narrativePrompt, so suggesting it any later would narrate
+        // with last run's type. Never over a person's own pick: 'chosen' is the one value this
+        // must not call setTemplate over, which is the whole reason it reads templateSource
+        // first rather than just checking template for null.
+        //
+        // Cheap and synchronous — a cue-word scan over utterances already in memory, no model —
+        // so it carries none of the awaitClearance/stageDone ceremony narration and embedding
+        // below need, and a failure here costs the meeting a label, never the minutes.
+        if (db.templateSource(meetingId) != AudioDb.TemplateSource.CHOSEN) {
+          try {
+            val transcript = utts.joinToString(" ") { it.text }
+            val remembered = db.rememberedTemplate(db.tagsFor(meetingId))
+            val suggested = TemplateSuggester.suggest(transcript, speakers.size, remembered)
+            db.setTemplate(meetingId, suggested, AudioDb.TemplateSource.SUGGESTED)
+          } catch (e: Throwable) {
+            Log.w(TAG, "template suggestion failed for $meetingId", e)
+          }
+        }
+
         stageDone("minutes", tMinutes, pMinutes)
         listener.onStage("minutes", 1, 1)
         Log.i(TAG, "Minutes produced ${minutes.size} rows and ${items.size} items for $meetingId")

@@ -21,6 +21,7 @@
 #include <unordered_map>
 
 #include "minutes/fence.h"
+#include "minutes/templates.h"
 
 namespace audionotes {
 
@@ -149,7 +150,41 @@ std::string reducePrompt(const std::string& notes) {
 }
 
 std::string narrativePrompt(const std::string& record, const std::string& language) {
+  return narrativePrompt(record, language, "general");
+}
+
+namespace {
+// The coverage sentence(s) that tell the model what to write ABOUT — the one part of
+// narrativePrompt a meeting type changes. "general" (or any id sectionsFor does not recognise)
+// gets exactly the four-things-to-cover sentence this function replaced, unchanged, so the
+// two-argument overload above stays byte-identical to what it produced before templates existed.
+// A recognised type gets its sections named instead, never both: asking for "three or four
+// paragraphs about X" AND "one paragraph per named section" would contradict each other the
+// moment a type has five sections, as interview does.
+std::string templateCoverageInstruction(const std::string& template_id) {
+  const auto sections = sectionsFor(template_id);
+  if (sections.empty()) {
+    return "Write three or four short paragraphs covering what the meeting was about, what the "
+           "group worked through, what was settled and what was left open. Those four things are "
+           "what to cover, NOT labels to copy down. Use only what the record supports.\n";
+  }
+  std::string names;
+  for (std::size_t i = 0; i < sections.size(); ++i) {
+    if (i) names += ", ";
+    names += sections[i];
+  }
+  return "Organise the account under these sections, in this order: " + names +
+         ". Write each as its own short paragraph that opens with the section's name and a "
+         "colon — for example \"" + sections[0] +
+         ": ...\". Use only what the record supports. When a section has nothing to say, leave "
+         "it out entirely rather than writing that nothing was discussed under it.\n";
+}
+}  // namespace
+
+std::string narrativePrompt(const std::string& record, const std::string& language,
+                            const std::string& template_id) {
   const std::string lang = languageDirective(language);
+  const std::string coverage = templateCoverageInstruction(template_id);
   // "Write the minutes" is itself the trigger: asked for minutes, the model reaches for the
   // MINUTES FORM it has seen thousands of times and fills it in — "Meeting Minutes", a Date &
   // Time line, an Attendees list, a numbered Agenda. On the IPD meeting it shipped the literal
@@ -159,9 +194,7 @@ std::string narrativePrompt(const std::string& record, const std::string& langua
   return "Below is the record of one meeting. Write an account of it in plain prose, for someone "
          "who was not there.\n\n"
          "RECORD:\n" + fenceTranscript(record) + "\n"
-         "Write three or four short paragraphs covering what the meeting was about, what the "
-         "group worked through, what was settled and what was left open. Those four things are "
-         "what to cover, NOT labels to copy down. Use only what the record supports.\n"
+         + coverage +
          "Rules:\n"
          "- Prose only, in full sentences grouped into paragraphs. This is NOT a form to fill in: "
          "no title, no heading, no Date line, no Attendees list, no Agenda, no numbered sections, "

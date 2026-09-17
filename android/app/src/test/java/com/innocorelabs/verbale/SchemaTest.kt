@@ -214,6 +214,18 @@ class SchemaTest {
       AudioDb.addedColumnsForTest().contains(Triple("meetings", "items_migrated_at", "INTEGER")),
     )
 
+  @Test fun theMeetingTypeAndItsSourceAreAddedColumns() =
+    assertTrue(
+      "template / template_source are missing from ADDED_COLUMNS: no phone with an existing " +
+        "database would gain the two columns TemplateSuggester and the Summary chip need",
+      AudioDb.addedColumnsForTest().containsAll(
+        listOf(
+          Triple("meetings", "template", "TEXT"),
+          Triple("meetings", "template_source", "TEXT"),
+        ),
+      ),
+    )
+
   /**
    * The `meetings` table a real device has, asserted on THIS side of the mirror.
    *
@@ -232,7 +244,7 @@ class SchemaTest {
    * is also inlined into the CREATE TABLE for fresh installs. Comparing either half alone would
    * assert a table that exists on no device.
    */
-  @Test fun meetingsHasTheSameNineteenColumnsAsTheJavaScriptMirror() {
+  @Test fun meetingsHasTheSameTwentyOneColumnsAsTheJavaScriptMirror() {
     val expected = listOf(
       "id", "title", "created_at", "duration_ms", "language", "status", "tier_used",
       "audio_path", "audio_retained", "archived_at", "summary_line", "title_edited_at",
@@ -240,6 +252,8 @@ class SchemaTest {
       "diar_skipped_reason",
       "items_migrated_at",
       "embedded_at",
+      "template",
+      "template_source",
     )
     val actual = (
       columnsOf(ddlFor("meetings")) +

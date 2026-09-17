@@ -46,6 +46,13 @@ std::string reducePrompt(const std::string& notes);
 // digests. It was called `notes`, and that name is why a prompt taking raw transcript read as one
 // that could not. It is fenced (minutes/fence.h) for the same reason the two chunk prompts are.
 std::string narrativePrompt(const std::string& record, const std::string& language = "en");
+
+// Sub-project 6a (meeting templates): the same prompt, narrowed to a type's sections
+// (minutes/templates.h). template_id "general", empty, or unrecognised covers what the two-
+// argument overload above does — that overload delegates here with "general" so there is exactly
+// one prompt body to keep in step with fence.cpp and check-prompt-fencing.py.
+std::string narrativePrompt(const std::string& record, const std::string& language,
+                            const std::string& template_id);
 std::string summaryPrompt(const std::string& narrative, const std::string& language = "en");
 std::string headlinePrompt(const std::string& summary, const std::string& language = "en");
 

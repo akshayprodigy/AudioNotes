@@ -1015,11 +1015,19 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeDropAbsenceTail(
   return promptCall(env, jText, &audionotes::dropAbsenceTail);
 }
 
+// Not promptCall: every other prompt builder here takes one jstring in, but a meeting type is a
+// second argument narrativePrompt needs (see templates.h) — the same try/catch/NewStringUTF shape
+// promptCall gives the others, inlined for the one builder that takes two.
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmNarrativePrompt(
-    JNIEnv* env, jobject /*thiz*/, jstring jRecord) {
-  return promptCall(env, jRecord,
-                    [](const std::string& s) { return audionotes::narrativePrompt(s, "en"); });
+    JNIEnv* env, jobject /*thiz*/, jstring jRecord, jstring jTemplate) {
+  try {
+    return env->NewStringUTF(
+        audionotes::narrativePrompt(jstr(env, jRecord), "en", jstr(env, jTemplate)).c_str());
+  } catch (const std::exception& e) {
+    throwRuntime(env, e.what());
+    return env->NewStringUTF("");
+  }
 }
 
 extern "C" JNIEXPORT jstring JNICALL

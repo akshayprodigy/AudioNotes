@@ -106,6 +106,7 @@ add_executable(audionotes_cli
   ${CORE}/minutes/minutes_extractor.cpp
   ${CORE}/minutes/llm_minutes.cpp
   ${CORE}/minutes/llm_prompts.cpp
+  ${CORE}/minutes/templates.cpp
   ${CORE}/minutes/fence.cpp
   ${CORE}/capi/audionotes_capi.cpp)
 
@@ -293,6 +294,14 @@ audionotes_add_test(test_ask
   ${CORE}/minutes/ask.cpp
   ${CORE}/minutes/fence.cpp)
 
+# Sub-project 6a: the section table and its effect on narrativePrompt, off a device and off a
+# model.
+audionotes_add_test(test_templates
+  ${CORE}/tests/test_templates.cpp
+  ${CORE}/minutes/templates.cpp
+  ${CORE}/minutes/llm_prompts.cpp
+  ${CORE}/minutes/fence.cpp)
+
 # Sub-project 5: sentence embeddings against the real model (skips itself without the file).
 audionotes_add_test(test_embed
   ${CORE}/tests/test_embed.cpp
@@ -305,6 +314,7 @@ audionotes_add_test(test_llm_minutes
   ${CORE}/tests/test_llm_minutes.cpp
   ${CORE}/minutes/llm_minutes.cpp
   ${CORE}/minutes/llm_prompts.cpp
+  ${CORE}/minutes/templates.cpp
   ${CORE}/minutes/fence.cpp
   ${CORE}/minutes/minutes_extractor.cpp)
 
@@ -314,6 +324,7 @@ audionotes_add_test(test_pipeline_align
   ${CORE}/minutes/minutes_extractor.cpp
   ${CORE}/minutes/llm_minutes.cpp
   ${CORE}/minutes/llm_prompts.cpp
+  ${CORE}/minutes/templates.cpp
   ${CORE}/minutes/fence.cpp
   ${CORE}/asr/whisper_asr.cpp
   ${CORE}/asr/asr_chunker.cpp
@@ -350,6 +361,7 @@ audionotes_add_test(test_cancel
   ${CORE}/minutes/minutes_extractor.cpp
   ${CORE}/minutes/llm_minutes.cpp
   ${CORE}/minutes/llm_prompts.cpp
+  ${CORE}/minutes/templates.cpp
   ${CORE}/minutes/fence.cpp
   ${CORE}/asr/whisper_asr.cpp
   ${CORE}/asr/asr_chunker.cpp
@@ -386,6 +398,7 @@ audionotes_add_test(test_capi
   ${CORE}/minutes/minutes_extractor.cpp
   ${CORE}/minutes/llm_minutes.cpp
   ${CORE}/minutes/llm_prompts.cpp
+  ${CORE}/minutes/templates.cpp
   ${CORE}/minutes/fence.cpp
   ${CORE}/asr/whisper_asr.cpp
   ${CORE}/asr/asr_chunker.cpp

@@ -301,7 +301,12 @@ object Narrator {
       // hundred characters, and neither can contradict the one above it.
       if (tick()) return false
       step++
-      val narrative = clean(gen(NativeBridge.nativeLlmNarrativePrompt(source), NARRATIVE_TOKENS))
+      // Sub-project 6a: which sections narrativePrompt narrows the account to. Read fresh here,
+      // not cached from earlier in run(), so "Write it again" after changing the type on the
+      // Summary tab picks up the new one without a second narration pass.
+      val template = db.template(meetingId) ?: "general"
+      val narrative =
+        clean(gen(NativeBridge.nativeLlmNarrativePrompt(source, template), NARRATIVE_TOKENS))
       if (narrative.isEmpty()) {
         Log.w(TAG, "no narrative produced for $meetingId")
         return false

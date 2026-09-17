@@ -98,7 +98,7 @@ describe('schema.ts evidence tables (executed in real SQLite)', () => {
           'id', 'title', 'created_at', 'duration_ms', 'language', 'status', 'tier_used',
           'audio_path', 'audio_retained', 'archived_at', 'summary_line', 'title_edited_at',
           'transcribe_forced_at', 'forced_from_language', 'announced_at', 'announced_lag_ms', 'diar_skipped_reason',
-          'items_migrated_at', 'embedded_at',
+          'items_migrated_at', 'embedded_at', 'template', 'template_source',
         ].sort(),
       );
     });
@@ -127,6 +127,28 @@ describe('schema.ts evidence tables (executed in real SQLite)', () => {
     it('embedded_at is a nullable INTEGER with no default', () => {
       const col = column(columnsOf(freshDb(), 'meetings'), 'embedded_at');
       expect(col.type).toBe('INTEGER');
+      expect(col.notnull).toBe(0);
+      expect(col.dflt_value).toBe(null);
+    });
+
+    /**
+     * Sub-project 6a (meeting templates): the type, and how it got there. NULL is "not suggested
+     * yet" (an unprocessed meeting) as well as "no cue cleared the threshold" (the suggester's own
+     * `general`) — the same NULL either way, since both read as "nothing to show but General" on
+     * the Summary chip. A DEFAULT of 'general' would make the two indistinguishable from SQL,
+     * which TemplateSuggester's "only suggest once" check (meetings.template_source IS NULL)
+     * depends on telling apart.
+     */
+    it('template is a nullable TEXT with no default', () => {
+      const col = column(columnsOf(freshDb(), 'meetings'), 'template');
+      expect(col.type).toBe('TEXT');
+      expect(col.notnull).toBe(0);
+      expect(col.dflt_value).toBe(null);
+    });
+
+    it('template_source is a nullable TEXT with no default', () => {
+      const col = column(columnsOf(freshDb(), 'meetings'), 'template_source');
+      expect(col.type).toBe('TEXT');
       expect(col.notnull).toBe(0);
       expect(col.dflt_value).toBe(null);
     });
