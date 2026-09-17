@@ -79,7 +79,7 @@ Legend: ✅ done · ◐ partly · ✗ not built · ⛔ tried and rejected on evi
 | Local action tracker | First release | ✅ (Library card + header icon, shipped 16 Sep) |
 | Ask this meeting | Next | ✅ (17 Sep; cites or says nothing) |
 | Keyword + meaning-based search | Next | ✅ (17 Sep; bge-small, one fused list, "≈" for meaning-only hits) |
-| Meeting templates | Next | ✗ |
+| Meeting templates | Next | ✅ (17 Sep; seven types, auto-suggested, remembered per tag) |
 | Decision history | Later | ✗ (event log considered and dropped) |
 | Meeting preparation | Later | ✗ |
 | Validated additional languages | After evaluation | ◐ Hindi built (Qwen3-ASR), unmeasured, unreachable by design |
