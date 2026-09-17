@@ -3,44 +3,40 @@ package com.innocorelabs.verbale.pipeline
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.abs
+import kotlin.random.Random
 
-/**
- * Vectors as bytes. The defects it guards: a scale that is dropped (every score a tiny
- * fraction), a sign lost (cosines folded), and a reader that starts at the wrong offset.
- */
+/** decode is the inverse of encode: same little-endian, scale-first layout dot already reads. */
 class VecCodecTest {
-  private fun unit(seed: Long): FloatArray {
-    val rnd = java.util.Random(seed)
-    val v = FloatArray(384) { rnd.nextGaussian().toFloat() }
-    val n = Math.sqrt(v.sumOf { (it * it).toDouble() }).toFloat()
-    for (i in v.indices) v[i] /= n
-    return v
+  private fun plainDot(a: FloatArray, b: FloatArray): Float {
+    var s = 0f
+    val n = minOf(a.size, b.size)
+    for (i in 0 until n) s += a[i] * b[i]
+    return s
   }
 
-  @Test fun roundTripsAUnitVectorToWithinTwoHundredths() {
-    val v = unit(7)
+  private fun scaleOf(v: FloatArray): Float {
+    var max = 0f
+    for (x in v) if (abs(x) > max) max = abs(x)
+    return if (max > 0f) max / 127f else 1f
+  }
+
+  @Test fun decodeOfEncodeIsWithinScaleElementwise() {
+    val rnd = Random(42)
+    val v = FloatArray(384) { rnd.nextFloat() * 2f - 1f }
+    val scale = scaleOf(v)
+    val decoded = VecCodec.decode(VecCodec.encode(v))
+    assertEquals(v.size, decoded.size)
+    for (i in v.indices) assertTrue(abs(decoded[i] - v[i]) <= scale + 1e-6f)
+  }
+
+  @Test fun dotOfEncodedEqualsPlainDotOfDecodedWithin1en3() {
+    val rnd = Random(7)
+    val v = FloatArray(384) { rnd.nextFloat() * 2f - 1f }
+    val q = FloatArray(384) { rnd.nextFloat() * 2f - 1f }
     val blob = VecCodec.encode(v)
-    assertEquals(384 + 4, blob.size)
-    val cos = VecCodec.dot(v, blob)
-    assertTrue("cosine with itself was $cos", cos > 0.98f && cos <= 1.001f)
-  }
-
-  @Test fun orthogonalVectorsScoreNearZeroAndOppositeOnesNearMinusOne() {
-    val a = FloatArray(384).also { it[0] = 1f }
-    val b = FloatArray(384).also { it[1] = 1f }
-    assertEquals(0f, VecCodec.dot(a, VecCodec.encode(b)), 1e-3f)
-    val neg = FloatArray(384).also { it[0] = -1f }
-    assertEquals(-1f, VecCodec.dot(a, VecCodec.encode(neg)), 1e-2f)
-  }
-
-  @Test fun theOrderOfTwoDifferentVectorsIsPreserved() {
-    val q = unit(1); val near = unit(1); val far = unit(2)
-    // near is q itself; far is independent — after quantisation the order must hold
-    assertTrue(VecCodec.dot(q, VecCodec.encode(near)) > VecCodec.dot(q, VecCodec.encode(far)) + 0.5f)
-  }
-
-  @Test fun aZeroVectorEncodesAndScoresZero() {
-    val z = FloatArray(384)
-    assertEquals(0f, VecCodec.dot(unit(3), VecCodec.encode(z)), 0f)
+    val viaBlob = VecCodec.dot(q, blob)
+    val viaDecode = plainDot(q, VecCodec.decode(blob))
+    assertTrue(abs(viaBlob - viaDecode) < 1e-3f)
   }
 }

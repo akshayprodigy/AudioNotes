@@ -1,0 +1,111 @@
+{
+  "note": "DecisionLinks.link's rule (Phase 3, thread memory): for each decision D, in meetingAt order, candidates are decisions E with E.meetingAt < D.meetingAt (a strictly earlier MEETING; a same-meeting candidate has the same meetingAt and is excluded by the strict '<' alone) and both vectors present. E qualifies when cosine(D,E) >= LINK_COSINE (0.72), or cosine >= LINK_COSINE_WITH_WORD (0.60) and sharedContentWord(D.text, E.text). The best qualifying cosine wins; at most one link per D. Cosines here are INJECTED (DecisionLinksTest passes a lookup in place of a real vector dot product) so the golden can pin the threshold arithmetic directly; sharedContentWord still runs over the real 'text' fields. 'cos' is an NxN matrix over 'decisions' in array order; cos[i][j] is the score DecisionLinks would compute between decisions[i] (as D) and decisions[j] (as a candidate E). 'links' gives only the itemIds that DO get a link, each mapped to the earlier itemId it links to; every other itemId must be absent from DecisionLinks.link's result. Read by DecisionLinksTest.kt.",
+  "constants": { "LINK_COSINE": 0.72, "LINK_COSINE_WITH_WORD": 0.60, "MIN_WORD_LETTERS": 4, "STEM_LETTERS": 5 },
+  "cases": [
+    {
+      "name": "cosine 0.80 links on cosine alone",
+      "decisions": [
+        { "itemId": "d0", "meetingAt": 1, "text": "Vendor codes will be six digits.", "vec": true },
+        { "itemId": "d1", "meetingAt": 2, "text": "Existing vendors keep their old codes.", "vec": true }
+      ],
+      "cos": [[0, 0], [0.80, 0]],
+      "links": { "d1": "d0" }
+    },
+    {
+      "name": "cosine 0.55 never links, even with a shared content word",
+      "decisions": [
+        { "itemId": "d0", "meetingAt": 1, "text": "We will ship on Monday.", "vec": true },
+        { "itemId": "d1", "meetingAt": 2, "text": "Shipping moved to Thursday because QA is not done.", "vec": true }
+      ],
+      "cos": [[0, 0], [0.55, 0]],
+      "links": {}
+    },
+    {
+      "name": "cosine 0.65 with a shared content word links",
+      "decisions": [
+        { "itemId": "d0", "meetingAt": 1, "text": "We will ship on Monday.", "vec": true },
+        { "itemId": "d1", "meetingAt": 2, "text": "Shipping moved to Thursday because QA is not done.", "vec": true }
+      ],
+      "cos": [[0, 0], [0.65, 0]],
+      "links": { "d1": "d0" }
+    },
+    {
+      "name": "cosine 0.65 with no shared content word does not link",
+      "decisions": [
+        { "itemId": "d0", "meetingAt": 1, "text": "We agreed to hire two more testers.", "vec": true },
+        { "itemId": "d1", "meetingAt": 2, "text": "The proposal goes out Friday.", "vec": true }
+      ],
+      "cos": [[0, 0], [0.65, 0]],
+      "links": {}
+    },
+    {
+      "name": "a candidate in the same meeting is ignored even at 0.95",
+      "decisions": [
+        { "itemId": "d0", "meetingAt": 5, "text": "Vendor codes will be six digits.", "vec": true },
+        { "itemId": "d1", "meetingAt": 5, "text": "Existing vendors keep their old codes.", "vec": true }
+      ],
+      "cos": [[0, 0.95], [0.95, 0]],
+      "links": {}
+    },
+    {
+      "name": "a candidate in a later meeting is ignored, however high its cosine",
+      "decisions": [
+        { "itemId": "d0", "meetingAt": 1, "text": "We agreed to hire two more testers.", "vec": true },
+        { "itemId": "d1", "meetingAt": 2, "text": "Something said in between.", "vec": true },
+        { "itemId": "d2", "meetingAt": 3, "text": "We will not migrate the old codes.", "vec": true }
+      ],
+      "cos": [
+        [0, 0, 0],
+        [0.80, 0, 0.99],
+        [0.10, 0.10, 0]
+      ],
+      "links": { "d1": "d0" }
+    },
+    {
+      "name": "two qualifying candidates - the higher cosine wins",
+      "decisions": [
+        { "itemId": "d0", "meetingAt": 1, "text": "A first early decision.", "vec": true },
+        { "itemId": "d1", "meetingAt": 2, "text": "A second early decision.", "vec": true },
+        { "itemId": "d2", "meetingAt": 3, "text": "A later decision that changes an earlier one.", "vec": true }
+      ],
+      "cos": [
+        [0, 0, 0],
+        [0, 0, 0],
+        [0.75, 0.90, 0]
+      ],
+      "links": { "d2": "d1" }
+    },
+    {
+      "name": "a decision with vec == null gets no link and blocks none",
+      "decisions": [
+        { "itemId": "d0", "meetingAt": 1, "text": "Vendor codes will be six digits.", "vec": false },
+        { "itemId": "d1", "meetingAt": 2, "text": "Existing vendors keep their old codes.", "vec": true },
+        { "itemId": "d2", "meetingAt": 3, "text": "A later decision about something else entirely.", "vec": true }
+      ],
+      "cos": [
+        [0, 0, 0],
+        [0.99, 0, 0],
+        [0.99, 0.80, 0]
+      ],
+      "links": { "d2": "d1" }
+    },
+    {
+      "name": "stop-words do not count as a shared content word",
+      "decisions": [
+        { "itemId": "d0", "meetingAt": 1, "text": "We will meet next Monday to discuss the budget.", "vec": true },
+        { "itemId": "d1", "meetingAt": 2, "text": "The team will gather next Monday for a different agenda.", "vec": true }
+      ],
+      "cos": [[0, 0], [0.65, 0]],
+      "links": {}
+    },
+    {
+      "name": "ship and shipping count as a shared content word",
+      "decisions": [
+        { "itemId": "d0", "meetingAt": 1, "text": "We will ship on Monday.", "vec": true },
+        { "itemId": "d1", "meetingAt": 2, "text": "Shipping moved to Thursday because QA is not done.", "vec": true }
+      ],
+      "cos": [[0, 0], [0.65, 0]],
+      "links": { "d1": "d0" }
+    }
+  ]
+}

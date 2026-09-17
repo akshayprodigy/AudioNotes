@@ -32,4 +32,16 @@ object VecCodec {
     for (i in 0 until n) s += q[i] * blob[4 + i]
     return s * scale
   }
+
+  /**
+   * The inverse of [encode]: the same little-endian, scale-first layout [dot] already reads,
+   * turned back into floats so two stored vectors can be compared (Phase 3, thread memory).
+   */
+  fun decode(blob: ByteArray): FloatArray {
+    if (blob.size < 4) return FloatArray(0)
+    val buf = ByteBuffer.wrap(blob).order(ByteOrder.LITTLE_ENDIAN)
+    val scale = buf.getFloat(0)
+    val n = blob.size - 4
+    return FloatArray(n) { i -> blob[4 + i] * scale }
+  }
 }
