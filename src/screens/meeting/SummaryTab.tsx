@@ -11,6 +11,7 @@ import Llm from '../../native/NativeLlm';
 import Licence from '../../native/NativeLicence';
 import { TRIAL_DAYS, entitlement } from '../../billing/trial';
 import { TEMPLATE_IDS, templateHint, templateLabel } from './templateLabels';
+import { threadLine } from '../threadData';
 import {
   DOC_KEY,
   EditedTag,
@@ -57,6 +58,8 @@ export default function SummaryTab({
   onReview,
   template,
   onChangeTemplate,
+  threads,
+  onOpenThread,
 }: {
   /**
    * Taken for the COUNTERS alone — the prose still comes from `minutes`, which is where it lives.
@@ -97,6 +100,13 @@ export default function SummaryTab({
    * for the "Write it again" button beneath.
    */
   onChangeTemplate?: (id: string) => void;
+  /**
+   * Up to three of this meeting's tags with another meeting in their thread (Phase 3), counted
+   * EXCLUDING this meeting's own rows — MeetingScreen resolves this by calling db.thread per tag.
+   * Paid only; empty (never a "(Pro)" placeholder) on free — the library's own door is the nudge.
+   */
+  threads?: { tag: string; open: number; decisions: number }[];
+  onOpenThread?: (tag: string) => void;
 }) {
   const { colors } = useTheme();
   const st = React.useMemo(() => makeStyles(colors), [colors]);
@@ -145,7 +155,7 @@ export default function SummaryTab({
   // about exactly one thing, whether writing new prose is possible at all, which is `ent.paid`
   // alone. Stays false (its safe default) on every path that returns before `ent` is known,
   // including 'expired' — a lapsed subscriber gets the same "relabel only" as free.
-  const [templateWritable, setTemplateWritable] = React.useState(false);
+  const [paid, setPaid] = React.useState(false);
   React.useEffect(() => {
     let alive = true;
     (async () => {
@@ -166,7 +176,7 @@ export default function SummaryTab({
         // not "download something in Settings", because that download is gated too.
         const ent = await entitlement();
         if (!alive) return;
-        setTemplateWritable(ent.paid);
+        setPaid(ent.paid);
         if (!ent.paid) {
           setReason('locked');
           return;
@@ -197,9 +207,9 @@ export default function SummaryTab({
     onPress: () => {
       onChangeTemplate?.(id);
       // Free relabels only — the narrative itself needs Pro to be rewritten. Gated on
-      // templateWritable, not on `id` or on whether prose already exists: a paid meeting with no
+      // `paid`, not on `id` or on whether prose already exists: a paid meeting with no
       // prose yet should still start narrating in the newly chosen shape.
-      if (templateWritable) onWrite();
+      if (paid) onWrite();
     },
   }));
 
@@ -356,6 +366,25 @@ export default function SummaryTab({
         </Raised>
       </Slide>
 
+      {/* One line per thread this meeting belongs to (Phase 3), at most three — paid only, and
+          nothing at all on free, not even a "(Pro)" placeholder: the library's "Open thread" door
+          is the nudge. */}
+      {paid && threads && threads.length > 0 ? (
+        <View style={st.threads}>
+          {threads.slice(0, 3).map(t => (
+            <Pressable
+              key={t.tag}
+              accessibilityRole="button"
+              accessibilityLabel={`Open thread ${t.tag}`}
+              onPress={() => onOpenThread?.(t.tag)}>
+              <Txt variant="chip" color={colors.primary}>
+                {threadLine(t.tag, t.open, t.decisions)}
+              </Txt>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
       {/* What came out of the meeting, as a way in rather than as a readout. Each one opens the
           tab that holds it, which is the question a count actually raises. */}
       {actions + decisions + questions > 0 ? (
@@ -496,6 +525,7 @@ function makeStyles(_c: Colors) {
     cta: { marginTop: s(4) },
     note: { opacity: 0.85 },
     lapsed: { textAlign: 'center', paddingHorizontal: s(12) },
+    threads: { gap: s(6), marginBottom: s(2) },
     glance: { flexDirection: 'row', gap: s(10) },
     glanceFlex: { flex: 1 },
     glanceCard: { paddingVertical: s(12), alignItems: 'center', gap: s(4) },

@@ -51,6 +51,8 @@ const baseProps = {
   writing: false,
   template: 'standup' as string | null,
   onChangeTemplate: jest.fn(),
+  threads: [] as { tag: string; open: number; decisions: number }[],
+  onOpenThread: jest.fn(),
 };
 
 async function renderTab(props: Partial<typeof baseProps> = {}) {
@@ -141,5 +143,66 @@ describe('the meeting-type chip', () => {
     });
     expect(onChangeTemplate).toHaveBeenCalledWith('client');
     expect(onWrite).not.toHaveBeenCalled();
+  });
+});
+
+describe('the thread line (Phase 3)', () => {
+  const threads = [{ tag: 'weekly', open: 2, decisions: 3 }];
+
+  test('on Pro, the line renders and tapping it calls onOpenThread', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: true });
+    const onOpenThread = jest.fn();
+    const tree = await renderTab({ threads, onOpenThread });
+    const row = tree.root.findByProps({ accessibilityLabel: 'Open thread weekly' });
+    expect(row.findByType(require('../../../components/ui').Txt).props.children).toBe(
+      'weekly: 2 open · 3 decisions',
+    );
+    await act(async () => {
+      row.props.onPress();
+    });
+    expect(onOpenThread).toHaveBeenCalledWith('weekly');
+  });
+
+  test('on free, no thread line renders', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: false });
+    const tree = await renderTab({ threads });
+    expect(
+      tree.root.findAllByProps({ accessibilityLabel: 'Open thread weekly' }, { deep: false }),
+    ).toHaveLength(0);
+  });
+
+  test('an empty threads list renders nothing', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: true });
+    const tree = await renderTab({ threads: [] });
+    const { Pressable } = require('react-native');
+    const threadRows = tree.root
+      .findAllByType(Pressable)
+      .filter(n => typeof n.props.accessibilityLabel === 'string' && n.props.accessibilityLabel.startsWith('Open thread'));
+    expect(threadRows).toHaveLength(0);
+  });
+
+  test('four entries render three', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: true });
+    const four = ['a', 'b', 'c', 'd'].map(tag => ({ tag, open: 1, decisions: 1 }));
+    const tree = await renderTab({ threads: four });
+    const rows = ['a', 'b', 'c', 'd']
+      .map(tag => tree.root.findAllByProps({ accessibilityLabel: `Open thread ${tag}` }, { deep: false }))
+      .filter(matches => matches.length > 0);
+    expect(rows).toHaveLength(3);
+  });
+
+  test('the second row calls onOpenThread with its OWN tag, not the first', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: true });
+    const onOpenThread = jest.fn();
+    const two = [
+      { tag: 'weekly', open: 1, decisions: 1 },
+      { tag: 'client-acme', open: 2, decisions: 0 },
+    ];
+    const tree = await renderTab({ threads: two, onOpenThread });
+    const row = tree.root.findByProps({ accessibilityLabel: 'Open thread client-acme' });
+    await act(async () => {
+      row.props.onPress();
+    });
+    expect(onOpenThread).toHaveBeenCalledWith('client-acme');
   });
 });
