@@ -9,8 +9,8 @@ are not phases here.*
 
 | Phase | What | State |
 |---|---|---|
-| **1** | **Prove 4 and 5 on the Pixel.** Typed record + review queue; ask this meeting + meaning search. Device tests, the lead-example meeting, the free tier; then SHIPPED banners, NEXT.md, scorecard, memory; the founder pushes `main`. | **In progress, 17 Sep** |
-| 2 | **Meeting templates** (sub-project 6a). Meeting types — stand-up, 1:1, client, interview, lecture, site walk — as prompt and section variants for the narrator, auto-suggested from the transcript, changeable on the Summary tab, remembered per tag. | Next |
+| 1 | **Prove 4 and 5 on the Pixel.** Typed record + review queue; ask this meeting + meaning search. | **Done 17 Sep** — two phone-found fixes (`564431f`, `dd214e2`); three spot-checks listed in the ask spec |
+| **2** | **Meeting templates** (sub-project 6a). Meeting types — stand-up, 1:1, client, interview, lecture, site walk — as prompt and section variants for the narrator, auto-suggested from the transcript, changeable on the Summary tab, remembered per tag. | **Next** |
 | 3 | **Decision history + meeting prep** (sub-project 6b). Decisions and open questions across the meetings that share a tag or a person; a prep brief before the next one from the same thread. Needs the founder's word on shape — defaults proposed in its spec §0. | After 2 |
 | 4 | **Remembered voices** (sub-project 7). A `people` table with a voice centroid per named person from the diarization embeddings already computed; "Sounds like Priya?" next meeting. Consent copy written before it ships (voice = biometric under GDPR Art. 9 / BIPA). | After 3 |
 | 5 | **Custom vocabulary + dictation** (sub-project 8). A local glossary biasing the recogniser and the narrator; corrections feed it; a separate dictation mode (one voice, no diarization, punctuation commands). | After 4 |

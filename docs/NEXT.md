@@ -15,7 +15,8 @@ the items worth doing are here, in the order to do them.
 > the gate, waiting on one Pixel session for their device runs. Next: 6 (templates, decision
 > history, prep), 7 (remembered voices), 8 (vocabulary + dictation), 9 (no-internet build).
 > **17 September:** that remaining work is now the release plan itself, as six phases —
-> `docs/superpowers/plans/2026-09-17-release-phases.md`. The production build follows Phase 6.
+> `docs/superpowers/plans/2026-09-17-release-phases.md`. Phase 1 (the Pixel run for 4 and 5)
+> done the same day, with two phone-found fixes. The production build follows Phase 6.
 >
 > The items below that are yours — the Play Console product, Play listing, staged rollout — are
 > not blocked by any of it and can proceed in parallel. Prices, Sentry and the bandwidth ceiling
@@ -118,7 +119,7 @@ Small, high-value, and each one answers a complaint the whole category gets.
   on Indian-accented English now has its mitigation.
 - **Provenance.** Tap a decision, land on the transcript turn, play from there. This is what
   "minutes you would forward without editing" actually means. Research §2.3 #10. **The typed
-  record and the review queue (sub-project 4) are code complete as of 16 Sep, Pixel run pending:**
+  record and the review queue (sub-project 4) shipped 17 Sep, Pixel-verified:**
   a grammar-constrained classifier reads the reply to each item, only what it could not settle
   enters a per-meeting queue (Confirm · Fix · Not an item), and a fix reaches every row and
   export. Spec: `superpowers/specs/2026-09-16-evidence-record-and-review-design.md`.
@@ -153,7 +154,7 @@ Small, high-value, and each one answers a complaint the whole category gets.
   does not. **Legal note for a global launch:** a stored voice embedding tied to a name is
   biometric data under Illinois BIPA and GDPR Article 9. Staying on device is most of the answer,
   but this feature needs consent copy written before it ships, not after. Research §3.1.
-- ~~**Ask your meetings, offline.**~~ **Built 16 Sep — code complete, Pixel run pending.** Ask
+- ~~**Ask your meetings, offline.**~~ **Shipped 17 Sep, Pixel-verified.** Ask
   *this* meeting (the founder's list says this-meeting; the global case is the same machinery
   over more rows): the meeting's eight closest passages by keyword and meaning, a fenced numbered
   prompt to the writer, and an answer that must cite `[n]` or is shown as "Nothing in this

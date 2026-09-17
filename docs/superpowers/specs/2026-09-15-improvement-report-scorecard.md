@@ -24,7 +24,7 @@ Legend: ✅ done · ◐ partly · ✗ not built · ⛔ tried and rejected on evi
 | Status after recording: processing / draft / final | ◐ | status badges (QUEUED, TRANSCRIBING, PAUSED, READY, NOT ENGLISH, NO SPEECH); no "draft" state; ETA learned per phone with live counts (shipped 16 Sep) |
 | Summary, decisions, actions, questions, transcript | ✅ | four tabs |
 | Every item opens its passage and plays the audio | ✅ | evidence spine; verified both phones |
-| Review queue for uncertain names / numbers / dates / speakers | ◐ | built 16 Sep (typed record + per-meeting card flow), Pixel run pending |
+| Review queue for uncertain names / numbers / dates / speakers | ✅ | shipped 17 Sep: typed record + per-meeting card flow, Pixel-verified |
 | Later: search, ask questions, track actions, prepare | ◐ | keyword + meaning search built (the two known bugs fixed 16 Sep); ask built 16 Sep; action tracker ✅; prepare ✗ |
 
 ## Improving what was said
@@ -73,12 +73,12 @@ Legend: ✅ done · ◐ partly · ✗ not built · ⛔ tried and rejected on evi
 | Feature | Report priority | State |
 |---|---|---|
 | Source playback from every note | First release | ✅ |
-| Review queue | First release | ◐ built 16 Sep, Pixel run pending |
+| Review queue | First release | ✅ (17 Sep) |
 | Speaker merge, split, rename | First release | ✅ (split = reassign from a line on, shipped 16 Sep) |
 | Dictation mode | First release | ✗ |
 | Local action tracker | First release | ✅ (Library card + header icon, shipped 16 Sep) |
-| Ask this meeting | Next | ◐ built 16 Sep (cites or says nothing), Pixel run pending |
-| Keyword + meaning-based search | Next | ◐ keyword ✅ (Pro); meaning built 16 Sep (bge-small, fused list), Pixel run pending |
+| Ask this meeting | Next | ✅ (17 Sep; cites or says nothing) |
+| Keyword + meaning-based search | Next | ✅ (17 Sep; bge-small, one fused list, "≈" for meaning-only hits) |
 | Meeting templates | Next | ✗ |
 | Decision history | Later | ✗ (event log considered and dropped) |
 | Meeting preparation | Later | ✗ |
