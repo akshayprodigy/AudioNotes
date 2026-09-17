@@ -216,6 +216,16 @@ class StorageModule(private val ctx: ReactApplicationContext) :
     }
   }
 
+  /** A thread: the meetings sharing one tag (Phase 3), and what is still open across them. */
+  @ReactMethod
+  fun thread(tag: String, promise: Promise) {
+    try {
+      promise.resolve(AudioDb.get(ctx).threadJson(ctx, tag))
+    } catch (e: Exception) {
+      promise.reject("db_thread", e)
+    }
+  }
+
   private fun parseArgs(json: String): Array<String?> {
     val arr = JSONArray(json)
     return Array(arr.length()) { i -> if (arr.isNull(i)) null else arr.get(i).toString() }

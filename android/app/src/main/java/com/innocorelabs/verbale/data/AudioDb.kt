@@ -1,6 +1,8 @@
 package com.innocorelabs.verbale.data
 
 import android.content.Context
+import com.innocorelabs.verbale.billing.LicenceStore
+import com.innocorelabs.verbale.pipeline.DecisionLinks
 import com.innocorelabs.verbale.pipeline.DraftMinute
 import com.innocorelabs.verbale.pipeline.EmbedRuntime
 import com.innocorelabs.verbale.pipeline.Minutes
@@ -1236,6 +1238,124 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       getSetting("template.tag.$tag")?.let { return it }
     }
     return null
+  }
+
+  // ---- Threads (Phase 3: decision history + preparation) -------------------------------------
+
+  /** One row of [threadJson]'s "open" or "decisions" list, before it becomes JSON. */
+  private data class ThreadItem(
+    val itemId: String,
+    val meetingId: String,
+    val meetingTitle: String,
+    val meetingAt: Long,
+    val content: String,
+    val itemType: String?,
+    val status: String?,
+    val dateNorm: Long?,
+  )
+
+  private fun threadItems(tag: String, kind: String, order: String): List<ThreadItem> {
+    val out = ArrayList<ThreadItem>()
+    db.rawQuery(
+      "SELECT i.id, i.meeting_id, m.title, m.created_at, i.text, i.item_type, i.status, i.date_norm " +
+        "FROM items i JOIN meetings m ON m.id = i.meeting_id JOIN tags t ON t.meeting_id = m.id " +
+        "LEFT JOIN item_done d ON d.meeting_id = i.meeting_id AND d.item_id = i.id " +
+        "WHERE t.name = ? AND m.archived_at IS NULL AND i.kind = ? AND i.review <> '${Review.REJECTED}' " +
+        (if (kind == "action") "AND d.item_id IS NULL " else "") +
+        "ORDER BY $order",
+      arrayOf(tag, kind),
+    ).use { c ->
+      while (c.moveToNext()) {
+        out.add(
+          ThreadItem(
+            c.getString(0), c.getString(1), c.getString(2), c.getLong(3), c.getString(4),
+            if (c.isNull(5)) null else c.getString(5),
+            if (c.isNull(6)) null else c.getString(6),
+            if (c.isNull(7)) null else c.getLong(7),
+          ),
+        )
+      }
+    }
+    return out
+  }
+
+  /**
+   * A thread: every meeting sharing one tag (Phase 3, decision history + preparation) — what is
+   * still open across them, the decisions in order with "changes: …" links, and the meetings.
+   * Never generated: every row is one the app already holds; the one clever part, `changes`, is
+   * [DecisionLinks.link] over the vectors the meaning index already computes.
+   *
+   * Pro only, and the refusal is returned before any table is touched — the device test
+   * (`ThreadsDbTest`) pins that this check runs first. The TS screens also check
+   * `entitlement().paid`, so a free user never reaches this call at all; this is what a patched
+   * bundle cannot get past.
+   */
+  fun threadJson(ctx: Context, tag: String): String {
+    if (!LicenceStore.entitled(ctx)) return JSONObject().put("refusal", "NOT_PRO").toString()
+
+    val meetings = JSONArray()
+    db.rawQuery(
+      "SELECT m.id, m.title, m.created_at, m.template FROM meetings m " +
+        "JOIN tags t ON t.meeting_id = m.id " +
+        "WHERE t.name = ? AND m.archived_at IS NULL ORDER BY m.created_at DESC",
+      arrayOf(tag),
+    ).use { c ->
+      while (c.moveToNext()) {
+        meetings.put(
+          JSONObject()
+            .put("id", c.getString(0))
+            .put("title", c.getString(1))
+            .put("createdAt", c.getLong(2))
+            .put("template", if (c.isNull(3)) JSONObject.NULL else c.getString(3)),
+        )
+      }
+    }
+
+    val open = JSONArray()
+    for (r in threadItems(tag, "action", "m.created_at DESC, i.anchor_start_ms ASC")) {
+      open.put(
+        JSONObject()
+          .put("itemId", r.itemId).put("meetingId", r.meetingId).put("meetingTitle", r.meetingTitle)
+          .put("meetingAt", r.meetingAt).put("content", r.content)
+          .put("itemType", r.itemType ?: JSONObject.NULL).put("status", r.status ?: JSONObject.NULL)
+          .put("dateNorm", r.dateNorm ?: JSONObject.NULL),
+      )
+    }
+
+    val decisionRows = threadItems(tag, "decision", "m.created_at ASC, i.anchor_start_ms ASC")
+    val vecById = HashMap<String, FloatArray>()
+    if (decisionRows.isNotEmpty()) {
+      val placeholders = decisionRows.joinToString(",") { "?" }
+      db.rawQuery(
+        "SELECT ref_id, vec FROM search_vec WHERE kind = 'item' AND ref_id IN ($placeholders)",
+        decisionRows.map { it.itemId }.toTypedArray(),
+      ).use { c -> while (c.moveToNext()) vecById[c.getString(0)] = VecCodec.decode(c.getBlob(1)) }
+    }
+    val links = DecisionLinks.link(
+      decisionRows.map { r -> DecisionLinks.Decision(r.itemId, r.meetingId, r.meetingAt, r.content, vecById[r.itemId]) },
+    )
+    val byId = decisionRows.associateBy { it.itemId }
+
+    val decisions = JSONArray()
+    for (r in decisionRows) {
+      val changes = links[r.itemId]?.let(byId::get)?.let {
+        JSONObject().put("itemId", it.itemId).put("content", it.content).put("meetingAt", it.meetingAt)
+      }
+      decisions.put(
+        JSONObject()
+          .put("itemId", r.itemId).put("meetingId", r.meetingId).put("meetingTitle", r.meetingTitle)
+          .put("meetingAt", r.meetingAt).put("content", r.content)
+          .put("itemType", r.itemType ?: JSONObject.NULL).put("status", r.status ?: JSONObject.NULL)
+          .put("changes", changes ?: JSONObject.NULL),
+      )
+    }
+
+    return JSONObject()
+      .put("tag", tag)
+      .put("meetings", meetings)
+      .put("open", open)
+      .put("decisions", decisions)
+      .toString()
   }
 
   // ---- User edits ------------------------------------------------------------------------

@@ -366,6 +366,54 @@ export interface ActionRow {
   done: boolean;
 }
 
+/** One of a thread's meetings (Phase 3). Newest first; only `archived_at IS NULL` meetings. */
+export interface ThreadMeeting {
+  id: string;
+  title: string;
+  createdAt: number;
+  template: string | null;
+}
+
+/** An action item, from any meeting in the thread, nobody has ticked off yet. */
+export interface ThreadOpenItem {
+  itemId: string;
+  meetingId: string;
+  meetingTitle: string;
+  meetingAt: number;
+  content: string;
+  itemType: string | null;
+  status: string | null;
+  dateNorm: number | null;
+}
+
+/** The earlier decision a later one "changes" — DecisionLinks.link's one link per decision. */
+export interface ThreadDecisionChange {
+  itemId: string;
+  content: string;
+  meetingAt: number;
+}
+
+/** A decision item, from any meeting in the thread, oldest first. */
+export interface ThreadDecision {
+  itemId: string;
+  meetingId: string;
+  meetingTitle: string;
+  meetingAt: number;
+  content: string;
+  itemType: string | null;
+  status: string | null;
+  /** Null for free, a model not yet downloaded, or a backfill that has not reached this item. */
+  changes: ThreadDecisionChange | null;
+}
+
+/**
+ * `AudioDb.threadJson`'s result, mirrored. A refusal is `NOT_PRO` only — the Kotlin gate runs
+ * before any table is touched, so there is nothing else for it to fail on.
+ */
+export type ThreadResult =
+  | { refusal: 'NOT_PRO' }
+  | { tag: string; meetings: ThreadMeeting[]; open: ThreadOpenItem[]; decisions: ThreadDecision[] };
+
 export interface StageProgress {
   meetingId: string;
   stage: PipelineStage;

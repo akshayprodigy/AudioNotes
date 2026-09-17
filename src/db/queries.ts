@@ -14,6 +14,7 @@ import type {
   MinuteKind,
   SearchHit,
   Speaker,
+  ThreadResult,
   Utterance,
 } from '../pipeline/types';
 
@@ -529,6 +530,10 @@ export const db = {
    */
   search: (term: string): Promise<SearchHit[]> =>
     Storage.search(term).then(r => JSON.parse(r) as SearchHit[]),
+
+  /** A thread: the meetings sharing one tag (Phase 3). Native decides the Pro refusal. */
+  thread: (tag: string): Promise<ThreadResult> =>
+    Storage.thread(tag).then(r => JSON.parse(r) as ThreadResult),
 
   /** Index meetings recorded before the index covered more than the transcript. Returns the backlog. */
   backfillSearch: (limit = 25) => Storage.backfillSearch(limit),

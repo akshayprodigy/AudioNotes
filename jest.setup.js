@@ -34,6 +34,8 @@ const mockNativeModules = {
     // The typed db layer in src/db parses this, so return a valid empty result set.
     query: jest.fn(async () => '[]'),
     search: jest.fn(async () => '[]'),
+    // A safe default: a screen that forgets to mock this sees the paywall, not data.
+    thread: jest.fn(async () => '{"refusal":"NOT_PRO"}'),
     reindex: jest.fn(async () => {}),
     // The meeting screen awaits this before its first read; a missing stub is an unhandled
     // rejection inside a component, not a clear error.

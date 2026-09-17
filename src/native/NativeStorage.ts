@@ -9,6 +9,11 @@ export interface Spec extends TurboModule {
   // Ranked full-text search across transcripts, minutes, titles and summaries (FTS5).
   // Returns a JSON array of SearchHit; see src/pipeline/types.ts.
   search(term: string): Promise<string>;
+  // A thread: the meetings sharing one tag (Phase 3, decision history + preparation) — what is
+  // still open across them, the decisions in order with "changes: …" links, and the meetings.
+  // Pro only: {"refusal":"NOT_PRO"} or a ThreadResult JSON (src/pipeline/types.ts). The refusal is
+  // decided natively (AudioDb.threadJson), before any table is touched.
+  thread(tag: string): Promise<string>;
   // Rebuild one meeting's search index. Any JS write of indexed content (a rename, an edit, a
   // hand-written action item) must follow with this — only native can touch the FTS table.
   reindex(meetingId: string): Promise<void>;
