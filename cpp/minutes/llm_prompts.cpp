@@ -174,10 +174,29 @@ std::string templateCoverageInstruction(const std::string& template_id) {
     names += sections[i];
   }
   return "Organise the account under these sections, in this order: " + names +
-         ". Write each as its own short paragraph that opens with the section's name and a "
-         "colon — for example \"" + sections[0] +
-         ": ...\". Use only what the record supports. When a section has nothing to say, leave "
-         "it out entirely rather than writing that nothing was discussed under it.\n";
+         ". Write each section as one short paragraph of full sentences. The paragraph begins "
+         "with the section's name and a colon, and its sentences follow on the same line — for "
+         "example \"" + sections[0] +
+         ": ...\" — never the name alone on a line, and never a list under it. Use only what the "
+         "record supports. When a section has nothing to say, leave it out entirely rather than "
+         "writing that nothing was discussed under it.\n";
+}
+
+// The one rule below the coverage instruction that a type changes. The general rule forbids
+// labelling any paragraph — that is what keeps the minutes form out. A templated prompt has just
+// asked for a label on every paragraph, and a rule two lines later forbidding it is a
+// contradiction a 1.5B model resolves however it likes (review, 17 Sep). So the templated rule
+// names the section openers as the one permitted label and forbids everything else as before.
+std::string templateLabelRule(const std::string& template_id) {
+  if (sectionsFor(template_id).empty()) {
+    return "- Do not open with a title such as \"Meeting Summary\", and do not head or label any "
+           "paragraph. No Topic line, no Date line, no Attendees line — not even to say they are "
+           "unknown. The first thing you write is the first sentence of the account.\n";
+  }
+  return "- Do not open with a title such as \"Meeting Summary\". The only labels are the section "
+         "names above, each at the start of its own paragraph and followed by a colon; no other "
+         "heading or label anywhere. No Topic line, no Date line, no Attendees line — not even to "
+         "say they are unknown. The first thing you write is the first section's name.\n";
 }
 }  // namespace
 
@@ -185,6 +204,7 @@ std::string narrativePrompt(const std::string& record, const std::string& langua
                             const std::string& template_id) {
   const std::string lang = languageDirective(language);
   const std::string coverage = templateCoverageInstruction(template_id);
+  const std::string labelRule = templateLabelRule(template_id);
   // "Write the minutes" is itself the trigger: asked for minutes, the model reaches for the
   // MINUTES FORM it has seen thousands of times and fills it in — "Meeting Minutes", a Date &
   // Time line, an Attendees list, a numbered Agenda. On the IPD meeting it shipped the literal
@@ -203,9 +223,7 @@ std::string narrativePrompt(const std::string& record, const std::string& langua
          "detail, leave it out.\n"
          "- Do not list who was there, and do not give anyone a name or a title that the record "
          "does not give them.\n"
-         "- Do not open with a title such as \"Meeting Summary\", and do not head or label any "
-         "paragraph. No Topic line, no Date line, no Attendees line — not even to say they are "
-         "unknown. The first thing you write is the first sentence of the account.\n"
+         + labelRule +
          "- Write about the MEETING, never about the record. Never write the words transcript, "
          "record, notes, or minutes.\n"
          "- Never say that something was not stated, not specified, not mentioned, not decided or "

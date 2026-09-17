@@ -115,6 +115,10 @@ features and the founder named it among the most important.
    changes). The section instruction is plain text after the RECORD block; it names the sections
    and says each is one short paragraph opening with the name and a colon, and that a section
    with nothing to say is left out entirely rather than written as "nothing was discussed".
+   *Amended in review, 17 Sep:* the shape is also enforced as a rule — `foldSections(text,
+   template_id)` in `templates.cpp`, run by `Narrator.clean` between `stripMarkdown` and
+   `stripLabels`, because the writer sometimes leaves a section name alone on a line and
+   `stripLabels` drops exactly that (see the report's §10).
    JNI: today `nativeLlmNarrativePrompt(record)` calls `narrativePrompt(s, "en")` through the
    `promptCall` helper in `audionotes_jni.cpp` (line ~1019); it gains a `jstring jTemplate`
    parameter and the Kotlin extern in `NativeBridge.kt` gains it too. Language stays "en".

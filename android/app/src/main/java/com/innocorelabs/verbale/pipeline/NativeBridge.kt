@@ -296,6 +296,14 @@ object NativeBridge {
 
   external fun nativeStripLabels(text: String): String
 
+  /**
+   * Phase 2 (templates): a section name alone on a line — bare, with a colon, or what
+   * stripMarkdown left of a "### name" header — folded with the lines under it into the one
+   * "Name: sentences." paragraph the prompt asked for, bullets removed. Identity for "general".
+   * Runs between stripMarkdown and stripLabels, because stripLabels drops a bare label line.
+   */
+  external fun nativeFoldSections(text: String, template: String): String
+
   external fun nativeDropAbsenceTail(text: String): String
 
   /**

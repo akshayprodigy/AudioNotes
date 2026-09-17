@@ -278,6 +278,22 @@ class NativePipelineTest {
    *
    * No model and no recording: this is a string crossing a boundary.
    */
+  /**
+   * Phase 2 (templates): the section fold crosses the seam and does what test_templates pins on
+   * the Mac — a bare "blockers:" over a bullet becomes the one paragraph the prompt asked for, and
+   * "general" folds nothing. No model and no recording: a string crossing a boundary.
+   */
+  @Test
+  fun the_section_fold_crosses_the_jni_seam() {
+    val raw = "blockers:\n- the phone is with QA."
+    assertEquals("Blockers: The phone is with QA.", NativeBridge.nativeFoldSections(raw, "standup"))
+    assertEquals(raw, NativeBridge.nativeFoldSections(raw, "general"))
+    // And what Narrator.clean makes of it: the folded paragraph survives stripLabels, the bare
+    // label alone does not — the whole reason the fold sits before it.
+    assertEquals("Blockers: The phone is with QA.", NativeBridge.nativeStripLabels(NativeBridge.nativeFoldSections(raw, "standup")))
+    assertEquals("- the phone is with QA.", NativeBridge.nativeStripLabels(raw))
+  }
+
   @Test
   fun the_transcript_fence_crosses_the_jni_seam_intact() {
     val marker = "\uE000"

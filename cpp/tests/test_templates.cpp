@@ -56,6 +56,74 @@ static void narrativePromptWithAClientTemplateNamesEverySection() {
   CHECK(n.find("RECORD OF A MEETING") != std::string::npos);
 }
 
+// The rules under a templated prompt must not forbid what its coverage instruction just asked
+// for. Found in review 17 Sep: the section instruction said "open each paragraph with the
+// section's name and a colon" while the shared rule two lines down said "do not head or label any
+// paragraph" — a 1.5B model reading both is entitled to drop the openers, which is the whole
+// product. The general prompt keeps the original rule, byte for byte.
+static void aTemplatedPromptDoesNotForbidItsOwnSectionOpeners() {
+  const std::string general = narrativePrompt("We discussed the roadmap.", "en", "general");
+  const std::string client = narrativePrompt("They asked for a quote.", "en", "client");
+  const std::string forbid = "do not head or label any paragraph";
+  CHECK(general.find(forbid) != std::string::npos);
+  CHECK(client.find(forbid) == std::string::npos);
+  CHECK(client.find("The only labels are the section names above") != std::string::npos);
+}
+
+// ---- foldSections: the shape the phone shows is a rule, not the model's mood ----------------
+//
+// Measured on the Mac (17 Sep, Qwen 1.5B, greedy): asked for "Done since last time: <sentences>"
+// paragraphs, the model wrote the section name alone on a line with bullets under it on one
+// prompt, and as a "### name" markdown header over a paragraph on another. Narrator.clean then
+// runs stripLabels, which drops any short line ending in a colon — the section names vanished
+// and the bullets stayed. So the fold runs between stripMarkdown and stripLabels and rebuilds
+// every section as the one paragraph the prompt asked for.
+
+static void foldTurnsAHeaderAndItsBulletsIntoOneParagraph() {
+  const std::string in =
+      "done since last time:\n- export screen completed.\n- pdf renderer working on pixel\n\n"
+      "planned next:\n- paywall copy.\n\n"
+      "blockers:\n- licence server returns 500 on refresh.";
+  const std::string want =
+      "Done since last time: Export screen completed. Pdf renderer working on pixel.\n\n"
+      "Planned next: Paywall copy.\n\n"
+      "Blockers: Licence server returns 500 on refresh.";
+  CHECK(foldSections(in, "standup") == want);
+}
+
+static void foldRecognisesAHeaderWithoutAColonOverProse() {
+  // What stripMarkdown leaves of "### planned next\nSpeaker 3 is reviewing ...".
+  const std::string in =
+      "done since last time\nyesterday, speaker 1 finished the export screen.\n\n"
+      "planned next\nspeaker 3 is reviewing the pull request.";
+  const std::string want =
+      "Done since last time: Yesterday, speaker 1 finished the export screen.\n\n"
+      "Planned next: Speaker 3 is reviewing the pull request.";
+  CHECK(foldSections(in, "standup") == want);
+}
+
+static void foldLeavesAnInlineOpenerAndItsParagraphAlone() {
+  const std::string in =
+      "Done since last time: The meeting decided on the vendor code format.\n\n"
+      "Planned next: Ravi is checking with finance.";
+  CHECK(foldSections(in, "standup") == in);
+}
+
+static void foldKeepsProseBeforeTheFirstHeaderAndIsIdentityForGeneral() {
+  const std::string in = "The team met briefly.\n\nblockers:\n- the phone is with QA.";
+  CHECK(foldSections(in, "standup") == "The team met briefly.\n\nBlockers: The phone is with QA.");
+  CHECK(foldSections(in, "general") == in);
+  CHECK(foldSections(in, "") == in);
+}
+
+static void foldedOutputSurvivesStripLabels() {
+  // The whole reason the fold exists: stripLabels drops "blockers:" alone on a line, and keeps
+  // "Blockers: The phone is with QA." because it ends the sentence it opens.
+  const std::string in = "blockers:\n- the phone is with QA.";
+  CHECK(stripLabels(in).find("lockers") == std::string::npos);
+  CHECK(stripLabels(foldSections(in, "standup")) == "Blockers: The phone is with QA.");
+}
+
 static void twoArgNarrativePromptEqualsThreeArgWithGeneral() {
   const std::string record = "We discussed the roadmap.";
   CHECK(narrativePrompt(record, "en") == narrativePrompt(record, "en", "general"));
@@ -67,6 +135,12 @@ int main() {
   anUnknownIdBehavesAsGeneral();
   everySevenIdsAreInTableOrder();
   narrativePromptWithAClientTemplateNamesEverySection();
+  aTemplatedPromptDoesNotForbidItsOwnSectionOpeners();
+  foldTurnsAHeaderAndItsBulletsIntoOneParagraph();
+  foldRecognisesAHeaderWithoutAColonOverProse();
+  foldLeavesAnInlineOpenerAndItsParagraphAlone();
+  foldKeepsProseBeforeTheFirstHeaderAndIsIdentityForGeneral();
+  foldedOutputSurvivesStripLabels();
   twoArgNarrativePromptEqualsThreeArgWithGeneral();
   if (failures) {
     std::fprintf(stderr, "test_templates: %d failure(s)\n", failures);

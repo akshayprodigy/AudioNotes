@@ -39,6 +39,7 @@
 #include "minutes/evidence_record.h"
 #include "minutes/llm_minutes.h"
 #include "minutes/minutes_extractor.h"
+#include "minutes/templates.h"
 #include "vad/silero_vad.h"
 
 namespace {
@@ -1024,6 +1025,21 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeLlmNarrativePrompt(
   try {
     return env->NewStringUTF(
         audionotes::narrativePrompt(jstr(env, jRecord), "en", jstr(env, jTemplate)).c_str());
+  } catch (const std::exception& e) {
+    throwRuntime(env, e.what());
+    return env->NewStringUTF("");
+  }
+}
+
+// Phase 2 (templates): the narrative's section shape as a rule (templates.h foldSections). Runs in
+// Narrator.clean between stripMarkdown and stripLabels; two arguments, so the same inlined shape
+// as nativeLlmNarrativePrompt above.
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeFoldSections(
+    JNIEnv* env, jobject /*thiz*/, jstring jText, jstring jTemplate) {
+  try {
+    return env->NewStringUTF(
+        audionotes::foldSections(jstr(env, jText), jstr(env, jTemplate)).c_str());
   } catch (const std::exception& e) {
     throwRuntime(env, e.what());
     return env->NewStringUTF("");

@@ -1,5 +1,6 @@
 #include "minutes/templates.h"
 
+#include <cctype>
 #include <unordered_map>
 
 namespace audionotes {
@@ -35,6 +36,101 @@ std::vector<std::string> sectionsFor(const std::string& template_id) {
   const auto it = table.find(template_id);
   if (it == table.end()) return {};
   return it->second;
+}
+
+namespace {
+
+std::string trimmed(const std::string& s) {
+  const std::size_t a = s.find_first_not_of(" \t\r\n");
+  if (a == std::string::npos) return "";
+  const std::size_t b = s.find_last_not_of(" \t\r\n");
+  return s.substr(a, b - a + 1);
+}
+
+std::string lowered(std::string s) {
+  for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  return s;
+}
+
+// The section this line is the bare header of, or -1. "blockers", "Blockers:", "BLOCKERS :" all
+// count; "Blockers: the phone is with QA." does not — that is the shape wanted, left alone.
+int headerIndex(const std::string& line, const std::vector<std::string>& sections) {
+  std::string t = trimmed(line);
+  if (!t.empty() && t.back() == ':') t = trimmed(t.substr(0, t.size() - 1));
+  const std::string lt = lowered(t);
+  for (std::size_t i = 0; i < sections.size(); ++i) {
+    if (lt == lowered(sections[i])) return static_cast<int>(i);
+  }
+  return -1;
+}
+
+// A bullet or numbered-list marker at the start of a line, removed; the fragment capitalised and
+// ended with a full stop when it has no end of its own.
+std::string fragment(const std::string& line) {
+  std::string t = trimmed(line);
+  if (t.size() >= 2 && (t[0] == '-' || t[0] == '*' || t[0] == '+') && t[1] == ' ') t = trimmed(t.substr(2));
+  else if (t.rfind("\xE2\x80\xA2", 0) == 0) t = trimmed(t.substr(3));  // "•"
+  else {
+    std::size_t i = 0;
+    while (i < t.size() && std::isdigit(static_cast<unsigned char>(t[i]))) ++i;
+    if (i > 0 && i < t.size() && (t[i] == '.' || t[i] == ')') && i + 1 < t.size() && t[i + 1] == ' ') {
+      t = trimmed(t.substr(i + 2));
+    }
+  }
+  if (t.empty()) return t;
+  t[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(t[0])));
+  const char last = t.back();
+  if (last != '.' && last != '!' && last != '?' && last != ':' && last != ';' && last != ',') t += '.';
+  return t;
+}
+
+}  // namespace
+
+std::string foldSections(const std::string& text, const std::string& template_id) {
+  const auto sections = sectionsFor(template_id);
+  if (sections.empty()) return text;
+
+  std::vector<std::string> lines;
+  for (std::size_t start = 0;;) {
+    const std::size_t nl = text.find('\n', start);
+    if (nl == std::string::npos) { lines.push_back(text.substr(start)); break; }
+    lines.push_back(text.substr(start, nl - start));
+    start = nl + 1;
+  }
+
+  // Nothing to fold: the text is returned byte for byte, so a narrative already in shape (or
+  // one with no headers at all) is untouched, blank lines and all.
+  bool anyHeader = false;
+  for (const auto& l : lines) if (headerIndex(l, sections) >= 0) { anyHeader = true; break; }
+  if (!anyHeader) return text;
+
+  std::vector<std::string> paragraphs;
+  std::string before;    // the lines before the first header, verbatim
+  std::string current;   // the paragraph being folded, "" when not inside a section
+  bool inSection = false;
+  for (const auto& l : lines) {
+    const int h = headerIndex(l, sections);
+    if (h >= 0) {
+      if (inSection) paragraphs.push_back(current);
+      else if (!trimmed(before).empty()) paragraphs.push_back(trimmed(before));
+      current = sections[static_cast<std::size_t>(h)] + ":";
+      inSection = true;
+      continue;
+    }
+    if (!inSection) { before += l; before += '\n'; continue; }
+    const std::string f = fragment(l);
+    if (f.empty()) continue;
+    current += ' ';
+    current += f;
+  }
+  if (inSection) paragraphs.push_back(current);
+
+  std::string out;
+  for (std::size_t i = 0; i < paragraphs.size(); ++i) {
+    if (i) out += "\n\n";
+    out += paragraphs[i];
+  }
+  return out;
 }
 
 }  // namespace audionotes

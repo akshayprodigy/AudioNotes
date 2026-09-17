@@ -288,6 +288,19 @@ target_include_directories(test_ask_live PRIVATE ${TP}/llama.cpp/include)
 target_compile_definitions(test_ask_live PRIVATE HAVE_LLAMA=1)
 target_link_libraries(test_ask_live PRIVATE llama ${CMAKE_DL_LIBS})
 
+# Phase 2 (templates): a stand-up narrative against the real writer on the Mac (skips itself
+# without the file). Links llm_prompts + templates the way the .so does.
+audionotes_add_test(test_narrate_live
+  ${CORE}/tests/test_narrate_live.cpp
+  ${CORE}/llm/llama_engine.cpp
+  ${CORE}/minutes/llm_prompts.cpp
+  ${CORE}/minutes/templates.cpp
+  ${CORE}/minutes/fence.cpp
+  ${CORE}/util/utf8.cpp)
+target_include_directories(test_narrate_live PRIVATE ${TP}/llama.cpp/include)
+target_compile_definitions(test_narrate_live PRIVATE HAVE_LLAMA=1)
+target_link_libraries(test_narrate_live PRIVATE llama ${CMAKE_DL_LIBS})
+
 # Sub-project 5: the Ask prompt and its validator, off a device and off a model.
 audionotes_add_test(test_ask
   ${CORE}/tests/test_ask.cpp

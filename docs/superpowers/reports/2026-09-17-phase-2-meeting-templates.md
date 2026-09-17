@@ -237,3 +237,66 @@ device-only bug, so §7 below asks the founder to run it.
 1. `2643951` — feat(templates): the type lives on the meeting — schema, the C++ sections table, the suggester
 2. `d03c143` — feat(templates): the Summary chip and its sheet — choose a type, on Pro it rewrites
 3. `25a4605` — test(templates): device tests — the tag join, the chosen-guard, a standup narrative on the phone
+
+## 10. Review — 17 Sep, before the founder's by-hand run
+
+*By the Opus session that wrote the brief, against the four commits above. Everything in §1–§9
+was re-run here, not taken on trust: the gate (117 s, all clear), the two Kotlin template suites
+forced to execute rather than read from Gradle's cache, and the code of every §2 file read against
+§2 of the brief. The design matches the brief in every decision; the cue lists, threshold and
+speaker nudge are the brief's to the letter; backup carries both columns and the tag memory
+(whole-table copy); the Sheet closes itself before it calls the row's action.*
+
+**One defect, found and fixed (`test_narrate_live` + `foldSections`).** The section shape did not
+survive the phone's own cleaning on list-shaped content. Measured on the Mac with the real writer
+(Qwen 1.5B, greedy, the phone's sampler): given a three-person stand-up, the model wrote each
+section name **alone on a line** — over bullets with one prompt wording, as a `### name` markdown
+header over prose with another. `Narrator.clean` then runs `stripLabels`, which drops any short
+line ending in a colon (that rule exists to kill "What was settled:" form labels). Result on the
+phone: the bullets stay, the section names vanish. §6's device test passed only because its
+fixture is a discussion, which the model narrates as inline "Done since last time: …" paragraphs;
+§7 step 3 — a spoken stand-up — is exactly the content that would have failed.
+
+Fixed as a rule, not by asking the model harder (that was tried and it merely changed which wrong
+shape came back): `foldSections(text, template_id)` in `cpp/minutes/templates.cpp` runs between
+`stripMarkdown` and `stripLabels` and rebuilds any bare section-name line and what follows it into
+the one `Name: sentences.` paragraph the prompt asked for, bullets removed, identity for
+`general`. Wired through `NativeBridge.nativeFoldSections` into `Narrator.clean(raw, template)` —
+the narrative only; summary and headline are untouched. The templated prompt's label rule was also
+made consistent with its coverage instruction (it said "open each paragraph with the section's
+name" two lines above "do not head or label any paragraph"; the general prompt is byte-identical
+to before, pinned).
+
+| Test | What it pins | Mutant → result |
+|---|---|---|
+| `test_templates`: `aTemplatedPromptDoesNotForbidItsOwnSectionOpeners` | the templated rule text; the general rule unchanged | label rule ignores the type → fails (only this test; `test_llm_minutes` does not pin that rule) |
+| `test_templates`: five `fold*` cases | header+bullets → one paragraph; `### name` (post-stripMarkdown) → same; inline openers untouched; prose before the first header kept; identity for general; the folded line survives `stripLabels`, the bare one does not | `foldSections` not written → 5 compile errors (the red step); newline not trimmed in the preamble → 1 fails (seen, fixed) |
+| `test_narrate_live` (new; skips without `VERBALE_LLM_GGUF`, which the gate exports) | the real writer on a stand-up and a client call, judged **after** `stripMarkdown → foldSections → stripLabels`: 3 of 3 and 4 of 4 openers shown, no bullet lines, no "Meeting Summary"/"Attendees" | — (live; the raw and cleaned prose is printed so a change is seen) |
+| `NativePipelineTest#the_section_fold_crosses_the_jni_seam` (device) | the JNI two-string seam; the fold-then-strip and strip-alone results side by side | — |
+
+Gate after the fix: all clear in 143 s (28/28 C++, 491 jest, 290 Kotlin). Pixel 7 Pro:
+`NativePipelineTest` **16/16**, and the stand-up narration, verbatim from the phone with the fold
+in place:
+
+> *Done since last time: The vendor code format needs to be decided before Friday.*
+>
+> *Planned next: We will draft the mapping table for existing vendors and send it out tomorrow.*
+>
+> *Blockers: Migrating codes means reissuing purchase orders, which finance must approve first. If
+> that is not acceptable, we keep the old codes for existing vendors and accept the inconsistency.*
+
+**One calibration question, not changed — the founder's call.** The suggester's threshold is the
+brief's: 1.5 cue hits per hundred words. Measured against the eleven real general meetings in
+`eval/fixtures` (AMI design meetings and EdAcc conversations, 16–37 min), the noise floor is
+0.00–0.14 per hundred words, so 1.5 never suggests a type wrongly — but it also means a real
+30-minute client call (~4,000 words) needs 60 cue hits to be suggested "Client call", and a
+five-person stand-up sits at about 1.5 on the nose. In practice the rule fires on short
+recordings and stays "General" on long ones unless a tag remembers the type. The trade-off is
+asymmetric: a false suggestion reshapes a Pro user's minutes, a miss is today's behaviour. If the
+founder wants the rule to fire on real-length meetings, the change is: threshold 0.5, at least
+four hits, speaker nudge ±0.4 — constants, the golden's `note`, two golden rows, and brief §4 — and
+it should be judged on a few real recordings of the founder's own, which this repository does not
+have. §7 step 3 (a short spoken stand-up) passes at either setting, so it does not inform this.
+
+**Cosmetic, seen in review, left:** the client-call narrative on the Mac came back as four
+single-newline-separated paragraphs (the model's own spacing); the MOM tab renders it either way.

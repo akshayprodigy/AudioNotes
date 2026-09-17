@@ -73,10 +73,20 @@ object Narrator {
    * Order matters: strip the markup, then the labels it was hiding under, then the closing
    * caveat, and only then cut to a whole sentence — so trimming is the last word.
    */
-  private fun clean(raw: String): String =
+  private fun clean(raw: String): String = clean(raw, "general")
+
+  /**
+   * The narrative's clean, with its meeting type: the section fold (NativeBridge.nativeFoldSections)
+   * sits between stripMarkdown and stripLabels, because a section name the model left alone on a
+   * line is exactly what stripLabels drops as a form label. "general" folds nothing, so the
+   * summary and the headline — which have no sections — go through the same chain unchanged.
+   */
+  private fun clean(raw: String, template: String): String =
     NativeBridge.nativeTrimToSentence(
       NativeBridge.nativeDropAbsenceTail(
-        NativeBridge.nativeStripLabels(NativeBridge.nativeStripMarkdown(raw)),
+        NativeBridge.nativeStripLabels(
+          NativeBridge.nativeFoldSections(NativeBridge.nativeStripMarkdown(raw), template),
+        ),
       ),
     )
 
@@ -306,7 +316,7 @@ object Narrator {
       // Summary tab picks up the new one without a second narration pass.
       val template = db.template(meetingId) ?: "general"
       val narrative =
-        clean(gen(NativeBridge.nativeLlmNarrativePrompt(source, template), NARRATIVE_TOKENS))
+        clean(gen(NativeBridge.nativeLlmNarrativePrompt(source, template), NARRATIVE_TOKENS), template)
       if (narrative.isEmpty()) {
         Log.w(TAG, "no narrative produced for $meetingId")
         return false
