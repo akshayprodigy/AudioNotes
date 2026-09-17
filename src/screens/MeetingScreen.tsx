@@ -15,6 +15,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { highlightsFor, type Mark } from './meeting/highlights';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { db } from '../db/queries';
+import { countsExcluding } from './threadData';
 import { PipelineController } from '../pipeline/PipelineController';
 import { shouldOfferPaywall } from '../billing/trial';
 import FileExport from '../native/NativeFileExport';
@@ -119,6 +120,8 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const [tags, setTags] = useState<string[]>([]);
   const [tagging, setTagging] = useState(false);
   const [edits, setEdits] = useState<EditMap>(new Map());
+  /** Up to three of this meeting's tags with another meeting in their thread (Phase 3). */
+  const [threads, setThreads] = useState<{ tag: string; open: number; decisions: number }[]>([]);
 
   /**
    * What the edit prompt is currently pointed at, or null.
@@ -288,6 +291,36 @@ export default function MeetingScreen({ route, navigation }: Props) {
   // Marks are moments; the words at each moment are resolved here, at render time, so a
   // reprocess that rewrites the transcript never touches the mark — see highlightsFor.
   const highlights = useMemo(() => highlightsFor(marks, utterances), [marks, utterances]);
+
+  /**
+   * The Summary tab's thread lines (Phase 3): up to three of this meeting's tags, alphabetical —
+   * `tags` is already in that order (AudioDb.tagsFor's ORDER BY name) — each resolved to counts
+   * that EXCLUDE this meeting's own rows, so the line says what is earlier, not what this meeting
+   * itself just produced. A tag whose thread has no other meeting, or a `NOT_PRO` refusal, drops
+   * out via countsExcluding rather than being shown as zero.
+   */
+  useEffect(() => {
+    let alive = true;
+    if (tags.length === 0) {
+      setThreads([]);
+      return;
+    }
+    Promise.all(tags.slice(0, 3).map(tag => db.thread(tag).then(r => ({ tag, counts: countsExcluding(meetingId, r) }))))
+      .then(rows => {
+        if (!alive) return;
+        setThreads(
+          rows
+            .filter((r): r is { tag: string; counts: { open: number; decisions: number } } => r.counts !== null)
+            .map(r => ({ tag: r.tag, ...r.counts })),
+        );
+      })
+      .catch(() => {
+        if (alive) setThreads([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [tags, meetingId]);
   const onRemoveMark = useCallback(
     (id: number) => {
       db.removeMark(id)
@@ -1146,6 +1179,8 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 onRevert={kind => onRevertEdit(kind, DOC_KEY)}
                 onUpgrade={openPaywall}
                 writing={reprocessing}
+                threads={threads}
+                onOpenThread={tag => navigation.navigate('Thread', { tag })}
               />
             ) : tab === 'mom' ? (
               <MinutesTab

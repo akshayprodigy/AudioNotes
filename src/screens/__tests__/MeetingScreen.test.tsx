@@ -276,6 +276,42 @@ test('choosing a meeting type writes it and remembers it for the meeting\'s tags
 });
 
 /**
+ * The Summary tab's thread lines (Phase 3): MeetingScreen resolves db.thread per tag and hands
+ * SummaryTab counts with this meeting's OWN rows excluded — the line says what is earlier, not
+ * what this meeting itself just produced.
+ */
+describe('the thread line MeetingScreen resolves for the Summary tab', () => {
+  const SummaryTab = require('../meeting/SummaryTab').default;
+
+  test("this meeting's own decision is excluded from the count", async () => {
+    (db.tagsFor as jest.Mock).mockResolvedValue(['weekly']);
+    (db.thread as jest.Mock).mockResolvedValue({
+      tag: 'weekly',
+      meetings: [
+        { id: 'm2', title: 'Weekly', createdAt: 2, template: null },
+        { id: 'm1', title: 'Standup', createdAt: 1, template: null },
+      ],
+      open: [],
+      decisions: [
+        { itemId: 'd1', meetingId: 'm1', meetingTitle: 'Standup', meetingAt: 1, content: "This meeting's own decision", itemType: null, status: null, changes: null },
+        { itemId: 'd2', meetingId: 'm2', meetingTitle: 'Weekly', meetingAt: 2, content: 'An earlier decision', itemType: null, status: null, changes: null },
+      ],
+    });
+    const tree = await render();
+    const summaryTab = tree.root.findByType(SummaryTab);
+    expect(summaryTab.props.threads).toEqual([{ tag: 'weekly', open: 0, decisions: 1 }]);
+  });
+
+  test('a NOT_PRO refusal resolves to no threads at all', async () => {
+    (db.tagsFor as jest.Mock).mockResolvedValue(['weekly']);
+    (db.thread as jest.Mock).mockResolvedValue({ refusal: 'NOT_PRO' });
+    const tree = await render();
+    const summaryTab = tree.root.findByType(SummaryTab);
+    expect(summaryTab.props.threads).toEqual([]);
+  });
+});
+
+/**
  * A moment marked while recording comes back as a highlight: the sentence said there, on the
  * Summary tab, with its anchor. The resolution rule lives in highlightsFor and has its own tests;
  * this pins that the screen reads marks at all and hands them to the tab.
