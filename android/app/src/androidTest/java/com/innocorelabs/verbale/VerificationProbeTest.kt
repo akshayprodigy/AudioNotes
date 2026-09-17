@@ -20,7 +20,8 @@ class VerificationProbeTest {
     val db = AudioDb.get(ctx)
     val meetings = JSONArray(
       db.rawQueryJson(
-        "SELECT id, title, status, duration_ms, embedded_at, tier_used FROM meetings ORDER BY created_at DESC LIMIT 3",
+        "SELECT id, title, status, duration_ms, embedded_at, tier_used, template, template_source " +
+          "FROM meetings ORDER BY created_at DESC LIMIT 3",
         arrayOf(),
       ),
     )
@@ -28,7 +29,8 @@ class VerificationProbeTest {
       val m = meetings.getJSONObject(i)
       val id = m.getString("id")
       println("PROBE meeting $id status=${m.optString("status")} title=${m.optString("title")} " +
-        "duration=${m.optLong("duration_ms")} embedded_at=${m.opt("embedded_at")} tier=${m.optString("tier_used")}")
+        "duration=${m.optLong("duration_ms")} embedded_at=${m.opt("embedded_at")} tier=${m.optString("tier_used")} " +
+        "template=${m.opt("template")} template_source=${m.opt("template_source")}")
       val items = JSONArray(
         db.rawQueryJson(
           "SELECT id, kind, text, review, item_type, status, owner_json, date_said, date_norm, gen_version " +

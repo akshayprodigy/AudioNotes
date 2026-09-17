@@ -71,6 +71,10 @@ CLASSES=(
   # count, the meaning-index marker reset by every writer of words, search_vec swept by hand.
   # FTS5 and SQLCipher from end to end, so not a JVM test.
   com.innocorelabs.verbale.SearchIndexDbTest
+  # Meeting templates (Phase 2, sub-project 6a): the tag join behind rememberTemplateForTags /
+  # rememberedTemplate, and the templateSource='chosen' guard that keeps a suggestion pass from
+  # overwriting a person's own pick. Real SQLCipher and the `tags` table, so not a JVM test.
+  com.innocorelabs.verbale.TemplatesDbTest
 )
 
 if ! "$ADB" devices | grep -qE "device$"; then

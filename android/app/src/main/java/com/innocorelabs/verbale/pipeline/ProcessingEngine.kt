@@ -321,15 +321,10 @@ class ProcessingEngine(
         // Cheap and synchronous — a cue-word scan over utterances already in memory, no model —
         // so it carries none of the awaitClearance/stageDone ceremony narration and embedding
         // below need, and a failure here costs the meeting a label, never the minutes.
-        if (db.templateSource(meetingId) != AudioDb.TemplateSource.CHOSEN) {
-          try {
-            val transcript = utts.joinToString(" ") { it.text }
-            val remembered = db.rememberedTemplate(db.tagsFor(meetingId))
-            val suggested = TemplateSuggester.suggest(transcript, speakers.size, remembered)
-            db.setTemplate(meetingId, suggested, AudioDb.TemplateSource.SUGGESTED)
-          } catch (e: Throwable) {
-            Log.w(TAG, "template suggestion failed for $meetingId", e)
-          }
+        try {
+          suggestTemplate(db, meetingId, utts, speakers.size)
+        } catch (e: Throwable) {
+          Log.w(TAG, "template suggestion failed for $meetingId", e)
         }
 
         stageDone("minutes", tMinutes, pMinutes)
@@ -586,6 +581,20 @@ class ProcessingEngine(
 
   companion object {
     private const val TAG = "AudioPipeline"
+
+    /**
+     * Phase 2 (sub-project 6a): suggest a meeting's type from its transcript, unless a person
+     * already chose one — the exact guard [run] applies, pulled out to a plain function so
+     * TemplatesDbTest can call it directly without a transcript pass. Never over `chosen`: that
+     * is the one value TemplateSuggester's own answer must not replace.
+     */
+    internal fun suggestTemplate(db: AudioDb, meetingId: String, utts: List<Utt>, speakerCount: Int) {
+      if (db.templateSource(meetingId) == AudioDb.TemplateSource.CHOSEN) return
+      val transcript = utts.joinToString(" ") { it.text }
+      val remembered = db.rememberedTemplate(db.tagsFor(meetingId))
+      val suggested = TemplateSuggester.suggest(transcript, speakerCount, remembered)
+      db.setTemplate(meetingId, suggested, AudioDb.TemplateSource.SUGGESTED)
+    }
 
     // Mirrors the JS-generated-title guard in PipelineController.retitleFromTranscript exactly:
     // / meeting · /.test(current) — a space, "meeting", a middle-dot, a space.

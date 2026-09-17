@@ -288,7 +288,7 @@ class NativePipelineTest {
       "digest" to NativeBridge.nativeLlmDigestPrompt(spoken),
       // Its parameter WAS called `notes` — this commit's parent renamed it to `record` — and for
       // a meeting that fits one chunk, most of them, Narrator hands it the dialogue itself.
-      "narrative" to NativeBridge.nativeLlmNarrativePrompt(spoken),
+      "narrative" to NativeBridge.nativeLlmNarrativePrompt(spoken, "general"),
     )
     for ((name, prompt) in prompts) {
       val open = prompt.indexOf(marker)
@@ -578,6 +578,45 @@ class NativePipelineTest {
       } finally {
         NativeBridge.nativeLlmFree(handle)
       }
+    } finally {
+      db.deleteMeeting(id)
+    }
+  }
+
+  /**
+   * Phase 2 (sub-project 6a): a chosen type reaches the phone's own narrator, not just the
+   * desktop test_templates. The jfk fixture is one sentence and refuses to narrate at all
+   * (MIN_TRANSCRIPT_CHARS); this reuses seedTranscript's multi-sentence meeting, same as
+   * narration_writes_a_summary_a_narrative_and_a_headline above.
+   */
+  @Test
+  fun narration_with_a_template_covers_at_least_two_of_its_sections() {
+    val gguf = ModelCatalog.fileFor(ctx, "llm-qwen")?.takeIf { it.exists() }
+    assumeTrue("Qwen GGUF not installed", gguf != null)
+
+    val db = AudioDb.get(ctx)
+    val id = newMeeting(db, "narrate-tpl")
+    try {
+      seedTranscript(db, id)
+      db.setTemplate(id, "standup", AudioDb.TemplateSource.CHOSEN)
+
+      val narrated = Narrator.run(ctx, id, object : Narrator.Progress {
+        override fun onStage(stage: String, done: Int, total: Int) {}
+        override fun isCancelled() = false
+      })
+      assertTrue("narration produced nothing", narrated)
+
+      val narrative = db.minutesBySource(id, "llm").firstOrNull { it.kind == "narrative" }
+      println("NARRATE (standup) narrative: ${narrative?.content}")
+      assertTrue("no narrative row", narrative != null && narrative.content.isNotBlank())
+
+      val lower = narrative!!.content.lowercase()
+      val sections = listOf("done since last time", "planned next", "blockers")
+      val hit = sections.count { lower.contains(it) }
+      assertTrue(
+        "expected at least two of $sections in the standup narrative, found $hit: ${narrative.content}",
+        hit >= 2,
+      )
     } finally {
       db.deleteMeeting(id)
     }
