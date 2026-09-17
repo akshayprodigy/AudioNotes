@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -27,22 +28,27 @@ export default function ThreadScreen({ route, navigation }: Props) {
   const insets = useSafeAreaInsets();
   const [result, setResult] = useState<Loaded | null>(null);
 
-  useEffect(() => {
-    let alive = true;
-    db.thread(tag)
-      .then(r => {
-        if (!alive) return;
-        if ('refusal' in r) {
-          navigation.navigate('Paywall');
-          return;
-        }
-        setResult(r);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [tag, navigation]);
+  // The current state each time the screen is focused (§2.4 of the brief) — ticking an action or
+  // adding a decision happens on the meeting screen, and this is what picks it up on the way
+  // back, the way ActionsScreen's own worklist does.
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      db.thread(tag)
+        .then(r => {
+          if (!alive) return;
+          if ('refusal' in r) {
+            navigation.navigate('Paywall');
+            return;
+          }
+          setResult(r);
+        })
+        .catch(() => {});
+      return () => {
+        alive = false;
+      };
+    }, [tag, navigation]),
+  );
 
   const openMeeting = (meetingId: string) => navigation.navigate('Meeting', { meetingId });
 

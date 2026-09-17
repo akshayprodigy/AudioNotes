@@ -8,6 +8,12 @@ jest.mock('../../db/queries');
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
+// The thread screen re-reads on every focus (§2.4 of the brief), the way ActionsScreen does;
+// outside a real navigator that hook needs a stand-in, and running the callback on mount is
+// exactly what focusing the screen does.
+jest.mock('@react-navigation/native', () => ({
+  useFocusEffect: (cb: () => void | (() => void)) => require('react').useEffect(cb, [cb]),
+}));
 
 const nav = { navigate: jest.fn(), goBack: jest.fn() } as any;
 const route = { key: 'thread', name: 'Thread', params: { tag: 'ops' } } as any;
