@@ -2,8 +2,13 @@ import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 import ActionsScreen from '../ActionsScreen';
 import { db } from '../../db/queries';
+import { entitlement } from '../../billing/trial';
 
 jest.mock('../../db/queries');
+jest.mock('../../billing/trial', () => ({
+  __esModule: true,
+  entitlement: jest.fn(),
+}));
 
 // The screen loads its rows from useFocusEffect; outside a navigator that hook needs a stand-in,
 // and running the callback on mount is exactly what focusing the screen does.
@@ -45,6 +50,19 @@ beforeEach(() => {
   (db.allActions as jest.Mock).mockResolvedValue([action]);
   (db.doneItemIds as jest.Mock).mockResolvedValue(new Set<string>());
   (db.setItemDone as jest.Mock).mockResolvedValue(undefined);
+  (entitlement as jest.Mock).mockResolvedValue({ paid: true });
+});
+
+/**
+ * The cross-meeting worklist is Pro (the founder's 17 Sep word). A deep link or a stale library
+ * button must not be the only thing standing between a free user and everyone's to-do list, so the
+ * screen checks for itself, on mount — the same shape AskScreen's own refusal sends a free user to.
+ */
+test('on free the screen navigates to Paywall on mount', async () => {
+  (entitlement as jest.Mock).mockResolvedValue({ paid: false });
+  const tree = await render();
+  expect(nav.navigate).toHaveBeenCalledWith('Paywall');
+  await act(async () => tree.unmount());
 });
 
 /**

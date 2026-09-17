@@ -1,10 +1,11 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, LayoutAnimation, Pressable, StyleSheet, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import type { ActionRow } from '../pipeline/types';
+import { entitlement } from '../billing/trial';
 import { db } from '../db/queries';
 import { loadActions } from './actionsData';
 import { sentenceCase, splitAction } from './meeting/shared';
@@ -91,6 +92,18 @@ export default function ActionsScreen({ navigation }: Props) {
     setRows(items);
     setLoaded(true);
   }, []);
+
+  // The cross-meeting worklist is Pro (the founder's 17 Sep word: "we do not give them ... the
+  // to-do list, otherwise why buy Pro"). Free never sees the data — the library's own header
+  // button already reads "Actions (Pro)" and would normally stop them here, but a deep link or a
+  // stale button must not be the only thing standing in the way.
+  useEffect(() => {
+    entitlement()
+      .then(ent => {
+        if (!ent.paid) navigation.navigate('Paywall');
+      })
+      .catch(() => {});
+  }, [navigation]);
 
   useFocusEffect(
     useCallback(() => {

@@ -3,11 +3,24 @@ import renderer, { act } from 'react-test-renderer';
 import LibraryScreen from '../LibraryScreen';
 import { db } from '../../db/queries';
 import { useLibraryStore } from '../../state/libraryStore';
+import { entitlement } from '../../billing/trial';
 
 jest.mock('../../db/queries');
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
+// Only entitlement is faked; nudgeState/noteNudgeShown/refuseNudge/shouldNudgeForPro stay real —
+// they are already exercised against the mocked `db` exactly as production reads them.
+jest.mock('../../billing/trial', () => ({
+  ...jest.requireActual('../../billing/trial'),
+  entitlement: jest.fn(),
+}));
+
+/** An IconButton's press lives on the Pressable inside its Raised, not on the labelled wrapper. */
+const pressIconButton = (tree: renderer.ReactTestRenderer, label: string) => {
+  const [wrapper] = tree.root.findAllByProps({ accessibilityLabel: label }, { deep: false });
+  wrapper.find(n => typeof n.props.onPress === 'function').props.onPress();
+};
 
 /**
  * The library's focus effect, and specifically that the item migration has a caller.
@@ -54,10 +67,82 @@ beforeEach(() => {
   sweepItems.mockResolvedValue(false);
   sweepSearch.mockReset();
   sweepSearch.mockResolvedValue(undefined);
+  (entitlement as jest.Mock).mockResolvedValue({ paid: true });
   // The real actions are replaced rather than driven: the store's own tests cover the latch, the
   // batching and the retry policy, and leaving the real ones in would make this file's outcome
   // depend on a module-level latch shared with every other test in the process.
-  useLibraryStore.setState({ backfillItems: sweepItems, backfillSearch: sweepSearch });
+  useLibraryStore.setState({ backfillItems: sweepItems, backfillSearch: sweepSearch, tag: null });
+});
+
+describe('the thread door and the Pro-gated worklist (Phase 3)', () => {
+  test('no "Open thread" without a selected tag', async () => {
+    (db.allTags as jest.Mock).mockResolvedValue([{ name: 'client', n: 2 }]);
+    const tree = await focusTheLibrary();
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Open thread' }, { deep: false })).toHaveLength(0);
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Open thread (Pro)' }, { deep: false })).toHaveLength(0);
+    await act(async () => tree.unmount());
+  });
+
+  test('with a tag selected and paid, "Open thread" appears and navigates to Thread with that tag', async () => {
+    (db.allTags as jest.Mock).mockResolvedValue([{ name: 'client', n: 2 }]);
+    const tree = await focusTheLibrary();
+    await act(async () => {
+      tree.root.findByProps({ accessibilityLabel: 'client · 2' }).props.onPress();
+    });
+
+    await act(async () => {
+      pressIconButton(tree, 'Open thread');
+    });
+    expect((nav as any).navigate).toHaveBeenCalledWith('Thread', { tag: 'client' });
+    await act(async () => tree.unmount());
+  });
+
+  test('on free, the door reads "Open thread (Pro)" and opens the paywall', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: false });
+    (db.allTags as jest.Mock).mockResolvedValue([{ name: 'client', n: 2 }]);
+    const tree = await focusTheLibrary();
+    await act(async () => {
+      tree.root.findByProps({ accessibilityLabel: 'client · 2' }).props.onPress();
+    });
+
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Open thread' }, { deep: false })).toHaveLength(0);
+    await act(async () => {
+      pressIconButton(tree, 'Open thread (Pro)');
+    });
+    expect((nav as any).navigate).toHaveBeenCalledWith('Paywall');
+    await act(async () => tree.unmount());
+  });
+
+  test('the Actions header button reads "Actions (Pro)" and opens the paywall on free', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: false });
+    const tree = await focusTheLibrary();
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Actions' }, { deep: false })).toHaveLength(0);
+    await act(async () => {
+      pressIconButton(tree, 'Actions (Pro)');
+    });
+    expect((nav as any).navigate).toHaveBeenCalledWith('Paywall');
+    await act(async () => tree.unmount());
+  });
+
+  test('the outstanding-actions card is not drawn on free', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: false });
+    (db.allActions as jest.Mock).mockResolvedValue([
+      { id: 'i1', meetingId: 'm1', meetingTitle: 'Standup', createdAt: 1, content: 'Send it', source: 'rule', anchorStartMs: 0 },
+    ]);
+    const tree = await focusTheLibrary();
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Open actions' }, { deep: false })).toHaveLength(0);
+    await act(async () => tree.unmount());
+  });
+
+  test('paid keeps the outstanding-actions card and the plain "Actions" label', async () => {
+    (db.allActions as jest.Mock).mockResolvedValue([
+      { id: 'i1', meetingId: 'm1', meetingTitle: 'Standup', createdAt: 1, content: 'Send it', source: 'rule', anchorStartMs: 0 },
+    ]);
+    const tree = await focusTheLibrary();
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Open actions' }, { deep: false })).toHaveLength(1);
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Actions' }, { deep: false })).toHaveLength(1);
+    await act(async () => tree.unmount());
+  });
 });
 
 test('focusing the library sweeps the item migration', async () => {

@@ -648,7 +648,11 @@ export default function LibraryScreen({ navigation }: Props) {
               label={paid ? 'Search meetings' : 'Search meetings (Pro)'}
               onPress={() => navigation.navigate(paid ? 'Search' : 'Paywall')}
             />
-            <IconButton icon="list" label="Actions" onPress={() => navigation.navigate('Actions')} />
+            <IconButton
+              icon="list"
+              label={paid ? 'Actions' : 'Actions (Pro)'}
+              onPress={() => navigation.navigate(paid ? 'Actions' : 'Paywall')}
+            />
             <IconButton icon="sliders" label="Settings" onPress={() => navigation.navigate('Settings')} />
           </View>
         </View>
@@ -677,6 +681,13 @@ export default function LibraryScreen({ navigation }: Props) {
               label={`Sort: ${SORTS.find(x => x.key === sort)?.label ?? 'Newest'}`}
               onPress={() => setSorting(true)}
             />
+            {tag !== null ? (
+              <IconButton
+                icon="list"
+                label={paid ? 'Open thread' : 'Open thread (Pro)'}
+                onPress={() => (paid ? navigation.navigate('Thread', { tag }) : navigation.navigate('Paywall'))}
+              />
+            ) : null}
           </View>
         ) : null}
 
@@ -719,8 +730,10 @@ export default function LibraryScreen({ navigation }: Props) {
           </Pop>
         ) : null}
 
-        {/* The tracker's front door. Hidden when nothing is open — "0 open actions" is a nag. */}
-        {work.open > 0 ? (
+        {/* The tracker's front door. Hidden when nothing is open — "0 open actions" is a nag —
+            and hidden outright on free, where the worklist itself is Pro (the "Actions (Pro)"
+            header button is the nudge). */}
+        {paid && work.open > 0 ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Open actions"
