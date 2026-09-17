@@ -14,6 +14,8 @@ the items worth doing are here, in the order to do them.
 > + review queue) and 5 (ask this meeting + meaning search) are code complete and green through
 > the gate, waiting on one Pixel session for their device runs. Next: 6 (templates, decision
 > history, prep), 7 (remembered voices), 8 (vocabulary + dictation), 9 (no-internet build).
+> **17 September:** that remaining work is now the release plan itself, as six phases —
+> `docs/superpowers/plans/2026-09-17-release-phases.md`. The production build follows Phase 6.
 >
 > The items below that are yours — the Play Console product, Play listing, staged rollout — are
 > not blocked by any of it and can proceed in parallel. Prices, Sentry and the bandwidth ceiling
