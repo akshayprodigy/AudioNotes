@@ -21,6 +21,7 @@ import ConsentCardScreen from '../screens/ConsentCardScreen';
 import PrivacyScreen from '../screens/PrivacyScreen';
 import ReviewScreen from '../screens/ReviewScreen';
 import AskScreen from '../screens/AskScreen';
+import ThreadScreen from '../screens/ThreadScreen';
 
 export type RootStackParamList = {
   Onboarding: undefined;
@@ -36,6 +37,8 @@ export type RootStackParamList = {
   Review: { meetingId: string };
   /** Ask this meeting: a thread of answers that cite the transcript (sub-project 5). */
   Ask: { meetingId: string };
+  /** A thread: the meetings sharing one tag, Pro only (Phase 3, decision history + preparation). */
+  Thread: { tag: string };
   Search: undefined;
   Settings: undefined;
   Archive: undefined;
@@ -171,6 +174,7 @@ export default function RootNavigator() {
           <Stack.Screen name="Actions" component={ActionsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Review" component={ReviewScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Ask" component={AskScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Thread" component={ThreadScreen} options={{ headerShown: false }} />
           <Stack.Screen
             name="Paywall"
             component={PaywallScreen}
