@@ -751,6 +751,12 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeAskPrompt(
   return env->NewStringUTF(audionotes::askPrompt(jstr(env, jQuestion), passages).c_str());
 }
 
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeAskGrammar(
+    JNIEnv* env, jobject /*thiz*/, jint nPassages) {
+  return env->NewStringUTF(audionotes::askGrammar(static_cast<int>(nPassages)).c_str());
+}
+
 // {"text":…,"cites":[…],"nothing":bool}
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeValidateAnswer(

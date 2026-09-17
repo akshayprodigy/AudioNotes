@@ -31,6 +31,12 @@ extern const char* const kAskNothing;
 // sentences, from the passages only, cite each claim, or write kAskNothing.
 std::string askPrompt(const std::string& question, const std::vector<AskPassage>& passages);
 
+// A GBNF grammar for the answer: either the refusal phrase, or up to ~400 characters of prose
+// followed by one or more citations " [n]" with n in 1..n_passages. Structural, because the
+// writer was measured answering correctly and citing nothing — and an answer that cites nothing
+// is nothing. The model still chooses which passage; the grammar only makes it choose.
+std::string askGrammar(int n_passages);
+
 // Citations outside 1..n_passages are removed from the text (with one preceding space, if any);
 // an answer then left without a citation, or that contains kAskNothing, is `nothing`.
 AskAnswer validateAnswer(const std::string& text, int n_passages);

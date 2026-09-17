@@ -42,6 +42,18 @@ function ownerKindOf(ownerJson: string | null): string {
   }
 }
 
+/**
+ * The classifier's confidence, which rides inside owner_json (there is no column for it). A
+ * low reading is what puts a clean-looking commitment in the queue, and the card must say so.
+ */
+function confidenceOf(ownerJson: string | null): string | null {
+  try {
+    return ownerJson ? ((JSON.parse(ownerJson).confidence as string | undefined) ?? null) : null;
+  } catch {
+    return null;
+  }
+}
+
 function ownerLabel(ownerJson: string | null, speakers: Speaker[]): string {
   try {
     const o = ownerJson ? JSON.parse(ownerJson) : null;
@@ -110,7 +122,7 @@ export default function ReviewScreen({ route, navigation }: Props) {
     () =>
       card
         ? reviewReason({
-            kind: card.kind, type: card.itemType, status: card.status, confidence: null,
+            kind: card.kind, type: card.itemType, status: card.status, confidence: confidenceOf(card.ownerJson),
             ownerKind: ownerKindOf(card.ownerJson), dateSaid: card.dateSaid, dateNorm: card.dateNorm,
             currentReview: card.review,
           })
@@ -316,6 +328,7 @@ export default function ReviewScreen({ route, navigation }: Props) {
       <Sheet visible={fixing === 'type'} title="What kind of statement?" actions={typeActions} onClose={() => setFixing(null)} />
       <SpeakerPicker
         visible={fixing === 'owner' && !naming}
+        title={card ? `Who owns “${splitAction(card.text).text.slice(0, 40).trimEnd()}${splitAction(card.text).text.length > 40 ? '…' : ''}”?` : 'Who owns it?'}
         lineText={card ? splitAction(card.text).text : ''}
         speakers={speakers}
         currentId={null}

@@ -223,6 +223,8 @@ object NativeBridge {
   external fun nativeAskNothing(): String
   /** Passages numbered [1]..[n] from the parallel arrays, then the question; both fenced. */
   external fun nativeAskPrompt(question: String, speakers: Array<String>, startMs: LongArray, texts: Array<String>): String
+  /** The answer's grammar: the refusal phrase, or prose then one or more " [n]" with n in 1..nPassages. */
+  external fun nativeAskGrammar(nPassages: Int): String
   /** `{"text":…,"cites":[…],"nothing":bool}` — out-of-range cites removed, none left → nothing. */
   external fun nativeValidateAnswer(text: String, nPassages: Int): String
   external fun nativeLlmFree(handle: Long)

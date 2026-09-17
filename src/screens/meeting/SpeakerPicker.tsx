@@ -28,9 +28,12 @@ export default function SpeakerPicker({
   onPick,
   onNew,
   onClose,
+  title: titleProp,
 }: {
   visible: boolean;
   lineText: string;
+  /** The question the sheet asks. Defaults to who SAID the line; the review queue asks who owns it. */
+  title?: string;
   speakers: Speaker[];
   currentId: string | null;
   /** Show the scope chips. False for a single-line turn or a turn-head tap: the scope is the turn. */
@@ -46,7 +49,7 @@ export default function SpeakerPicker({
     if (visible) setScope(scopes ? 'line' : 'turn');
   }, [visible, scopes]);
   const clipped = lineText.length > TITLE_CHARS ? lineText.slice(0, TITLE_CHARS).trimEnd() + '…' : lineText;
-  const title = `Who said “${clipped}”?`;
+  const title = titleProp ?? `Who said “${clipped}”?`;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>

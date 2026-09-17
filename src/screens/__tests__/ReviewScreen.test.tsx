@@ -96,6 +96,23 @@ describe('ReviewScreen', () => {
     expect(t.some(x => x.includes('Only a draft'))).toBe(true);
   });
 
+  /**
+   * The classifier's confidence rides inside owner_json (there is no column for it), and a
+   * low-confidence reading is in the queue for exactly that reason. Seen on the Pixel, 17 Sep:
+   * a card with no reason line at all, because the screen asked the rule with confidence null.
+   */
+  it('a low-confidence reading says the model was not sure', async () => {
+    (db.items as jest.Mock).mockResolvedValue([
+      {
+        ...base, id: 'i5', text: 'Prey will send the deck tomorrow. — Prey (due tomorrow)', review: 'needs_review',
+        itemType: 'commitment', status: 'open', ownerJson: '{"kind":"speaker","id":"s1","confidence":"low"}',
+        dateSaid: 'tomorrow', dateNorm: Date.UTC(2026, 8, 18),
+      },
+    ]);
+    const tree = await render();
+    expect(texts(tree)).toContain('The model was not sure what this is.');
+  });
+
   it('Confirm keeps the item and advances; the last card goes back', async () => {
     const tree = await render();
     await press(tree, 'Confirm');
@@ -116,6 +133,9 @@ describe('ReviewScreen', () => {
     const tree = await render();
     await press(tree, 'Fix');
     await press(tree, 'Who owns it');
+    // The picker asks who OWNS it, not who said it — the transcript's question is not this one.
+    expect(texts(tree).some(t => t.startsWith('Who owns'))).toBe(true);
+    expect(texts(tree).some(t => t.startsWith('Who said'))).toBe(false);
     await press(tree, 'Rahul');
     expect(db.setItemOwner).toHaveBeenCalledWith('i1', JSON.stringify({ kind: 'speaker', id: 's2', confidence: 'high' }));
     // And the correction every tab and export already honour: the text says who, now.

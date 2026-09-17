@@ -74,7 +74,7 @@ asked about. A person's `confirmed` / `rejected` is never overwritten by the rul
 confident match exactly as `created_at` and `gen_version` are carried — this is the warning the
 Phase A author left in `replaceItems`, and it is the first thing Phase B does. On an ambiguous
 match they are carried and `review` becomes `needs_review`, as today. `gen_version` becomes
-`"rules@N+qwen2.5-1.5b/classify@1"` for a classified item.
+`"rules@N+qwen2.5-1.5b/classify@2"` for a classified item (the version bumps when the prompt changes; an item read by an older version is read again on the next narration unless a person settled it).
 
 **Free tier.** Unchanged from Phase A §9: quotes with timestamps, the five columns NULL, no
 labels, no queue.

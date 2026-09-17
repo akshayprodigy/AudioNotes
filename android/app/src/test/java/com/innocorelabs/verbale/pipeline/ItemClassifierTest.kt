@@ -63,4 +63,25 @@ class ItemClassifierTest {
     assertEquals("after the launch", ItemClassifier.dateSaidFor("Let's revisit pricing after the launch", "after the launch"))
     assertEquals(null, ItemClassifier.dateSaidFor("We also need to decide on the venue.", "  "))
   }
+
+  /**
+   * What is read, and read again. An item read by an older classifier is read again — that is
+   * how a better prompt reaches a library already classified — but never one a person settled,
+   * and never a hand-typed row.
+   */
+  @Test fun unreadAndStaleItemsArePendingSettledOnesAreNot() {
+    val current = "rules@1" + ItemClassifier.GEN_SUFFIX
+    assertEquals(true, ItemClassifier.isPending(hasRecord = false, genVersion = "rules@1", review = "suggested"))
+    assertEquals(true, ItemClassifier.isPending(hasRecord = true, genVersion = "rules@1+qwen2.5-1.5b/classify@1", review = "needs_review"))
+    assertEquals(false, ItemClassifier.isPending(hasRecord = true, genVersion = current, review = "needs_review"))
+    assertEquals(false, ItemClassifier.isPending(hasRecord = true, genVersion = "rules@1+qwen2.5-1.5b/classify@1", review = "confirmed"))
+    assertEquals(false, ItemClassifier.isPending(hasRecord = false, genVersion = "rules@1", review = "rejected"))
+    assertEquals(false, ItemClassifier.isPending(hasRecord = false, genVersion = com.innocorelabs.verbale.data.AudioDb.Gen.USER, review = "suggested"))
+  }
+
+  @Test fun aReReadNeverStacksSuffixes() {
+    assertEquals("rules@1", ItemClassifier.baseGen("rules@1+qwen2.5-1.5b/classify@1"))
+    assertEquals("rules@1", ItemClassifier.baseGen("rules@1"))
+    assertEquals("rules@1" + ItemClassifier.GEN_SUFFIX, ItemClassifier.baseGen("rules@1+qwen2.5-1.5b/classify@1") + ItemClassifier.GEN_SUFFIX)
+  }
 }

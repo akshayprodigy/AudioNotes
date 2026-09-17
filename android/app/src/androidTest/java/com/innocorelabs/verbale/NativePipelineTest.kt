@@ -415,6 +415,7 @@ class NativePipelineTest {
     assertEquals(1, v.getJSONArray("cites").length())
     assertEquals(false, v.getBoolean("nothing"))
     assertEquals(true, org.json.JSONObject(NativeBridge.nativeValidateAnswer("They agreed.", 2)).getBoolean("nothing"))
+    assertTrue(NativeBridge.nativeAskGrammar(2).contains("[1-2]"))
   }
 
   @Test

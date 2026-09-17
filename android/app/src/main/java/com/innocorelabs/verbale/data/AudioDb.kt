@@ -109,7 +109,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     val sql =
       "SELECT meeting_id, kind, ref_id, start_ms, " +
         "snippet(search_fts, 4, '\u0002', '\u0003', '…', 14), " +
-        "bm25(search_fts, 0.0, 0.0, 0.0, 0.0, 1.0) AS score " +
+        "bm25(search_fts, 0.0, 0.0, 0.0, 0.0, 1.0) AS score, text " +
         "FROM search_fts WHERE search_fts MATCH ?$scope ORDER BY score LIMIT 120"
     val out = ArrayList<Retriever.Hit>()
     db.rawQuery(sql, if (meetingId == null) arrayOf(match) else arrayOf(match, meetingId)).use { c ->
@@ -117,7 +117,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
         out.add(
           Retriever.Hit(
             c.getString(0), c.getString(1), c.getString(2), c.getLong(3), c.getLong(3),
-            c.getString(4), c.getDouble(5), byMeaning = false,
+            c.getString(4), c.getDouble(5), byMeaning = false, text = c.getString(6),
           ),
         )
       }
@@ -151,7 +151,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
           Retriever.Hit(
             c.getString(0), kind, c.getString(2), c.getLong(3), c.getLong(4),
             if (text.length > SNIPPET_CHARS) text.substring(0, SNIPPET_CHARS).trimEnd() + "…" else text,
-            score, byMeaning = true,
+            score, byMeaning = true, text = text,
           ),
         )
         if (heap.size > top) heap.poll()

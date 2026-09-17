@@ -36,18 +36,84 @@ std::string askPrompt(const std::string& question, const std::vector<AskPassage>
     turns += "[" + std::to_string(i + 1) + "] " + p.speaker + " (" + stampOf(p.start_ms) + "): " + p.text + "\n";
   }
   const std::string question_text = question;
-  return "Below are numbered passages from one meeting, and a question about it.\n\n"
+  // One worked example, on another subject. Without it the 1.5B writer copied the passages back
+  // out before answering (measured on the Pixel, 17 Sep) — the same failure the classifier had
+  // until its prompt carried examples: a small model told the SHAPE of an answer still needs to
+  // be shown one.
+  return "Below are numbered passages from one meeting, and a question about it. Answer the "
+         "question in at most three sentences, from the passages only, and after each claim "
+         "write the number of the passage it comes from in square brackets. Do not repeat the "
+         "passages. Do not add anything they do not say. If they do not answer the question, "
+         "write exactly: " + std::string(kAskNothing) + "\n\n"
+         "Example.\n"
+         "[1] Dev (0:12): Sam, can you send the report by Friday?\n"
+         "[2] Sam (0:15): No, Friday is impossible, the data only comes in on Monday.\n"
+         "Question: when will the report be ready?\n"
+         "Answer: Not by Friday; Sam said the data only arrives on Monday [2].\n\n"
+         "Now the real one.\n"
          "PASSAGES:\n" + fenceTranscript(turns) + "\n"
          "QUESTION:\n" + fenceTranscript(question_text) + "\n"
-         "Answer the question from the passages only, in at most three sentences. After each "
-         "claim write the number of the passage it comes from in square brackets, like [2]. Do "
-         "not add anything the passages do not say. If the passages do not answer the question, "
-         "write exactly: " + std::string(kAskNothing) + "\n";
+         "Answer:\n";
 }
 
-AskAnswer validateAnswer(const std::string& text, int n_passages) {
+std::string askGrammar(int n_passages) {
+  int n = n_passages < 1 ? 1 : (n_passages > 9 ? 9 : n_passages);
+  std::string digits = "[1-" + std::to_string(n) + "]";
+  if (n == 1) digits = "\"1\"";
+  return "root ::= nothing | answer\n"
+         "nothing ::= \"" + std::string(kAskNothing) + "\"\n"
+         "answer ::= body cite+\n"
+         "body ::= [^\\[\\]\\n]{1,400}\n"
+         "cite ::= \" [\" " + digits + " \"]\"\n";
+}
+
+namespace {
+
+// A line that is one of the passages copied back out: "[n] Name (m:ss): …". The model was handed
+// these; it is not answering by repeating them.
+bool isEchoedPassage(const std::string& line) {
+  size_t i = 0;
+  while (i < line.size() && std::isspace(static_cast<unsigned char>(line[i]))) ++i;
+  if (i >= line.size() || line[i] != '[') return false;
+  size_t j = i + 1;
+  while (j < line.size() && std::isdigit(static_cast<unsigned char>(line[j]))) ++j;
+  if (j == i + 1 || j >= line.size() || line[j] != ']') return false;
+  // "[n] " then a speaker, then " (m:ss): " — the stamp in parentheses followed by a colon.
+  const size_t paren = line.find(" (", j);
+  if (paren == std::string::npos) return false;
+  const size_t close = line.find("):", paren);
+  if (close == std::string::npos) return false;
+  bool digits = false;
+  for (size_t k = paren + 2; k < close; ++k) {
+    const char c = line[k];
+    if (std::isdigit(static_cast<unsigned char>(c))) digits = true;
+    else if (c != ':') return false;
+  }
+  return digits;
+}
+
+std::string withoutEchoes(const std::string& text) {
+  std::string out;
+  size_t start = 0;
+  while (start <= text.size()) {
+    size_t nl = text.find('\n', start);
+    const std::string line = text.substr(start, nl == std::string::npos ? std::string::npos : nl - start);
+    if (!isEchoedPassage(line)) {
+      out += line;
+      if (nl != std::string::npos) out += '\n';
+    }
+    if (nl == std::string::npos) break;
+    start = nl + 1;
+  }
+  return out;
+}
+
+}  // namespace
+
+AskAnswer validateAnswer(const std::string& raw, int n_passages) {
   AskAnswer out;
   out.nothing = false;
+  const std::string text = withoutEchoes(raw);
   std::string kept;
   kept.reserve(text.size());
   size_t i = 0;

@@ -45,6 +45,7 @@ class VerificationProbeTest {
       val vec = JSONArray(db.rawQueryJson("SELECT kind, count(*) AS n FROM search_vec WHERE meeting_id=? GROUP BY kind", arrayOf(id)))
       println("PROBE   vectors: $vec")
       println("PROBE   asks: ${db.asksJson(id)}")
+      println("PROBE   edits: " + db.rawQueryJson("SELECT target_kind, target_key, content FROM edits WHERE meeting_id=?", arrayOf(id)))
       val utts = db.utterances(id)
       println("PROBE   utterances (${utts.size}): " + utts.take(12).joinToString(" | ") { "${it.startMs / 1000}s ${it.speakerId ?: "?"}: ${it.text}" })
     }

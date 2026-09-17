@@ -13,9 +13,14 @@ object Retriever {
   const val K = 60
   const val TOP = 60
 
+  /**
+   * `snippet` is for the screen (FTS's excerpt with its match markers, or a chunk's first 120
+   * characters); `text` is the whole passage, for Ask — a model handed the snippet was handed
+   * a fragment with control characters in it, and answered accordingly (measured 17 Sep).
+   */
   data class Hit(
     val meetingId: String, val kind: String, val refId: String?, val startMs: Long, val endMs: Long,
-    val snippet: String, val score: Double, val byMeaning: Boolean,
+    val snippet: String, val score: Double, val byMeaning: Boolean, val text: String = snippet,
   )
 
   fun fuse(keyword: List<Hit>, meaning: List<Hit>, k: Int = K, top: Int = TOP): List<Hit> {

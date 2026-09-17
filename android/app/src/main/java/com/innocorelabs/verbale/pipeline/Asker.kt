@@ -27,6 +27,9 @@ object Asker {
 
   enum class Refusal { NOT_PRO, NO_MODEL, NOT_CAPABLE, BUSY }
 
+  /** FTS's match markers (U+0002/U+0003) never belong in a prompt. */
+  private val MARKERS = Regex("[\u0002\u0003]")
+
   data class Passage(val speaker: String, val startMs: Long, val text: String, val refId: String)
 
   data class Result(
@@ -53,7 +56,7 @@ object Asker {
         "utterance" -> h.refId?.let(speakerOf)?.let { names[it] }?.takeIf { it.isNotBlank() } ?: "Someone"
         else -> "Minutes"
       }
-      Passage(speaker, h.startMs, h.snippet, h.refId ?: "")
+      Passage(speaker, h.startMs, h.text.replace(MARKERS, ""), h.refId ?: "")
     }
 
   /** `[{n, refId, startMs, speaker}]` in the answer's order; a number the passages lack is dropped. */
@@ -89,7 +92,9 @@ object Asker {
     val h = handle()
     if (h == 0L) return Result(Refusal.NO_MODEL, null, "", "[]", true)
     val t0 = System.currentTimeMillis()
-    val raw = NativeBridge.nativeLlmGenerate(h, prompt, MAX_TOKENS).trim()
+    // Grammar-constrained, like the classifier: the writer was measured answering correctly and
+    // citing nothing, and an answer that cites nothing is nothing. The grammar makes it choose.
+    val raw = NativeBridge.nativeLlmGenerateConstrained(h, prompt, MAX_TOKENS, NativeBridge.nativeAskGrammar(ps.size)).trim()
     val v = JSONObject(NativeBridge.nativeValidateAnswer(raw, ps.size))
     val isNothing = v.getBoolean("nothing")
     val cites = if (isNothing) {

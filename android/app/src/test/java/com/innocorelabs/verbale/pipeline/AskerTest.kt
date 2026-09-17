@@ -37,6 +37,14 @@ class AskerTest {
     assertEquals("words 1", p[0].text)
   }
 
+  /** The model reads the whole passage; the screen's snippet is a fragment with markers in it. */
+  @Test fun aPassageIsTheWholeTextNotTheSnippet() {
+    val hit = Retriever.Hit("m1", "utterance", "u1", 0, 0, "Only a \u0002draft\u0003…", 1.0, false,
+      text = "Only a \u0002draft\u0003; the final version needs another week.")
+    val p = Asker.passages(listOf(hit), speakerOf = { null }, names = emptyMap())
+    assertEquals("Only a draft; the final version needs another week.", p[0].text)
+  }
+
   @Test fun anItemOrTheSummaryIsSpokenByTheMinutes() {
     val hits = listOf(
       Retriever.Hit("m1", "item", "i1", 5000, 5000, "Send the proposal", 1.0, false),

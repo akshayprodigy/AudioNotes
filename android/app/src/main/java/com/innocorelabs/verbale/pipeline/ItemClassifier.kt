@@ -22,7 +22,15 @@ object ItemClassifier {
   const val REPLY_WINDOW_TURNS = 4
   const val REPLY_WINDOW_MS = 90_000L
   const val RECORD_TOKENS = 96
-  const val GEN_SUFFIX = "+qwen2.5-1.5b/classify@1"
+  /**
+   * The classifier's version, written into gen_version. Bumped when the prompt changes what
+   * the model is likely to read (classify@2: the worked examples and the rule-first date of
+   * 17 Sep), so an item read by an older version is read again on the next narration —
+   * unless a person has already settled it, which is theirs and stays.
+   */
+  const val VERSION = "classify@2"
+  const val GEN_SUFFIX = "+qwen2.5-1.5b/$VERSION"
+  private val ANY_SUFFIX = Regex("\\+qwen2\\.5-1\\.5b/classify@\\d+$")
 
   fun interface Generate { fun run(prompt: String, maxTokens: Int, grammar: String): String }
 
@@ -36,9 +44,18 @@ object ItemClassifier {
     DateNorm.spanIn(statement) ?: modelPhrase.trim().ifBlank { null }
 
   fun pending(db: AudioDb, meetingId: String): List<AudioDb.StoredItem> =
-    db.items(meetingId).filter {
-      it.record == null && it.review !in AudioDb.Review.BY_A_PERSON && it.genVersion != AudioDb.Gen.USER
-    }
+    db.items(meetingId).filter { isPending(it.record != null, it.genVersion, it.review) }
+
+  /**
+   * Unread, or read by an older classifier, and not a person's: those are re-read. A person's
+   * confirmed or rejected is never touched, and a hand-typed row is never classified.
+   */
+  fun isPending(hasRecord: Boolean, genVersion: String, review: String): Boolean =
+    review !in AudioDb.Review.BY_A_PERSON && genVersion != AudioDb.Gen.USER &&
+      (!hasRecord || !genVersion.endsWith(GEN_SUFFIX))
+
+  /** The rule pass's own version, with any earlier classifier suffix removed, so a re-read never stacks suffixes. */
+  fun baseGen(genVersion: String): String = ANY_SUFFIX.replace(genVersion, "")
 
   /**
    * The window for one item: the source line and the replies after it, as parallel arrays.
@@ -103,15 +120,19 @@ object ItemClassifier {
       }
       val dateSaid = dateSaidFor(item.text, r.getString("date_said"))
       val dateNorm = dateSaid?.let { DateNorm.resolve(it, meetingAtMs, ZoneId.systemDefault()) }
+      // A re-read replaces the older classifier's own flag: its needs_review was ITS doubt, and
+      // the new reading is entitled to settle it. (A person's flag never reaches here — see
+      // isPending.) An unread item keeps whatever the reconciler left on it.
+      val currentReview = if (item.record != null) AudioDb.Review.SUGGESTED else item.review
       val decision = ReviewRule.decide(
         kind = item.kind, type = r.getString("type"), status = r.getString("status"),
         confidence = confidence, ownerKind = owner.getString("kind"),
-        dateSaid = dateSaid, dateNorm = dateNorm, currentReview = item.review,
+        dateSaid = dateSaid, dateNorm = dateNorm, currentReview = currentReview,
       )
       db.classifyItem(
         item.id,
         AudioDb.Classified(r.getString("type"), r.getString("status"), owner.toString(), dateSaid, dateNorm),
-        decision.review, item.genVersion + GEN_SUFFIX,
+        decision.review, baseGen(item.genVersion) + GEN_SUFFIX,
       )
       Log.i(
         TAG,

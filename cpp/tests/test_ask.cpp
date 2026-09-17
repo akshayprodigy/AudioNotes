@@ -69,6 +69,39 @@ static void theRefusalPhraseIsNothingEvenWithACite() {
   CHECK(validateAnswer(std::string(kAskNothing) + " [1]", 3).nothing);
 }
 
+// Measured on the Pixel, 17 Sep: the 1.5B writer copied the numbered passages back out before
+// answering — "[4] Speaker 1 (0:08): Good morning everyone…" — then answered underneath. The
+// passages are the person's transcript; they are not an answer, and they are removed.
+static void echoedPassagesAreStripped() {
+  const AskAnswer a = validateAnswer(
+      "[1] Priya (0:05): Can you send the proposal Friday?\n"
+      "[2] Rahul (0:06): Only a draft; the final version needs another week.\n\n"
+      "Based on these passages, a draft goes Friday and the final needs another week [2].", 3);
+  CHECK(!a.nothing);
+  CHECK(a.text == "Based on these passages, a draft goes Friday and the final needs another week [2].");
+  CHECK(a.cites.size() == 1 && a.cites[0] == 2);
+}
+
+static void anAnswerThatIsOnlyEchoIsNothing() {
+  CHECK(validateAnswer("[1] Priya (0:05): Can you send the proposal Friday? [1]", 3).nothing);
+}
+
+static void thePromptCarriesAWorkedExample() {
+  const std::string p = askPrompt("q", passages());
+  CHECK(p.find("Example") != std::string::npos);
+  CHECK(p.find("[2].") != std::string::npos);  // the example's answer cites the way we want
+}
+
+static void grammarBoundsTheCitesToThePassages() {
+  const std::string g = askGrammar(3);
+  CHECK(g.find("root ::= nothing | answer") != std::string::npos);
+  CHECK(g.find("[1-3]") != std::string::npos);
+  CHECK(g.find(kAskNothing) != std::string::npos);
+  CHECK(askGrammar(1).find("\"1\"") != std::string::npos);
+  CHECK(askGrammar(12).find("[1-9]") != std::string::npos);  // never a two-digit range the grammar cannot spell
+  CHECK(g.find("cite+") != std::string::npos);                // at least one citation, or the refusal
+}
+
 static void bracketsThatAreNotCitesAreLeftAlone() {
   const AskAnswer a = validateAnswer("The [draft] goes Friday [1] (see [2b]).", 3);
   CHECK(a.text == "The [draft] goes Friday [1] (see [2b]).");
@@ -83,6 +116,10 @@ int main() {
   noCitationIsNothing();
   theRefusalPhraseIsNothingEvenWithACite();
   bracketsThatAreNotCitesAreLeftAlone();
+  echoedPassagesAreStripped();
+  anAnswerThatIsOnlyEchoIsNothing();
+  thePromptCarriesAWorkedExample();
+  grammarBoundsTheCitesToThePassages();
   if (failures) {
     std::fprintf(stderr, "test_ask: %d failure(s)\n", failures);
     return 1;
