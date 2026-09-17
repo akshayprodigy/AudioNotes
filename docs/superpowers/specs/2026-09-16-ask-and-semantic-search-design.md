@@ -178,23 +178,28 @@ embedding model; quantised search on a GPU.
 
 ## Device verification
 
-*Pending — the Pixel was not on adb on 16 September. Code complete (`3338513`), the gate green
-(types · js · scans · mutations · kotlin · cpp, with `test_embed` against the real GGUF on the
-Mac: near 0.68 / far 0.46). Written for the phone, not yet run:*
+*Pixel 7 Pro, 17 September 2026.*
 
-- [ ] `scripts/device-verify.sh NativePipeline` — `embedding_is_a_unit_vector_and_near_beats_far`
-      (needs the model installed), `ask_prompt_is_fenced_and_the_validator_strips_bad_cites`.
-- [ ] `scripts/device-verify.sh SearchIndexDb` — one card not two, the count, the marker resets,
-      deleteMeeting sweeping vectors, the diff by words and moment.
-- [ ] `scripts/device-verify.sh BackupManager` — marks and asks travel.
-- [ ] Settings shows "Meaning index · 37 MB" beside the writer; install it (Pro).
-- [ ] Process the lead-example meeting → logcat `Embed: embedded N chunk(s)`; stage "Indexed for
-      meaning" appears in the processing notification.
-- [ ] Search "push back" → the Rahul turn, marked "≈"; "Meaning search is still indexing N
-      meetings" while the library catches up, gone after.
-- [ ] Ask "did we agree on a date for the proposal?" → an answer with `[1]`/`[2]` chips; tap →
-      transcript at 0:06 and playing. Ask "who won the cup?" → "Nothing in this meeting settles
-      that." over three chips.
-- [ ] Ask while a meeting is narrating → "The writer is busy…" note. Free tier → paywall; search
-      unchanged, no "≈", no indexing line.
-
+- `NativePipelineTest` 14/14 including `embedding_is_a_unit_vector_and_near_beats_far` (the
+  model loads in ~120 ms on the phone) and `ask_prompt_is_fenced_and_the_validator_strips_bad_cites`;
+  `SearchIndexDbTest` 5/5 (one card per decision after the pipeline's order and after a
+  reindex; the backlog count; every writer of words resets `embedded_at`; `deleteMeeting`
+  sweeps `search_vec`; the diff by words and moment); `BackupManagerTest` 2/2 (marks and asks
+  travel).
+- The model was put on the phone at the catalog's filename (the download path is the same
+  ModelManager every other model uses; Settings reports it installed by size).
+- Processing the lead-example meeting showed the new stage **"Indexed for meaning"**; logcat
+  `Embed: embedded 8/15/3 chunk(s)` for older meetings as the sweep caught the library up, and
+  `embedded 0 chunk(s) (0 dropped)` on a rewrite that changed no words — the hash diff working.
+- **Search "objected to the cost"** — no word in common with any turn — returned
+  **"≈ Reholt pushed back on the pricing…"** first, under "Meaning search is still indexing 6
+  meetings".
+- **Ask "did we agree on a date for the proposal"** answered in 17 s with five citation chips,
+  and the answer showed why the build needed fixing: the writer had been handed the screen
+  snippets (fragments, FTS markers), copied the passages back out, and cited nothing.
+  Fixed in `dd214e2`: whole passages, a worked example, echoed lines stripped, and the answer
+  grammar-constrained to "refusal, or prose then ≥ 1 citation". On the Mac against the same
+  GGUF (`test_ask_live`, in the gate) the lead question now answers *"Yes, we agreed to ship
+  on Monday. [4]"* and the off-topic one refuses.
+- **Not yet seen on the phone with the fixed build:** the re-asked answer (the phone was taken
+  by another session mid-question), the BUSY note during narration, a free user's Ask → paywall.

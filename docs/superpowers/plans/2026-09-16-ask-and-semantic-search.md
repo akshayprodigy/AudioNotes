@@ -1,7 +1,8 @@
 # Ask This Meeting and Semantic Search — Implementation Plan
 
-> **Status 16 Sep 2026: code complete, Tasks 1–11 committed and gate-green; Task 12's device
-> half waits on the Pixel.** See the spec's "Device verification" for the phone checklist.
+> **SHIPPED 17 Sep 2026 — Pixel-verified** (device tests, the meaning index, "≈" search, Ask
+> end to end), with two phone-found fixes in `dd214e2`. Three spot-checks remain listed in the
+> spec's "Device verification".
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

@@ -152,8 +152,36 @@ review inbox across meetings; changing item text on a card; undo.
 
 ## Device verification
 
-*Pending — the Pixel was not on adb on 16 September. Code complete through Task 8b (`c8b830e`),
-gate green. The Task 9 checklist is in the plan; in short: the grammar test in
-`NativePipelineTest`, the lead example (Request · Contradicted, banner, card, Confirm, Redo), the
-clean commitment (no card, chips), free tier (no labels, no banner).*
+*Pixel 7 Pro, 17 September 2026, debug build signed with the upload key, trial started by
+`VerificationTrialTest` (the phone has no Play product).*
 
+- `NativePipelineTest` 14/14 — `classifier_grammar_constrains_the_answer` ran twice (before and
+  after the prompt fix below): the constrained answer parses and the type is in the enum.
+- **The lead example, recorded through the phone's mic** (two `say` voices, 76 s; diarization
+  heard one speaker, as it does with one loudspeaker): after processing, six items classified.
+  **First run: six identical records** — `proposal / open / low`, `date_said` empty — six
+  identical cards. Reproduced on the Mac with the same GGUF and prompt; root cause the terse
+  prompt, not the grammar. Fixed (`564431f`): field definitions plus four worked examples, and
+  the date phrase read by rule (`DateNorm.spanIn`) before the model. Re-read on the phone under
+  `classify@2` (`dd214e2` — an item read by an older classifier is pending again):
+  - *"Can you send the proposal Friday?"* → **Request · Contradicted**, `Friday → Fri 18 Sep`,
+    the reply *"Only a draft, the final version needs another week"* quoted with its stamp,
+    "A later turn pushed back on this." — the card in §2, exactly.
+  - *"Prey will send the deck tomorrow"* → Commitment, `tomorrow → Fri 18 Sep`, low → in the
+    queue (the card now says why: `dd214e2`).
+  - *"We agreed to ship on Monday"* → Agreement, `on Monday → Mon 21 Sep`, no card.
+  - *"…revisit that on Thursday"* → Commitment, `on Thursday → Thu 24 Sep`, no card.
+  - *"We also need to decide on the venue"* → the model's weak reading (Commitment ·
+    Contradicted); the card showed the reply it read and the person fixed the kind.
+  - Banner **"3 items need a look"** (was 6). Confirm → 2 of 3; Fix → Who owns it → Someone
+    new → "Priya" → the Actions row wears `Priya`, EDITED BY YOU, and `→ Fri 18 Sep`; Fix →
+    What kind of statement → Left unresolved → returned to the Summary, banner gone.
+  - **Redo** → every confirmation, the fixed owner (Priya's speaker row) and the fixed kind
+    survived the Reconciler (`VerificationProbeTest`).
+- Free tier: with the trial spent after three summaries the Summary offered "See Pro" and the
+  record screen its 15-minute cap; records already written stayed on the rows (nothing a person
+  has is taken away). A never-classified free meeting shows no labels and no banner — the
+  older meetings on this phone, all `rules@1`, have none.
+- **Open, cosmetic:** the `due tomorrow` chip on a row re-rendered in place after an edit
+  clipped to `due` until the tab was reopened — the Android custom-font measurement quirk
+  already seen in SpeakerPicker; "Not an item" wraps to two lines on the card.

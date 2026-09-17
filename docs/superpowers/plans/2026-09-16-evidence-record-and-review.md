@@ -1,5 +1,9 @@
 # Evidence Record and Review — Implementation Plan
 
+> **SHIPPED 17 Sep 2026 — Pixel-verified.** The phone found the classifier answering every
+> statement alike; fixed in `564431f` (prompt) and `dd214e2` (re-read under a new version).
+> The spec's "Device verification" records the run.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Pro items carry a typed record (type, status, owner, date) read by a grammar-constrained classifier that sees the reply turns; the items it could not settle go to a per-meeting card flow where a person confirms, fixes or rejects them; all of it survives a reprocess.
@@ -709,8 +713,8 @@ only put the chips on screen. The row's owner chip and every export read the ite
 
 ### Task 9: Prove it on the Pixel (Pro entitlement on the phone)
 
-- [ ] **Grammar on device.** Add to `NativePipelineTest`: load the LLM (same helper as `llm_loads_and_generates`), build the lead-example window through `nativeClassifyPrompt`, generate with `nativeLlmGenerateConstrained` + `nativeClassifyGrammar`, assert `nativeValidateRecord` returns non-empty and its `type` is one of the seven — the grammar compiled and constrained. Run `scripts/device-verify.sh NativePipeline`.
-- [ ] **The lead example.** Record with two `say` voices: *"Can you send the proposal Friday?"* / *"Only a draft; the final version needs another week."* / *"Fine, a draft then."* Stop; after processing (Pro): logcat `classified …: request/contradicted … date=Friday -> needs_review`; the Summary banner "1 item needs a look"; the card shows Request · Contradicted with the reply quoted and playable, "Friday" with no day; Confirm → banner gone; Redo → still confirmed (`review` and the record carried).
-- [ ] **A clean commitment.** *"Priya will send the deck tomorrow."* → `commitment`, owner Priya (resolved to the speaker row if a speaker is named Priya, else person), `date_norm` = tomorrow, no card; the Actions tab shows the chips.
-- [ ] **Free tier** (turn the entitlement off in Settings' debug or a fresh install): no labels, no banner.
-- [ ] Record the run in the spec; NEXT.md; scorecard rows (typed record, review queue → ✅); memory. Commit; the push is the founder's.
+- [x] **Grammar on device.** Add to `NativePipelineTest`: load the LLM (same helper as `llm_loads_and_generates`), build the lead-example window through `nativeClassifyPrompt`, generate with `nativeLlmGenerateConstrained` + `nativeClassifyGrammar`, assert `nativeValidateRecord` returns non-empty and its `type` is one of the seven — the grammar compiled and constrained. Run `scripts/device-verify.sh NativePipeline`.
+- [x] **The lead example.** Record with two `say` voices: *"Can you send the proposal Friday?"* / *"Only a draft; the final version needs another week."* / *"Fine, a draft then."* Stop; after processing (Pro): logcat `classified …: request/contradicted … date=Friday -> needs_review`; the Summary banner "1 item needs a look"; the card shows Request · Contradicted with the reply quoted and playable, "Friday" with no day; Confirm → banner gone; Redo → still confirmed (`review` and the record carried).
+- [x] **A clean commitment.** *"Priya will send the deck tomorrow."* → `commitment`, owner Priya (resolved to the speaker row if a speaker is named Priya, else person), `date_norm` = tomorrow, no card; the Actions tab shows the chips.
+- [x] **Free tier** (turn the entitlement off in Settings' debug or a fresh install): no labels, no banner.
+- [x] Record the run in the spec; NEXT.md; scorecard rows (typed record, review queue → ✅); memory. Commit; the push is the founder's.
