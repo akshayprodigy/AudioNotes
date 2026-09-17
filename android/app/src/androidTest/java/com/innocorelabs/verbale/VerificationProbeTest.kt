@@ -25,12 +25,19 @@ class VerificationProbeTest {
         arrayOf(),
       ),
     )
+    // Phase 3 (thread memory): the first tag found on the newest tagged meeting, so its thread
+    // can be printed once the per-meeting loop below has read every meeting's tags.
+    var threadTagToProbe: String? = null
     for (i in 0 until meetings.length()) {
       val m = meetings.getJSONObject(i)
       val id = m.getString("id")
       println("PROBE meeting $id status=${m.optString("status")} title=${m.optString("title")} " +
         "duration=${m.optLong("duration_ms")} embedded_at=${m.opt("embedded_at")} tier=${m.optString("tier_used")} " +
         "template=${m.opt("template")} template_source=${m.opt("template_source")}")
+      val tagNames = JSONArray(db.rawQueryJson("SELECT name FROM tags WHERE meeting_id=? ORDER BY name", arrayOf(id)))
+        .let { arr -> (0 until arr.length()).map { arr.getJSONObject(it).getString("name") } }
+      println("PROBE   tags: $tagNames")
+      if (threadTagToProbe == null && tagNames.isNotEmpty()) threadTagToProbe = tagNames.first()
       val items = JSONArray(
         db.rawQueryJson(
           "SELECT id, kind, text, review, item_type, status, owner_json, date_said, date_norm, gen_version " +
@@ -50,6 +57,11 @@ class VerificationProbeTest {
       println("PROBE   edits: " + db.rawQueryJson("SELECT target_kind, target_key, content FROM edits WHERE meeting_id=?", arrayOf(id)))
       val utts = db.utterances(id)
       println("PROBE   utterances (${utts.size}): " + utts.take(12).joinToString(" | ") { "${it.startMs / 1000}s ${it.speakerId ?: "?"}: ${it.text}" })
+    }
+    if (threadTagToProbe != null) {
+      println("PROBE thread($threadTagToProbe): ${db.threadJson(ctx, threadTagToProbe)}")
+    } else {
+      println("PROBE thread: no tag on any of the newest meetings to probe")
     }
   }
 }
