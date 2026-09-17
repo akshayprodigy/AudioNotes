@@ -159,7 +159,7 @@ export const db = {
       'SELECT id, title, created_at AS createdAt, duration_ms AS durationMs, language, ' +
         'status, tier_used AS tierUsed, audio_retained AS audioRetained, summary_line AS summaryLine, ' +
         'transcribe_forced_at AS transcribeForcedAt, forced_from_language AS forcedFromLanguage, ' +
-        'diar_skipped_reason AS diarSkippedReason ' +
+        'diar_skipped_reason AS diarSkippedReason, template, template_source AS templateSource ' +
         'FROM meetings WHERE id = ?',
       [id],
     ).then(r => r[0]),
@@ -184,6 +184,18 @@ export const db = {
     ]);
     await Storage.reindex(id);
   },
+
+  /**
+   * A person's pick from the Summary tab's sheet (Phase 2, sub-project 6a) — always
+   * `template_source = 'chosen'`, the one value the native suggester must never overwrite.
+   * ProcessingEngine's own 'suggested' writes never come through here; they run natively.
+   */
+  setTemplate: (meetingId: string, id: string) =>
+    run('UPDATE meetings SET template = ?, template_source = ? WHERE id = ?', [
+      id,
+      'chosen',
+      meetingId,
+    ]),
 
   utterances: (meetingId: string) =>
     run<Utterance>(
@@ -592,6 +604,22 @@ export const db = {
 
   removeTag: (meetingId: string, name: string) =>
     run('DELETE FROM tags WHERE meeting_id = ? AND name = ?', [meetingId, name]),
+
+  /**
+   * Choosing a type on a tagged meeting remembers it for every one of its tags, so the next
+   * meeting tagged "weekly" or "client-acme" starts already suggested the right type. Mirrors
+   * AudioDb.rememberTemplateForTags — the native suggester reads the same `template.tag.<tag>`
+   * settings keys through AudioDb.rememberedTemplate, not through this path.
+   */
+  rememberTemplateForTags: async (meetingId: string, id: string) => {
+    const tags = await db.tagsFor(meetingId);
+    for (const tag of tags) {
+      await run('INSERT OR REPLACE INTO settings(key, value) VALUES(?, ?)', [
+        `template.tag.${tag}`,
+        id,
+      ]);
+    }
+  },
 
   // ---- Marks: moments tapped while recording ----------------------------------------------
   // Written natively while recording (CaptureController.mark); read here, resolved to words by

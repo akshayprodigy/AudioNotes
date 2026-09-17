@@ -442,6 +442,26 @@ export default function MeetingScreen({ route, navigation }: Props) {
   );
 
   /**
+   * A person's pick from the Summary tab's type sheet (Phase 2, sub-project 6a). Always writes
+   * template + template_source = 'chosen' and remembers it for every one of the meeting's tags,
+   * on free the same as on Pro — SummaryTab decides for itself whether to also call onWrite, so
+   * this never triggers "Write it again" on its own.
+   */
+  const onChangeTemplate = useCallback(
+    async (id: string) => {
+      setMeeting(m => (m ? { ...m, template: id, templateSource: 'chosen' } : m));
+      try {
+        await db.setTemplate(meetingId, id);
+        await db.rememberTemplateForTags(meetingId, id);
+      } catch (e: any) {
+        Alert.alert('Could not change the meeting type', String(e?.message ?? e));
+        refresh();
+      }
+    },
+    [meetingId, refresh],
+  );
+
+  /**
    * Save a correction, or a newly typed item.
    *
    * Corrections go into the `edits` side table rather than over the text they correct, because
@@ -1109,6 +1129,8 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 canPlay={player.available}
                 onRemoveMark={onRemoveMark}
                 onWrite={() => onReprocess(true)}
+                template={meeting?.template}
+                onChangeTemplate={onChangeTemplate}
                 onOpenTab={setTab}
                 onCopy={text => copyText(text, 'Summary')}
                 edits={edits}

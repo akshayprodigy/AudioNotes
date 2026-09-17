@@ -65,6 +65,8 @@ beforeEach(() => {
   (db.stageRates as jest.Mock).mockResolvedValue({});
   (db.setLineSpeaker as jest.Mock).mockResolvedValue(undefined);
   (db.addSpeaker as jest.Mock).mockResolvedValue(null);
+  (db.setTemplate as jest.Mock).mockResolvedValue(undefined);
+  (db.rememberTemplateForTags as jest.Mock).mockResolvedValue(undefined);
 });
 
 /** A native event, delivered the way the phone would deliver it (jest.setup.js). */
@@ -247,6 +249,30 @@ test('the export picker offers all four formats, subtitles included', async () =
   expect(picker!.props.actions.map((a: { label: string }) => a.label)).toEqual([
     'PDF', 'Markdown', 'Plain text', 'Subtitles (.srt)',
   ]);
+});
+
+/**
+ * Choosing a type on the Summary tab (Phase 2, sub-project 6a): MeetingScreen's onChangeTemplate
+ * writes it and remembers it for the meeting's tags. SummaryTab decides for itself whether to
+ * also rewrite the narrative (its own entitlement check, pinned in SummaryTab's own tests) — this
+ * pins only the wiring MeetingScreen owns.
+ */
+test('choosing a meeting type writes it and remembers it for the meeting\'s tags', async () => {
+  const { Sheet } = require('../../components/ui');
+  const tree = await render();
+  const sheets = tree.root.findAllByType(Sheet);
+  const picker = sheets.find(s => s.props.title === 'Meeting type');
+  expect(picker).toBeDefined();
+  const labels = picker!.props.actions.map((a: { label: string }) => a.label);
+  expect(labels).toEqual([
+    'General', 'Stand-up', 'One-to-one', 'Client call', 'Interview', 'Lecture', 'Site walk',
+  ]);
+  const clientAction = picker!.props.actions.find((a: { label: string }) => a.label === 'Client call');
+  await act(async () => {
+    clientAction.onPress();
+  });
+  expect(db.setTemplate).toHaveBeenCalledWith('m1', 'client');
+  expect(db.rememberTemplateForTags).toHaveBeenCalledWith('m1', 'client');
 });
 
 /**

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Icon, { type IconName } from '../../components/Icon';
-import { IconButton, Raised, Slide, SoftButton, Txt } from '../../components/ui';
+import { IconButton, Raised, Sheet, Slide, SoftButton, Txt, type SheetAction } from '../../components/ui';
 import { ProvenanceButton } from './ItemProvenance';
 import { SectionHead } from './shared';
 import type { Highlight } from './highlights';
@@ -10,6 +10,7 @@ import type { EditTarget, Item, Minute, Speaker } from '../../pipeline/types';
 import Llm from '../../native/NativeLlm';
 import Licence from '../../native/NativeLicence';
 import { TRIAL_DAYS, entitlement } from '../../billing/trial';
+import { TEMPLATE_IDS, templateHint, templateLabel } from './templateLabels';
 import {
   DOC_KEY,
   EditedTag,
@@ -54,6 +55,8 @@ export default function SummaryTab({
   onUpgrade,
   writing,
   onReview,
+  template,
+  onChangeTemplate,
 }: {
   /**
    * Taken for the COUNTERS alone — the prose still comes from `minutes`, which is where it lives.
@@ -85,6 +88,15 @@ export default function SummaryTab({
   onRemoveMark: (id: number) => void;
   /** Open the review queue. The banner that calls it is drawn only when there is something to review. */
   onReview?: () => void;
+  /** One of TEMPLATE_IDS, or null/undefined before the rule pass has suggested one — reads as General. */
+  template?: string | null;
+  /**
+   * A person's pick from the type sheet. Free tier: relabels only. Pro: also rewrites the
+   * narrative in the new shape, which this tab asks for itself (see the `paid` effect below)
+   * rather than by taking a second "is this Pro" prop — the licence check already lives here,
+   * for the "Write it again" button beneath.
+   */
+  onChangeTemplate?: (id: string) => void;
 }) {
   const { colors } = useTheme();
   const st = React.useMemo(() => makeStyles(colors), [colors]);
@@ -127,6 +139,13 @@ export default function SummaryTab({
     'checking' | 'expired' | 'locked' | 'no-model' | 'weak-device' | 'not-run'
   >('checking');
   const [lapsedCopy, setLapsedCopy] = React.useState('');
+  // Whether choosing a type should also trigger "Write it again" (Phase 2, sub-project 6a). Not
+  // derived from `reason`: `reason` conflates several distinct non-paid states (no model, weak
+  // device, not yet run) that all still mean "this IS a paid entitlement" — the type sheet cares
+  // about exactly one thing, whether writing new prose is possible at all, which is `ent.paid`
+  // alone. Stays false (its safe default) on every path that returns before `ent` is known,
+  // including 'expired' — a lapsed subscriber gets the same "relabel only" as free.
+  const [templateWritable, setTemplateWritable] = React.useState(false);
   React.useEffect(() => {
     let alive = true;
     (async () => {
@@ -147,6 +166,7 @@ export default function SummaryTab({
         // not "download something in Settings", because that download is gated too.
         const ent = await entitlement();
         if (!alive) return;
+        setTemplateWritable(ent.paid);
         if (!ent.paid) {
           setReason('locked');
           return;
@@ -169,8 +189,23 @@ export default function SummaryTab({
   // record — every free-tier item, and a free-tier ambiguous reconciliation — never counts.
   const needsLook = items.filter(i => i.review === 'needs_review' && i.itemType !== null).length;
 
+  const [templateSheetOpen, setTemplateSheetOpen] = React.useState(false);
+  const templateActions: SheetAction[] = TEMPLATE_IDS.map(id => ({
+    icon: 'list' as IconName,
+    label: templateLabel(id),
+    hint: templateHint(id),
+    onPress: () => {
+      onChangeTemplate?.(id);
+      // Free relabels only — the narrative itself needs Pro to be rewritten. Gated on
+      // templateWritable, not on `id` or on whether prose already exists: a paid meeting with no
+      // prose yet should still start narrating in the newly chosen shape.
+      if (templateWritable) onWrite();
+    },
+  }));
+
   return (
-    <ScrollView contentContainerStyle={st.pad} showsVerticalScrollIndicator={false}>
+    <>
+      <ScrollView contentContainerStyle={st.pad} showsVerticalScrollIndicator={false}>
       {needsLook > 0 && onReview ? (
         <View style={st.reviewWrap}>
           <Raised edge={colors.warning} fill={colors.warningSoft} rad={radius.card} depth={4}>
@@ -231,6 +266,20 @@ export default function SummaryTab({
               <Txt variant="overlineSm" color={colors.onPrimary}>
                 SUMMARY
               </Txt>
+              {/* Phase 2 (sub-project 6a): the meeting's type, suggested from the transcript or
+                  chosen here. Always shown, free tier included — it is a label until they buy,
+                  never a paywall. flexShrink: 0 so a long label (e.g. "One-to-one") is never
+                  clipped by its row-mates, which is what the custom font's short-measurement
+                  otherwise does to it. */}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Meeting type: ${templateLabel(template)}`}
+                onPress={() => setTemplateSheetOpen(true)}
+                style={st.templateChip}>
+                <Txt variant="chipSoft" color={colors.onPrimary}>
+                  {templateLabel(template)}
+                </Txt>
+              </Pressable>
               <Txt variant="chipSoft" color={colors.onPrimary} style={st.dim}>
                 {mins} min · {speakers.length || '—'}{' '}
                 {speakers.length === 1 ? 'speaker' : 'speakers'}
@@ -373,7 +422,14 @@ export default function SummaryTab({
           {onUpgrade ? <SoftButton icon="ai" label="See Pro" onPress={onUpgrade} /> : null}
         </>
       ) : null}
-    </ScrollView>
+      </ScrollView>
+      <Sheet
+        visible={templateSheetOpen}
+        title="Meeting type"
+        actions={templateActions}
+        onClose={() => setTemplateSheetOpen(false)}
+      />
+    </>
   );
 }
 
@@ -428,6 +484,13 @@ function makeStyles(_c: Colors) {
     flex: { flex: 1, gap: s(8) },
     gist: { padding: s(18), gap: s(12) },
     headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    templateChip: {
+      flexShrink: 0,
+      paddingHorizontal: s(8),
+      paddingVertical: s(3),
+      borderRadius: radius.pill,
+      backgroundColor: 'rgba(255,255,255,0.18)',
+    },
     dim: { opacity: 0.8 },
     tools: { flexDirection: 'row', gap: s(14) },
     cta: { marginTop: s(4) },

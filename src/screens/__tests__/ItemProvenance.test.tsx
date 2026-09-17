@@ -405,6 +405,8 @@ beforeEach(() => {
   (db.addSpeaker as jest.Mock).mockResolvedValue(null);
   (db.getSetting as jest.Mock).mockResolvedValue(null);
   (db.setSetting as jest.Mock).mockResolvedValue(undefined);
+  (db.setTemplate as jest.Mock).mockResolvedValue(undefined);
+  (db.rememberTemplateForTags as jest.Mock).mockResolvedValue(undefined);
 
   // One store behind three calls, so a tick written by the tab can be read back by the tab AND by
   // the cross-meeting worklist's own loader rather than merely asserted about.

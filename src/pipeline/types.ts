@@ -54,6 +54,14 @@ export interface Meeting {
    * "diarization ran" and "there was nobody to separate".
    */
   diarSkippedReason?: string | null;
+  /**
+   * One of TemplateSuggester's seven ids (Phase 2, sub-project 6a), or null before the rule pass
+   * has suggested one — the same null either way whether nothing has run yet or the transcript
+   * cleared no cue's threshold, since both read as "General" on the Summary chip.
+   */
+  template?: string | null;
+  /** 'suggested' (the rule wrote it) or 'chosen' (a person picked it, which the rule must never overwrite). */
+  templateSource?: string | null;
 }
 
 export interface Utterance {
