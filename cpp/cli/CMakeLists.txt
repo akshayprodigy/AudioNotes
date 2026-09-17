@@ -210,6 +210,22 @@ audionotes_add_test(test_speaker_match
   ${CORE}/tests/test_speaker_match.cpp
   ${CORE}/diar/speaker_match.cpp)
 
+# Phase 4 (remembered voices): the per-speaker embedding against the real CAM++ model and the AMI
+# fixtures (skips itself without them). Links the diarizer the way the CLI does.
+if(ORT_LIB)
+  audionotes_add_test(test_voices_live
+    ${CORE}/tests/test_voices_live.cpp
+    ${CORE}/diar/diarizer.cpp
+    ${CORE}/diar/span_map.cpp
+    ${CORE}/diar/speaker_match.cpp
+    ${CORE}/util/ort_init.cpp)
+  target_compile_definitions(test_voices_live PRIVATE HAVE_SHERPA=1
+    AUDIONOTES_ORT_LIB_DEFAULT="${ORT_LIB}")
+  target_include_directories(test_voices_live PRIVATE ${TP} ${TP}/onnxruntime/include ${TP}/sherpa-onnx)
+  target_link_libraries(test_voices_live PRIVATE sherpa-onnx-c-api ${CMAKE_DL_LIBS})
+  set_target_properties(test_voices_live PROPERTIES BUILD_RPATH "${ORT_ROOT}/lib")
+endif()
+
 audionotes_add_test(test_asr_postprocess
   ${CORE}/tests/test_asr_postprocess.cpp
   ${CORE}/asr/asr_postprocess.cpp

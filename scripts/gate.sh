@@ -22,6 +22,11 @@ export VERBALE_EMBED_GGUF="${VERBALE_EMBED_GGUF:-$HOME/.cache/verbale-models/bge
 # The writer, for cpp's test_classify_live (the classifier against the real Qwen; ~40 s). The
 # eval harness's copy is the same file the phone downloads; the test skips itself without it.
 export VERBALE_LLM_GGUF="${VERBALE_LLM_GGUF:-$PWD/eval/models/qwen-instruct-q4_k_m.gguf}"
+# Phase 4 (remembered voices): the diarizer's embedding model and the AMI fixtures, for cpp's
+# test_voices_live — the same-person / different-person cosines that chose the match rule.
+export VERBALE_DIAR_SEG="${VERBALE_DIAR_SEG:-$PWD/eval/models/diar_segmentation.onnx}"
+export VERBALE_DIAR_EMB="${VERBALE_DIAR_EMB:-$PWD/eval/models/diar_embedding.onnx}"
+export VERBALE_FIXTURES="${VERBALE_FIXTURES:-$PWD/eval/fixtures}"
 NINJA="$(dirname "$CMAKE")/ninja"
 CTEST="$(dirname "$CMAKE")/ctest"
 

@@ -1,6 +1,7 @@
 #include "diar/diarizer.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include "diar/span_map.h"
 #include "diar/speaker_match.h"
@@ -439,6 +440,55 @@ std::vector<DiarSegment> Diarizer::process(const std::string& pcm_path,
   (void)spans;
   (void)window_ms;
   throw std::runtime_error("sherpa-onnx not compiled in (vendor cpp/third_party/sherpa-onnx)");
+#endif
+  return out;
+}
+
+
+std::vector<std::vector<float>> Diarizer::speakerVoices(const std::string& pcm_path,
+                                                        const std::vector<DiarSegment>& segments) {
+  std::vector<std::vector<float>> out;
+  if (segments.empty()) return out;
+  int max_speaker = -1;
+  for (const auto& seg : segments) max_speaker = std::max(max_speaker, seg.speaker);
+  if (max_speaker < 0) return out;
+  out.resize(static_cast<size_t>(max_speaker) + 1);
+#ifdef HAVE_SHERPA
+  for (int sp = 0; sp <= max_speaker; ++sp) {
+    // Longest turns first, the rule collectSpeaker states; then the chosen turns are read in time
+    // order, as spans, so the file is read forwards and only where this speaker spoke.
+    std::vector<const DiarSegment*> mine;
+    for (const auto& seg : segments) {
+      if (seg.speaker == sp && seg.end_ms > seg.start_ms) mine.push_back(&seg);
+    }
+    std::sort(mine.begin(), mine.end(), [](const DiarSegment* a, const DiarSegment* b) {
+      const int64_t da = a->end_ms - a->start_ms, db = b->end_ms - b->start_ms;
+      if (da != db) return da > db;
+      return a->start_ms < b->start_ms;
+    });
+    std::vector<Span> spans;
+    int64_t taken_ms = 0;
+    for (const DiarSegment* seg : mine) {
+      if (taken_ms >= kEmbedMaxMs) break;
+      const int64_t want_ms = std::min(seg->end_ms - seg->start_ms, kEmbedMaxMs - taken_ms);
+      spans.push_back(Span{seg->start_ms, seg->start_ms + want_ms});
+      taken_ms += want_ms;
+    }
+    if (taken_ms < kEmbedMinMs) continue;
+    std::sort(spans.begin(), spans.end(),
+              [](const Span& a, const Span& b) { return a.start_ms < b.start_ms; });
+    std::vector<float> voice = readSpans(pcm_path, spans, impl_->sample_rate);
+    if (static_cast<int64_t>(voice.size()) * 1000 / impl_->sample_rate < kEmbedMinMs) continue;
+    std::vector<float> emb = impl_->embed(voice);
+    double norm = 0.0;
+    for (float x : emb) norm += static_cast<double>(x) * x;
+    if (norm <= 0.0) continue;
+    const float inv = static_cast<float>(1.0 / std::sqrt(norm));
+    for (float& x : emb) x *= inv;
+    out[static_cast<size_t>(sp)] = std::move(emb);
+  }
+#else
+  (void)pcm_path;
 #endif
   return out;
 }

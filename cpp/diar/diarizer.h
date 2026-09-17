@@ -73,6 +73,18 @@ class Diarizer {
   std::vector<DiarSegment> process(const std::string& pcm_path, const std::vector<struct Span>& spans,
                                    int64_t window_ms);
 
+  /**
+   * One voice per speaker index of `segments` (index 0 .. max), for remembering a voice across
+   * meetings (Phase 4). Each is the embedding of up to kEmbedMaxMs of that speaker's longest turns
+   * — the same audio-picking rule the windowed path uses to match one window's speakers to the
+   * next — L2-normalised, so the dot product of two is their cosine. Empty for a speaker with less
+   * than kEmbedMinMs of audio, and for every speaker when the extractor is unavailable. Reads only
+   * the turns it embeds, never the whole file, so a 90-minute meeting costs the same as a short one.
+   * `segments` are on the recording's own timeline, as process() returns them.
+   */
+  std::vector<std::vector<float>> speakerVoices(const std::string& pcm_path,
+                                                const std::vector<DiarSegment>& segments);
+
  private:
   struct Impl;
   Impl* impl_;
