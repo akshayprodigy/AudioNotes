@@ -80,8 +80,8 @@ Legend: ✅ done · ◐ partly · ✗ not built · ⛔ tried and rejected on evi
 | Ask this meeting | Next | ✅ (17 Sep; cites or says nothing) |
 | Keyword + meaning-based search | Next | ✅ (17 Sep; bge-small, one fused list, "≈" for meaning-only hits) |
 | Meeting templates | Next | ✅ (17 Sep; seven types, auto-suggested, remembered per tag) |
-| Decision history | Later | ✗ (event log considered and dropped) |
-| Meeting preparation | Later | ✗ |
+| Decision history | Later | ✅ (17 Sep; thread screen, "changes: …" links found by a rule over the item vectors) |
+| Meeting preparation | Later | ✅ (17 Sep; the same thread screen's "Still open" section) |
 | Validated additional languages | After evaluation | ◐ Hindi built (Qwen3-ASR), unmeasured, unreachable by design |
 
 ## Faster processing without risking the recording
