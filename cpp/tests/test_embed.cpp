@@ -78,6 +78,40 @@ int main() {
   const auto lt = e.embed({longText});
   CHECK(lt.size() == 1 && lt[0].size() == 384);
 
+  // The eight pairs of the Phase 3 (thread memory) brief §4, measured on this same model — what
+  // chose DecisionLinks.LINK_COSINE (0.72) and LINK_COSINE_WITH_WORD (0.60). The phone's mirror of
+  // this is NativePipelineTest (device, printed rather than asserted — the brief records what it
+  // measures instead of pinning a device-specific float). Four "yes" pairs at >= 0.69, four "no"
+  // pairs at <= 0.66; a mutant that swapped a "yes" sentence for a "no" one must fail this.
+  struct Pair { const char* a; const char* b; bool shouldLink; };
+  const Pair pairs[] = {
+      {"The proposal goes out Friday.",
+       "The proposal will be sent next week instead of Friday.", true},
+      {"We will use Postgres for the new service.",
+       "We decided to switch the new service from Postgres to SQLite.", true},
+      {"We will ship on Monday.",
+       "Shipping moved to Thursday because QA is not done.", true},
+      {"Existing vendors keep their old codes.",
+       "We will not migrate the old codes.", true},
+      {"Shipping moved to Thursday because QA is not done.",
+       "The proposal will be sent next week instead of Friday.", false},
+      {"We will ship on Monday.", "The proposal goes out Friday.", false},
+      {"The proposal goes out Friday.", "Lunch will be at one.", false},
+      {"We will ship on Monday.", "We agreed to hire two more testers.", false},
+  };
+  for (const auto& p : pairs) {
+    const auto pv = e.embed({p.a, p.b});
+    CHECK(pv.size() == 2);
+    const float c = dot(pv[0], pv[1]);
+    std::printf("test_embed: pair cosine=%.3f shouldLink=%d :: \"%s\" <-> \"%s\"\n", c,
+                p.shouldLink, p.a, p.b);
+    if (p.shouldLink) {
+      CHECK(c >= 0.69f);
+    } else {
+      CHECK(c <= 0.66f);
+    }
+  }
+
   if (failures) {
     std::fprintf(stderr, "test_embed: %d failure(s)\n", failures);
     return 1;
