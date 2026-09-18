@@ -16,7 +16,7 @@
 - [x] 8. `SpeakersScreen`: the suggestion line, Yes/No, the rename hook, the one-time card. Tests. Commit.
 - [x] 9. `SummaryTab` banner + `MeetingScreen` wiring. Tests. Commit.
 - [x] 10. `SettingsScreen` Voices section. Tests. Commit.
-- [ ] 11. The gate; then `device-verify.sh PeopleDbTest` and `NativePipelineTest` once more on the phone. Commit anything that moved.
+- [x] 11. The gate; then `device-verify.sh PeopleDbTest` and `NativePipelineTest` once more on the phone. Commit anything that moved.
 - [ ] 12. The by-hand run (§5.6), the report (§7), the plan/scorecard rows. Commit.
 
 ## Decisions
@@ -79,3 +79,11 @@
   WARNING) in the unrelated `models.map` download row. Left untouched — it predates Session A (present
   at 9750864), has no test coverage, and is outside Phase 4; eslint exits 0 (0 errors). All Phase 4 files
   are warning-free.
+
+## Step 11 result
+
+- Gate (`GATE_STAGES="types js scans mutations kotlin cpp" bash scripts/gate.sh`): `gate: all clear`
+  in 107s — types ok, js 546 passed, scans ok, mutations ok, kotlin ok, cpp ok, exit 0.
+- Phone: `adb` not on PATH and `adb devices | grep -c 36091FDH30034G` = 0 → device-verify (PeopleDbTest,
+  NativePipelineTest) and the by-hand §5.6 run are not run — phone unavailable. Per §6, proceed to §12
+  with those marked "not run — phone unavailable".
