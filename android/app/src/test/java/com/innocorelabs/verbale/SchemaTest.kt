@@ -165,12 +165,13 @@ class SchemaTest {
    * EXISTS is a no-op against a table that already exists — it has nothing to say about a table
    * that does not, which is created normally on every open including on an upgraded install.
    */
-  @Test fun newTablesAreNotInAddedColumns() {
-    val tables = AudioDb.addedColumnsForTest().map { it.first }
-    assertFalse(tables.contains("items"))
-    assertFalse(tables.contains("item_sources"))
-    assertFalse(tables.contains("item_done"))
-  }
+   @Test fun newTablesAreNotInAddedColumns() {
+     val tables = AudioDb.addedColumnsForTest().map { it.first }
+     assertFalse(tables.contains("items"))
+     assertFalse(tables.contains("item_sources"))
+     assertFalse(tables.contains("item_done"))
+     assertFalse(tables.contains("people"))
+   }
 
   /**
    * The migration marker reaches an existing install through ADDED_COLUMNS, or through nothing.
@@ -279,4 +280,40 @@ class SchemaTest {
    */
   @Test fun theItemsAnchorIsIndexed() =
     assertTrue(schema.contains("idx_items_meeting"))
+
+   /** Phase 4: the two speakers columns reach existing phones through ADDED_COLUMNS. */
+   @Test fun speakersHasVoiceAndSuggestedPersonColumns() {
+     val added = AudioDb.addedColumnsForTest()
+     assertTrue(
+       "voice missing from ADDED_COLUMNS: existing phones never gain the column",
+       added.contains(Triple("speakers", "voice", "BLOB")),
+     )
+     assertTrue(
+       "suggested_person missing from ADDED_COLUMNS: existing phones never gain the column",
+       added.contains(Triple("speakers", "suggested_person", "TEXT")),
+     )
+   }
+
+   /** Phase 4: the people table — new table, in SCHEMA, NOT in ADDED_COLUMNS. */
+   @Test fun peopleTableIsInSchema() {
+     assertTrue(
+       "people CREATE TABLE missing from SCHEMA",
+       schema.contains("CREATE TABLE IF NOT EXISTS people("),
+     )
+     val cols = columnsOf(ddlFor("people"))
+     assertEquals(
+       listOf("id", "name", "voice", "dim", "samples", "created_at", "updated_at").sorted(),
+       cols.sorted(),
+     )
+     assertTrue(
+       "people.name must be UNIQUE COLLATE NOCASE so 'Priya' and 'priya' merge",
+       ddlFor("people").contains("UNIQUE COLLATE NOCASE"),
+     )
+   }
+
+   /** Phase 4: `people` is last in BackupManager.TABLES because it references nothing. */
+   @Test fun backupManagerTablesEndsWithPeople() {
+     val tables = com.innocorelabs.verbale.data.BackupManager.tablesForTest()
+     assertEquals("people", tables.last())
+   }
 }

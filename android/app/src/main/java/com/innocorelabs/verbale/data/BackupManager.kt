@@ -65,9 +65,9 @@ object BackupManager {
     // person's questions and the meeting's answers, carried for the same reason the summary is.
     // "search_vec" is deliberately NOT here: 8 MB of vectors that the restoring phone re-embeds
     // itself — reindexImported resets embedded_at, and the sweep's backfill does the rest.
-    "meetings", "segments", "utterances", "speakers", "minutes", "items", "item_sources",
-    "item_done", "action_done", "marks", "asks", "edits", "tags", "settings",
-  )
+     "meetings", "segments", "utterances", "speakers", "minutes", "items", "item_sources",
+     "item_done", "action_done", "marks", "asks", "edits", "tags", "settings", "people",
+   )
 
   /**
    * Settings that describe this install rather than this user, and must not travel.
@@ -82,7 +82,12 @@ object BackupManager {
     "'licence_token','licence_device_id','licence_clock_floor','licence_refresh_key'," +
       "'trial_started_at','trial_summaries_used','trial_ended_at'"
 
-  class BackupError(message: String) : Exception(message)
+   class BackupError(message: String) : Exception(message)
+
+   /** The backup table list, for a unit test that must not open an encrypted database. */
+   @JvmStatic
+   fun tablesForTest(): List<String> = TABLES.toList()
+
 
   fun suggestedFileName(): String {
     val stamp = SimpleDateFormat("yyyy-MM-dd-HHmm", Locale.US).format(Date())

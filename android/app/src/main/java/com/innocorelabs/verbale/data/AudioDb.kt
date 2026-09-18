@@ -2579,9 +2579,17 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
            start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL,
            speaker_id TEXT, text TEXT NOT NULL);""",
       """CREATE TABLE IF NOT EXISTS speakers(
-           id TEXT PRIMARY KEY,
-           meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
-           cluster_label TEXT NOT NULL, display_name TEXT NOT NULL);""",
+            id TEXT PRIMARY KEY,
+            meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+            cluster_label TEXT NOT NULL, display_name TEXT NOT NULL);""",
+       // Remembered voices (Phase 4). One row per named voice, the running centroid of every
+       // speaker this person folded in. `name` is UNIQUE NOCASE so "Priya" and "priya" merge, and
+       // only `name` is user-facing — `id` is a UUID the person never sees. `voice` is a VecCodec
+       // unit vector (stored as the int8+scale BLOB), NULL only when it could not be computed.
+       """CREATE TABLE IF NOT EXISTS people(
+            id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            voice BLOB NOT NULL, dim INTEGER NOT NULL, samples INTEGER NOT NULL,
+            created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);""",
       """CREATE TABLE IF NOT EXISTS minutes(
            id TEXT PRIMARY KEY,
            meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
@@ -2856,6 +2864,8 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       // 'suggested' or 'chosen'. A person's 'chosen' is the one value TemplateSuggester must never
       // overwrite (§2.5 of the Phase 2 brief); NULL alongside `template` before either has run.
       Triple("meetings", "template_source", "TEXT"),
+      Triple("speakers", "voice", "BLOB"),
+      Triple("speakers", "suggested_person", "TEXT"),
     )
 
     /** The schema, for a unit test that must not open an encrypted database. */

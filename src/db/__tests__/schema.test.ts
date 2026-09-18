@@ -22,8 +22,10 @@ import { SCHEMA } from '../schema';
 function freshDb(): DatabaseSync {
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys = ON;');
-  db.exec(ddlFor('meetings'));
-  db.exec(ddlFor('items'));
+   db.exec(ddlFor('meetings'));
+   db.exec(ddlFor('speakers'));
+   db.exec(ddlFor('people'));
+   db.exec(ddlFor('items'));
   db.exec(indexDdlFor('idx_items_meeting'));
   db.exec(ddlFor('item_sources'));
   db.exec(ddlFor('item_done'));
@@ -421,6 +423,42 @@ describe('schema.ts evidence tables (executed in real SQLite)', () => {
       expect(db.prepare('SELECT * FROM item_done').all()).toHaveLength(0);
       expect(db.prepare('SELECT * FROM items').all()).toHaveLength(0);
     });
+  });
+});
+
+/** Phase 4: remembered voices. Two columns added to speakers, both nullable with no default. */
+describe('speakers', () => {
+  it('has voice BLOB and suggested_person TEXT, both nullable with no default', () => {
+    const db = freshDb();
+    const cols = columnsOf(db, 'speakers');
+    const voice = column(cols, 'voice');
+    expect(voice.type).toBe('BLOB');
+    expect(voice.notnull).toBe(0);
+    expect(voice.dflt_value).toBeNull();
+    const suggested = column(cols, 'suggested_person');
+    expect(suggested.type).toBe('TEXT');
+    expect(suggested.notnull).toBe(0);
+    expect(suggested.dflt_value).toBeNull();
+  });
+});
+
+/** Phase 4: the people table — one row per named voice. */
+describe('people', () => {
+  it('has exactly the seven expected columns with their types', () => {
+    const expected: Record<string, string> = {
+      id: 'TEXT', name: 'TEXT', voice: 'BLOB', dim: 'INTEGER',
+      samples: 'INTEGER', created_at: 'INTEGER', updated_at: 'INTEGER',
+    };
+    const cols = columnsOf(freshDb(), 'people');
+    expect(cols.map(c => c.name).sort()).toEqual(Object.keys(expected).sort());
+    for (const [name, type] of Object.entries(expected)) {
+      expect(column(cols, name).type).toBe(type);
+    }
+  });
+
+  it('name is UNIQUE COLLATE NOCASE', () => {
+    const ddl = ddlFor('people');
+    expect(ddl).toContain('name TEXT NOT NULL UNIQUE COLLATE NOCASE');
   });
 });
 

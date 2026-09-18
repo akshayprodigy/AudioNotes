@@ -64,12 +64,26 @@ export const SCHEMA = [
      speaker_id TEXT,
      text TEXT NOT NULL
    );`,
-  `CREATE TABLE IF NOT EXISTS speakers (
-     id TEXT PRIMARY KEY,
-     meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
-     cluster_label TEXT NOT NULL,
-     display_name TEXT NOT NULL
-   );`,
+   `CREATE TABLE IF NOT EXISTS speakers (
+      id TEXT PRIMARY KEY,
+      meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+      cluster_label TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      voice BLOB,            -- Phase 4: VecCodec-encoded unit vector; NULL when none
+      suggested_person TEXT  -- Phase 4: a people.id; NULL when no suggestion pending
+    );`,
+   // Remembered voices (Phase 4): one row per named voice, the running centroid of every speaker
+   // folded in. `name` is UNIQUE NOCASE; `voice` is a VecCodec unit vector BLOB (never NULL —
+   // a person exists only because a speaker with a voice was named). Mirrored in AudioDb.SCHEMA.
+   `CREATE TABLE IF NOT EXISTS people (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      voice BLOB NOT NULL,
+      dim INTEGER NOT NULL,
+      samples INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );`,
   `CREATE TABLE IF NOT EXISTS minutes (
      id TEXT PRIMARY KEY,
      meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
