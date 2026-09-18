@@ -57,7 +57,19 @@ class VerificationProbeTest {
       println("PROBE   edits: " + db.rawQueryJson("SELECT target_kind, target_key, content FROM edits WHERE meeting_id=?", arrayOf(id)))
       val utts = db.utterances(id)
       println("PROBE   utterances (${utts.size}): " + utts.take(12).joinToString(" | ") { "${it.startMs / 1000}s ${it.speakerId ?: "?"}: ${it.text}" })
+      // Phase 4: per-speaker voice + suggestion, and the total people count.
+      val spkRows = JSONArray(db.rawQueryJson(
+        "SELECT display_name, voice IS NOT NULL AS has_voice, suggested_person " +
+          "FROM speakers WHERE meeting_id=? ORDER BY cluster_label",
+        arrayOf(id),
+      ))
+      for (k in 0 until spkRows.length()) {
+        val s = spkRows.getJSONObject(k)
+      println("PROBE   speaker ${s.getString("display_name")} has_voice=${s.getInt("has_voice") == 1} " +
+        "suggested_person=${s.opt("suggested_person")}")
+      }
     }
+    println("PROBE people count: ${db.peopleCount()}")
     if (threadTagToProbe != null) {
       println("PROBE thread($threadTagToProbe): ${db.threadJson(ctx, threadTagToProbe)}")
     } else {

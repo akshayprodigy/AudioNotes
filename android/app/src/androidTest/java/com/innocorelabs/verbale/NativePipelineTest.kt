@@ -267,6 +267,59 @@ class NativePipelineTest {
   }
 
   /**
+   * Phase 4 (remembered voices): nativeSpeakerVoices crosses the JNI seam with the same tri array
+   * nativeDiarize returns, and hands back one unit-length voice vector per speaker index.
+   *
+   * The jfk fixture is one voice, so there is one row and it must be a unit vector — the C++ comment
+   * in diarizer.h says L2-normalised, and the phone must hold what the Mac measured. `dim` is read
+   * from the array, never hard-coded: a model swap that changes the embedding width must reach the
+   * caller through this field, not through a constant.
+   */
+  @Test
+  fun speaker_voices_returns_one_row_per_speaker() {
+    val vad = vadModel()
+    val seg = ModelCatalog.fileFor(ctx, "diar-seg")?.takeIf { it.exists() }
+    val emb = ModelCatalog.fileFor(ctx, "diar-emb")?.takeIf { it.exists() }
+    assumeTrue("silero_vad.onnx not installed", vad != null)
+    assumeTrue("diarization models not installed", seg != null && emb != null)
+
+    val pcm = fixturePcm()
+    val spans = NativeBridge.nativeVad(pcm.absolutePath, vad!!.absolutePath, 16000)
+    assumeTrue("VAD produced no spans to diarize", spans.isNotEmpty())
+
+    val tri = NativeBridge.nativeDiarize(
+      pcm.absolutePath, seg!!.absolutePath, emb!!.absolutePath, 16000, 0, spans, 0L,
+    )
+    assumeTrue("diarization produced no segments", tri.size / 3 > 0)
+
+    val floats = NativeBridge.nativeSpeakerVoices(
+      pcm.absolutePath, seg.absolutePath, emb.absolutePath, 16000, tri,
+    )
+    assertTrue("nativeSpeakerVoices returned empty", floats.isNotEmpty())
+
+    val dim = floats[0].toInt()
+    assertTrue("dim is zero — the model did not report its embedding width", dim > 0)
+
+    val nSpeakers = (0 until tri.size / 3).map { tri[it * 3 + 2].toInt() }.toSortedSet().size
+    val nRows = (floats.size - 1) / dim
+    assertEquals("one voice row per speaker", nSpeakers, nRows)
+
+    // The first non-zero row must be a unit vector: the dot product of a vector with itself is its
+    // squared length, and a unit vector has length 1.0 ± 1e-3 (VecCodec's quantisation loses < 2%).
+    var firstNorm = -1.0
+    for (cl in 0 until nRows) {
+      val row = floats.copyOfRange(1 + cl * dim, 1 + (cl + 1) * dim)
+      var normSq = 0.0
+      for (x in row) normSq += x.toDouble() * x.toDouble()
+      val norm = kotlin.math.sqrt(normSq)
+      if (norm > 0.5) { firstNorm = norm; break }
+    }
+    println("VOICES: dim=$dim speakers=$nSpeakers firstNorm=$firstNorm")
+    assertTrue("no non-zero voice row found", firstNorm >= 0)
+    assertTrue("first non-zero row is not a unit vector: $firstNorm", kotlin.math.abs(firstNorm - 1.0) < 1e-3)
+  }
+
+  /**
    * The transcript fence survives the JNI seam.
    *
    * `fenceTranscript` wraps recorded speech between two U+E000 markers so a meeting that says

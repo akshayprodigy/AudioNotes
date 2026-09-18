@@ -9,7 +9,7 @@
 - [x] 4. `AudioDb.setSpeakerVoices`, `suggestPeople`, `rememberVoice`, `answerSuggestion`,
     `forgetVoices`, `peopleCount` (for the probe); the hook in `ProcessingEngine`'s diarize stage. Commit.
 - [x] 5. `StorageModule` methods `rememberVoice`, `answerSuggestion`, `forgetVoices` + `NativeStorage.ts` + the `jest.setup.js` stubs + `db.*` wrappers in `queries.ts`. Commit.
-- [ ] 6. Device: `PeopleDbTest` (§5.5) via `device-verify.sh PeopleDbTest`; `NativePipelineTest`'s new seam test; extend `VerificationProbeTest` to print each speaker's `voice IS NOT NULL`, `suggested_person` and `SELECT count(*) FROM people`. Commit. **Update the progress file and stop.**
+- [x] 6. Device: `PeopleDbTest` (§5.5) via `device-verify.sh PeopleDbTest`; `NativePipelineTest`'s new seam test; extend `VerificationProbeTest` to print each speaker's `voice IS NOT NULL`, `suggested_person` and `SELECT count(*) FROM people`. Commit. **Update the progress file and stop.**
 
 ### Session B — screens, by hand, report
 - [ ] 7. `db.speakers` SELECT + `Speaker` type gain `suggestedPerson`/`suggestedName`; `voiceCopy.ts` + `voiceCopy.test.ts`. Commit.
@@ -35,6 +35,7 @@
 - Kotlin PeopleMatchTest: default-name guard dropped → 1 failure (non-default displayName case suggests instead of null), restored, green.
 - Task 4 (AudioDb functions): mutation-checked via device tests in Task 6 (§5.5). Verified: `voices_remember` gate returns "off" reason (temporarily mutated to return `{"remembered":true}` → would fail PeopleDbTest's "setting off → off" case, restored, green). Kotlin compiles clean for main and test source sets.
 - Task 5 (StorageModule + NativeStorage + queries + jest.setup): no standalone unit test yet — tested via screen tests in Session B (Tasks 8-10). Kotlin main compiles clean; TS compiles and schema tests pass. Mutation checks deferred to Session B screen tests.
+- Task 6 (device tests): PeopleDbTest — 3/3 pass on device (`device-verify.sh PeopleDbTest` → OK). NativePipelineTest seam test `speaker_voices_returns_one_row_per_speaker` — passes (models installed). VerificationProbeTest extended to print `has_voice`, `suggested_person`, `people count` per meeting — runs clean. Mutation: `foldVoice` normalization skipped → 1 failure (centroid unit-length assertion in PeopleDbTest), restored, green.
 - Task 3 (JNI): no standalone mutation — nativeSpeakerVoices requires the diarizer models and is covered by test_voices_live (§5.3) and the NativePipelineTest seam (Task 6, §5.5). C++ builds clean, test_voices_live passes.
 
 ## Notes for the next session

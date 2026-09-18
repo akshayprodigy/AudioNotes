@@ -74,8 +74,12 @@ CLASSES=(
   # Meeting templates (Phase 2, sub-project 6a): the tag join behind rememberTemplateForTags /
   # rememberedTemplate, and the templateSource='chosen' guard that keeps a suggestion pass from
   # overwriting a person's own pick. Real SQLCipher and the `tags` table, so not a JVM test.
-  com.innocorelabs.verbale.TemplatesDbTest
-  # Thread memory (Phase 3): threadJson's tag join, the open/decisions assembly over real
+   com.innocorelabs.verbale.TemplatesDbTest
+   # Phase 4: remembered voices — Voiceprints stored, suggested, remembered and forgotten on the
+   # phone's real SQLCipher database. Real SQLCipher, the people table, and hand-made vectors,
+   # so not a JVM test.
+   com.innocorelabs.verbale.PeopleDbTest
+   # Thread memory (Phase 3): threadJson's tag join, the open/decisions assembly over real
   # replaceItems rows, real search_vec vectors and the Pro gate running before any table is
   # touched. Real SQLCipher and the real DecisionLinks/VecCodec, so not a JVM test.
   com.innocorelabs.verbale.ThreadsDbTest
