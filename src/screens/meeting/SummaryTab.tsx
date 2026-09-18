@@ -12,6 +12,7 @@ import Licence from '../../native/NativeLicence';
 import { TRIAL_DAYS, entitlement } from '../../billing/trial';
 import { TEMPLATE_IDS, templateHint, templateLabel } from './templateLabels';
 import { threadLine } from '../threadData';
+import { soundsLike } from '../voiceCopy';
 import {
   DOC_KEY,
   EditedTag,
@@ -58,8 +59,10 @@ export default function SummaryTab({
   onReview,
   template,
   onChangeTemplate,
-  threads,
-  onOpenThread,
+   threads,
+   onOpenThread,
+   voiceSuggestions,
+   onConfirmVoices,
 }: {
   /**
    * Taken for the COUNTERS alone — the prose still comes from `minutes`, which is where it lives.
@@ -106,8 +109,11 @@ export default function SummaryTab({
    * Paid only; empty (never a "(Pro)" placeholder) on free — the library's own door is the nudge.
    */
   threads?: { tag: string; open: number; decisions: number }[];
-  onOpenThread?: (tag: string) => void;
-}) {
+   onOpenThread?: (tag: string) => void;
+   /** Phase 4: the names voice matching proposes for this meeting's speakers, in speaker order. Paid only. */
+   voiceSuggestions?: string[];
+   onConfirmVoices?: () => void;
+ }) {
   const { colors } = useTheme();
   const st = React.useMemo(() => makeStyles(colors), [colors]);
   const ed: EditMap = edits ?? new Map();
@@ -216,6 +222,28 @@ export default function SummaryTab({
   return (
     <>
       <ScrollView contentContainerStyle={st.pad} showsVerticalScrollIndicator={false}>
+      {paid && voiceSuggestions && voiceSuggestions.length > 0 && onConfirmVoices ? (
+        <View style={st.reviewWrap}>
+          <Raised edge={colors.primary} fill={colors.primarySoft} rad={radius.card} depth={4}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Confirm voices"
+              onPress={onConfirmVoices}
+              style={st.reviewBanner}>
+              <Icon name="users" size={s(20)} color={colors.primary} strokeWidth={2.4} />
+              <View style={st.flex}>
+                <Txt variant="bodyBlack">{soundsLike(voiceSuggestions)}</Txt>
+                <Txt variant="chipSoft" color={colors.inkSoft}>
+                  One tap names them on the Speakers screen.
+                </Txt>
+              </View>
+              <Txt variant="chip" color={colors.primary}>
+                Speakers
+              </Txt>
+            </Pressable>
+          </Raised>
+        </View>
+      ) : null}
       {needsLook > 0 && onReview ? (
         <View style={st.reviewWrap}>
           <Raised edge={colors.warning} fill={colors.warningSoft} rad={radius.card} depth={4}>

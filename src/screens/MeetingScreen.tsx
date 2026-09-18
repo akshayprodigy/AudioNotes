@@ -292,6 +292,11 @@ export default function MeetingScreen({ route, navigation }: Props) {
   // reprocess that rewrites the transcript never touches the mark — see highlightsFor.
   const highlights = useMemo(() => highlightsFor(marks, utterances), [marks, utterances]);
 
+  const voiceSuggestions = useMemo(
+    () => speakers.map(sp => sp.suggestedName).filter((n): n is string => !!n),
+    [speakers],
+  );
+
   /**
    * The Summary tab's thread lines (Phase 3): up to three of this meeting's tags, alphabetical —
    * `tags` is already in that order (AudioDb.tagsFor's ORDER BY name) — each resolved to counts
@@ -1180,8 +1185,10 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 onUpgrade={openPaywall}
                 writing={reprocessing}
                 threads={threads}
-                onOpenThread={tag => navigation.navigate('Thread', { tag })}
-              />
+                 onOpenThread={tag => navigation.navigate('Thread', { tag })}
+                 voiceSuggestions={voiceSuggestions}
+                 onConfirmVoices={() => navigation.navigate('Speakers', { meetingId })}
+               />
             ) : tab === 'mom' ? (
               <MinutesTab
                 items={items}

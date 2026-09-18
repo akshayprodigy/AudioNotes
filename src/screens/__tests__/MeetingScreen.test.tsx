@@ -309,6 +309,21 @@ describe('the thread line MeetingScreen resolves for the Summary tab', () => {
     const summaryTab = tree.root.findByType(SummaryTab);
     expect(summaryTab.props.threads).toEqual([]);
   });
+
+  test('speakers without a suggestion are filtered out of voiceSuggestions', async () => {
+    (db.speakers as jest.Mock).mockResolvedValue([
+      { id: 's1', meetingId: 'm1', clusterLabel: 'S0', displayName: 'Speaker 1', suggestedPerson: 'p1', suggestedName: 'Priya' },
+      { id: 's2', meetingId: 'm1', clusterLabel: 'S1', displayName: 'Speaker 2', suggestedPerson: 'p2', suggestedName: 'Ravi' },
+      { id: 's3', meetingId: 'm1', clusterLabel: 'S2', displayName: 'Speaker 3', suggestedPerson: null, suggestedName: null },
+    ]);
+    const tree = await render();
+    const summaryTab = tree.root.findByType(SummaryTab);
+    expect(summaryTab.props.voiceSuggestions).toEqual(['Priya', 'Ravi']);
+    await act(async () => {
+      summaryTab.props.onConfirmVoices();
+    });
+    expect(nav.navigate).toHaveBeenCalledWith('Speakers', { meetingId: 'm1' });
+  });
 });
 
 /**

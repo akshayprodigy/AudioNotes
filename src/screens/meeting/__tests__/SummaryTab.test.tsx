@@ -51,8 +51,10 @@ const baseProps = {
   writing: false,
   template: 'standup' as string | null,
   onChangeTemplate: jest.fn(),
-  threads: [] as { tag: string; open: number; decisions: number }[],
-  onOpenThread: jest.fn(),
+   threads: [] as { tag: string; open: number; decisions: number }[],
+   onOpenThread: jest.fn(),
+   voiceSuggestions: [] as string[],
+   onConfirmVoices: jest.fn(),
 };
 
 async function renderTab(props: Partial<typeof baseProps> = {}) {
@@ -204,5 +206,45 @@ describe('the thread line (Phase 3)', () => {
       row.props.onPress();
     });
     expect(onOpenThread).toHaveBeenCalledWith('client-acme');
+  });
+});
+
+describe('the voice banner', () => {
+  test('paid + one name shows the banner and pressing confirms', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: true });
+    const onConfirmVoices = jest.fn();
+    const tree = await renderTab({ voiceSuggestions: ['Priya'], onConfirmVoices });
+    const banner = tree.root.findByProps({ accessibilityLabel: 'Confirm voices' });
+    expect(banner.findByProps({ variant: 'bodyBlack' }).props.children).toBe(
+      'Sounds like Priya — confirm?',
+    );
+    await act(async () => {
+      banner.props.onPress();
+    });
+    expect(onConfirmVoices).toHaveBeenCalled();
+  });
+
+  test('paid + three names collapses to "and 1 more"', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: true });
+    const tree = await renderTab({
+      voiceSuggestions: ['Priya', 'Ravi', 'Sam'],
+      onConfirmVoices: jest.fn(),
+    });
+    const banner = tree.root.findByProps({ accessibilityLabel: 'Confirm voices' });
+    expect(banner.findByProps({ variant: 'bodyBlack' }).props.children).toBe(
+      'Sounds like Priya, Ravi and 1 more — confirm?',
+    );
+  });
+
+  test('on free, no banner renders', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: false });
+    const tree = await renderTab({ voiceSuggestions: ['Priya'], onConfirmVoices: jest.fn() });
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Confirm voices' })).toHaveLength(0);
+  });
+
+  test('paid + an empty list renders nothing', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: true });
+    const tree = await renderTab({ voiceSuggestions: [], onConfirmVoices: jest.fn() });
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Confirm voices' })).toHaveLength(0);
   });
 });
