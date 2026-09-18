@@ -169,9 +169,27 @@ object NativeBridge {
      * out which of their speakers were the same people — see cpp/diar/span_map.h. Nothing here
      * ever passes [DiarBudget.SKIP]: that means "do not call this at all".
      */
-    windowMs: Long,
-    progress: StageProgress? = null,
-  ): LongArray
+     windowMs: Long,
+     progress: StageProgress? = null,
+   ): LongArray
+
+  /**
+   * One voice vector per speaker index, for remembered voices (Phase 4).
+   *
+   * @param tri the flat `[start_ms, end_ms, speaker, ...]` array [nativeDiarize] returned — the
+   *   caller hands it straight back so the JNI side can rebuild DiarSegments without reshaping.
+   * @return `[dim, row0…, row1…, …]` as floats: `dim` first, then one `dim`-length row per
+   *   speaker index 0..max, an all-zero row where the speaker had too little audio for a voiceprint.
+   *   Empty array when there are no speakers or no voiceprint could be computed.
+   */
+  external fun nativeSpeakerVoices(
+    pcmPath: String,
+    segModelPath: String,
+    embModelPath: String,
+    sampleRate: Int,
+    tri: LongArray,
+  ): FloatArray
+
 
   // ---- LLM (llama.cpp). Handle-based: load once, generate many, then free. ----
   /**

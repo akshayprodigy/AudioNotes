@@ -583,6 +583,66 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeDiarize(
 
 
 // ---------------------------------------------------------------------------
+// Phase 4 (remembered voices): one voice vector per speaker index, from the
+// diarizer's speakerVoices() — the same Diarizer nativeDiarize builds, fed the
+// same tri array it returned. Returns [dim, row0…, row1…, …] as floats, one dim-length
+// row per speaker index 0..max, with an all-zero row where speakerVoices came back empty.
+// ---------------------------------------------------------------------------
+extern "C" JNIEXPORT jfloatArray JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeSpeakerVoices(
+    JNIEnv* env, jobject /*thiz*/, jstring jPcmPath, jstring jSegModel, jstring jEmbModel,
+    jint sampleRate, jlongArray jTri) {
+  const std::string pcm = jstr(env, jPcmPath);
+  const std::string seg = jstr(env, jSegModel);
+  const std::string emb = jstr(env, jEmbModel);
+
+  // Rebuild the DiarSegment list from the flat [start_ms, end_ms, speaker, ...] array
+  // nativeDiarize returned — the caller hands that exact array back.
+  std::vector<audionotes::DiarSegment> segments;
+  int maxSpeaker = -1;
+  if (jTri != nullptr) {
+    const jsize n = env->GetArrayLength(jTri);
+    std::vector<jlong> raw(static_cast<size_t>(n));
+    if (n > 0) env->GetLongArrayRegion(jTri, 0, n, raw.data());
+    for (jsize i = 0; i + 2 < n; i += 3) {
+      int spk = static_cast<int>(raw[i + 2]);
+      segments.push_back(audionotes::DiarSegment{
+        static_cast<int64_t>(raw[i]), static_cast<int64_t>(raw[i + 1]), spk});
+      if (spk > maxSpeaker) maxSpeaker = spk;
+    }
+  }
+
+  std::vector<float> flat;
+  try {
+    audionotes::Diarizer diar(seg, emb, static_cast<int>(sampleRate), 0);
+    auto voices = diar.speakerVoices(pcm, segments);
+    // dim is whatever the model says — read it from the array, never hard-code it.
+    int dim = 0;
+    for (const auto& v : voices) {
+      if (!v.empty() && static_cast<int>(v.size()) > dim) dim = static_cast<int>(v.size());
+    }
+    if (dim > 0 && maxSpeaker >= 0) {
+      flat.push_back(static_cast<float>(dim));
+      for (int i = 0; i <= maxSpeaker; i++) {
+        if (i < static_cast<int>(voices.size()) && !voices[i].empty()) {
+          flat.insert(flat.end(), voices[i].begin(), voices[i].end());
+        } else {
+          flat.insert(flat.end(), dim, 0.0f);  // all-zero row where speakerVoices returned empty
+        }
+      }
+    }
+  } catch (const std::exception& e) {
+    throwRuntime(env, e.what());
+    return env->NewFloatArray(0);
+  }
+
+  jfloatArray result = env->NewFloatArray(static_cast<jsize>(flat.size()));
+  if (result && !flat.empty()) {
+    env->SetFloatArrayRegion(result, 0, static_cast<jsize>(flat.size()), flat.data());
+  }
+  return result;
+}
+// ---------------------------------------------------------------------------
 // Rule-based minutes, from the shared core.
 //
 // This replaces MinutesExtractor.kt, which was a hand-maintained third copy of the same rules
