@@ -56,6 +56,9 @@ do NOT include the Step 7 test files — those require the device to drive TDD r
 
 ## Notes for the next session
 
+- Step 1 Kotlin `SchemaTest`: 21 tests, 0 failures (spec §4 said "22"). The file at `9f05928` had
+  19 `@Test`; the spec adds 2 (rename-only tests don't count) → 21. No test was lost; the spec's
+  "22" is off by one. The JS `schema.test.ts` side gained +3 (36 total) and is green.
 - Exact `db.*` names exposed to Session 2: `mode`, `setMode`, `vocabularyRules`, `vocabularyJson`,
   `putVocabulary`, `deleteVocabulary`, `applyVocabularyToMeeting`. JNI:
   `nativeApplySpokenPunctuation` (signature `(String)->String`, via `promptCall`). Storage:
