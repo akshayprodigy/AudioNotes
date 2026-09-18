@@ -227,6 +227,23 @@ class SchemaTest {
       ),
     )
 
+  @Test fun modeAndTextRawAreAddedColumns() =
+    assertTrue(
+      "mode / text_raw are missing from ADDED_COLUMNS: no phone with an existing database " +
+        "would gain the two columns Vocabulary and dictation mode need",
+      AudioDb.addedColumnsForTest().containsAll(
+        listOf(
+          Triple("meetings", "mode", "TEXT"),
+          Triple("utterances", "text_raw", "TEXT"),
+        ),
+      ),
+    )
+
+  @Test fun vocabularyTableIsInSchema() {
+    assertTrue("vocabulary is missing from SCHEMA", schema.contains("CREATE TABLE IF NOT EXISTS vocabulary"))
+    assertTrue("vocabulary.heard is not UNIQUE COLLATE NOCASE", ddlFor("vocabulary").contains("UNIQUE COLLATE NOCASE"))
+  }
+
   /**
    * The `meetings` table a real device has, asserted on THIS side of the mirror.
    *
@@ -245,7 +262,7 @@ class SchemaTest {
    * is also inlined into the CREATE TABLE for fresh installs. Comparing either half alone would
    * assert a table that exists on no device.
    */
-  @Test fun meetingsHasTheSameTwentyOneColumnsAsTheJavaScriptMirror() {
+  @Test fun meetingsHasTheSameTwentyTwoColumnsAsTheJavaScriptMirror() {
     val expected = listOf(
       "id", "title", "created_at", "duration_ms", "language", "status", "tier_used",
       "audio_path", "audio_retained", "archived_at", "summary_line", "title_edited_at",
@@ -255,6 +272,7 @@ class SchemaTest {
       "embedded_at",
       "template",
       "template_source",
+      "mode",
     )
     val actual = (
       columnsOf(ddlFor("meetings")) +
@@ -311,9 +329,10 @@ class SchemaTest {
      )
    }
 
-   /** Phase 4: `people` is last in BackupManager.TABLES because it references nothing. */
-   @Test fun backupManagerTablesEndsWithPeople() {
-     val tables = com.innocorelabs.verbale.data.BackupManager.tablesForTest()
-     assertEquals("people", tables.last())
-   }
+    /** Phase 5: `vocabulary` is last in BackupManager.TABLES because it references nothing. */
+    @Test fun backupManagerTablesEndsWithVocabularyAfterPeople() {
+      val tables = com.innocorelabs.verbale.data.BackupManager.tablesForTest()
+      assertEquals("vocabulary", tables.last())
+      assertEquals("people", tables[tables.size - 2])
+    }
 }

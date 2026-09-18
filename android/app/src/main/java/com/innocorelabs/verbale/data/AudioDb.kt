@@ -2807,6 +2807,15 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
             id TEXT PRIMARY KEY,
             meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
             cluster_label TEXT NOT NULL, display_name TEXT NOT NULL);""",
+        // Phase 5 (custom vocabulary): "in over" -> "Innova". `heard` is case-insensitively unique
+        // so a typed "In Over" replaces an existing "in over". Mirrored in src/db/schema.ts.
+        """CREATE TABLE IF NOT EXISTS vocabulary(
+             id TEXT PRIMARY KEY,
+             heard TEXT NOT NULL UNIQUE COLLATE NOCASE,
+             meant TEXT NOT NULL,
+             source TEXT NOT NULL,
+             created_at INTEGER NOT NULL,
+             uses INTEGER NOT NULL DEFAULT 0);""",
        // Remembered voices (Phase 4). One row per named voice, the running centroid of every
        // speaker this person folded in. `name` is UNIQUE NOCASE so "Priya" and "priya" merge, and
        // only `name` is user-facing — `id` is a UUID the person never sees. `voice` is a VecCodec
@@ -3091,6 +3100,11 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       Triple("meetings", "template_source", "TEXT"),
       Triple("speakers", "voice", "BLOB"),
       Triple("speakers", "suggested_person", "TEXT"),
+      // Phase 5: 'dictation' for a meeting recorded in dictation mode; NULL is an ordinary meeting.
+      Triple("meetings", "mode", "TEXT"),
+      // Phase 5: the recogniser's own wording, kept only when a rule or spoken punctuation changed
+      // `text`. NULL means `text` is what was recognised.
+      Triple("utterances", "text_raw", "TEXT"),
     )
 
     /** The schema, for a unit test that must not open an encrypted database. */

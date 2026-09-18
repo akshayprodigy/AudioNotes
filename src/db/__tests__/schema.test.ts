@@ -23,6 +23,7 @@ function freshDb(): DatabaseSync {
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys = ON;');
    db.exec(ddlFor('meetings'));
+   db.exec(ddlFor('utterances'));
    db.exec(ddlFor('speakers'));
    db.exec(ddlFor('people'));
    db.exec(ddlFor('items'));
@@ -31,8 +32,9 @@ function freshDb(): DatabaseSync {
   db.exec(ddlFor('item_done'));
   db.exec(ddlFor('search_vec'));
   db.exec(indexDdlFor('search_vec_meeting'));
-  db.exec(ddlFor('asks'));
-  return db;
+   db.exec(ddlFor('asks'));
+   db.exec(ddlFor('vocabulary'));
+   return db;
 }
 
 function ddlFor(table: string): string {
@@ -100,8 +102,8 @@ describe('schema.ts evidence tables (executed in real SQLite)', () => {
           'id', 'title', 'created_at', 'duration_ms', 'language', 'status', 'tier_used',
           'audio_path', 'audio_retained', 'archived_at', 'summary_line', 'title_edited_at',
           'transcribe_forced_at', 'forced_from_language', 'announced_at', 'announced_lag_ms', 'diar_skipped_reason',
-          'items_migrated_at', 'embedded_at', 'template', 'template_source',
-        ].sort(),
+        'items_migrated_at', 'embedded_at', 'template', 'template_source', 'mode',
+      ].sort(),
       );
     });
 
@@ -153,6 +155,37 @@ describe('schema.ts evidence tables (executed in real SQLite)', () => {
       expect(col.type).toBe('TEXT');
       expect(col.notnull).toBe(0);
       expect(col.dflt_value).toBe(null);
+    });
+
+    it('mode is a nullable TEXT with no default', () => {
+      const col = column(columnsOf(freshDb(), 'meetings'), 'mode');
+      expect(col.type).toBe('TEXT');
+      expect(col.notnull).toBe(0);
+      expect(col.dflt_value).toBe(null);
+    });
+  });
+
+  describe('utterances', () => {
+    it('has text_raw, nullable TEXT', () => {
+      const col = column(columnsOf(freshDb(), 'utterances'), 'text_raw');
+      expect(col.type).toBe('TEXT');
+      expect(col.notnull).toBe(0);
+      expect(col.dflt_value).toBe(null);
+    });
+  });
+
+  describe('vocabulary', () => {
+    it('has the six columns and heard is UNIQUE COLLATE NOCASE', () => {
+      const expected: Record<string, string> = {
+        id: 'TEXT', heard: 'TEXT', meant: 'TEXT', source: 'TEXT',
+        created_at: 'INTEGER', uses: 'INTEGER',
+      };
+      const cols = columnsOf(freshDb(), 'vocabulary');
+      expect(cols.map(c => c.name).sort()).toEqual(Object.keys(expected).sort());
+      for (const [name, type] of Object.entries(expected)) {
+        expect(column(cols, name).type).toBe(type);
+      }
+      expect(ddlFor('vocabulary')).toContain('UNIQUE COLLATE NOCASE');
     });
   });
 

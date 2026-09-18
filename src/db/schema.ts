@@ -54,16 +54,21 @@ export const SCHEMA = [
      template TEXT,
      -- 'suggested' (the rule ran and this is its answer) or 'chosen' (a person picked it, which
      -- the suggester must never overwrite) — NULL alongside template before either has happened.
-     template_source TEXT
-   );`,
+      template_source TEXT,
+      -- Phase 5: 'dictation' for a meeting recorded in dictation mode; NULL is an ordinary meeting.
+      mode TEXT
+    );`,
   `CREATE TABLE IF NOT EXISTS utterances (
      id TEXT PRIMARY KEY,
      meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
      start_ms INTEGER NOT NULL,
      end_ms INTEGER NOT NULL,
-     speaker_id TEXT,
-     text TEXT NOT NULL
-   );`,
+      speaker_id TEXT,
+      text TEXT NOT NULL,
+      -- Phase 5: what the recogniser wrote, kept only when a vocabulary rule or spoken punctuation
+      -- changed \`text\`; NULL means \`text\` is the recogniser's own wording.
+      text_raw TEXT
+    );`,
    `CREATE TABLE IF NOT EXISTS speakers (
       id TEXT PRIMARY KEY,
       meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
@@ -71,6 +76,14 @@ export const SCHEMA = [
       display_name TEXT NOT NULL,
       voice BLOB,            -- Phase 4: VecCodec-encoded unit vector; NULL when none
       suggested_person TEXT  -- Phase 4: a people.id; NULL when no suggestion pending
+    );`,
+    `CREATE TABLE IF NOT EXISTS vocabulary (
+      id TEXT PRIMARY KEY,
+      heard TEXT NOT NULL UNIQUE COLLATE NOCASE,   -- what the recogniser writes: "in over"
+      meant TEXT NOT NULL,                          -- what the person means: "Innova"
+      source TEXT NOT NULL,                         -- 'typed' | 'learned'
+      created_at INTEGER NOT NULL,
+      uses INTEGER NOT NULL DEFAULT 0               -- how many lines it has corrected
     );`,
    // Remembered voices (Phase 4): one row per named voice, the running centroid of every speaker
    // folded in. `name` is UNIQUE NOCASE; `voice` is a VecCodec unit vector BLOB (never NULL —

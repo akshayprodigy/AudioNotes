@@ -2,7 +2,7 @@
 
 ## Steps
 
-- [ ] **Step 1** — schema: `meetings.mode`, `utterances.text_raw`, the `vocabulary` table, backup
+- [x] **Step 1** — schema: `meetings.mode`, `utterances.text_raw`, the `vocabulary` table, backup
 - [ ] **Step 2** — `Vocabulary.kt`, the pure rule, with its golden
 - [ ] **Step 3** — JNI `nativeApplySpokenPunctuation`
 - [ ] **Step 4** — `AudioDb`: the reads and writes
@@ -13,6 +13,11 @@
 ## Decisions
 
 ## Mutants
+
+- **Step 1**:
+  - `remove mode from schema.ts` → jest: `meetings › has every column…` + `meetings › mode is a nullable TEXT` fail (2 failed, 34 passed). Restored.
+  - `remove the text_raw Triple (ADDED_COLUMNS)` → Kotlin: `modeAndTextRawAreAddedColumns` fails. Restored.
+  - `move "vocabulary" before "people" in BackupManager.TABLES` → Kotlin: `backupManagerTablesEndsWithVocabularyAfterPeople` fails. Restored.
 
 ## Notes for the next session
 
