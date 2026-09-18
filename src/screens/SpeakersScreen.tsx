@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -7,9 +7,10 @@ import { db } from '../db/queries';
 import { PipelineController } from '../pipeline/PipelineController';
 import Icon from '../components/Icon';
 import Mascot from '../components/Mascot';
-import { Button, IconButton, Pop, Raised, Txt } from '../components/ui';
+import { Button, IconButton, Pop, Raised, SoftButton, Txt } from '../components/ui';
 import type { Speaker } from '../pipeline/types';
 import { font, radius, s, sv, tilt, useTheme, type Colors } from '../theme';
+import { entitlement } from '../billing/trial';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Speakers'>;
 
@@ -21,6 +22,56 @@ export default function SpeakersScreen({ route, navigation }: Props) {
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
   const [target, setTarget] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const [paid, setPaid] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    entitlement().then(e => { if (alive) setPaid(e.paid); }).catch(() => {});
+    return () => { alive = false };
+  }, []);
+
+  const DEFAULT_NAME = /^Speaker \d+$/;
+
+  /**
+   * The one-time card (brief §2.7): paid, a real name, the setting never set, never asked before.
+   * Resolves once the person has answered; "Turn on" also remembers this speaker straight away.
+   */
+  const maybeOfferToRemember = async (speakerId: string, name: string) => {
+    if (!paid) return;
+    const [remember, prompted] = await Promise.all([
+      db.getSetting('voices_remember'),
+      db.getSetting('voices_prompted'),
+    ]);
+    if (remember !== null || prompted === '1') return;
+    Alert.alert(
+      'Remember this voice?',
+      'Verbale can keep a voiceprint of each speaker you name — on this phone only, never uploaded — and suggest the name from your next meeting. Voiceprints are personal, sometimes biometric, data: tell the people you record where the law requires it. You can forget all voices any time in Settings.',
+      [
+        { text: 'Not now', style: 'cancel', onPress: () => { db.setSetting('voices_prompted', '1').catch(() => {}); } },
+        {
+          text: 'Turn on',
+          onPress: async () => {
+            await db.setSetting('voices_remember', '1');
+            await db.setSetting('voices_prompted', '1');
+            await db.rememberVoice(speakerId, name).catch(() => {});
+          },
+        },
+      ],
+    );
+  };
+
+  const rename = async (speakerId: string, name: string) => {
+    await db.renameSpeaker(speakerId, name);
+    const clean = name.trim();
+    if (clean === '' || DEFAULT_NAME.test(clean)) return;
+    await db.rememberVoice(speakerId, clean).catch(() => {});
+    await maybeOfferToRemember(speakerId, clean);
+  };
+
+  const answer = async (speakerId: string, accept: boolean) => {
+    await db.answerSuggestion(speakerId, accept);
+    load();
+  };
 
   const load = useCallback(() => {
     db.speakers(meetingId).then(list => {
@@ -96,33 +147,56 @@ export default function SpeakersScreen({ route, navigation }: Props) {
                 depth={5}
                 rotate={tilt(index)}
                 onPress={() => setTarget(item.id)}>
-                <View style={st.row}>
-                  <View style={[st.avatar, { backgroundColor: tintSoft }]}>
-                    <Icon name="users" size={s(16)} color={tint} strokeWidth={2.4} />
-                  </View>
-                  <TextInput
-                    style={st.input}
-                    defaultValue={item.displayName}
-                    placeholder="Name"
-                    placeholderTextColor={colors.inkFaint}
-                    onEndEditing={e => db.renameSpeaker(item.id, e.nativeEvent.text)}
-                  />
-                  {isTarget ? (
-                    <View style={[st.tag, { backgroundColor: tintSoft }]}>
-                      <Icon name="check" size={s(13)} color={tint} strokeWidth={3} />
-                      <Txt variant="chip" color={tint}>
-                        Keep
-                      </Txt>
+                <View>
+                  <View style={st.row}>
+                    <View style={[st.avatar, { backgroundColor: tintSoft }]}>
+                      <Icon name="users" size={s(16)} color={tint} strokeWidth={2.4} />
                     </View>
-                  ) : (
-                    <Pressable
-                      style={st.mergeBtn}
-                      onPress={() => merge(item.id)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Merge ${item.displayName} into the kept speaker`}>
-                      <Icon name="merge" size={s(16)} color={colors.inkSoft} strokeWidth={2.4} />
-                    </Pressable>
-                  )}
+                    <TextInput
+                      style={st.input}
+                      defaultValue={item.displayName}
+                      placeholder="Name"
+                      placeholderTextColor={colors.inkFaint}
+                      onEndEditing={e => rename(item.id, e.nativeEvent.text)}
+                    />
+                    {isTarget ? (
+                      <View style={[st.tag, { backgroundColor: tintSoft }]}>
+                        <Icon name="check" size={s(13)} color={tint} strokeWidth={3} />
+                        <Txt variant="chip" color={tint}>
+                          Keep
+                        </Txt>
+                      </View>
+                    ) : (
+                      <Pressable
+                        style={st.mergeBtn}
+                        onPress={() => merge(item.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Merge ${item.displayName} into the kept speaker`}>
+                        <Icon name="merge" size={s(16)} color={colors.inkSoft} strokeWidth={2.4} />
+                      </Pressable>
+                    )}
+                  </View>
+                  {item.suggestedName ? (
+                    <View style={st.suggest}>
+                      <Txt variant="chip" color={colors.inkSoft} style={st.flex}>
+                        Sounds like {item.suggestedName}?
+                      </Txt>
+                      <View accessibilityLabel={`Yes, this is ${item.suggestedName}`} style={{ flexShrink: 0 }}>
+                        <SoftButton
+                          icon="check"
+                          label="Yes"
+                          onPress={() => answer(item.id, true)}
+                        />
+                      </View>
+                      <View accessibilityLabel={`No, not ${item.suggestedName}`} style={{ flexShrink: 0 }}>
+                        <SoftButton
+                          icon="x"
+                          label="No"
+                          onPress={() => answer(item.id, false)}
+                        />
+                      </View>
+                    </View>
+                  ) : null}
                 </View>
               </Raised>
             </Pop>
@@ -154,6 +228,8 @@ function makeStyles(c: Colors) {
     hint: { marginBottom: s(16) },
     rowWrap: { marginBottom: s(10) },
     row: { flexDirection: 'row', alignItems: 'center', gap: s(12), padding: s(14) },
+    suggest: { flexDirection: 'row', alignItems: 'center', gap: s(8), paddingHorizontal: s(14), paddingBottom: s(12) },
+    flex: { flex: 1, flexShrink: 1 },
     avatar: {
       width: s(36),
       height: s(36),
