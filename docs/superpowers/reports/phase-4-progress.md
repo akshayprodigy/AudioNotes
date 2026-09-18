@@ -13,7 +13,7 @@
 
 ### Session B — screens, by hand, report
 - [x] 7. `db.speakers` SELECT + `Speaker` type gain `suggestedPerson`/`suggestedName`; `voiceCopy.ts` + `voiceCopy.test.ts`. Commit.
-- [ ] 8. `SpeakersScreen`: the suggestion line, Yes/No, the rename hook, the one-time card. Tests. Commit.
+- [x] 8. `SpeakersScreen`: the suggestion line, Yes/No, the rename hook, the one-time card. Tests. Commit.
 - [ ] 9. `SummaryTab` banner + `MeetingScreen` wiring. Tests. Commit.
 - [ ] 10. `SettingsScreen` Voices section. Tests. Commit.
 - [ ] 11. The gate; then `device-verify.sh PeopleDbTest` and `NativePipelineTest` once more on the phone. Commit anything that moved.
@@ -34,6 +34,10 @@
 ## Mutants
 
 - voiceCopy: `names.length - 2` mutated to `names.length - 1` → 3- and 5-name cases fail, restored, green.
+- SpeakersScreen: swap true/false in Yes/No buttons → tests 2,3 fail, restored, green.
+- SpeakersScreen: deleted the `rememberVoice` call in `rename` → tests 4,5,9 fail, restored, green.
+- SpeakersScreen: dropped `if (!paid) return;` → test 9 fails, restored, green.
+- SpeakersScreen: `prompted === '1'` changed to `=== '0'` → test 7 fails, restored, green.
 - TS SchemaTest: removed `voice` from schema.ts speakers CREATE TABLE → 31 failures (cascading from freshDb), restored, green.
 - Kotlin SchemaTest: removed `voice` from ADDED_COLUMNS → 1 failure (speakersHasVoiceAndSuggestedPersonColumns), restored, green.
 - Kotlin SchemaTest: removed `people` from BackupManager.TABLES → 1 failure (backupManagerTablesEndsWithPeople), restored, green.
