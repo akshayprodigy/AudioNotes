@@ -480,6 +480,22 @@ export const db = {
   renameSpeaker: (speakerId: string, name: string) =>
     run('UPDATE speakers SET display_name = ? WHERE id = ?', [name, speakerId]),
 
+  // Phase 4: remembered voices. rememberVoice is called after a rename to fold this speaker's
+  // voice into the person's centroid; the result is inspected for the reason key.
+  rememberVoice: async (speakerId: string, name: string): Promise<{ remembered: boolean; reason?: string }> => {
+    const raw = await Storage.rememberVoice(speakerId, name);
+    return JSON.parse(raw) as { remembered: boolean; reason?: string };
+  },
+
+  answerSuggestion: async (speakerId: string, accept: boolean): Promise<{ name: string }> => {
+    const raw = await Storage.answerSuggestion(speakerId, accept);
+    return JSON.parse(raw) as { name: string };
+  },
+
+  forgetVoices: async (): Promise<void> => {
+    await Storage.forgetVoices();
+  },
+
   // Merge one speaker into another across all utterances, then drop the merged speaker row.
   mergeSpeakers: async (meetingId: string, keepId: string, dropId: string) => {
     await run('UPDATE utterances SET speaker_id = ? WHERE meeting_id = ? AND speaker_id = ?', [

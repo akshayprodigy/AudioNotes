@@ -47,6 +47,11 @@ export interface Spec extends TurboModule {
   // model, and `limit` 0 is a way to ask for the count alone. Driven from the sweep like the two
   // above; three per pass rather than twenty-five, because each is seconds of model time.
   backfillEmbeddings(limit: number): Promise<number>;
+  // Phase 4: remembered voices. `rememberVoice` is called after a rename; it returns a JSON
+  // object telling whether the voice was stored and why not if it was not.
+  rememberVoice(speakerId: string, name: string): Promise<string>;
+  answerSuggestion(speakerId: string, accept: boolean): Promise<string>;
+  forgetVoices(): Promise<void>;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('Storage');

@@ -43,8 +43,11 @@ const mockNativeModules = {
     backfillSearch: jest.fn(async () => 0),
     // Resolves 0 = "nothing left to migrate", so LibraryScreen's focus sweep stops after one pass
     // instead of looping four hundred times in every screen test that renders the library.
-    backfillItems: jest.fn(async () => 0),
-  },
+     backfillItems: jest.fn(async () => 0),
+     rememberVoice: jest.fn(async () => '{"remembered":true}'),
+     answerSuggestion: jest.fn(async () => '{"name":"Sam"}'),
+     forgetVoices: jest.fn(async () => {}),
+   },
   ModelManager: {
     list: jest.fn(async () => '[]'),
     download: jest.fn(async () => {}),

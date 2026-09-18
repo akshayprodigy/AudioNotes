@@ -226,6 +226,37 @@ class StorageModule(private val ctx: ReactApplicationContext) :
     }
   }
 
+  /** Phase 4: remember a speaker's voice under the given name. Resolves with a JSON status string. */
+  @ReactMethod
+  fun rememberVoice(speakerId: String, name: String, promise: Promise) {
+    try {
+      promise.resolve(AudioDb.get(ctx).rememberVoice(speakerId, name, ctx))
+    } catch (e: Exception) {
+      promise.reject("db_remember_voice", e)
+    }
+  }
+
+  /** Phase 4: answer or dismiss a voice suggestion. Resolves with a JSON string carrying the new name. */
+  @ReactMethod
+  fun answerSuggestion(speakerId: String, accept: Boolean, promise: Promise) {
+    try {
+      promise.resolve(AudioDb.get(ctx).answerSuggestion(speakerId, accept))
+    } catch (e: Exception) {
+      promise.reject("db_answer_suggestion", e)
+    }
+  }
+
+  /** Phase 4: forget every remembered voice. */
+  @ReactMethod
+  fun forgetVoices(promise: Promise) {
+    try {
+      AudioDb.get(ctx).forgetVoices()
+      promise.resolve(null)
+    } catch (e: Exception) {
+      promise.reject("db_forget_voices", e)
+    }
+  }
+
   private fun parseArgs(json: String): Array<String?> {
     val arr = JSONArray(json)
     return Array(arr.length()) { i -> if (arr.isNull(i)) null else arr.get(i).toString() }
