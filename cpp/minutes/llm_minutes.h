@@ -53,6 +53,9 @@ std::string narrativePrompt(const std::string& record, const std::string& langua
 // one prompt body to keep in step with fence.cpp and check-prompt-fencing.py.
 std::string narrativePrompt(const std::string& record, const std::string& language,
                             const std::string& template_id);
+// Phase 5 (dictation mode): the note one person dictated, written out whole in their words —
+// what narrativePrompt returns for template_id "dictation". Fenced like the others.
+std::string dictationPrompt(const std::string& record, const std::string& language = "en");
 std::string summaryPrompt(const std::string& narrative, const std::string& language = "en");
 std::string headlinePrompt(const std::string& summary, const std::string& language = "en");
 

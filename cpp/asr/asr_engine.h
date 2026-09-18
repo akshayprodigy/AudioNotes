@@ -84,6 +84,14 @@ class AsrEngine {
   virtual ChunkMode chunkMode() const = 0;
   virtual bool supports(const std::string& language) const = 0;
 
+  /**
+   * Recognition hints (Phase 5, custom vocabulary): names, companies and project terms the
+   * recogniser should prefer when the audio is ambiguous — "Priya" over "Prey". Engines that
+   * have no such hook ignore it; whisper feeds it as the initial prompt of every window. It must
+   * never force a word into audio that does not contain it; test_vocab_live measures that.
+   */
+  virtual void setVocabulary(const std::string& /*terms*/) {}
+
   // pcm_path: 16 kHz mono PCM16. segments: VAD speech spans (ms).
   // `threads` <= 0 selects the big.LITTLE-aware default (see util/cpu_topology.h).
   // Decode ONE window and return its segments with CHUNK-RELATIVE timestamps.
@@ -127,6 +135,8 @@ struct AsrConfig {
   // because `engine` already says which is meant and only one of them is ever being measured at
   // a time; two fields would let a caller name parakeet and point at moonshine's weights.
   std::string sherpa_model_dir;
+  // Recognition hints, comma-separated, or empty. See AsrEngine::setVocabulary.
+  std::string vocabulary;
 
   // Overrule the language refusal for ONE run, because a person said the recording really is in
   // the language they asked for.

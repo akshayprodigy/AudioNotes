@@ -30,6 +30,8 @@ struct PipelineConfig {
   std::string sherpa_model_dir;
   // Overrule the language refusal for this run. See AsrConfig::skip_language_refusal.
   bool skip_language_refusal = false;
+  // Recognition hints for the recogniser (Phase 5, custom vocabulary); see AsrConfig::vocabulary.
+  std::string vocabulary;
   std::string asr_engine;      // "" = choose by language; a name forces one (see asr_factory)
   std::string vad_model;       // "" = skip VAD, fall back to fixed 30 s windows
   std::string diar_seg_model;  // both diar paths "" = skip diarization

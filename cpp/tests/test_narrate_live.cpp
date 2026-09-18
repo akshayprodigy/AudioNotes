@@ -9,6 +9,7 @@
 // same model, once a day, on a device — this asks it on every gate that has the file.
 #include "llm/llama_engine.h"
 #include "minutes/llm_minutes.h"
+#include "minutes/dictation.h"
 #include "minutes/templates.h"
 
 #include <algorithm>
@@ -96,6 +97,36 @@ int main() {
   std::printf("section openers shown: %d of 4\n", chit);
   CHECK(chit >= 3);
   CHECK(cshown.find("\n- ") == std::string::npos && cshown.rfind("- ", 0) != 0);
+
+
+  // Phase 5: a dictated note — fillers, a false start, a name, an amount, two negations and a
+  // doubt. The note must keep the facts and drop the noise; the phone's clean runs over it too.
+  const std::string dictated =
+      "Speaker 1: um so the note for Priya is that we will not ship on Monday full stop uh the "
+      "vendor codes are six digits now full stop also, also tell finance the invoice for three "
+      "thousand four hundred rupees is not approved yet full stop and I am not sure the mapping "
+      "table is, you know, ready full stop";
+  // The phone applies the spoken punctuation before the narrator sees the words.
+  const std::string dictatedClean = applySpokenPunctuation(dictated);
+  const std::string draw = e.generate(narrativePrompt(dictatedClean, "en", "dictation"), 640);
+  const std::string dshown = stripLabels(foldSections(stripMarkdown(draw), "dictation"));
+  std::printf("\n=== dictation, raw\n%s\n=== as shown\n%s\n===\n", draw.c_str(), dshown.c_str());
+  const std::string dl = lower(dshown);
+  CHECK(dl.find("priya") != std::string::npos);
+  CHECK(dl.find("not ship") != std::string::npos || dl.find("won't ship") != std::string::npos || dl.find("will not") != std::string::npos);
+  CHECK(dl.find("not approved") != std::string::npos || dl.find("not been approved") != std::string::npos ||
+        dl.find("n't been approved") != std::string::npos || dl.find("not yet approved") != std::string::npos);
+  CHECK(dl.find("3,400") != std::string::npos || dl.find("3400") != std::string::npos || dl.find("three thousand four hundred") != std::string::npos);
+  CHECK(dl.find("not sure") != std::string::npos || dl.find("unsure") != std::string::npos || dl.find("uncertain") != std::string::npos);
+  CHECK(dl.find(" um") == std::string::npos && dl.find(" uh") == std::string::npos && dl.find("you know") == std::string::npos);
+  CHECK(dl.find("transcript") == std::string::npos && dl.find("recording") == std::string::npos);
+  CHECK(dl.find("full stop") == std::string::npos);
+  CHECK(dshown.find("\n- ") == std::string::npos && dshown.rfind("- ", 0) != 0);
+  // Meaning: the speaker gave no reasons, so the note may not invent one. First run (18 Sep)
+  // wrote "We won't ship on Monday due to vendor codes being six digits" — two facts joined
+  // into a cause. The rule in dictationPrompt names the joining words; this pins it.
+  CHECK(dl.find("due to") == std::string::npos && dl.find("because") == std::string::npos &&
+        dl.find("therefore") == std::string::npos);
 
   if (failures) { std::fprintf(stderr, "test_narrate_live: %d failure(s)\n", failures); return 1; }
   std::puts("test_narrate_live: ok");

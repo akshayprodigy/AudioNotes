@@ -127,6 +127,7 @@ bool Pipeline::run(const std::string& pcm_path, PipelineResult* out,
     acfg.qwen3_model_dir = cfg_.qwen3_model_dir;
     acfg.sherpa_model_dir = cfg_.sherpa_model_dir;
     acfg.skip_language_refusal = cfg_.skip_language_refusal;
+    acfg.vocabulary = cfg_.vocabulary;
     acfg.chunk_cache = cfg_.chunk_cache;
     std::unique_ptr<AsrEngine> asr = makeAsrEngine(acfg);
     if (!asr->ok()) {

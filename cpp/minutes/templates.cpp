@@ -86,7 +86,63 @@ std::string fragment(const std::string& line) {
 
 }  // namespace
 
+namespace {
+bool isBullet(const std::string& line) {
+  const std::string t = trimmed(line);
+  if (t.size() >= 2 && (t[0] == '-' || t[0] == '*' || t[0] == '+') && t[1] == ' ') return true;
+  if (t.rfind("\xE2\x80\xA2", 0) == 0) return true;
+  std::size_t i = 0;
+  while (i < t.size() && std::isdigit(static_cast<unsigned char>(t[i]))) ++i;
+  return i > 0 && i + 1 < t.size() && (t[i] == '.' || t[i] == ')') && t[i + 1] == ' ';
+}
+}  // namespace
+
+std::string foldDictation(const std::string& text) {
+  std::vector<std::string> lines;
+  for (std::size_t start = 0;;) {
+    const std::size_t nl = text.find('\n', start);
+    if (nl == std::string::npos) { lines.push_back(text.substr(start)); break; }
+    lines.push_back(text.substr(start, nl - start));
+    start = nl + 1;
+  }
+  // The opening label: "The note for Priya:" becomes the first sentence rather than a line
+  // stripLabels drops.
+  bool touched = false;
+  for (auto& l : lines) {
+    std::string t = trimmed(l);
+    if (t.empty()) continue;
+    if (t.back() == ':' && t.size() <= 60 && !isBullet(t)) { t.back() = '.'; l = t; touched = true; }
+    break;
+  }
+  // Bullets: the writer lists a dictated note when its sentences are short. Consecutive bullet
+  // lines become one paragraph of sentences, the marker gone, each fragment ended.
+  std::vector<std::string> out;
+  std::string para;
+  auto flush = [&]() { if (!para.empty()) { out.push_back(para); para.clear(); } };
+  for (const auto& l : lines) {
+    if (isBullet(l)) {
+      touched = true;
+      const std::string f = fragment(l);
+      if (f.empty()) continue;
+      if (!para.empty()) para += ' ';
+      para += f;
+    } else {
+      flush();
+      out.push_back(l);
+    }
+  }
+  flush();
+  if (!touched) return text;
+  std::string joined;
+  for (std::size_t i = 0; i < out.size(); ++i) {
+    if (i) joined += '\n';
+    joined += out[i];
+  }
+  return joined;
+}
+
 std::string foldSections(const std::string& text, const std::string& template_id) {
+  if (template_id == "dictation") return foldDictation(text);
   const auto sections = sectionsFor(template_id);
   if (sections.empty()) return text;
 

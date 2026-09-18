@@ -200,8 +200,35 @@ std::string templateLabelRule(const std::string& template_id) {
 }
 }  // namespace
 
+// Phase 5 (dictation): one person dictating a note is not a meeting, and the account of a
+// meeting is the wrong shape for it — the reader IS the speaker, and what they want back is
+// their own note, whole, in their own words, with the fillers gone. Measured 18 Sep on the
+// real writer (test_narrate_live): keeps names, numbers and negations, drops "um"/"uh".
+std::string dictationPrompt(const std::string& record, const std::string& language) {
+  const std::string lang = languageDirective(language);
+  return "Below is what one person dictated, as it was recognised.\n\n"
+         "RECORD:\n" + fenceTranscript(record) + "\n"
+         "Write it out as the note they were dictating: in the first person, in their own words, "
+         "in full sentences grouped into paragraphs.\n"
+         "Rules:\n"
+         "- Keep every name, number, amount, date, negation (not, never, no) and expression of "
+         "doubt exactly as said. Never resolve a doubt or fill a gap from general knowledge.\n"
+         "- Remove fillers (um, uh, er, you know, like, I mean), false starts and repeated words. "
+         "Change nothing else.\n"
+         "- Do not summarise, shorten, reorder or add anything. Keep each sentence saying what it "
+         "said: never join two sentences with because, due to, so or therefore, and never add a "
+         "reason the speaker did not give. Do not address the reader and do not comment on the "
+         "note.\n"
+         "- Prose only: no title, no heading, no label line, no bullet points, no markdown. Begin "
+         "with the first sentence of the note.\n"
+         "- Never write the words transcript, record, recording or dictation.\n"
+         + lang +
+         "Start writing now:";
+}
+
 std::string narrativePrompt(const std::string& record, const std::string& language,
                             const std::string& template_id) {
+  if (template_id == "dictation") return dictationPrompt(record, language);
   const std::string lang = languageDirective(language);
   const std::string coverage = templateCoverageInstruction(template_id);
   const std::string labelRule = templateLabelRule(template_id);

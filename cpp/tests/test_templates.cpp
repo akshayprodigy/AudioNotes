@@ -124,6 +124,35 @@ static void foldedOutputSurvivesStripLabels() {
   CHECK(stripLabels(foldSections(in, "standup")) == "Blockers: The phone is with QA.");
 }
 
+// Phase 5: "dictation" is a narrative shape, not one of the seven meeting types — sectionsFor
+// knows nothing of it, narrativePrompt routes it to dictationPrompt, and the record is fenced.
+static void dictationIsItsOwnPromptAndStillFenced() {
+  CHECK(sectionsFor("dictation").empty());
+  const std::string d = narrativePrompt("um so tell Priya we will not ship Monday", "en", "dictation");
+  CHECK(d == dictationPrompt("um so tell Priya we will not ship Monday", "en"));
+  CHECK(d.find("RECORD OF A MEETING") != std::string::npos);
+  CHECK(d.find("first person") != std::string::npos);
+  CHECK(d.find("Write three or four short paragraphs") == std::string::npos);
+  CHECK(d.find("for someone who was not there") == std::string::npos);
+}
+
+static void dictationKeepsItsOpeningLabelAsASentence() {
+  const std::string in = "The note for Priya:\nWe will not ship on Monday.";
+  CHECK(foldSections(in, "dictation") == "The note for Priya.\nWe will not ship on Monday.");
+  // ...and stripLabels then keeps it, where it would have dropped the label.
+  CHECK(stripLabels(foldSections(in, "dictation")).find("Priya") != std::string::npos);
+  CHECK(stripLabels(in).find("Priya") == std::string::npos);
+  // A note that opens with a sentence is untouched; a long line is not a label; other templates
+  // never see this rule.
+  CHECK(foldSections("We will not ship on Monday.\nMore.", "dictation") == "We will not ship on Monday.\nMore.");
+  const std::string longLine(61, 'x');
+  CHECK(foldSections(longLine + ":\nbody", "dictation") == longLine + ":\nbody");
+  CHECK(foldSections(in, "general") == in);
+  // Bullets become one paragraph of sentences; a blank line between groups is kept.
+  CHECK(foldSections("The note for Priya:\n- We won't ship on Monday.\n- vendor codes are six digits now\n\nDone.", "dictation") ==
+        "The note for Priya.\nWe won't ship on Monday. Vendor codes are six digits now.\n\nDone.");
+}
+
 static void twoArgNarrativePromptEqualsThreeArgWithGeneral() {
   const std::string record = "We discussed the roadmap.";
   CHECK(narrativePrompt(record, "en") == narrativePrompt(record, "en", "general"));
@@ -141,6 +170,8 @@ int main() {
   foldLeavesAnInlineOpenerAndItsParagraphAlone();
   foldKeepsProseBeforeTheFirstHeaderAndIsIdentityForGeneral();
   foldedOutputSurvivesStripLabels();
+  dictationIsItsOwnPromptAndStillFenced();
+  dictationKeepsItsOpeningLabelAsASentence();
   twoArgNarrativePromptEqualsThreeArgWithGeneral();
   if (failures) {
     std::fprintf(stderr, "test_templates: %d failure(s)\n", failures);

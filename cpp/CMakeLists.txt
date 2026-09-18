@@ -45,6 +45,8 @@ add_library(audionotes SHARED
   minutes/llm_prompts.cpp
   # Sub-project 6a: the seven meeting-type ids and the sections each narrows narrativePrompt to.
   minutes/templates.cpp
+  # Phase 5: spoken punctuation for dictation mode.
+  minutes/dictation.cpp
   # Transcript text may not enter a prompt except through here. Without this line the file
   # is never compiled into libaudionotes.so, the prompt builders fail to link, and the app
   # does not build — which is the good failure. The bad one would be a fence that exists in

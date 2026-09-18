@@ -82,7 +82,7 @@ int main(int argc, char** argv) {
     std::fprintf(stderr,
                  "usage: %s <whisper-model.bin> <input-16k-mono.wav> [--vad silero_vad.onnx]\n"
                  "          [--diar-seg segmentation.onnx --diar-emb embedding.onnx] "
-                 "[--speakers N] [--diar-threshold F] [--language en|hi|auto]\n"
+                 "[--speakers N] [--diar-threshold F] [--language en|hi|auto] [--vocab \"Priya, Innova\"]\n"
                  "          [--diar-window-min M]   0 = default, negative = no windowing\n"
                  "          [--diar-speaker-threshold F]  cross-window speaker merge distance\n"
                  "          [--asr-engine whisper|qwen3|parakeet|moonshine]\n"
@@ -108,6 +108,7 @@ int main(int argc, char** argv) {
   std::string language = "en";
   std::string asr_engine, qwen3_model, sherpa_model;
   bool force_language = false;
+  std::string vocabulary;
   // Simulates the Android live capture pass: decode every window up front, then run the pipeline
   // from that cache. A warm transcript that differs from a cold one means the cache is not the
   // pure function the whole design rests on.
@@ -125,6 +126,7 @@ int main(int argc, char** argv) {
     else if (std::strcmp(argv[i], "--qwen3-model") == 0 && i + 1 < argc) qwen3_model = argv[++i];
     else if (std::strcmp(argv[i], "--sherpa-model") == 0 && i + 1 < argc) sherpa_model = argv[++i];
     else if (std::strcmp(argv[i], "--force-language") == 0) force_language = true;
+    else if (std::strcmp(argv[i], "--vocab") == 0 && i + 1 < argc) vocabulary = argv[++i];
     else if (std::strcmp(argv[i], "--live-cache") == 0) live_cache = true;
     else if (std::strcmp(argv[i], "--llm") == 0 && i + 1 < argc) llm_model = argv[++i];
     else if (std::strcmp(argv[i], "--json") == 0 && i + 1 < argc) json_out = argv[++i];
@@ -160,6 +162,7 @@ int main(int argc, char** argv) {
   // The desktop mirror of "Transcribe it anyway". Present so the override can be exercised
   // against a real recording without a phone in the loop.
   cfg.skip_language_refusal = force_language;
+  cfg.vocabulary = vocabulary;
 
   // Pre-decode every window through the SAME decodeWindow the pipeline uses, then hand the
   // results back as a cache. This is the desktop stand-in for the live capture pass, and it is

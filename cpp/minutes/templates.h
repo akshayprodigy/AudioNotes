@@ -33,4 +33,11 @@ std::vector<std::string> sectionsFor(const std::string& template_id);
 // without sections, and for a narrative already in the asked-for shape.
 std::string foldSections(const std::string& text, const std::string& template_id);
 
+// The dictation shape (Phase 5). A dictated note has no sections, but the writer likes to open
+// it with the addressee as a label — "The note for Priya:" — and stripLabels drops a short line
+// ending in a colon as a form label, taking the name with it (measured 18 Sep). For template
+// "dictation" the opening line's colon becomes a full stop, so it survives as the first
+// sentence; everything else is untouched. Identity for every other template.
+std::string foldDictation(const std::string& text);
+
 }  // namespace audionotes

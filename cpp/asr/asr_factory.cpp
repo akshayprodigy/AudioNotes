@@ -98,6 +98,7 @@ std::unique_ptr<AsrEngine> makeAsrEngine(const AsrConfig& cfg) {
   // Handed over while the concrete type is still in hand: only whisper consults it, and the
   // interface everyone else implements should not grow a parameter for one engine's optimisation.
   w->setChunkCache(cfg.chunk_cache);
+  if (!cfg.vocabulary.empty()) w->setVocabulary(cfg.vocabulary);
   return std::unique_ptr<AsrEngine>(w.release());
 }
 

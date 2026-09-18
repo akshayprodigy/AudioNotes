@@ -54,6 +54,8 @@ struct WhisperAsr::Impl {
 #endif
   bool ok = false;
   std::string language;
+  // Recognition hints for every window's decode (whisper's initial_prompt); empty = none.
+  std::string vocabulary;
   std::string model_path;
   //: A person overruled the refusal for this meeting. Never a default, never global.
   bool skip_refusal = false;
@@ -94,6 +96,7 @@ WhisperAsr::WhisperAsr(const std::string& model_path, const std::string& languag
     : impl_(new Impl(model_path, language, skip_language_refusal)) {}
 WhisperAsr::~WhisperAsr() { delete impl_; }
 bool WhisperAsr::ok() const { return impl_->ok; }
+void WhisperAsr::setVocabulary(const std::string& terms) { impl_->vocabulary = terms; }
 
 bool WhisperAsr::supports(const std::string& language) const {
 #ifdef HAVE_WHISPER
@@ -210,6 +213,10 @@ std::vector<Utterance> WhisperAsr::decodeWindow(const std::string& pcm_path, int
   // Every window is decoded with no carried state. That is what makes a window's decode a pure
   // function of its audio — and therefore what makes caching it sound.
   wparams.no_context = true;
+  // The vocabulary rides in as the initial prompt of EVERY window, because every window is its
+  // own whisper_full call: with no carried context, the prompt is the only place a name can be
+  // spelled for the model. Empty means whisper's own default (no prompt).
+  wparams.initial_prompt = impl_->vocabulary.empty() ? nullptr : impl_->vocabulary.c_str();
 
   if (whisper_full(impl_->ctx, wparams, samples.data(), static_cast<int>(samples.size())) != 0) {
     if (failed) *failed = true;

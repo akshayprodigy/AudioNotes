@@ -38,6 +38,7 @@ class WhisperAsr : public AsrEngine {
 
   // whisper covers ~99 languages; whisper_lang_id() rejects anything it does not know.
   bool supports(const std::string& language) const override;
+  void setVocabulary(const std::string& terms) override;
 
   // pcm_path: 16 kHz mono PCM16. segments: VAD speech spans (ms). Returns utterances in ms.
   // `threads` <= 0 selects the automatic big.LITTLE-aware default (see cpu_topology.h).
