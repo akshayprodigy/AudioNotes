@@ -12,7 +12,7 @@
 - [x] 6. Device: `PeopleDbTest` (§5.5) via `device-verify.sh PeopleDbTest`; `NativePipelineTest`'s new seam test; extend `VerificationProbeTest` to print each speaker's `voice IS NOT NULL`, `suggested_person` and `SELECT count(*) FROM people`. Commit. **Update the progress file and stop.**
 
 ### Session B — screens, by hand, report
-- [ ] 7. `db.speakers` SELECT + `Speaker` type gain `suggestedPerson`/`suggestedName`; `voiceCopy.ts` + `voiceCopy.test.ts`. Commit.
+- [x] 7. `db.speakers` SELECT + `Speaker` type gain `suggestedPerson`/`suggestedName`; `voiceCopy.ts` + `voiceCopy.test.ts`. Commit.
 - [ ] 8. `SpeakersScreen`: the suggestion line, Yes/No, the rename hook, the one-time card. Tests. Commit.
 - [ ] 9. `SummaryTab` banner + `MeetingScreen` wiring. Tests. Commit.
 - [ ] 10. `SettingsScreen` Voices section. Tests. Commit.
@@ -33,6 +33,7 @@
 
 ## Mutants
 
+- voiceCopy: `names.length - 2` mutated to `names.length - 1` → 3- and 5-name cases fail, restored, green.
 - TS SchemaTest: removed `voice` from schema.ts speakers CREATE TABLE → 31 failures (cascading from freshDb), restored, green.
 - Kotlin SchemaTest: removed `voice` from ADDED_COLUMNS → 1 failure (speakersHasVoiceAndSuggestedPersonColumns), restored, green.
 - Kotlin SchemaTest: removed `people` from BackupManager.TABLES → 1 failure (backupManagerTablesEndsWithPeople), restored, green.
