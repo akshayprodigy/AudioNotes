@@ -23,7 +23,8 @@ object PeopleMatch {
 
   /**
    * @param voice the speaker's unit vector voiceprint.
-   * @param people already-known people, in `ORDER BY created_at` order so ties resolve to the oldest.
+   * @param people already-known people, in `ORDER BY created_at` order (the order only decides which
+   *   index wins when the best is unique; an exact tie refuses).
    * @param displayName the speaker's current `display_name` — if it is not "Speaker N" the speaker
    *   has already been named and is skipped.
    * @return the matched person's id, or null.
@@ -45,14 +46,17 @@ object PeopleMatch {
         secondCos = bestCos
         bestCos = cos
         bestIdx = i
-      } else if (cos < bestCos && cos > secondCos) {
+      } else if (cos > secondCos) {
+        // An EQUAL runner-up is a runner-up: two known voices equally close is a margin of zero,
+        // and the guard below refuses — the app never guesses between two people it knows.
         secondCos = cos
       }
     }
 
     if (bestCos < MATCH_COSINE) return null
-    // secondCos is -1 when no person has a strictly lower cosine (one person, or all tied); the
-    // margin is then unbounded, so a tie does not block the suggestion — insertion order picks it.
+    // secondCos is -1 only when there is one person; then the margin is unbounded and the cosine
+    // bar alone decides. Two people tied is a margin of zero and refuses (review, 18 Sep — the
+    // brief's "ties break to the first" contradicted its own margin rule; the margin wins).
     if (bestCos - secondCos < MATCH_MARGIN) return null
 
     return people[bestIdx].id

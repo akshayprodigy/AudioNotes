@@ -2550,7 +2550,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     }
   }
 
-   /**
+  /**
     * Fold one voice into a centroid and re-normalise.
     *
     * `old` is the person's current centroid (a unit vector), `new` is the speaker voice being folded
@@ -2558,16 +2558,16 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     * is equivalent to normalising the mean but cheaper (no division). Shared by rememberVoice and
     * answerSuggestion-accept so the two paths cannot drift.
     */
-   private fun foldVoice(old: FloatArray, newVoice: FloatArray, samples: Int): FloatArray {
-     val n = minOf(old.size, newVoice.size)
-     val sum = FloatArray(n)
-     for (i in 0 until n) sum[i] = old[i] * samples + newVoice[i]
-     val norm = kotlin.math.sqrt(sum.sumOf { it.toDouble() * it.toDouble() }).toFloat()
-     if (norm > 0f) for (i in sum.indices) sum[i] /= norm
-     return sum
-   }
+  private fun foldVoice(old: FloatArray, newVoice: FloatArray, samples: Int): FloatArray {
+    val n = minOf(old.size, newVoice.size)
+    val sum = FloatArray(n)
+    for (i in 0 until n) sum[i] = old[i] * samples + newVoice[i]
+    val norm = kotlin.math.sqrt(sum.sumOf { it.toDouble() * it.toDouble() }).toFloat()
+    if (norm > 0f) for (i in sum.indices) sum[i] /= norm
+    return sum
+  }
 
-   /**
+  /**
     * Write voiceprints for every speaker index 0..max in this meeting.
     *
     * [floats] is `[dim, row0…, row1…, …]` — `dim` first, then `dim` floats per speaker index.
@@ -2575,80 +2575,80 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     * writes NULL on that speaker, so a speaker with too little audio is not mistaken for a
     * remembered voice later.
     */
-   fun setSpeakerVoices(meetingId: String, dim: Int, floats: FloatArray) {
-     if (dim <= 0 || floats.isEmpty()) return
-     val nSpeakers = (floats.size - 1) / dim
-     db.beginTransaction()
-     try {
-       for (cl in 0 until nSpeakers) {
-         val offset = 1 + cl * dim
-         val row = FloatArray(dim) { floats[offset + it] }
-         val allZero = row.all { it == 0f }
-         if (allZero) {
-           db.execSQL(
-             "UPDATE speakers SET voice=NULL WHERE meeting_id=? AND cluster_label=?",
-             arrayOf<Any?>(meetingId, "S$cl"),
-           )
-         } else {
-           db.execSQL(
-             "UPDATE speakers SET voice=? WHERE meeting_id=? AND cluster_label=?",
-             arrayOf<Any?>(VecCodec.encode(row), meetingId, "S$cl"),
-           )
-         }
-       }
-       db.setTransactionSuccessful()
-     } finally {
-       db.endTransaction()
-     }
-   }
+  fun setSpeakerVoices(meetingId: String, dim: Int, floats: FloatArray) {
+    if (dim <= 0 || floats.isEmpty()) return
+    val nSpeakers = (floats.size - 1) / dim
+    db.beginTransaction()
+    try {
+      for (cl in 0 until nSpeakers) {
+        val offset = 1 + cl * dim
+        val row = FloatArray(dim) { floats[offset + it] }
+        val allZero = row.all { it == 0f }
+        if (allZero) {
+          db.execSQL(
+            "UPDATE speakers SET voice=NULL WHERE meeting_id=? AND cluster_label=?",
+            arrayOf<Any?>(meetingId, "S$cl"),
+          )
+        } else {
+          db.execSQL(
+            "UPDATE speakers SET voice=? WHERE meeting_id=? AND cluster_label=?",
+            arrayOf<Any?>(VecCodec.encode(row), meetingId, "S$cl"),
+          )
+        }
+      }
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
+  }
 
-   /** All remembered people, in insertion order (ORDER BY created_at), voice decoded. */
-   private fun loadPeople(): List<PeopleMatch.Person> {
-     val out = ArrayList<PeopleMatch.Person>()
-     db.rawQuery("SELECT id, name, voice FROM people ORDER BY created_at", null).use { c ->
-       while (c.moveToNext()) {
-         out.add(PeopleMatch.Person(
-           id = c.getString(0), name = c.getString(1), voice = VecCodec.decode(c.getBlob(2)),
-         ))
-       }
-     }
-     return out
-   }
+  /** All remembered people, in insertion order (ORDER BY created_at), voice decoded. */
+  private fun loadPeople(): List<PeopleMatch.Person> {
+    val out = ArrayList<PeopleMatch.Person>()
+    db.rawQuery("SELECT id, name, voice FROM people ORDER BY created_at", null).use { c ->
+      while (c.moveToNext()) {
+        out.add(PeopleMatch.Person(
+          id = c.getString(0), name = c.getString(1), voice = VecCodec.decode(c.getBlob(2)),
+        ))
+      }
+    }
+    return out
+  }
 
-   /**
+  /**
     * For each speaker in [meetingId] that has a voice and a default "Speaker N" name, ask
     * PeopleMatch whether the voice matches a remembered person, and write the result to
     * `suggested_person`. Speakers already renamed, or with no voice, are skipped.
     */
-   fun suggestPeople(meetingId: String) {
-     val people = loadPeople()
-     if (people.isEmpty()) return
-     db.beginTransaction()
-     try {
-       db.rawQuery(
-         "SELECT id, display_name, voice FROM speakers WHERE meeting_id=? AND voice IS NOT NULL",
-         arrayOf(meetingId),
-       ).use { c ->
-         while (c.moveToNext()) {
-           val speakerId = c.getString(0)
-           val displayName = c.getString(1)
-           val voice = VecCodec.decode(c.getBlob(2))
-           val match = PeopleMatch.suggest(voice, people, displayName)
-           if (match != null) {
-             db.execSQL(
-               "UPDATE speakers SET suggested_person=? WHERE id=?",
-               arrayOf<Any?>(match, speakerId),
-             )
-           }
-         }
-       }
-       db.setTransactionSuccessful()
-     } finally {
-       db.endTransaction()
-     }
-   }
+  fun suggestPeople(meetingId: String) {
+    val people = loadPeople()
+    if (people.isEmpty()) return
+    db.beginTransaction()
+    try {
+      db.rawQuery(
+        "SELECT id, display_name, voice FROM speakers WHERE meeting_id=? AND voice IS NOT NULL",
+        arrayOf(meetingId),
+      ).use { c ->
+        while (c.moveToNext()) {
+          val speakerId = c.getString(0)
+          val displayName = c.getString(1)
+          val voice = VecCodec.decode(c.getBlob(2))
+          val match = PeopleMatch.suggest(voice, people, displayName)
+          if (match != null) {
+            db.execSQL(
+              "UPDATE speakers SET suggested_person=? WHERE id=?",
+              arrayOf<Any?>(match, speakerId),
+            )
+          }
+        }
+      }
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
+  }
 
-   /**
+  /**
     * Remember this speaker's voice under [name].
     *
     * Returns `{"remembered":true}` or `{"remembered":false,"reason":"off"|"not_pro"|"no_voice"|"default_name"|"blank"}`.
@@ -2657,122 +2657,122 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     * found by name (COLLATE NOCASE) or created, their centroid folded with this speaker's voice, and
     * the speaker's suggestion cleared.
     */
-   fun rememberVoice(speakerId: String, name: String, ctx: Context): String {
-     if (getSetting("voices_remember") != "1") return JSONObject().put("remembered", false).put("reason", "off").toString()
-     if (!LicenceStore.entitled(ctx)) return JSONObject().put("remembered", false).put("reason", "not_pro").toString()
-     val trimmed = name.trim()
-     if (trimmed.isEmpty()) return JSONObject().put("remembered", false).put("reason", "blank").toString()
-     if (trimmed matches Regex("^Speaker \\d+$")) return JSONObject().put("remembered", false).put("reason", "default_name").toString()
-     val speakerVoice = getSpeakerVoiceBlob(speakerId)
-     if (speakerVoice == null) return JSONObject().put("remembered", false).put("reason", "no_voice").toString()
-     val now = System.currentTimeMillis()
-     db.beginTransaction()
-     try {
-       val existing = db.rawQuery(
-         "SELECT id, voice, samples FROM people WHERE name=? COLLATE NOCASE",
-         arrayOf(trimmed),
-       )
-       existing.use { c ->
-         if (c.moveToFirst()) {
-           val oldBlob = c.getBlob(c.getColumnIndex("voice"))
-           val samples = c.getInt(c.getColumnIndex("samples"))
-           val newVoice = VecCodec.decode(speakerVoice)
-           val oldVoice = VecCodec.decode(oldBlob)
-           val folded = foldVoice(oldVoice, newVoice, samples)
-           db.execSQL(
-             "UPDATE people SET voice=?, samples=samples+1, updated_at=? WHERE id=?",
-             arrayOf<Any?>(VecCodec.encode(folded), now, c.getString(c.getColumnIndex("id"))),
-           )
-         } else {
-           val newVoice = VecCodec.decode(speakerVoice)
-           db.execSQL(
-             "INSERT INTO people(id, name, voice, dim, samples, created_at, updated_at) VALUES(?,?,?,?,?,?,?)",
-             arrayOf<Any?>(UUID.randomUUID().toString(), trimmed, speakerVoice, newVoice.size, 1, now, now),
-           )
-         }
-       }
-       db.execSQL("UPDATE speakers SET suggested_person=NULL WHERE id=?", arrayOf<Any?>(speakerId))
-       db.setTransactionSuccessful()
-     } finally {
-       db.endTransaction()
-     }
-     return JSONObject().put("remembered", true).toString()
-   }
+  fun rememberVoice(speakerId: String, name: String, ctx: Context): String {
+    if (getSetting("voices_remember") != "1") return JSONObject().put("remembered", false).put("reason", "off").toString()
+    if (!LicenceStore.entitled(ctx)) return JSONObject().put("remembered", false).put("reason", "not_pro").toString()
+    val trimmed = name.trim()
+    if (trimmed.isEmpty()) return JSONObject().put("remembered", false).put("reason", "blank").toString()
+    if (trimmed matches Regex("^Speaker \\d+$")) return JSONObject().put("remembered", false).put("reason", "default_name").toString()
+    val speakerVoice = getSpeakerVoiceBlob(speakerId)
+    if (speakerVoice == null) return JSONObject().put("remembered", false).put("reason", "no_voice").toString()
+    val now = System.currentTimeMillis()
+    db.beginTransaction()
+    try {
+      val existing = db.rawQuery(
+        "SELECT id, voice, samples FROM people WHERE name=? COLLATE NOCASE",
+        arrayOf(trimmed),
+      )
+      existing.use { c ->
+        if (c.moveToFirst()) {
+          val oldBlob = c.getBlob(c.getColumnIndex("voice"))
+          val samples = c.getInt(c.getColumnIndex("samples"))
+          val newVoice = VecCodec.decode(speakerVoice)
+          val oldVoice = VecCodec.decode(oldBlob)
+          val folded = foldVoice(oldVoice, newVoice, samples)
+          db.execSQL(
+            "UPDATE people SET voice=?, samples=samples+1, updated_at=? WHERE id=?",
+            arrayOf<Any?>(VecCodec.encode(folded), now, c.getString(c.getColumnIndex("id"))),
+          )
+        } else {
+          val newVoice = VecCodec.decode(speakerVoice)
+          db.execSQL(
+            "INSERT INTO people(id, name, voice, dim, samples, created_at, updated_at) VALUES(?,?,?,?,?,?,?)",
+            arrayOf<Any?>(UUID.randomUUID().toString(), trimmed, speakerVoice, newVoice.size, 1, now, now),
+          )
+        }
+      }
+      db.execSQL("UPDATE speakers SET suggested_person=NULL WHERE id=?", arrayOf<Any?>(speakerId))
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
+    return JSONObject().put("remembered", true).toString()
+  }
 
-   /** Read the voice BLOB for one speaker, or null when the speaker has none. */
-   private fun getSpeakerVoiceBlob(speakerId: String): ByteArray? {
-     return db.rawQuery("SELECT voice FROM speakers WHERE id=?", arrayOf(speakerId)).use { c ->
-       if (c.moveToFirst()) {
-         if (c.getType(0) == android.database.Cursor.FIELD_TYPE_NULL) null else c.getBlob(0)
-       } else null
-     }
-   }
+  /** Read the voice BLOB for one speaker, or null when the speaker has none. */
+  private fun getSpeakerVoiceBlob(speakerId: String): ByteArray? {
+    return db.rawQuery("SELECT voice FROM speakers WHERE id=?", arrayOf(speakerId)).use { c ->
+      if (c.moveToFirst()) {
+        if (c.getType(0) == android.database.Cursor.FIELD_TYPE_NULL) null else c.getBlob(0)
+      } else null
+    }
+  }
 
-   /**
+  /**
     * Answer (or dismiss) a voice suggestion on a speaker.
     *
     * accept → the speaker's display_name becomes the person's name, the person's centroid folds in
     * this speaker's voice, and suggested_person is cleared. dismiss → suggested_person cleared only.
     * Returns `{"name":<display_name after>}`.
     */
-   fun answerSuggestion(speakerId: String, accept: Boolean): String {
-     val currentName = db.rawQuery("SELECT display_name FROM speakers WHERE id=?", arrayOf(speakerId))
-       .use { c -> if (c.moveToFirst()) c.getString(0) else "" }
-     if (!accept) {
-       db.execSQL("UPDATE speakers SET suggested_person=NULL WHERE id=?", arrayOf<Any?>(speakerId))
-       return JSONObject().put("name", currentName).toString()
-     }
-     val speakerVoice = getSpeakerVoiceBlob(speakerId)
-     val personId = db.rawQuery(
-       "SELECT suggested_person FROM speakers WHERE id=?", arrayOf(speakerId),
-     ).use { c -> if (c.moveToFirst()) { if (c.isNull(0)) null else c.getString(0) } else null }
-     if (personId == null) {
-       db.execSQL("UPDATE speakers SET suggested_person=NULL WHERE id=?", arrayOf<Any?>(speakerId))
-       return JSONObject().put("name", currentName).toString()
-     }
-     val person = db.rawQuery(
-       "SELECT name, voice, samples FROM people WHERE id=?", arrayOf(personId),
-     ).use { c ->
-       if (!c.moveToFirst()) return JSONObject().put("name", currentName).toString()
-       Triple(c.getString(0), c.getBlob(1), c.getInt(2))
-     }
-     val now = System.currentTimeMillis()
-     db.beginTransaction()
-     try {
-       db.execSQL(
-         "UPDATE speakers SET display_name=?, suggested_person=NULL WHERE id=?",
-         arrayOf<Any?>(person.first, speakerId),
-       )
-       if (speakerVoice != null) {
-         val oldVoice = VecCodec.decode(person.second)
-         val newVoice = VecCodec.decode(speakerVoice)
-         val folded = foldVoice(oldVoice, newVoice, person.third)
-         db.execSQL(
-           "UPDATE people SET voice=?, samples=samples+1, updated_at=? WHERE id=?",
-           arrayOf<Any?>(VecCodec.encode(folded), now, personId),
-         )
-       }
-       db.setTransactionSuccessful()
-     } finally {
-       db.endTransaction()
-     }
-     return JSONObject().put("name", person.first).toString()
-   }
+  fun answerSuggestion(speakerId: String, accept: Boolean): String {
+    val currentName = db.rawQuery("SELECT display_name FROM speakers WHERE id=?", arrayOf(speakerId))
+      .use { c -> if (c.moveToFirst()) c.getString(0) else "" }
+    if (!accept) {
+      db.execSQL("UPDATE speakers SET suggested_person=NULL WHERE id=?", arrayOf<Any?>(speakerId))
+      return JSONObject().put("name", currentName).toString()
+    }
+    val speakerVoice = getSpeakerVoiceBlob(speakerId)
+    val personId = db.rawQuery(
+      "SELECT suggested_person FROM speakers WHERE id=?", arrayOf(speakerId),
+    ).use { c -> if (c.moveToFirst()) { if (c.isNull(0)) null else c.getString(0) } else null }
+    if (personId == null) {
+      db.execSQL("UPDATE speakers SET suggested_person=NULL WHERE id=?", arrayOf<Any?>(speakerId))
+      return JSONObject().put("name", currentName).toString()
+    }
+    val person = db.rawQuery(
+      "SELECT name, voice, samples FROM people WHERE id=?", arrayOf(personId),
+    ).use { c ->
+      if (!c.moveToFirst()) return JSONObject().put("name", currentName).toString()
+      Triple(c.getString(0), c.getBlob(1), c.getInt(2))
+    }
+    val now = System.currentTimeMillis()
+    db.beginTransaction()
+    try {
+      db.execSQL(
+        "UPDATE speakers SET display_name=?, suggested_person=NULL WHERE id=?",
+        arrayOf<Any?>(person.first, speakerId),
+      )
+      if (speakerVoice != null) {
+        val oldVoice = VecCodec.decode(person.second)
+        val newVoice = VecCodec.decode(speakerVoice)
+        val folded = foldVoice(oldVoice, newVoice, person.third)
+        db.execSQL(
+          "UPDATE people SET voice=?, samples=samples+1, updated_at=? WHERE id=?",
+          arrayOf<Any?>(VecCodec.encode(folded), now, personId),
+        )
+      }
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
+    return JSONObject().put("name", person.first).toString()
+  }
 
-   /** Delete every remembered voice: all people, and all speakers' voice + suggestion. */
-   fun forgetVoices() {
-     db.beginTransaction()
-     try {
-       db.execSQL("DELETE FROM people")
-       db.execSQL("UPDATE speakers SET voice=NULL, suggested_person=NULL")
-       db.setTransactionSuccessful()
-     } finally {
-       db.endTransaction()
-     }
-   }
+  /** Delete every remembered voice: all people, and all speakers' voice + suggestion. */
+  fun forgetVoices() {
+    db.beginTransaction()
+    try {
+      db.execSQL("DELETE FROM people")
+      db.execSQL("UPDATE speakers SET voice=NULL, suggested_person=NULL")
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
+  }
 
-   /** How many people are remembered — for the verification probe. */
-   fun peopleCount(): Int = count("SELECT count(*) FROM people")
+  /** How many people are remembered — for the verification probe. */
+  fun peopleCount(): Int = count("SELECT count(*) FROM people")
 
    companion object {
     /**

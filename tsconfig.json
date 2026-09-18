@@ -11,6 +11,7 @@
     "**/node_modules",
     "**/Pods",
     "cpp/third_party",
+    ".kilo",
     "graphify-out",
     "_to_delete",
     // The licence server is a separate Node project with its own tsconfig and its own types

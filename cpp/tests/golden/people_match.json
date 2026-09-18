@@ -29,12 +29,12 @@
       "expected": "p1"
     },
     {
-      "name": "two tied at 0.80 → the one listed first",
+      "name": "two tied at 0.80 → null (a tie is a margin of zero; never guess between two known voices)",
       "people": [
         { "id": "p1", "name": "Priya", "cosine": 0.80 },
         { "id": "p2", "name": "Ravi", "cosine": 0.80 }
       ],
-      "expected": "p1"
+      "expected": null
     },
     {
       "name": "non-default display_name → null even at 0.95",

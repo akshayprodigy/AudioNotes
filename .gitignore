@@ -105,3 +105,5 @@ __pycache__/
 
 # graphify output: a generated knowledge graph (~17 MB), re-derivable from the repo it describes
 graphify-out/
+# A builder tool (Kilo) keeps git worktrees here; never part of the project.
+.kilo/

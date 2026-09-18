@@ -5,8 +5,10 @@ module.exports = {
   haste: {defaultPlatform: 'android', platforms: ['android', 'native']},
   // Vendored C++ engines ship their own JS test suites (e.g. whisper.cpp's addon.node),
   // which jest would otherwise collect and fail on. Only our own tests belong here.
-  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/cpp/third_party/'],
-  modulePathIgnorePatterns: ['<rootDir>/cpp/third_party/'],
+  // A builder tool (Kilo) creates git worktrees under .kilo/ inside the repo; without this jest
+  // collected every suite twice and the gate's count jumped 520 -> 885 (18 Sep). tsc excludes it too.
+  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/cpp/third_party/', '<rootDir>/.kilo/'],
+  modulePathIgnorePatterns: ['<rootDir>/cpp/third_party/', '<rootDir>/.kilo/'],
   // react-navigation, react-native-screens and react-native-svg ship untranspiled
   // ESM, so they must go through babel rather than being skipped like the rest
   // of node_modules.

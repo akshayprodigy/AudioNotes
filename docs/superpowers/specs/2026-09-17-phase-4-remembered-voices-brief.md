@@ -269,8 +269,10 @@ Modify: `AudioDb.kt` (schema mirror, the six functions — one `companion object
 voice: FloatArray)`; all vectors unit length; `cosine = dot`. Score every person; let `best` be
 the highest and `second` the next highest (or −1 when there is one person). Suggest `best.id`
 when `best.cos >= MATCH_COSINE` (**0.65**) and `best.cos - second.cos >= MATCH_MARGIN`
-(**0.10**); else `null`. Ties are broken by insertion order (first wins), which is `ORDER BY
-created_at` in the query that loads people. A speaker whose `display_name` is not the default
+(**0.10**); else `null`. Two people tied for best is a margin of zero and refuses — the app never
+guesses between two voices it knows (*corrected in review, 18 Sep: an earlier sentence here said
+ties break to the first listed, which contradicted the margin; the margin wins*). People are loaded
+`ORDER BY created_at`. A speaker whose `display_name` is not the default
 `^Speaker \d+$` is never suggested for (someone already named them). A speaker with no voice is
 skipped.
 
@@ -304,7 +306,7 @@ mirror → that mirror's test fails; `people` moved into `ADDED_COLUMNS` → fai
 **5.2 Kotlin (unit)** — `PeopleMatchTest` against `people_match.json` (the golden's `note` carries
 the two constants; cases give the speaker's cosine to each person by name): one person at 0.80 →
 suggested; one at 0.60 → null; two at 0.80 and 0.75 → null (margin); two at 0.80 and 0.60 →
-the first; two tied at 0.80 → the one listed first; a non-default `display_name` → null even at
+the first; two tied at 0.80 → null (margin zero); a non-default `display_name` → null even at
 0.95; no people → null. *Mutants:* `MATCH_COSINE = 0`; margin dropped; `>=` made `>` on the
 cosine (a case at exactly 0.65 must suggest); default-name guard dropped.
 `VecCodecTest` stays green.

@@ -21,7 +21,15 @@
 
 ## Decisions
 
-(none yet)
+- **Review of Session A (Opus, 18 Sep):** gate all clear; SchemaTest (19) and PeopleMatchTest (2)
+  forced to execute; every §2 function read against the brief — faithful. One rule defect, the
+  brief's own: "ties break to the first listed" contradicted the 0.10 margin, and the code made an
+  equal runner-up invisible to the margin. Fixed: an equal runner-up is a runner-up, a tie refuses;
+  golden case and brief §4 corrected (`PeopleMatch.kt`, `people_match.json`). Whitespace: the new
+  `AudioDb` block was indented one space off; normalised (no code change, `git diff -w` empty).
+  Environment: the builder tool left a git worktree at `.kilo/worktrees/glib-credit` inside the
+  repo, which jest collected (suites 51 → 91); `.kilo/` is now ignored by jest, tsc and git — the
+  founder removes the directory (`git worktree remove --force .kilo/worktrees/glib-credit`).
 
 ## Mutants
 
@@ -40,4 +48,7 @@
 
 ## Notes for the next session
 
-(none yet)
+- Session B is driven by `docs/superpowers/specs/2026-09-18-phase-4-session-b-execution.md`, a
+  step-by-step execution sheet; the brief stays the reference for copy (§2.9) and the report (§7).
+- The device tests of Task 6 (PeopleDbTest 3/3, the NativePipelineTest seam) were run by Session A;
+  the phone was not attached during the review, so Task 11 re-runs them.
