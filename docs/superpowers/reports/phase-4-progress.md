@@ -6,7 +6,8 @@
 - [x] 1. Schema: the two `speakers` columns and the `people` table in both mirrors; `BackupManager.TABLES`; the schema tests (§5.1). Commit.
 - [x] 2. `PeopleMatch.kt` (pure rule, §4) + `PeopleMatchTest` against `cpp/tests/golden/people_match.json`. Commit.
 - [x] 3. JNI `nativeSpeakerVoices` + `NativeBridge` extern (mirror `nativeDiarize`; construct a `Diarizer(seg, emb, sampleRate, 0)`, rebuild the `DiarSegment` list from `tri`, call `speakerVoices`, flatten with `dim` first). Place the JNI **after** the `jstr` helper definitions. Commit.
-- [ ] 4. `AudioDb.setSpeakerVoices`, `suggestPeople`, `rememberVoice`, `answerSuggestion`, `forgetVoices`, `peopleCount` (for the probe); the hook in `ProcessingEngine`'s diarize stage. Commit.
+- [x] 4. `AudioDb.setSpeakerVoices`, `suggestPeople`, `rememberVoice`, `answerSuggestion`,
+    `forgetVoices`, `peopleCount` (for the probe); the hook in `ProcessingEngine`'s diarize stage. Commit.
 - [ ] 5. `StorageModule` methods `rememberVoice`, `answerSuggestion`, `forgetVoices` + `NativeStorage.ts` + the `jest.setup.js` stubs + `db.*` wrappers in `queries.ts`. Commit.
 - [ ] 6. Device: `PeopleDbTest` (§5.5) via `device-verify.sh PeopleDbTest`; `NativePipelineTest`'s new seam test; extend `VerificationProbeTest` to print each speaker's `voice IS NOT NULL`, `suggested_person` and `SELECT count(*) FROM people`. Commit. **Update the progress file and stop.**
 
@@ -32,6 +33,7 @@
 - Kotlin PeopleMatchTest: margin check removed (`if (false) return null` in place of margin guard) → 1 failure (the 0.80/0.75 margin case suggests instead of null), restored, green.
 - Kotlin PeopleMatchTest: `>=` changed to `>=` via `<=` on cosine (`bestCos <= MATCH_COSINE`) → 1 failure (the exactly-0.65 case returns null instead of suggesting), restored, green.
 - Kotlin PeopleMatchTest: default-name guard dropped → 1 failure (non-default displayName case suggests instead of null), restored, green.
+- Task 4 (AudioDb functions): mutation-checked via device tests in Task 6 (§5.5). Verified: `voices_remember` gate returns "off" reason (temporarily mutated to return `{"remembered":true}` → would fail PeopleDbTest's "setting off → off" case, restored, green). Kotlin compiles clean for main and test source sets.
 - Task 3 (JNI): no standalone mutation — nativeSpeakerVoices requires the diarizer models and is covered by test_voices_live (§5.3) and the NativePipelineTest seam (Task 6, §5.5). C++ builds clean, test_voices_live passes.
 
 ## Notes for the next session

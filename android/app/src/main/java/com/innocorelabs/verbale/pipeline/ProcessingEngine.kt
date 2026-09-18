@@ -2,6 +2,7 @@ package com.innocorelabs.verbale.pipeline
 
 import android.content.Context
 import android.util.Log
+import com.innocorelabs.verbale.billing.LicenceStore
 import com.innocorelabs.verbale.data.AudioDb
 import com.innocorelabs.verbale.data.ModelCatalog
 import java.io.File
@@ -272,6 +273,24 @@ class ProcessingEngine(
               val de = LongArray(m) { tri[it * 3 + 1] }
               val sp = IntArray(m) { tri[it * 3 + 2].toInt() }
               db.assignSpeakers(meetingId, ds, de, sp)
+              // Phase 4: remembered voices. Voiceprints are computed here because retention
+              // deletes the audio after narration — audioPath is the PCM the diarizer just read.
+              // Only for paid/trial users with the setting on; otherwise exactly as today.
+              if (LicenceStore.entitled(ctx) && db.getSetting("voices_remember") == "1") {
+                try {
+                  val floats = NativeBridge.nativeSpeakerVoices(
+                    audioPath, segModel.absolutePath, embModel.absolutePath,
+                    RecordingService.SAMPLE_RATE, tri,
+                  )
+                  if (floats.isNotEmpty()) {
+                    val dim = floats[0].toInt()
+                    db.setSpeakerVoices(meetingId, dim, floats)
+                    db.suggestPeople(meetingId)
+                  }
+                } catch (e: Throwable) {
+                  Log.w(TAG, "voices failed for $meetingId", e)
+                }
+              }
               db.setStatus(meetingId, "diarized")
             }
             // A meeting reprocessed on a phone with room must stop saying it ran out of it.
