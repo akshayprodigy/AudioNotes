@@ -3,7 +3,7 @@ import { extractMinutes, splitSentences } from '../minutes';
 import type { Utterance, Speaker } from '../types';
 
 const spk: Speaker[] = [
-  { id: 'S0', meetingId: 'm', clusterLabel: '0', displayName: 'Speaker 1' },
+  { id: 'S0', meetingId: 'm', clusterLabel: '0', displayName: 'Speaker 1', suggestedPerson: null, suggestedName: null },
 ];
 
 function utt(id: string, startMs: number, endMs: number, text: string): Utterance {

@@ -51,6 +51,8 @@ const speaker = (meetingId: string): Speaker => ({
   meetingId,
   clusterLabel: 'A',
   displayName: 'Speaker A',
+  suggestedPerson: null,
+  suggestedName: null,
 });
 
 const meeting = (id: string): Meeting => ({

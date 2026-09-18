@@ -207,8 +207,11 @@ export const db = {
 
   speakers: (meetingId: string) =>
     run<Speaker>(
-      'SELECT id, meeting_id AS meetingId, cluster_label AS clusterLabel, ' +
-        'display_name AS displayName FROM speakers WHERE meeting_id = ?',
+      'SELECT s.id, s.meeting_id AS meetingId, s.cluster_label AS clusterLabel, ' +
+        's.display_name AS displayName, s.suggested_person AS suggestedPerson, ' +
+        'p.name AS suggestedName ' +
+        'FROM speakers s LEFT JOIN people p ON p.id = s.suggested_person ' +
+        'WHERE s.meeting_id = ?',
       [meetingId],
     ),
 
@@ -534,7 +537,7 @@ export const db = {
       'human',
       name,
     ]);
-    return { id, meetingId, clusterLabel: 'human', displayName: name };
+    return { id, meetingId, clusterLabel: 'human', displayName: name, suggestedPerson: null, suggestedName: null };
   },
 
   /**

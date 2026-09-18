@@ -15,7 +15,7 @@ const utt = (id: string, speakerId: string, text: string): Utterance => ({
   text,
 });
 const speakers: Speaker[] = [
-  { id: 's1', meetingId: 'm', clusterLabel: 'A', displayName: 'Akshay' },
+  { id: 's1', meetingId: 'm', clusterLabel: 'A', displayName: 'Akshay', suggestedPerson: null, suggestedName: null },
 ];
 
 describe('summarize helpers', () => {

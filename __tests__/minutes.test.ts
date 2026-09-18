@@ -11,8 +11,8 @@ const utt = (id: string, speakerId: string, text: string): Utterance => ({
 });
 
 const speakers: Speaker[] = [
-  { id: 's1', meetingId: 'm', clusterLabel: 'A', displayName: 'Akshay' },
-  { id: 's2', meetingId: 'm', clusterLabel: 'B', displayName: 'Priya' },
+  { id: 's1', meetingId: 'm', clusterLabel: 'A', displayName: 'Akshay', suggestedPerson: null, suggestedName: null },
+  { id: 's2', meetingId: 'm', clusterLabel: 'B', displayName: 'Priya', suggestedPerson: null, suggestedName: null },
 ];
 
 const transcript: Utterance[] = [

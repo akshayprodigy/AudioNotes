@@ -7,8 +7,8 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 
 const speakers = [
-  { id: 's1', meetingId: 'm', clusterLabel: 'S0', displayName: 'Speaker 1' },
-  { id: 's2', meetingId: 'm', clusterLabel: 'S1', displayName: 'Priya' },
+  { id: 's1', meetingId: 'm', clusterLabel: 'S0', displayName: 'Speaker 1', suggestedPerson: null, suggestedName: null },
+  { id: 's2', meetingId: 'm', clusterLabel: 'S1', displayName: 'Priya', suggestedPerson: null, suggestedName: null },
 ];
 
 async function render(props: Partial<React.ComponentProps<typeof SpeakerPicker>> = {}) {

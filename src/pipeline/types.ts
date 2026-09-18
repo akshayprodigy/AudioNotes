@@ -78,6 +78,10 @@ export interface Speaker {
   meetingId: string;
   clusterLabel: string;
   displayName: string;
+  /** Phase 4: the `people.id` a voice match proposes, or null. */
+  suggestedPerson: string | null;
+  /** Phase 4: that person's name, joined in the query, or null. */
+  suggestedName: string | null;
 }
 
 /**
