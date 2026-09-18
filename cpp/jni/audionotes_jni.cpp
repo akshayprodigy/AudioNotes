@@ -40,6 +40,7 @@
 #include "minutes/llm_minutes.h"
 #include "minutes/minutes_extractor.h"
 #include "minutes/templates.h"
+#include "minutes/dictation.h"
 #include "vad/silero_vad.h"
 
 namespace {
@@ -1104,6 +1105,14 @@ Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeFoldSections(
     throwRuntime(env, e.what());
     return env->NewStringUTF("");
   }
+}
+
+// Phase 5 (dictation): spoken punctuation -> marks (minutes/dictation.h). One string in, one out;
+// promptCall's shape.
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeApplySpokenPunctuation(
+    JNIEnv* env, jobject /*thiz*/, jstring jText) {
+  return promptCall(env, jText, &audionotes::applySpokenPunctuation);
 }
 
 extern "C" JNIEXPORT jstring JNICALL

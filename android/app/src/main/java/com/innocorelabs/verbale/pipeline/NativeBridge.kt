@@ -322,6 +322,9 @@ object NativeBridge {
    */
   external fun nativeFoldSections(text: String, template: String): String
 
+  /** Phase 5 (dictation): "full stop", "comma", "new paragraph" … become the marks. Dictation mode only. */
+  external fun nativeApplySpokenPunctuation(text: String): String
+
   external fun nativeDropAbsenceTail(text: String): String
 
   /**

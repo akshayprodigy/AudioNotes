@@ -4,7 +4,7 @@
 
 - [x] **Step 1** — schema: `meetings.mode`, `utterances.text_raw`, the `vocabulary` table, backup
 - [x] **Step 2** — `Vocabulary.kt`, the pure rule, with its golden
-- [ ] **Step 3** — JNI `nativeApplySpokenPunctuation`
+- [x] **Step 3** — JNI `nativeApplySpokenPunctuation`
 - [ ] **Step 4** — `AudioDb`: the reads and writes
 - [ ] **Step 5** — the three pipeline hooks and the mode at creation
 - [ ] **Step 6** — `StorageModule` + the TS spec + stubs + wrappers
