@@ -52,6 +52,7 @@ Legend: ✅ done · ◐ partly · ✗ not built · ⛔ tried and rejected on evi
 | Overlapping speech represented honestly | ✗ | sub-project 2 |
 | Rename / merge / split / reassign passages, preview, preserve confirmed on reprocess | ✅ | rename ✅ merge ✅; split / reassign ✅ (one gesture, three scopes, shipped 16 Sep); speaker corrections survive re-diarization ✅; corrections and ticks survive reprocess ✅ |
 | Remembered voices, enrolment, deletable | ✗ | NEXT §3, with the BIPA/GDPR note |
+| Persistent voice profiles | ✅ | 18 Sep — Phase 4 (report `docs/superpowers/reports/2026-09-18-phase-4-remembered-voices.md`) |
 
 ## Dictation mode — ✗ entirely (sub-project 5)
 
