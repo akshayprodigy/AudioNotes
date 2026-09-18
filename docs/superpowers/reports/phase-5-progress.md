@@ -34,7 +34,35 @@
     surviving mutant; restored to the specified lookaround regex. (The spec expected `\b` ASCII;
     the runtime disagrees.)
 
+### Step 7 — NOT RUN (phone absent)
+
+Per §0/§6: `adb devices` lists no device (serial `36091FDH30034G` not attached); the
+`grep -c` prints 0, so Step 7 is skipped, not done. Steps 1–6 are committed green. Steps 1–6
+do NOT include the Step 7 test files — those require the device to drive TDD red→green→mutant.
+
+**What Step 7 still needs (next session, with the phone):**
+- `7a` `VocabularyDbTest.kt` (androidTest, new): borrow `grantTrial()`/`restoreTrial()` and `newMeeting`
+  from `NativePipelineTest.kt`; tests `rules_apply_and_keep_the_raw_wording`,
+  `dictation_applies_the_marks_and_keeps_raw`, `mode_round_trips`, `put_rejects_blank`.
+- `7b` extend `VerificationProbeTest` to print `mode=` per meeting, the count + rows of `vocabulary`,
+  and for the first 6 utterances whether `text_raw IS NOT NULL`.
+- Add `com.innocorelabs.verbale.VocabularyDbTest` to `CLASSES` in `scripts/device-verify.sh` after
+  `PeopleDbTest`.
+- Run `scripts/device-verify.sh VocabularyDbTest` → `OK (4 tests)`; `… NativePipelineTest` → `OK (18)`.
+- Device mutant: `text_raw=?` vs `COALESCE(text_raw, ?)` in `applyVocabularyToMeeting` → second-apply
+  `text_raw` assertion fails; restore.
+- Gate: `GATE_STAGES="types js scans mutations kotlin cpp" bash scripts/gate.sh` → `all clear`.
+- `git status` clean on stop.
+
 ## Notes for the next session
 
-- Step 7 needs the phone (`export ANDROID_SERIAL=36091FDH30034G`). If absent, run Steps 1–6, note it, and stop.
-- Exact `db.*` names exposed to Session 2: `mode`, `setMode`, `vocabularyRules`, `vocabularyJson`, `putVocabulary`, `deleteVocabulary`, `applyVocabularyToMeeting`. JNI: `nativeApplySpokenPunctuation`. Storage: `vocabulary`, `putVocabulary`, `deleteVocabulary`, `applyVocabulary`.
+- Exact `db.*` names exposed to Session 2: `mode`, `setMode`, `vocabularyRules`, `vocabularyJson`,
+  `putVocabulary`, `deleteVocabulary`, `applyVocabularyToMeeting`. JNI:
+  `nativeApplySpokenPunctuation` (signature `(String)->String`, via `promptCall`). Storage:
+  `vocabulary`, `putVocabulary`, `deleteVocabulary`, `applyVocabulary`. KT bridge:
+  `CaptureController.start(ctx, tier, capMs, mode)`, `AudioPipeline.start({…, mode?:'dictation'})`.
+- VocabularyDbTest needs the native lib rebuilt with the new `nativeApplySpokenPunctuation` JNI symbol
+  (Step 3 added it to `cpp/jni/audionotes_jni.cpp`); the Step 7 APK/test build compiles it.
+- Step 2 golden note: `vocabulary_apply.json` case "unicode letters count as letters" expects
+  `"ravié Ravi"` (é is a `\p{L}` word letter → inner `ravi` not matched); the spec text read
+  `"Ravié Ravi"`, which contradicts the regex + test name — corrected and recorded under Decisions.
