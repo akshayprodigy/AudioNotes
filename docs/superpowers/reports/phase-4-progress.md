@@ -15,7 +15,7 @@
 - [x] 7. `db.speakers` SELECT + `Speaker` type gain `suggestedPerson`/`suggestedName`; `voiceCopy.ts` + `voiceCopy.test.ts`. Commit.
 - [x] 8. `SpeakersScreen`: the suggestion line, Yes/No, the rename hook, the one-time card. Tests. Commit.
 - [x] 9. `SummaryTab` banner + `MeetingScreen` wiring. Tests. Commit.
-- [ ] 10. `SettingsScreen` Voices section. Tests. Commit.
+- [x] 10. `SettingsScreen` Voices section. Tests. Commit.
 - [ ] 11. The gate; then `device-verify.sh PeopleDbTest` and `NativePipelineTest` once more on the phone. Commit anything that moved.
 - [ ] 12. The by-hand run (§5.6), the report (§7), the plan/scorecard rows. Commit.
 
@@ -41,6 +41,8 @@
 - SummaryTab: dropped `paid &&` from the voice-banner guard → test 3 (free) fails, restored, green.
 - SummaryTab: passed `voiceSuggestions.slice(1)` to `soundsLike` → tests 1,2 fail, restored, green.
 - MeetingScreen: dropped the `filter` from `voiceSuggestions` → test expects ['Priya','Ravi'] but got ['Priya','Ravi',null], fails, restored, green.
+- VoicesSection: inverted the `paid ?` label ternary → tests 1,2 fail, restored, green.
+- VoicesSection: removed Forget's `onPress` → test 4 fails, restored, green.
 - TS SchemaTest: removed `voice` from schema.ts speakers CREATE TABLE → 31 failures (cascading from freshDb), restored, green.
 - Kotlin SchemaTest: removed `voice` from ADDED_COLUMNS → 1 failure (speakersHasVoiceAndSuggestedPersonColumns), restored, green.
 - Kotlin SchemaTest: removed `people` from BackupManager.TABLES → 1 failure (backupManagerTablesEndsWithPeople), restored, green.
@@ -60,3 +62,20 @@
   step-by-step execution sheet; the brief stays the reference for copy (§2.9) and the report (§7).
 - The device tests of Task 6 (PeopleDbTest 3/3, the NativePipelineTest seam) were run by Session A;
   the phone was not attached during the review, so Task 11 re-runs them.
+
+## Notes
+
+- VoicesSection.test.tsx renders a `Switch`, whose mount animates `Animated.timing(useNativeDriver)`
+  and crashes the test renderer without one — the codebase's established screen-test pattern
+  (SearchScreen/MetingScreen/SpeakersScreen tests) is `jest.useFakeTimers()` + `afterEach(useRealTimers)`,
+  so this file follows it. This is environment test-hygiene, not a change to the component under test.
+- The SpeakersScreen "wrap each Yes/No button in a View" used an inline `style={{ flexShrink: 0 }}`
+  per spec note §8, which trips `react-native/no-inline-styles`; replaced with a named `st.noShrink` so
+  §10d eslint is clean with zero errors. SoftButton itself has no `flexShrink` guard, so the wrapper is kept.
+- VoicesSection's consent copy is rewrapped (same words, brief §2.9 verbatim) so the substring
+  "Nothing is uploaded and nothing leaves the phone." sits on one physical line, satisfying §5's
+  `grep -c` == 1.
+- Pre-existing: SettingsScreen.tsx:485 shadows the file-level `busy` (`@typescript-eslint/no-shadow`,
+  WARNING) in the unrelated `models.map` download row. Left untouched — it predates Session A (present
+  at 9750864), has no test coverage, and is outside Phase 4; eslint exits 0 (0 errors). All Phase 4 files
+  are warning-free.

@@ -36,6 +36,7 @@ import {
   Txt,
 } from '../components/ui';
 import { downloadLabel, downloadPct } from './downloadLabel';
+import VoicesSection from './settings/VoicesSection';
 import Backup from '../native/NativeBackup';
 import Licence, { type LicenceStatus } from '../native/NativeLicence';
 import {
@@ -45,6 +46,7 @@ import {
   restorePlayPurchase,
   signOut,
 } from '../billing/subscription';
+import { entitlement } from '../billing/trial';
 import {
   crashConsent,
   crashReportingAvailable,
@@ -279,6 +281,9 @@ export default function SettingsScreen({ navigation }: Props) {
   // as on rather than as off.
   const [announceOn, setAnnounceOn] = useState<boolean | null>(null);
 
+  const [voicesRemember, setVoicesRemember] = useState<boolean | null>(null);
+  const [voicesPaid, setVoicesPaid] = useState(false);
+
   useEffect(() => {
     if (!crashReportingAvailable()) return;
     crashConsent()
@@ -333,6 +338,10 @@ export default function SettingsScreen({ navigation }: Props) {
     db.getSetting('announceRecording')
       .then(v => setAnnounceOn(v !== '0'))
       .catch(() => setAnnounceOn(true));
+    db.getSetting('voices_remember')
+      .then(v => setVoicesRemember(v === '1'))
+      .catch(() => setVoicesRemember(false));
+    entitlement().then(e => setVoicesPaid(e.paid)).catch(() => {});
     // The engine's own list. On failure the three-item fallback stays, which is worse than the
     // real list but still a working picker.
     AudioPipeline.supportedLanguages()
@@ -799,8 +808,23 @@ export default function SettingsScreen({ navigation }: Props) {
                 <Icon name="chevronRight" size={s(18)} color={colors.inkFaint} strokeWidth={2.4} />
               </View>
             </View>
-          </Raised>
-        </View>
+           </Raised>
+         </View>
+
+        {voicesRemember === null ? null : (
+          <VoicesSection
+            paid={voicesPaid}
+            remember={voicesRemember}
+            onToggle={next => {
+              setVoicesRemember(next);
+              db.setSetting('voices_remember', next ? '1' : '0').catch(() => {});
+            }}
+            onForget={() => {
+              db.forgetVoices().catch(() => {});
+            }}
+            onUpgrade={() => navigation.navigate('Paywall')}
+          />
+        )}
 
         <View style={st.ruleWrap}>
           <SectionRule label="PRIVACY" />

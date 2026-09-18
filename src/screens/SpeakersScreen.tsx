@@ -181,14 +181,14 @@ export default function SpeakersScreen({ route, navigation }: Props) {
                       <Txt variant="chip" color={colors.inkSoft} style={st.flex}>
                         Sounds like {item.suggestedName}?
                       </Txt>
-                      <View accessibilityLabel={`Yes, this is ${item.suggestedName}`} style={{ flexShrink: 0 }}>
+                      <View accessibilityLabel={`Yes, this is ${item.suggestedName}`} style={st.noShrink}>
                         <SoftButton
                           icon="check"
                           label="Yes"
                           onPress={() => answer(item.id, true)}
                         />
                       </View>
-                      <View accessibilityLabel={`No, not ${item.suggestedName}`} style={{ flexShrink: 0 }}>
+                      <View accessibilityLabel={`No, not ${item.suggestedName}`} style={st.noShrink}>
                         <SoftButton
                           icon="x"
                           label="No"
@@ -230,6 +230,7 @@ function makeStyles(c: Colors) {
     row: { flexDirection: 'row', alignItems: 'center', gap: s(12), padding: s(14) },
     suggest: { flexDirection: 'row', alignItems: 'center', gap: s(8), paddingHorizontal: s(14), paddingBottom: s(12) },
     flex: { flex: 1, flexShrink: 1 },
+    noShrink: { flexShrink: 0 },
     avatar: {
       width: s(36),
       height: s(36),
