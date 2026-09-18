@@ -4,7 +4,7 @@
 
 ### Session A — native and data
 - [x] 1. Schema: the two `speakers` columns and the `people` table in both mirrors; `BackupManager.TABLES`; the schema tests (§5.1). Commit.
-- [ ] 2. `PeopleMatch.kt` (pure rule, §4) + `PeopleMatchTest` against `cpp/tests/golden/people_match.json`. Commit.
+- [x] 2. `PeopleMatch.kt` (pure rule, §4) + `PeopleMatchTest` against `cpp/tests/golden/people_match.json`. Commit.
 - [ ] 3. JNI `nativeSpeakerVoices` + `NativeBridge` extern (mirror `nativeDiarize`; construct a `Diarizer(seg, emb, sampleRate, 0)`, rebuild the `DiarSegment` list from `tri`, call `speakerVoices`, flatten with `dim` first). Place the JNI **after** the `jstr` helper definitions. Commit.
 - [ ] 4. `AudioDb.setSpeakerVoices`, `suggestPeople`, `rememberVoice`, `answerSuggestion`, `forgetVoices`, `peopleCount` (for the probe); the hook in `ProcessingEngine`'s diarize stage. Commit.
 - [ ] 5. `StorageModule` methods `rememberVoice`, `answerSuggestion`, `forgetVoices` + `NativeStorage.ts` + the `jest.setup.js` stubs + `db.*` wrappers in `queries.ts`. Commit.
@@ -28,6 +28,10 @@
 - Kotlin SchemaTest: removed `voice` from ADDED_COLUMNS → 1 failure (speakersHasVoiceAndSuggestedPersonColumns), restored, green.
 - Kotlin SchemaTest: removed `people` from BackupManager.TABLES → 1 failure (backupManagerTablesEndsWithPeople), restored, green.
 - Kotlin SchemaTest: removed `people` from SCHEMA → 1 failure (peopleTableIsInSchema), restored, green.
+- Kotlin PeopleMatchTest: MATCH_COSINE set to 0.0f → 2 failures (constants + golden table), restored, green.
+- Kotlin PeopleMatchTest: margin check removed (`if (false) return null` in place of margin guard) → 1 failure (the 0.80/0.75 margin case suggests instead of null), restored, green.
+- Kotlin PeopleMatchTest: `>=` changed to `>=` via `<=` on cosine (`bestCos <= MATCH_COSINE`) → 1 failure (the exactly-0.65 case returns null instead of suggesting), restored, green.
+- Kotlin PeopleMatchTest: default-name guard dropped → 1 failure (non-default displayName case suggests instead of null), restored, green.
 
 ## Notes for the next session
 

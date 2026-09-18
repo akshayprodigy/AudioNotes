@@ -1,0 +1,67 @@
+{
+  "note": "PeopleMatch.suggest rule (Phase 4, remembered voices). MATCH_COSINE=0.65, MATCH_MARGIN=0.10. Each case gives the speaker's cosine to each person by name; the test builds unit vectors that yield those cosines. The speaker's display_name defaults to 'Speaker 1' unless 'displayName' overrides it (the non-default-name case). 'expected' is the person id suggested, or null.",
+  "constants": { "MATCH_COSINE": 0.65, "MATCH_MARGIN": 0.10 },
+  "cases": [
+    {
+      "name": "one person at 0.80 → suggested",
+      "people": [{ "id": "p1", "name": "Priya", "cosine": 0.80 }],
+      "expected": "p1"
+    },
+    {
+      "name": "one person at 0.60 → null",
+      "people": [{ "id": "p1", "name": "Priya", "cosine": 0.60 }],
+      "expected": null
+    },
+    {
+      "name": "two at 0.80 and 0.75 → null (margin)",
+      "people": [
+        { "id": "p1", "name": "Priya", "cosine": 0.80 },
+        { "id": "p2", "name": "Ravi", "cosine": 0.75 }
+      ],
+      "expected": null
+    },
+    {
+      "name": "two at 0.80 and 0.60 → the first",
+      "people": [
+        { "id": "p1", "name": "Priya", "cosine": 0.80 },
+        { "id": "p2", "name": "Ravi", "cosine": 0.60 }
+      ],
+      "expected": "p1"
+    },
+    {
+      "name": "two tied at 0.80 → the one listed first",
+      "people": [
+        { "id": "p1", "name": "Priya", "cosine": 0.80 },
+        { "id": "p2", "name": "Ravi", "cosine": 0.80 }
+      ],
+      "expected": "p1"
+    },
+    {
+      "name": "non-default display_name → null even at 0.95",
+      "displayName": "Priya",
+      "people": [{ "id": "p1", "name": "Priya", "cosine": 0.95 }],
+      "expected": null
+    },
+    {
+      "name": "no people → null",
+      "people": [],
+      "expected": null
+    },
+    {
+      "name": "cosine exactly at MATCH_COSINE (0.65) with comfortable margin → suggested",
+      "people": [
+        { "id": "p1", "name": "Priya", "cosine": 0.65 },
+        { "id": "p2", "name": "Ravi", "cosine": 0.40 }
+      ],
+      "expected": "p1"
+    },
+    {
+      "name": "cosine above MATCH_COSINE but margin exactly MATCH_MARGIN (0.10) → suggested",
+      "people": [
+        { "id": "p1", "name": "Priya", "cosine": 0.80 },
+        { "id": "p2", "name": "Ravi", "cosine": 0.70 }
+      ],
+      "expected": "p1"
+    }
+  ]
+}
