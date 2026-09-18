@@ -18,6 +18,8 @@ export interface Spec extends TurboModule {
     language: string | null;
     tier?: string;
     capMs?: number;
+    // Phase 5: record in dictation mode (one voice, spoken punctuation, the note as the write-up).
+    mode?: 'dictation';
   }): Promise<string>;
   // Stop capture; the meeting row is left in status 'captured'.
   stop(sessionId: string): Promise<void>;

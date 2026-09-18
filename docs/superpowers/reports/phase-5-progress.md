@@ -6,7 +6,7 @@
 - [x] **Step 2** — `Vocabulary.kt`, the pure rule, with its golden
 - [x] **Step 3** — JNI `nativeApplySpokenPunctuation`
 - [x] **Step 4** — `AudioDb`: the reads and writes
-- [ ] **Step 5** — the three pipeline hooks and the mode at creation
+- [x] **Step 5** — the three pipeline hooks and the mode at creation
 - [ ] **Step 6** — `StorageModule` + the TS spec + stubs + wrappers
 - [ ] **Step 7** — device tests and the probe (phone required)
 

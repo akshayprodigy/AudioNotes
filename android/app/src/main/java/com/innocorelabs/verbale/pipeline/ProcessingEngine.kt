@@ -200,6 +200,21 @@ class ProcessingEngine(
           // reason it is a separate column.
           db.setLanguage(meetingId, language)
           val count = db.replaceUtterancesJson(meetingId, asr.getJSONArray("utterances").toString())
+          // Phase 5: correction rules, and for a dictation meeting the spoken punctuation, over
+          // the lines just written — before minutes, items, narration and the search index read
+          // them. Free tier: no rules (vocabulary is Pro); dictation's marks apply to everyone.
+          try {
+            val dictation = db.mode(meetingId) == "dictation"
+            val rulesAllowed = LicenceStore.entitled(ctx)
+            val changed = db.applyVocabularyToMeeting(
+              meetingId,
+              if (dictation) { t: String -> NativeBridge.nativeApplySpokenPunctuation(t) } else null,
+              if (rulesAllowed) db.vocabularyRules() else emptyList(),
+            )
+            if (changed > 0) Log.i(TAG, "vocabulary changed $changed line(s) for $meetingId")
+          } catch (e: Throwable) {
+            Log.w(TAG, "vocabulary failed for $meetingId", e)
+          }
           db.setStatus(meetingId, "asr")
           // Scaffolding, not a record. Once utterances exist the cache's only remaining use is
           // making a Redo faster, and a Redo is explicitly a request to recompute. Keeping it
@@ -223,7 +238,14 @@ class ProcessingEngine(
         if (checkCancelled()) return
         val segModel = ModelCatalog.fileFor(ctx, "diar-seg")
         val embModel = ModelCatalog.fileFor(ctx, "diar-emb")
-        if (transcribed && segModel != null && segModel.exists() && embModel != null && embModel.exists()) {
+        val dictation = db.mode(meetingId) == "dictation"
+        if (dictation) {
+          // Phase 5: one voice by definition. Skipped, not attempted: the speaker rows would be
+          // "Speaker 1" alone and the stage costs minutes on a long note.
+          Log.i(TAG, "Diarization skipped for $meetingId (dictation)")
+          db.setDiarSkippedReason(meetingId, null)
+          listener.onStage("diarize", 1, 1)
+        } else if (transcribed && segModel != null && segModel.exists() && embModel != null && embModel.exists()) {
           // Can this phone afford to work out who spoke? This is the only stage whose working set
           // follows the LENGTH of the meeting, and an hour to ninety minutes is ordinary here —
           // rooms full of people run over in a way calls do not. Measured on a 12 GB Pixel, a
@@ -608,6 +630,7 @@ class ProcessingEngine(
      * is the one value TemplateSuggester's own answer must not replace.
      */
     internal fun suggestTemplate(db: AudioDb, meetingId: String, utts: List<Utt>, speakerCount: Int) {
+      if (db.mode(meetingId) == "dictation") { db.setTemplate(meetingId, "dictation", AudioDb.TemplateSource.SUGGESTED); return }
       if (db.templateSource(meetingId) == AudioDb.TemplateSource.CHOSEN) return
       val transcript = utts.joinToString(" ") { it.text }
       val remembered = db.rememberedTemplate(db.tagsFor(meetingId))
