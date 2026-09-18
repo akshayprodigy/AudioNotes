@@ -1,5 +1,6 @@
 package com.innocorelabs.verbale.pipeline
 
+import com.innocorelabs.verbale.billing.LicenceStore
 import com.innocorelabs.verbale.data.AudioDb
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
@@ -255,6 +256,34 @@ class StorageModule(private val ctx: ReactApplicationContext) :
     } catch (e: Exception) {
       promise.reject("db_forget_voices", e)
     }
+  }
+
+  @ReactMethod
+  fun vocabulary(promise: Promise) {
+    try { promise.resolve(AudioDb.get(ctx).vocabularyJson()) } catch (e: Exception) { promise.reject("db_vocabulary", e) }
+  }
+
+  @ReactMethod
+  fun putVocabulary(heard: String, meant: String, source: String, promise: Promise) {
+    try { promise.resolve(AudioDb.get(ctx).putVocabulary(heard, meant, source)) } catch (e: Exception) { promise.reject("db_vocabulary", e) }
+  }
+
+  @ReactMethod
+  fun deleteVocabulary(id: String, promise: Promise) {
+    try { AudioDb.get(ctx).deleteVocabulary(id); promise.resolve(null) } catch (e: Exception) { promise.reject("db_vocabulary", e) }
+  }
+
+  /** Re-run the rules over one meeting now (after a rule is added from its transcript). Pro only. */
+  @ReactMethod
+  fun applyVocabulary(meetingId: String, promise: Promise) {
+    try {
+      val db = AudioDb.get(ctx)
+      if (!LicenceStore.entitled(ctx)) { promise.resolve(0.0); return }
+      val dictation = db.mode(meetingId) == "dictation"
+      val changed = db.applyVocabularyToMeeting(meetingId, if (dictation) { t: String -> NativeBridge.nativeApplySpokenPunctuation(t) } else null)
+      if (changed > 0) db.reindexMeeting(meetingId)
+      promise.resolve(changed.toDouble())
+    } catch (e: Exception) { promise.reject("db_vocabulary", e) }
   }
 
   private fun parseArgs(json: String): Array<String?> {

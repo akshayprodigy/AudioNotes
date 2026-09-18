@@ -16,6 +16,7 @@ import type {
   Speaker,
   ThreadResult,
   Utterance,
+  VocabularyRule,
 } from '../pipeline/types';
 
 async function run<T>(sql: string, params: unknown[] = []): Promise<T[]> {
@@ -160,7 +161,7 @@ export const db = {
       'SELECT id, title, created_at AS createdAt, duration_ms AS durationMs, language, ' +
         'status, tier_used AS tierUsed, audio_retained AS audioRetained, summary_line AS summaryLine, ' +
         'transcribe_forced_at AS transcribeForcedAt, forced_from_language AS forcedFromLanguage, ' +
-        'diar_skipped_reason AS diarSkippedReason, template, template_source AS templateSource ' +
+        'diar_skipped_reason AS diarSkippedReason, template, template_source AS templateSource, mode ' +
         'FROM meetings WHERE id = ?',
       [id],
     ).then(r => r[0]),
@@ -498,6 +499,12 @@ export const db = {
   forgetVoices: async (): Promise<void> => {
     await Storage.forgetVoices();
   },
+
+  vocabulary: () => Storage.vocabulary().then(r => JSON.parse(r) as VocabularyRule[]),
+  putVocabulary: (heard: string, meant: string, source: 'typed' | 'learned') =>
+    Storage.putVocabulary(heard, meant, source),
+  deleteVocabulary: (id: string) => Storage.deleteVocabulary(id),
+  applyVocabulary: (meetingId: string) => Storage.applyVocabulary(meetingId),
 
   // Merge one speaker into another across all utterances, then drop the merged speaker row.
   mergeSpeakers: async (meetingId: string, keepId: string, dropId: string) => {

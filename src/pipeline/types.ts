@@ -62,6 +62,17 @@ export interface Meeting {
   template?: string | null;
   /** 'suggested' (the rule wrote it) or 'chosen' (a person picked it, which the rule must never overwrite). */
   templateSource?: string | null;
+  /** 'dictation' for a meeting recorded in dictation mode; null for an ordinary meeting. */
+  mode?: 'dictation' | null;
+}
+
+export interface VocabularyRule {
+  id: string;
+  heard: string;
+  meant: string;
+  source: 'typed' | 'learned';
+  createdAt: number;
+  uses: number;
 }
 
 export interface Utterance {

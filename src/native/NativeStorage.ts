@@ -52,6 +52,12 @@ export interface Spec extends TurboModule {
   rememberVoice(speakerId: string, name: string): Promise<string>;
   answerSuggestion(speakerId: string, accept: boolean): Promise<string>;
   forgetVoices(): Promise<void>;
+  // Phase 5: correction rules ("in over" -> "Innova"), Pro. JSON array of VocabularyRule.
+  vocabulary(): Promise<string>;
+  putVocabulary(heard: string, meant: string, source: 'typed' | 'learned'): Promise<string>;
+  deleteVocabulary(id: string): Promise<void>;
+  // Re-run every rule over one meeting's lines now; resolves with how many lines changed.
+  applyVocabulary(meetingId: string): Promise<number>;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('Storage');
