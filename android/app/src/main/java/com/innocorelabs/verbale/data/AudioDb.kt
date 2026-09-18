@@ -14,6 +14,7 @@ import com.innocorelabs.verbale.pipeline.ResumePlan
 import com.innocorelabs.verbale.pipeline.Spk
 import com.innocorelabs.verbale.pipeline.Utt
 import com.innocorelabs.verbale.pipeline.StageRates
+import com.innocorelabs.verbale.pipeline.Vocabulary
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 import org.json.JSONArray
 import org.json.JSONObject
@@ -2773,6 +2774,114 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
 
   /** How many people are remembered — for the verification probe. */
   fun peopleCount(): Int = count("SELECT count(*) FROM people")
+
+  // ---- Phase 5: vocabulary rules and dictation mode -----------------------------------------
+
+  /** 'dictation' for a meeting recorded in dictation mode; null for an ordinary meeting. */
+  fun mode(meetingId: String): String? {
+    db.rawQuery("SELECT mode FROM meetings WHERE id=?", arrayOf(meetingId)).use { c ->
+      return if (c.moveToFirst() && !c.isNull(0)) c.getString(0) else null
+    }
+  }
+
+  fun setMode(meetingId: String, mode: String?) {
+    db.execSQL("UPDATE meetings SET mode=? WHERE id=?", arrayOf<Any?>(mode, meetingId))
+  }
+
+  /** Every rule, longest `heard` first is Vocabulary.apply's job; this is insertion order. */
+  fun vocabularyRules(): List<Vocabulary.Rule> {
+    val out = ArrayList<Vocabulary.Rule>()
+    db.rawQuery("SELECT heard, meant FROM vocabulary ORDER BY created_at", null).use { c ->
+      while (c.moveToNext()) out.add(Vocabulary.Rule(c.getString(0), c.getString(1)))
+    }
+    return out
+  }
+
+  /** Every rule as JSON for the screens: [{id, heard, meant, source, createdAt, uses}]. */
+  fun vocabularyJson(): String {
+    val arr = JSONArray()
+    db.rawQuery("SELECT id, heard, meant, source, created_at, uses FROM vocabulary ORDER BY created_at", null).use { c ->
+      while (c.moveToNext()) {
+        arr.put(
+          JSONObject().put("id", c.getString(0)).put("heard", c.getString(1)).put("meant", c.getString(2))
+            .put("source", c.getString(3)).put("createdAt", c.getLong(4)).put("uses", c.getInt(5)),
+        )
+      }
+    }
+    return arr.toString()
+  }
+
+  /**
+   * Add or replace a rule (`heard` is unique, case-insensitively: typing "In Over" over an
+   * existing "in over" replaces its `meant`). Returns the rule's id. Blank `heard` or `meant`
+   * throws IllegalArgumentException — the screen validates first; this is the last line.
+   */
+  fun putVocabulary(heard: String, meant: String, source: String): String {
+    val h = heard.trim(); val m = meant.trim()
+    require(h.isNotEmpty() && m.isNotEmpty()) { "heard and meant must not be blank" }
+    require(source == "typed" || source == "learned") { "source must be typed or learned" }
+    val existing = db.rawQuery("SELECT id FROM vocabulary WHERE heard=? COLLATE NOCASE", arrayOf(h))
+      .use { c -> if (c.moveToFirst()) c.getString(0) else null }
+    if (existing != null) {
+      db.execSQL("UPDATE vocabulary SET meant=?, source=? WHERE id=?", arrayOf<Any?>(m, source, existing))
+      return existing
+    }
+    val id = UUID.randomUUID().toString()
+    db.execSQL(
+      "INSERT INTO vocabulary(id, heard, meant, source, created_at, uses) VALUES(?,?,?,?,?,0)",
+      arrayOf<Any?>(id, h, m, source, System.currentTimeMillis()),
+    )
+    return id
+  }
+
+  fun deleteVocabulary(id: String) {
+    db.execSQL("DELETE FROM vocabulary WHERE id=?", arrayOf<Any?>(id))
+  }
+
+  /**
+   * Run every rule — and, for a dictation meeting, the spoken punctuation — over one meeting's
+   * utterances. The recogniser's wording is kept in text_raw the first time a line changes and
+   * never overwritten after, so a second pass (a new rule) still knows what was heard.
+   * `punctuate` turns spoken marks into marks; pass NativeBridge::nativeApplySpokenPunctuation
+   * (the DB layer does not load the native library itself). Returns how many lines changed.
+   */
+  fun applyVocabularyToMeeting(
+    meetingId: String,
+    punctuate: ((String) -> String)?,
+    rules: List<Vocabulary.Rule> = vocabularyRules(),
+  ): Int {
+    if (rules.isEmpty() && punctuate == null) return 0
+    var changed = 0
+    val usesById = HashMap<String, Int>()
+    db.beginTransaction()
+    try {
+      val rows = ArrayList<Triple<String, String, String?>>()  // id, text, text_raw
+      db.rawQuery("SELECT id, text, text_raw FROM utterances WHERE meeting_id=?", arrayOf(meetingId)).use { c ->
+        while (c.moveToNext()) rows.add(Triple(c.getString(0), c.getString(1), if (c.isNull(2)) null else c.getString(2)))
+      }
+      for ((id, text, raw) in rows) {
+        var next = Vocabulary.apply(text, rules)
+        if (punctuate != null) next = punctuate(next)
+        if (next == text) continue
+        db.execSQL(
+          "UPDATE utterances SET text=?, text_raw=COALESCE(text_raw, ?) WHERE id=?",
+          arrayOf<Any?>(next, raw ?: text, id),
+        )
+        changed++
+      }
+      if (changed > 0 && rules.isNotEmpty()) {
+        // Count a use per rule per changed line — an approximation the screen shows as "used N times".
+        for (r in rules) {
+          val n = rows.count { Vocabulary.apply(it.second, listOf(r)) != it.second }
+          if (n > 0) db.execSQL("UPDATE vocabulary SET uses=uses+? WHERE heard=? COLLATE NOCASE", arrayOf<Any?>(n, r.heard))
+        }
+      }
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
+    return changed
+  }
 
    companion object {
     /**
