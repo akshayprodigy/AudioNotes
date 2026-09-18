@@ -1,0 +1,13 @@
+{
+  "note": "Vocabulary.apply: whole words, case-insensitive, longest heard first, meant as typed; untouched text is returned unchanged. Read by VocabularyTest.kt.",
+  "cases": [
+    { "name": "the report's own example", "rules": [{"heard": "in over", "meant": "Innova"}], "text": "we sold it to in over last week", "expect": "we sold it to Innova last week" },
+    { "name": "case-insensitive on heard, meant as typed", "rules": [{"heard": "prey", "meant": "Priya"}], "text": "Prey will send the deck; prey said so", "expect": "Priya will send the deck; Priya said so" },
+    { "name": "whole words only", "rules": [{"heard": "prey", "meant": "Priya"}], "text": "the osprey preyed on it", "expect": "the osprey preyed on it" },
+    { "name": "longest heard first", "rules": [{"heard": "in over", "meant": "Innova"}, {"heard": "in over there", "meant": "Innovathere"}], "text": "put it in over there", "expect": "put it Innovathere" },
+    { "name": "punctuation next to the word is fine", "rules": [{"heard": "in over", "meant": "Innova"}], "text": "In over, the client, agreed.", "expect": "Innova, the client, agreed." },
+    { "name": "no rules, same text", "rules": [], "text": "unchanged", "expect": "unchanged" },
+    { "name": "a rule that matches nothing", "rules": [{"heard": "innova", "meant": "Innova"}], "text": "nothing here", "expect": "nothing here" },
+    { "name": "unicode letters count as letters", "rules": [{"heard": "ravi", "meant": "Ravi"}], "text": "ravié ravi", "expect": "ravié Ravi" }
+  ]
+}
