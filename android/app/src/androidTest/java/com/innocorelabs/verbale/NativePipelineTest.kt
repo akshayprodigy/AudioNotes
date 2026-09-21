@@ -216,6 +216,9 @@ class NativePipelineTest {
     val emb = ModelCatalog.fileFor(ctx, "diar-emb")?.takeIf { it.exists() }
     assumeTrue("silero_vad.onnx not installed", vad != null)
     assumeTrue("diarization models not installed", seg != null && emb != null)
+    // The engine never diarizes in a 32-bit process (DiarBudget.SKIPPED_FOR_32_BIT); calling the
+    // diarizer directly there crashes the runner, which is worse than a skip.
+    assumeTrue("speaker models need a 64-bit process", com.innocorelabs.verbale.pipeline.DiarBudget.is64BitProcess())
 
     val pcm = fixturePcm()
     val totalMs = pcm.length() / 32
@@ -282,6 +285,9 @@ class NativePipelineTest {
     val emb = ModelCatalog.fileFor(ctx, "diar-emb")?.takeIf { it.exists() }
     assumeTrue("silero_vad.onnx not installed", vad != null)
     assumeTrue("diarization models not installed", seg != null && emb != null)
+    // The engine never diarizes in a 32-bit process (DiarBudget.SKIPPED_FOR_32_BIT); calling the
+    // diarizer directly there crashes the runner, which is worse than a skip.
+    assumeTrue("speaker models need a 64-bit process", com.innocorelabs.verbale.pipeline.DiarBudget.is64BitProcess())
 
     val pcm = fixturePcm()
     val spans = NativeBridge.nativeVad(pcm.absolutePath, vad!!.absolutePath, 16000)

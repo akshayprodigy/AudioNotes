@@ -1,7 +1,10 @@
 # Phase 5 — Session 3 execution sheet (device: the vocabulary DB tests, the probe, the gate's device stage)
 
-*21 September 2026, against `c7fa4a1`; re-pointed the same day from the Pixel (dead) to the Galaxy A07.
-For the ~30-step session that runs it, started ONLY with the phone attached. Do not design anything. This is Session 1's Step 7, which the phone's absence on
+*21 September 2026, against `c7fa4a1`; re-pointed the same day to the Galaxy Tab A 10.1 (the Pixel is
+dead, the A07 would not connect). For the ~30-step session that runs it, started ONLY with the tablet
+attached. The tablet is 32-bit: the app is built for it with `-PreactNativeArchitectures=armeabi-v7a`,
+which the brain has done and verified (`NativePipelineTest` runs on it); nothing in this session
+changes that build. Do not design anything. This is Session 1's Step 7, which the phone's absence on
 18 and 21 Sep deferred: four instrumented tests on the real SQLCipher database, the seam test
 Session 1 already wrote, the probe's three new lines, and the full gate including its device stage.
 The by-hand dictation run (report §7) is the founder's, not this session's.*
@@ -10,13 +13,25 @@ The by-hand dictation run (report §7) is the founder's, not this session's.*
 
 ## 0. Rules
 
-- **The device.** `export ANDROID_SERIAL=R9ZL402YH5A` (the Galaxy A07, SM-A075F — the bench phone; its
-  data is disposable). First command:
-  `~/Library/Android/sdk/platform-tools/adb devices | grep -c "R9ZL402YH5A.*device$"` → `1`. If it
+- **The device.** In every shell, first:
+  `export ANDROID_SERIAL=R52N611D8FE ADB=~/Library/Android/sdk/platform-tools/adb DEVICE_VERIFY_GRADLE_ARGS=-PreactNativeArchitectures=armeabi-v7a`
+  (the Galaxy Tab A 10.1, SM-T515, 32-bit, a bench device whose data is disposable). The third
+  variable is what makes `device-verify.sh` and the gate's device stage build the 32-bit APK — without
+  it the arm64 APK is built and the tablet refuses it. Then:
+  `~/Library/Android/sdk/platform-tools/adb devices | grep -c "R52N611D8FE.*device$"` → `1`. If it
   prints `0`: stop; write "Session 3 not run — phone absent" in the progress file, commit, report.
   `adb` is not on PATH; use the full path above, or `ADB=~/Library/Android/sdk/platform-tools/adb`.
-  If `emulator-5554` is attached as well, it is another project's session — do not use it. A Samsung
-  tablet `R52N611D8FE` may also be attached: it is 32-bit and cannot install the app — ignore it.
+  If `emulator-5554` is attached as well, it is another project's session — do not use it.
+- **The runtime on the tablet is hand-placed.** `files/models/libonnxruntime.so` is the 32-bit build
+  from the AAR; the catalog only knows the 64-bit one. Never tap *download* for ONNX Runtime in the
+  app's Settings on this tablet, and never `pm clear` it: both would replace or remove the runtime.
+- **Read the verdict from logcat, not only from the script.** The tablet's USB link drops the adb
+  shell mid-run now and then (Samsung's MTP service restarts under it); the runner carries on inside
+  the device. After every `device-verify.sh` run: `$ADB logcat -d | grep "TestRunner: run finished"`
+  must print one line, and the outcomes are
+  `$ADB logcat -d | grep -E "TestRunner: (finished|failed|assumption)" | sed 's/^.*TestRunner: //'`.
+  The script now fails when its stream ended without a verdict; when it says so, read logcat and
+  re-run the class. A class takes minutes here, not seconds: `NativePipelineTest` is ~8 minutes.
 - **Never** run `connectedDebugAndroidTest` (it uninstalls the app and wipes the models and the
   recordings). **Never** run `adb uninstall`. The only install path is `scripts/device-verify.sh`
   (`install -r`, data kept).
@@ -212,24 +227,30 @@ class VocabularyDbTest {
 }
 ```
 
-**1c.** Run: `scripts/device-verify.sh VocabularyDbTest > /tmp/dv.log 2>&1; grep -E "^==>|OK \(|FAILURES|test=|Failure|BUILD" /tmp/dv.log | tail -14`
-→ the four `test=` lines and `OK (4 tests)`. (The first run builds both APKs: 3–6 minutes. A
-`FAILURES` line: read `grep -A 12 "stack=" /tmp/dv.log | head -40`, then §6.)
+**1c.** Run: `scripts/device-verify.sh VocabularyDbTest > /tmp/dv.log 2>&1; grep -E "^==>|OK \(|FAILURES|test=|Failure|BUILD|verdict" /tmp/dv.log | tail -14`
+→ the four `test=` lines and `OK (4 tests)`; confirm with `$ADB logcat -d | grep "TestRunner: run finished"`
+→ `run finished: 4 tests, 0 failed`. (The first run builds both 32-bit APKs: 2–4 minutes, cached
+since the brain built them. A `FAILURES` line: read `grep -A 12 "stack=" /tmp/dv.log | head -40`, then §6.)
 
 *Mutant (device):* in `AudioDb.applyVocabularyToMeeting` change `text_raw=COALESCE(text_raw, ?)` to
 `text_raw=?` → re-run the class → `rules_apply_and_keep_the_raw_wording` fails at the assertion after
 the second pass (text_raw becomes "we sold it to Zorp"). Restore the line, re-run → `OK (4 tests)`.
 Record both runs in the progress file.
 
-Commit: `test(vocab): VocabularyDbTest in device-verify CLASSES — 4/4 on the Galaxy A07`.
+Commit: `test(vocab): VocabularyDbTest in device-verify CLASSES — 4/4 on the Galaxy Tab A`.
 
 ### Step 2 — the seam test Session 1 wrote
 
-No code. Run: `scripts/device-verify.sh NativePipelineTest > /tmp/dv2.log 2>&1; grep -E "OK \(|FAILURES|Tests run|spoken_punctuation" /tmp/dv2.log | tail -5`
-→ `test=the_spoken_punctuation_crosses_the_jni_seam` appears and `OK (18 tests)`. If the line reads
-`OK (18 tests)` but `grep -c "skipped" /tmp/dv2.log` is not `0`, `libonnxruntime.so` is missing on
-the phone: record it as "skipped — model not downloaded" and continue; do not download anything.
-Tick Step 2 in the progress file with the exact `OK (…)` line; commit.
+No code. Run: `scripts/device-verify.sh NativePipelineTest > /tmp/dv2.log 2>&1; grep -E "OK \(|FAILURES|verdict" /tmp/dv2.log | tail -3`
+then `$ADB logcat -d | grep -E "TestRunner: (run finished|assumption)" | sed 's/^.*TestRunner: //'`
+→ `run finished: 18 tests, 0 failed, 0 ignored` (about 8 minutes on this tablet) with exactly ten
+`assumption failed` lines — the seven that need the writer (`a_recording_too_short…`, the four
+`narration_*`, `llm_loads_and_generates`, `classifier_grammar…`, `processing_a_meeting_headlessly…`),
+the two that need the speaker models (`speaker_voices…`, `diarization_runs…` — a 32-bit process never
+runs them) and `embedding_is_a_unit_vector…` (the embedder is not on the tablet). The other eight ran,
+`the_spoken_punctuation_crosses_the_jni_seam` among them. This is what the brain measured on 21 Sep;
+a different skip set is a finding, not a failure — record it. Do not download anything. Tick Step 2
+in the progress file with the `run finished` line; commit.
 
 ### Step 3 — the probe prints the mode, the rules and the raw lines
 
@@ -268,11 +289,11 @@ Commit: `test(vocab): the probe prints mode, the vocabulary and which lines were
 ### Step 4 — the gate with its device stage, the report, the hand-over
 
 **4a.** `bash scripts/gate.sh > /tmp/gate.log 2>&1; grep -E "^==>|ok |FAIL|all clear|skipped|device tests" /tmp/gate.log`
-→ seven stages `ok`, the device stage naming `R9ZL402YH5A`, `gate: all clear`. A stage failing
+→ seven stages `ok`, the device stage naming `R52N611D8FE`, `gate: all clear`. A stage failing
 in a file this session did not touch: §6.
 
 **4b.** The report `docs/superpowers/reports/2026-09-21-phase-5-vocabulary-and-dictation.md`:
-- §1 Status: add one sentence — "Session 3 (device, <date>): VocabularyDbTest 4/4 on the Galaxy A07,
+- §1 Status: add one sentence — "Session 3 (device, <date>): VocabularyDbTest 4/4 on the Galaxy Tab A (32-bit),
   NativePipelineTest <the OK line>, the probe extended, the gate clear with its device stage."
 - §6 Device: replace the "Not run" paragraph with what the device showed — a line per class with
   its exact `OK (…)` count, the device mutant and its failing assertion, and the probe's lines.
@@ -285,13 +306,13 @@ in a file this session did not touch: §6.
 
 **4c.** `git rm docs/superpowers/reports/phase-5-progress.md` — the report now holds its Decisions,
 Mutants and device lines. Commit: `docs(phase5): device session — VocabularyDbTest and the probe on
-the Galaxy A07; progress file retired`. `git status` clean. **Stop.**
+the Galaxy Tab A; progress file retired`. `git status` clean. **Stop.**
 
 ---
 
 ## 3. Expected state after this session
 
-- `scripts/device-verify.sh` CLASSES has `VocabularyDbTest` after `PeopleDbTest`; the class passes 4/4 on the A07.
+- `scripts/device-verify.sh` CLASSES has `VocabularyDbTest` after `PeopleDbTest`; the class passes 4/4 on the tablet.
 - `VerificationProbeTest` prints `mode=`, `rewritten:` and `PROBE vocabulary (N)`.
 - The report's §6 is written from the device; the progress file is gone.
 
@@ -301,9 +322,9 @@ the Galaxy A07; progress file retired`. `git status` clean. **Stop.**
 |---|---|---|
 | 1 | `scripts/device-verify.sh VocabularyDbTest …` | `OK (4 tests)` |
 | 1 | the same after the COALESCE mutant | `FAILURES!!!` naming `rules_apply_and_keep_the_raw_wording`; then `OK (4 tests)` restored |
-| 2 | `scripts/device-verify.sh NativePipelineTest …` | `OK (18 tests)` |
+| 2 | `scripts/device-verify.sh NativePipelineTest …` + logcat | `run finished: 18 tests, 0 failed`, ten `assumption failed` |
 | 3 | `am instrument … VerificationProbeTest \| grep PROBE` | `mode=`, `rewritten:`, `PROBE vocabulary (` |
-| 4 | `bash scripts/gate.sh` | `gate: all clear`, device stage on `R9ZL402YH5A` |
+| 4 | `bash scripts/gate.sh` | `gate: all clear`, device stage on `R52N611D8FE` |
 
 ## 5. Acceptance criteria
 

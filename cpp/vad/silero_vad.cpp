@@ -86,7 +86,14 @@ struct SileroVad::Impl {
         state(2 * 1 * 128, 0.0f),
         context(kContext16k, 0.0f) {
     opts.SetIntraOpNumThreads(1);
+#if defined(__arm__) && !defined(__aarch64__)
+    // 32-bit ARM is a bench-only build (the 2019 Galaxy Tab A). The prebuilt 32-bit ORT faults
+    // (SIGBUS, BUS_ADRALN) inside its optimiser while loading this model; the un-optimised graph
+    // is slower and loads. Never shipped: every 64-bit target keeps ORT_ENABLE_ALL below.
+    opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+#else
     opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+#endif
     session = Ort::Session(env, model_path.c_str(), opts);
 
     Ort::AllocatorWithDefaultOptions alloc;

@@ -139,4 +139,17 @@ object DiarBudget {
     "Speakers were not separated: this recording needed more memory than the phone had free. " +
       "The transcript, the minutes and the summary are all complete. Redo will add speakers when " +
       "the phone has more memory available."
+
+  /**
+   * A 32-bit process cannot separate speakers. The prebuilt 32-bit ONNX Runtime faults
+   * (SIGBUS, BUS_ADRALN) while loading the speaker-embedding model — reproduced on the 2019
+   * Galaxy Tab A, 21 Sep 2026 — and a stage that crashes the service would be resumed into the
+   * same crash forever. 32-bit is a bench build, never shipped; this keeps the bench honest.
+   */
+  const val SKIPPED_FOR_32_BIT =
+    "Speakers were not separated: telling voices apart needs a 64-bit phone, and this one runs " +
+      "the app in 32-bit. The transcript, the minutes and the summary are all complete."
+
+  /** True when this process is 64-bit — the only kind that may run the speaker models. */
+  fun is64BitProcess(): Boolean = android.os.Process.is64Bit()
 }

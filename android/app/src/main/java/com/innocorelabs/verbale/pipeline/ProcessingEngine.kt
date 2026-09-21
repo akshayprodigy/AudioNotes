@@ -245,6 +245,10 @@ class ProcessingEngine(
           Log.i(TAG, "Diarization skipped for $meetingId (dictation)")
           db.setDiarSkippedReason(meetingId, null)
           listener.onStage("diarize", 1, 1)
+        } else if (transcribed && !DiarBudget.is64BitProcess()) {
+          Log.i(TAG, "Diarization skipped for $meetingId (32-bit process)")
+          db.setDiarSkippedReason(meetingId, DiarBudget.SKIPPED_FOR_32_BIT)
+          listener.onStage("diarize", 1, 1)
         } else if (transcribed && segModel != null && segModel.exists() && embModel != null && embModel.exists()) {
           // Can this phone afford to work out who spoke? This is the only stage whose working set
           // follows the LENGTH of the meeting, and an hour to ninety minutes is ordinary here —

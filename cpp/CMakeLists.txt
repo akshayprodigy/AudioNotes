@@ -107,6 +107,12 @@ if(EXISTS ${LLAMA_DIR}/CMakeLists.txt)
   set(LLAMA_CURL OFF CACHE BOOL "" FORCE)
   set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
   set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+  # ggml's llamafile sgemm kernels use fp16 NEON intrinsics (vld1q_f16) that 32-bit ARM lacks;
+  # armeabi-v7a is a bench-only ABI here (the 2019 Galaxy Tab A), never shipped — so the
+  # accelerator is simply off there and ggml falls back to its portable kernels.
+  if(ANDROID_ABI STREQUAL "armeabi-v7a")
+    set(GGML_LLAMAFILE OFF CACHE BOOL "" FORCE)
+  endif()
   add_subdirectory(${LLAMA_DIR} ${CMAKE_BINARY_DIR}/llama_build)
   target_compile_definitions(audionotes PRIVATE HAVE_LLAMA=1)
   target_link_libraries(audionotes llama)

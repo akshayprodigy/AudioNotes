@@ -8,6 +8,8 @@
 #
 #   scripts/device-verify.sh              # the native core tests
 #   scripts/device-verify.sh Minutes      # only classes matching a substring
+#   DEVICE_VERIFY_GRADLE_ARGS=-PreactNativeArchitectures=armeabi-v7a scripts/device-verify.sh
+#                                         # a 32-bit bench device (the Galaxy Tab A)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -132,8 +134,11 @@ install_apk() {
 # mismatch on INSTALL, and re-running the compiler with a different signing flag cannot fix code
 # that does not compile.
 build_or_die() {
-  echo "==> building${1:+ (signed with the upload key)}"
-  if ! (cd android && ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -q $1); then
+  echo "==> building${1:+ (signed with the upload key)}${DEVICE_VERIFY_GRADLE_ARGS:+ ($DEVICE_VERIFY_GRADLE_ARGS)}"
+  # DEVICE_VERIFY_GRADLE_ARGS: extra Gradle arguments for a bench device that is not the ship ABI —
+  # the 32-bit Galaxy Tab A needs `-PreactNativeArchitectures=armeabi-v7a`, or this builds and
+  # installs the arm64 APK and the phone refuses it (INSTALL_FAILED_NO_MATCHING_ABIS).
+  if ! (cd android && ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -q $1 ${DEVICE_VERIFY_GRADLE_ARGS:-}); then
     echo ""
     echo "BUILD FAILED — nothing was installed, so the phone still has the previous build." >&2
     echo "Fix the compile error above and re-run. Do NOT read the test results from a previous" >&2
@@ -202,6 +207,16 @@ for CLASS in "${CLASSES[@]}"; do
   if grep -q "FAILURES\|Process crashed" /tmp/instr.out; then
     FAILED=1
     grep -m1 -E "INSTRUMENTATION_RESULT: (shortMsg|longMsg)=.*" /tmp/instr.out | sed 's/^/  /' || true
+  fi
+  # A stream with no verdict at all is not a pass either. On the Galaxy Tab A the USB link dropped
+  # the shell three tests in (Samsung's MTP service restarted under it); the runner carried on
+  # inside the device and this script, seeing only what had streamed, printed "passed". The
+  # verdict lives in logcat when that happens — say so, and fail.
+  if ! grep -q "OK (\|FAILURES\|Process crashed" /tmp/instr.out; then
+    echo "  the runner's output ended without a verdict — the adb shell dropped mid-run. The tests"
+    echo "  may still be running on the device: read \`adb logcat -d | grep TestRunner\` for the"
+    echo "  'run finished' line and each test's outcome, then re-run this class."
+    FAILED=1
   fi
   # A run that matched no class reports "OK (0 tests)" and exits clean, which is how a stale
   # class name went unnoticed. Nothing here is allowed to pass by not running.
