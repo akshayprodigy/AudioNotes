@@ -9,7 +9,7 @@ Against `259ab72`, spec `docs/superpowers/specs/2026-09-21-device-fit-execution.
 - [x] Step 3 — the pure helper the screens share (b3453d9)
 - [x] Step 4 — onboarding: the sentence instead of the switch (96a30c4)
 - [x] Step 5 — the Pro screen: "Not on this phone" on the two rows it cannot keep (c35116b)
-- [ ] Step 6 — Settings: the sentence instead of Get
+- [x] Step 6 — Settings: the sentence instead of Get (ffd0b78)
 - [ ] Step 7 — the Summary tab: the phone before the model
 - [ ] Step 8 — the Ask screen and the meeting say the same processor sentence
 - [ ] Step 9 — the probe, the device, the gate, the report
