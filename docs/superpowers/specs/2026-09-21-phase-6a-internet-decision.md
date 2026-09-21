@@ -2,7 +2,7 @@
 
 ## 0. Summary (five sentences, written last)
 
-pending
+Today the `INTERNET` permission is used from exactly three enforced call sites — the licence server (sign-in, refresh, Play-purchase redemption), the model download, and the ledger's own recording seam — plus Crashlytics, which the build's own egress check no longer counts because it moved off a JS-driven SDK onto native Play Services. A permission-less build (Play Asset Delivery for ≈1.46 GB of models, Play Billing alone for entitlement, Android Vitals for crashes) is buildable in an estimated three sessions, is store-listing-verifiable with zero networking permissions, but gives up server-side purchase verification (the "a token is a claim, not a proof" design) and the email sign-in path, and cannot be device-tested until the Play product exists in Play Console. A smaller move — packaging the ONNX runtime `.so` into the APK instead of downloading it — costs one session, removes a 17.6 MB download and an open report item, and is independent of the bigger decision. This session's own inventory turned up two corrections to the brief it was asked to write: the JS-error "loss" under Android Vitals is already zero today because `recordError` is never called, and the token-refresh cadence in §1.1 could not be fully quantified because the token's issued lifetime lives outside this session's read list. The recommendation is to take the ONNX-runtime move now regardless, and treat the full no-INTERNET build as a founder call weighed against ≈3 sessions of work and the two entitlement/account losses in §3.2 — not as a step to take solely for the sake of the report item it closes.
 
 ## 1. Inventory — every network call site
 
@@ -148,15 +148,31 @@ From `docs/play-console.md:84-93`, the permission table without the `INTERNET` r
 
 ## 4. Options and cost
 
-pending
+| Option | Store shows | Models | Entitlement | Crashes | What is lost | Cost (builder sessions) |
+|---|---|---|---|---|---|---|
+| **A. Keep INTERNET (today)** | Full network access | download + mirror | server-signed | Crashlytics | — | 0 |
+| **B. No INTERNET** | none | Play Asset Delivery | Play Billing alone | Android Vitals | §3's lists (server-side purchase verification, email sign-in, admin-console visibility, non-fatal-JS reporting — already null today) | **estimate: 3 sessions** |
+| **C. Keep INTERNET, close the two side items** | Full network access | download; ORT `.so` in the APK | server-signed | Crashlytics | — | **estimate: 1 session** |
+
+**Option B, work items (judgement, sized):**
+1. *Models session* — Gradle asset packs (install-time + 2 on-demand) wired into the AAB; `AssetPackManager` integration in `ModelManagerModule` replacing `HttpURLConnection`/`fetchTo`, keeping the sha256 check and the catalog; onboarding/Settings/paywall progress UI adapted to PAD's callback shape instead of byte-count polling.
+2. *Entitlement + server-retirement session* — `LicenceStore`/`Licence.kt` rebuilt around `queryPurchasesAsync` instead of a signed token; remove `signIn`/`refreshIfNeeded`/`redeem` and `SignInForm`; decide the fate of the licence server's licensing endpoints (retire vs. keep only `/privacy`/`/terms`/`/delete-account`); update the admin console's story since it would see nothing new.
+3. *Crash + gate session* — remove (or no-op, per §5) Crashlytics collection, the consent UI and the privacy screen's Crashlytics paragraph; `scripts/check-network-egress.py`'s `ALLOWED` set drops to empty and the script's assertion changes from "exactly these files" to "zero files"; manifest permission removed; a device run on a 64-bit phone to confirm PAD actually delivers (**this cannot happen until the Play product exists in Play Console — it does not today**, per §8).
+
+**Honesty about the unknowns:** Play Asset Delivery has never been used in this repo — session 1's estimate carries the most risk of the three. The Play product does not yet exist in Play Console (§8; also `2026-09-17-release-phases.md` Phase 6's row), so option B cannot be device-verified, only built and reviewed, until that product exists — the same blocker Phase 6b already names for the final gate.
+
+**Option C, work items (judgement, sized):** one session — move `onnxruntime-lib` out of the download path and into `jniLibs` inside the APK (removes the 17.6 MB first-run download and the improvement report's "ONNX runtime packaged, not downloaded" open item, `2026-09-15-improvement-report-scorecard.md:117`); no manifest, entitlement, or crash-reporting change at all.
 
 ## 5. Decisions for the founder
 
-pending
+1. **A, B, or C.** Keep `INTERNET` as-is (A); remove it entirely for Play Asset Delivery + Play Billing alone + Android Vitals (B); or keep it but fold the ORT runtime into the APK (C). A commits to the status quo cost (0 sessions) and the current trust story (a byte-counting screen with one named, disclosed exception). B commits to ≈3 builder sessions, losing server-side purchase verification and the email sign-in path, in exchange for a store listing with no networking permissions at all — verifiable by anyone before they install. C commits to 1 session and removes only the smallest of the three open privacy-report items, keeping everything else as today.
+2. **If B: is the email sign-in path given up?** Yes commits to Play Billing as the only way into a subscription on this device — no non-Play sign-in, no accounts the design doc's read range identifies a use for beyond what could not be established this session (§3.2 — to verify with the founder before deciding). No means B is not really available as scoped, since Play Billing alone has no concept of a server account to sign into.
+3. **If B: is JS-error reporting given up, or replaced?** Given up commits to relying solely on Android Vitals (native/Java crashes and ANRs only) — which, per §3.3, is not actually a reduction from what ships today, since `recordError` is never called from anywhere in this app right now. Replaced would mean building a new non-fatal-JS-error path from scratch, which is new scope this session found no existing demand for.
+4. **Does the ORT `.so` move into the APK regardless of A/B/C?** Yes removes a 17.6 MB first-run download and the improvement report's "runtime packaged" item under every option, at the cost of an equivalent increase in the arm64 APK/AAB split size. No leaves it exactly as it is today. This decision is independent of 1–3 and could be taken immediately.
 
 ## 6. Recommendation (judgement)
 
-pending
+**C now, B later if the founder wants the store-listing claim badly enough to fund it.** The strongest reason *for* B is that a permission table with zero networking rows is verifiable by a technical buyer from the store listing alone, before they install anything — a stronger, cheaper-to-check trust signal than any in-app screen, and it closes the improvement report's single remaining open privacy item outright. The strongest reason *against* B is that its two real losses — server-side purchase verification (a patched, rooted-phone APK could self-grant Pro against a local Play IPC answer, where today the signed token forces the claim through a server that can refuse it) and the email sign-in path (whose current userbase this session could not establish and is flagged to verify) — are both entitlement-integrity and account-flexibility regressions taken on for a permission-table line, not for anything a user-facing feature needs, and B cannot even be device-verified until the Play product exists in Play Console. Option 4 (the ORT `.so` into `jniLibs`) is worth taking regardless of A/B/C — it is one session, has no listed downside, and independently removes a device-observed re-download bug's largest single file from the network path.
 
 ## 7. Report (status · what was read · what could not be measured · commits)
 

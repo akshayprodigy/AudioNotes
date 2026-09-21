@@ -10,8 +10,8 @@ Execution sheet: `docs/superpowers/specs/2026-09-21-phase-6a-internet-decision-e
   - Notes: quoted the three offline-failure screens verbatim; token lifetime gap flagged again (2.2); 3 files import telemetry/crash, matches the sheet's expected count.
 - [x] Step 4 — the permission-less build: what replaces each (supplied + judgement)
   - Notes: found recordError is never called today (crash.ts doesn't re-export it) — the JS-crash "loss" under Vitals is currently null, not the loss the sheet assumed; email sign-in's user base not found in the design doc's read range (grep came back empty) — flagged to verify with the founder.
-- [ ] Step 5 — the options and their cost (judgement, sized)
-  - Notes:
+- [x] Step 5 — the options and their cost (judgement, sized)
+  - Notes: §4-§6 written; §0 summary written now (ahead of Step 6's verify pass, still "written last" relative to §1-§6).
 - [ ] Step 6 — verify the brief against its own rules
   - Notes:
 - [ ] Step 7 — report and hand-over
