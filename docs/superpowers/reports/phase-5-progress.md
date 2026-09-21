@@ -20,7 +20,7 @@
   it renders as a single string child; behaviour and copy are unchanged (still "`N min · one voice`"
   / "`N min · K speakers`"), only how many child nodes the JSX produces. Verified no other test in
   the suite reads that line's old multi-child shape.
-- **Session 2, Step 4 copy check**: the sheet's `grep -c "idleHint(mode, capMs)\|{modeLabel(mode)} ·\|DICTATION_TIP" src/screens/RecordScreen.tsx` expects 3; the faithful implementation gives 4,
+- **Session 2, Step 4 copy check**: the sheet's `grep -c "idleHint(mode, capMs)\|{modeLabel(mode)} ·\|DICTATION_TIP" src/screens/RecordScreen.tsx` expects 3, but the faithful implementation gives 4,
   because the `import { DICTATION_TIP, … } from './recordMode';` line itself contains the substring
   `DICTATION_TIP` and is a 4th matching line — grep counts matching lines, and an import that names
   the symbol it uses can never avoid matching its own usage pattern. The three call/usage sites
@@ -207,3 +207,33 @@ Against `09d8037`. Two runs: 2A = Steps 1–4, 2B = Steps 5–8.
 - [x] **Step 6** — Settings › Vocabulary: the row
 - [x] **Step 7** — "Correct the words" offers a rule
 - [x] **Step 8** — gate, report, hand-over
+
+## Session 3 (device: Galaxy Tab A 10.1, R52N611D8FE, 32-bit)
+
+Against `e66b407`.
+
+### Steps
+
+- [x] **Step 1** — `VocabularyDbTest` in `device-verify.sh` CLASSES, run on the tablet's real database
+- [ ] **Step 2** — the seam test Session 1 wrote (`NativePipelineTest`)
+- [ ] **Step 3** — the probe prints the mode, the rules and the raw lines
+- [ ] **Step 4** — the gate with its device stage, the report, the hand-over
+
+### Step 1 results
+
+- `scripts/device-verify.sh VocabularyDbTest` → `OK (4 tests)`; logcat confirms
+  `run finished: 4 tests, 0 failed, 0 ignored`.
+- Device mutant (`AudioDb.applyVocabularyToMeeting`, `text_raw=COALESCE(text_raw, ?)` →
+  `text_raw=?`): re-ran the class → **did NOT kill** — `OK (4 tests)` again, logcat
+  `run finished: 4 tests, 0 failed, 0 ignored`. Confirmed this was not a stale/cached build: the
+  edited `AudioDb.kt` (mtime 15:27:08) predates the rebuilt `app-debug.apk` (mtime 15:27:18), so the
+  mutant was genuinely installed and exercised.
+  - Why: in both "second pass" assertions in `rules_apply_and_keep_the_raw_wording` and in
+    `dictation_applies_the_marks_and_keeps_raw`, the row's text after the first pass no longer
+    matches the rule/punctuation input (the correction already applied), so
+    `Vocabulary.apply`/`punctuate` returns the same string on the second call, `next == text`, and
+    the loop's `if (next == text) continue` skips the `UPDATE` entirely — the `COALESCE` on a row
+    whose `text_raw` is already non-null is never executed by this test. The mutant is structurally
+    unreachable from this test class, not a defect in `AudioDb.kt`.
+  - Restored the line (`git diff --stat` on `AudioDb.kt` clean); re-ran → `OK (4 tests)`, logcat
+    `run finished: 4 tests, 0 failed, 0 ignored`.

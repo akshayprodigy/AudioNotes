@@ -81,6 +81,10 @@ CLASSES=(
    # phone's real SQLCipher database. Real SQLCipher, the people table, and hand-made vectors,
    # so not a JVM test.
    com.innocorelabs.verbale.PeopleDbTest
+  # Phase 5: correction rules and dictation marks over real utterances rows — text_raw kept once
+  # and never overwritten, a rule replaced by its own `heard`, the mode column. Real SQLCipher and
+  # the JNI seam, so not a JVM test.
+  com.innocorelabs.verbale.VocabularyDbTest
    # Thread memory (Phase 3): threadJson's tag join, the open/decisions assembly over real
   # replaceItems rows, real search_vec vectors and the Pro gate running before any table is
   # touched. Real SQLCipher and the real DecisionLinks/VecCodec, so not a JVM test.
