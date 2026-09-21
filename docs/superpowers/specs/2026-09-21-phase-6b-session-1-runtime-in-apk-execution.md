@@ -269,7 +269,8 @@ the dictation test now runs unguarded.
 (d) Sizes: `ls -la android/app/build/outputs/apk/debug/app-debug.apk | awk '{print $5}'` → note it;
 then the release: `cd android && ./gradlew :app:assembleRelease -PreactNativeArchitectures=armeabi-v7a -q 2>&1 | grep -E "^e:|FAIL"; cd ..`
 → nothing; `ls -la android/app/build/outputs/apk/release/app-release.apk | awk '{print $5}'` → note it
-(expected ≈ 18 MB more than 21 Sep's 34,321,150 for the 32-bit release). `unzip -l android/app/build/outputs/apk/release/app-release.apk | grep libonnxruntime` → one line, `lib/armeabi-v7a/libonnxruntime.so`.
+(expected ≈ 12 MB more than 21 Sep's 34,321,150 for this 32-bit release — the AAR's `armeabi-v7a`
+runtime is 12,294,888 bytes; the arm64 one the store ships is 17,571,160). `unzip -l android/app/build/outputs/apk/release/app-release.apk | grep libonnxruntime` → one line, `lib/armeabi-v7a/libonnxruntime.so`.
 
 (e) `$ADB shell am force-stop com.innocorelabs.verbale; $ADB install -r android/app/build/outputs/apk/release/app-release.apk 2>&1 | tail -1` → `Success`.
 Wake the tablet (`$ADB shell input keyevent KEYCODE_WAKEUP; $ADB shell input keyevent KEYCODE_MENU`), launch
@@ -335,6 +336,6 @@ Commit: `docs(runtime): Phase 6b Session 1 report; progress file retired`. `git 
    onboarding › *Start free* → the button reads *Download (96 MB)*; Settings › On-device models
    afterwards lists no *ONNX Runtime* row — four essentials, all installed.
 2. **Nothing else changed.** Record a minute; the transcript arrives as before.
-3. **The store size.** The arm64 release APK/AAB is ≈ 18 MB larger than before (the runtime, stored
+3. **The store size.** The arm64 release APK/AAB is ≈ 17.6 MB larger than before (the runtime, stored
    uncompressed for mmap); Play compresses it for delivery. Note the number in the Play Console when
    the first bundle is uploaded.
