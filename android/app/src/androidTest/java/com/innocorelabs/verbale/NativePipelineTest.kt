@@ -47,12 +47,11 @@ class NativePipelineTest {
    * download, which means it must now be System.load()ed by absolute path FIRST — so the static
    * init became the explicit ensureLoaded(context) below, and this file was never updated. Every
    * native test here threw UnsatisfiedLinkError as a result; it went unnoticed because the
-   * androidTest source set stopped compiling around the same time (see CaptureStateTest).
+   * androidTest source set stopped compiling around the same time (see CaptureStateTest). Since 21
+   * Sep 2026 the runtime rides in the APK, so the download guard that lived here is gone.
    */
   @Before
   fun loadCore() {
-    val ort = File(ModelCatalog.modelsDir(ctx), "libonnxruntime.so")
-    assumeTrue("libonnxruntime.so not downloaded yet on this device", ort.exists())
     NativeBridge.ensureLoaded(ctx)
     grantTrial()
   }

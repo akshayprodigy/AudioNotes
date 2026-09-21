@@ -10,8 +10,8 @@ Execution sheet: `docs/superpowers/specs/2026-09-21-phase-6b-session-1-runtime-i
   - Notes: `onnxruntime-lib` ModelSpec + comment deleted; silero-vad is now the first row. compileDebugKotlin clean.
 - [x] Step 4 — the two 32-bit special cases go (`ModelManagerModule.kt`)
   - Notes: `installed` and `download()` special cases removed; no `DiarBudget` import existed (same package). compileDebugKotlin clean, `grep -c '"runtime"'` → 0.
-- [ ] Step 5 — thirteen device tests stop waiting for a download that will never come
-  - Notes:
+- [x] Step 5 — thirteen device tests stop waiting for a download that will never come
+  - Notes: all twelve table files edited (NativePipelineTest KDoc sentence appended; StorageSweepTest/StorageItemsTest three-line assumeTrue form removed; File/ModelCatalog imports dropped where unused). `grep -rln "libonnxruntime.so not downloaded"` → nothing; compileDebugAndroidTestKotlin clean.
 - [ ] Step 6 — the documents
   - Notes:
 - [ ] Step 7 — the comment sweep

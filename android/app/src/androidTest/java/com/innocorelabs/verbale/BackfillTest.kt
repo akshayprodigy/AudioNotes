@@ -5,7 +5,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.innocorelabs.verbale.data.AudioDb
 import com.innocorelabs.verbale.data.ItemKey
-import com.innocorelabs.verbale.data.ModelCatalog
 import com.innocorelabs.verbale.pipeline.Minutes
 import com.innocorelabs.verbale.pipeline.NativeBridge
 import org.json.JSONArray
@@ -15,7 +14,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
 
 /**
  * The migration a shipped install actually performs, and the one thing it cannot do.
@@ -61,8 +59,6 @@ class BackfillTest {
    * libonnxruntime.so and cannot load without it. Same assumption MinutesParityTest makes.
    */
   private fun ensureCore() {
-    val ort = File(ModelCatalog.modelsDir(ctx), "libonnxruntime.so")
-    assumeTrue("libonnxruntime.so not downloaded yet on this device", ort.exists())
     NativeBridge.ensureLoaded(ctx)
   }
 

@@ -4,14 +4,12 @@ import android.content.Context
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.innocorelabs.verbale.data.AudioDb
-import com.innocorelabs.verbale.data.ModelCatalog
 import com.innocorelabs.verbale.pipeline.StorageModule
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
 
 /**
  * `StorageModule.backfillItems` from a process that has not loaded the native core.
@@ -62,12 +60,6 @@ class StorageSweepTest {
    * ItemSweepTest's note — and is the same one a Library focus would make a moment later.
    */
   @Test fun theSweepMigratesWithoutTheCallerHavingLoadedTheCore() {
-    // The core still cannot load without its downloaded dependency, and that is the module's
-    // problem to report rather than this test's to pretend about.
-    assumeTrue(
-      "libonnxruntime.so not downloaded yet on this device",
-      File(ModelCatalog.modelsDir(ctx), "libonnxruntime.so").exists(),
-    )
 
     val db = AudioDb.get(ctx)
     val m = "test-storage-sweep-" + System.nanoTime()

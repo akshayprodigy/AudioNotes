@@ -40,8 +40,6 @@ class DiarEmbeddingBench {
    */
   @Before
   fun loadCore() {
-    val ort = File(ModelCatalog.modelsDir(ctx), "libonnxruntime.so")
-    assumeTrue("libonnxruntime.so not downloaded yet on this device", ort.exists())
     NativeBridge.ensureLoaded(ctx)
   }
   private val stage: File get() = File(ctx.getExternalFilesDir(null), "diarbench")

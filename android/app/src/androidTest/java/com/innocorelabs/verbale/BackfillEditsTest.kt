@@ -5,7 +5,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.innocorelabs.verbale.data.AudioDb
 import com.innocorelabs.verbale.data.ItemKey
-import com.innocorelabs.verbale.data.ModelCatalog
 import com.innocorelabs.verbale.pipeline.Minutes
 import com.innocorelabs.verbale.pipeline.NativeBridge
 import com.innocorelabs.verbale.pipeline.StorageModule
@@ -16,7 +15,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
 
 /**
  * Every correction anybody has ever written, moved onto the item it belongs to.
@@ -55,8 +53,6 @@ class BackfillEditsTest {
 
   /** Same assumption as BackfillTest: the rules are pure text, but the .so has a DT_NEEDED. */
   private fun ensureCore() {
-    val ort = File(ModelCatalog.modelsDir(ctx), "libonnxruntime.so")
-    assumeTrue("libonnxruntime.so not downloaded yet on this device", ort.exists())
     NativeBridge.ensureLoaded(ctx)
   }
 

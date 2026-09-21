@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.innocorelabs.verbale.data.AudioDb
-import com.innocorelabs.verbale.data.ModelCatalog
 import com.innocorelabs.verbale.pipeline.NativeBridge
 import com.innocorelabs.verbale.pipeline.Vocabulary
 import org.json.JSONArray
@@ -17,7 +16,6 @@ import org.junit.Assert.fail
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
 
 /**
  * Phase 5 (custom vocabulary, dictation) on the phone's real SQLCipher database: a rule corrects a
@@ -106,8 +104,6 @@ class VocabularyDbTest {
   }
 
   @Test fun dictation_applies_the_marks_and_keeps_raw() {
-    val ort = File(ModelCatalog.modelsDir(ctx), "libonnxruntime.so")
-    assumeTrue("libonnxruntime.so not downloaded yet on this device", ort.exists())
     NativeBridge.ensureLoaded(ctx)
     val id = meeting("tell finance comma the invoice is late full stop")
     db.setMode(id, "dictation")

@@ -3,7 +3,6 @@ package com.innocorelabs.verbale
 import android.content.Context
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.innocorelabs.verbale.data.ModelCatalog
 import com.innocorelabs.verbale.pipeline.Minutes
 import com.innocorelabs.verbale.pipeline.NativeBridge
 import org.json.JSONObject
@@ -12,7 +11,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
 
 /**
  * The evidence pass across the JNI boundary, on a real device.
@@ -47,9 +45,6 @@ class EvidenceParityTest {
   private val ctx: Context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
   private fun ensureCore() {
-    val ort = File(ModelCatalog.modelsDir(ctx), "libonnxruntime.so")
-    // libaudionotes.so cannot load without it, even though the rules never touch ORT.
-    assumeTrue("libonnxruntime.so not downloaded yet on this device", ort.exists())
     NativeBridge.ensureLoaded(ctx)
   }
 
