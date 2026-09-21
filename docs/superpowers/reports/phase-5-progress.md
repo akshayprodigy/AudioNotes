@@ -154,6 +154,24 @@ phone was absent on 18 and 21 Sep.
 - Step 2 golden note: `vocabulary_apply.json` case "unicode letters count as letters" expects
   `"ravié Ravi"` (é is a `\p{L}` word letter → inner `ravi` not matched); the spec text read
   `"Ravié Ravi"`, which contradicts the regex + test name — corrected and recorded under Decisions.
+- **Session 2 → Session 3 (device session), the names it needs:**
+  - `record_mode` — the settings key (`RECORD_MODE_KEY` in `src/screens/recordMode.ts`), values
+    `'meeting'` | `'dictation'`; read once on Record's mount alongside the consent flag, written on
+    every switch change. Native reads the *meeting's* `mode` column, never this setting directly —
+    it is only how the Record screen remembers what to pass at start.
+  - `DICTATION_TEMPLATE` — `'dictation'` — exported from `src/screens/meeting/templateLabels.ts`;
+    the fixed, unlisted template id a dictated note's Summary chip carries (disabled chip, "one
+    voice" instead of a speaker count).
+  - The screen route `Vocabulary` (no params) — `RootStackParamList['Vocabulary']` in
+    `RootNavigator.tsx`, opened from Settings' "Words it should write" row (`voicesPaid` gates it;
+    free opens `Paywall` instead).
+  - The Alert title `offerRule` shows: `` `Always write "${rule.meant}" when it hears "${rule.heard}"?` ``
+    (curly quotes), buttons `No` (cancel) / `Yes` (writes `db.putVocabulary(…, 'learned')` then
+    `db.applyVocabulary(meetingId)`) — in `MeetingScreen.tsx`, fired from `onSaveEdit` only when
+    `kind === 'utterance'`.
+  - Session 2's full report is `docs/superpowers/reports/2026-09-21-phase-5-vocabulary-and-dictation.md`;
+    §8 there lists the two surviving/uncovered mutants Session 3 could pick up on-device, and §7 is
+    the founder's by-hand script, most of which needs the phone.
 
 ## Session 2
 
@@ -168,4 +186,4 @@ Against `09d8037`. Two runs: 2A = Steps 1–4, 2B = Steps 5–8.
 - [x] **Step 5** — Settings › Vocabulary: the screen
 - [x] **Step 6** — Settings › Vocabulary: the row
 - [x] **Step 7** — "Correct the words" offers a rule
-- [ ] **Step 8** — gate, report, hand-over
+- [x] **Step 8** — gate, report, hand-over
