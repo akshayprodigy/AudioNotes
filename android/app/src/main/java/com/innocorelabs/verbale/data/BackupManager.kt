@@ -65,9 +65,9 @@ object BackupManager {
     // person's questions and the meeting's answers, carried for the same reason the summary is.
     // "search_vec" is deliberately NOT here: 8 MB of vectors that the restoring phone re-embeds
     // itself — reindexImported resets embedded_at, and the sweep's backfill does the rest.
-      "meetings", "segments", "utterances", "speakers", "minutes", "items", "item_sources",
-      "item_done", "action_done", "marks", "asks", "edits", "tags", "settings", "people", "vocabulary",
-    )
+    "meetings", "segments", "utterances", "speakers", "minutes", "items", "item_sources",
+    "item_done", "action_done", "marks", "asks", "edits", "tags", "settings", "people", "vocabulary",
+  )
 
   /**
    * Settings that describe this install rather than this user, and must not travel.

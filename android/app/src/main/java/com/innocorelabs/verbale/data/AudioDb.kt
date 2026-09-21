@@ -2852,7 +2852,6 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
   ): Int {
     if (rules.isEmpty() && punctuate == null) return 0
     var changed = 0
-    val usesById = HashMap<String, Int>()
     db.beginTransaction()
     try {
       val rows = ArrayList<Triple<String, String, String?>>()  // id, text, text_raw

@@ -54,21 +54,21 @@ export const SCHEMA = [
      template TEXT,
      -- 'suggested' (the rule ran and this is its answer) or 'chosen' (a person picked it, which
      -- the suggester must never overwrite) — NULL alongside template before either has happened.
-      template_source TEXT,
-      -- Phase 5: 'dictation' for a meeting recorded in dictation mode; NULL is an ordinary meeting.
-      mode TEXT
-    );`,
+     template_source TEXT,
+     -- Phase 5: 'dictation' for a meeting recorded in dictation mode; NULL is an ordinary meeting.
+     mode TEXT
+   );`,
   `CREATE TABLE IF NOT EXISTS utterances (
      id TEXT PRIMARY KEY,
      meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
      start_ms INTEGER NOT NULL,
      end_ms INTEGER NOT NULL,
-      speaker_id TEXT,
-      text TEXT NOT NULL,
-      -- Phase 5: what the recogniser wrote, kept only when a vocabulary rule or spoken punctuation
-      -- changed \`text\`; NULL means \`text\` is the recogniser's own wording.
-      text_raw TEXT
-    );`,
+     speaker_id TEXT,
+     text TEXT NOT NULL,
+     -- Phase 5: what the recogniser wrote, kept only when a vocabulary rule or spoken punctuation
+     -- changed \`text\`; NULL means \`text\` is the recogniser's own wording.
+     text_raw TEXT
+   );`,
    `CREATE TABLE IF NOT EXISTS speakers (
       id TEXT PRIMARY KEY,
       meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,

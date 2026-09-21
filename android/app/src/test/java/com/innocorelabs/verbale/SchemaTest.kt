@@ -299,40 +299,40 @@ class SchemaTest {
   @Test fun theItemsAnchorIsIndexed() =
     assertTrue(schema.contains("idx_items_meeting"))
 
-   /** Phase 4: the two speakers columns reach existing phones through ADDED_COLUMNS. */
-   @Test fun speakersHasVoiceAndSuggestedPersonColumns() {
-     val added = AudioDb.addedColumnsForTest()
-     assertTrue(
-       "voice missing from ADDED_COLUMNS: existing phones never gain the column",
-       added.contains(Triple("speakers", "voice", "BLOB")),
-     )
-     assertTrue(
-       "suggested_person missing from ADDED_COLUMNS: existing phones never gain the column",
-       added.contains(Triple("speakers", "suggested_person", "TEXT")),
-     )
-   }
+  /** Phase 4: the two speakers columns reach existing phones through ADDED_COLUMNS. */
+  @Test fun speakersHasVoiceAndSuggestedPersonColumns() {
+    val added = AudioDb.addedColumnsForTest()
+    assertTrue(
+      "voice missing from ADDED_COLUMNS: existing phones never gain the column",
+      added.contains(Triple("speakers", "voice", "BLOB")),
+    )
+    assertTrue(
+      "suggested_person missing from ADDED_COLUMNS: existing phones never gain the column",
+      added.contains(Triple("speakers", "suggested_person", "TEXT")),
+    )
+  }
 
-   /** Phase 4: the people table — new table, in SCHEMA, NOT in ADDED_COLUMNS. */
-   @Test fun peopleTableIsInSchema() {
-     assertTrue(
-       "people CREATE TABLE missing from SCHEMA",
-       schema.contains("CREATE TABLE IF NOT EXISTS people("),
-     )
-     val cols = columnsOf(ddlFor("people"))
-     assertEquals(
-       listOf("id", "name", "voice", "dim", "samples", "created_at", "updated_at").sorted(),
-       cols.sorted(),
-     )
-     assertTrue(
-       "people.name must be UNIQUE COLLATE NOCASE so 'Priya' and 'priya' merge",
-       ddlFor("people").contains("UNIQUE COLLATE NOCASE"),
-     )
-   }
+  /** Phase 4: the people table — new table, in SCHEMA, NOT in ADDED_COLUMNS. */
+  @Test fun peopleTableIsInSchema() {
+    assertTrue(
+      "people CREATE TABLE missing from SCHEMA",
+      schema.contains("CREATE TABLE IF NOT EXISTS people("),
+    )
+    val cols = columnsOf(ddlFor("people"))
+    assertEquals(
+      listOf("id", "name", "voice", "dim", "samples", "created_at", "updated_at").sorted(),
+      cols.sorted(),
+    )
+    assertTrue(
+      "people.name must be UNIQUE COLLATE NOCASE so 'Priya' and 'priya' merge",
+      ddlFor("people").contains("UNIQUE COLLATE NOCASE"),
+    )
+  }
 
-    /** Phase 5: `vocabulary` is last in BackupManager.TABLES because it references nothing. */
-    @Test fun backupManagerTablesEndsWithVocabularyAfterPeople() {
-      val tables = com.innocorelabs.verbale.data.BackupManager.tablesForTest()
-      assertEquals("vocabulary", tables.last())
-      assertEquals("people", tables[tables.size - 2])
-    }
+  /** Phase 5: `vocabulary` is last in BackupManager.TABLES because it references nothing. */
+  @Test fun backupManagerTablesEndsWithVocabularyAfterPeople() {
+    val tables = com.innocorelabs.verbale.data.BackupManager.tablesForTest()
+    assertEquals("vocabulary", tables.last())
+    assertEquals("people", tables[tables.size - 2])
+  }
 }

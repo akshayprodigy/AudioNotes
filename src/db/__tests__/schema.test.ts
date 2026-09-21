@@ -22,19 +22,19 @@ import { SCHEMA } from '../schema';
 function freshDb(): DatabaseSync {
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys = ON;');
-   db.exec(ddlFor('meetings'));
-   db.exec(ddlFor('utterances'));
-   db.exec(ddlFor('speakers'));
-   db.exec(ddlFor('people'));
-   db.exec(ddlFor('items'));
+  db.exec(ddlFor('meetings'));
+  db.exec(ddlFor('utterances'));
+  db.exec(ddlFor('speakers'));
+  db.exec(ddlFor('people'));
+  db.exec(ddlFor('items'));
   db.exec(indexDdlFor('idx_items_meeting'));
   db.exec(ddlFor('item_sources'));
   db.exec(ddlFor('item_done'));
   db.exec(ddlFor('search_vec'));
   db.exec(indexDdlFor('search_vec_meeting'));
-   db.exec(ddlFor('asks'));
-   db.exec(ddlFor('vocabulary'));
-   return db;
+  db.exec(ddlFor('asks'));
+  db.exec(ddlFor('vocabulary'));
+  return db;
 }
 
 function ddlFor(table: string): string {
@@ -102,8 +102,8 @@ describe('schema.ts evidence tables (executed in real SQLite)', () => {
           'id', 'title', 'created_at', 'duration_ms', 'language', 'status', 'tier_used',
           'audio_path', 'audio_retained', 'archived_at', 'summary_line', 'title_edited_at',
           'transcribe_forced_at', 'forced_from_language', 'announced_at', 'announced_lag_ms', 'diar_skipped_reason',
-        'items_migrated_at', 'embedded_at', 'template', 'template_source', 'mode',
-      ].sort(),
+          'items_migrated_at', 'embedded_at', 'template', 'template_source', 'mode',
+        ].sort(),
       );
     });
 

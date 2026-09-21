@@ -20,7 +20,8 @@ object Vocabulary {
       val heard = r.heard.trim()
       if (heard.isEmpty()) continue
       val re = Regex("(?<![\\p{L}\\p{N}])" + Regex.escape(heard) + "(?![\\p{L}\\p{N}])", RegexOption.IGNORE_CASE)
-      out = re.replace(out) { Regex.escapeReplacement(r.meant) }
+      // The lambda form of replace appends its result literally — no $-group syntax, so no escaping.
+      out = re.replace(out) { r.meant }
     }
     return if (out == text) text else out
   }

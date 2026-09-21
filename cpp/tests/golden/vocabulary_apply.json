@@ -8,6 +8,7 @@
     { "name": "punctuation next to the word is fine", "rules": [{"heard": "in over", "meant": "Innova"}], "text": "In over, the client, agreed.", "expect": "Innova, the client, agreed." },
     { "name": "no rules, same text", "rules": [], "text": "unchanged", "expect": "unchanged" },
     { "name": "a rule that matches nothing", "rules": [{"heard": "innova", "meant": "Innova"}], "text": "nothing here", "expect": "nothing here" },
-    { "name": "unicode letters count as letters", "rules": [{"heard": "ravi", "meant": "Ravi"}], "text": "ravié ravi", "expect": "ravié Ravi" }
+    { "name": "unicode letters count as letters", "rules": [{"heard": "ravi", "meant": "Ravi"}], "text": "ravié ravi", "expect": "ravié Ravi" },
+    { "name": "meant is written as typed, even with a dollar or a backslash", "rules": [{"heard": "dollar co", "meant": "$Co\\Ltd"}], "text": "call dollar co today", "expect": "call $Co\\Ltd today" }
   ]
 }

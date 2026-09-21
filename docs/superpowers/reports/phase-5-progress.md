@@ -54,6 +54,31 @@ do NOT include the Step 7 test files — those require the device to drive TDD r
 - Gate: `GATE_STAGES="types js scans mutations kotlin cpp" bash scripts/gate.sh` → `all clear`.
 - `git status` clean on stop.
 
+## Review of Session 1 (Opus, 21 Sep)
+
+Gate re-run with the Kotlin suites forced (`--rerun-tasks`): 298 Kotlin tests / 0 failures,
+jest 549 / 0, types, scans, mutations, cpp all ok. `git diff --stat 9f05928..HEAD` names only
+the §5 files (minus Step 7's, plus the two doc commits that predate the builder). Every diff read
+against the sheet — faithful, including the c.8 golden correction (right: `é` is `\p{L}`).
+
+Findings, all the sheet's fault, fixed in the review commit:
+- **`Vocabulary.apply` double-escaped `meant`.** The sheet wrote
+  `re.replace(out) { Regex.escapeReplacement(r.meant) }`; Kotlin's lambda-form `replace` appends
+  the lambda's result literally, so a `meant` of `$Co\Ltd` came back `\$Co\\Ltd`. Now
+  `{ r.meant }`; golden c.9 (`meant is written as typed, even with a dollar or a backslash`) pins it
+  — it failed before the fix, passes after. VocabularyTest 2/0 over 9 cases.
+- `applyVocabularyToMeeting` carried an unused `usesById` map (sheet's code) — removed.
+- Indentation drift: Phase 4 left `SchemaTest`, `BackupManager.TABLES`, `jest.setup.js`'s
+  `Storage` block and `schema.test.ts`'s `freshDb` one space over; this session matched and
+  compounded it (4/6). All normalised to the house two spaces; `schema.ts`'s meetings/utterances
+  DDL lines put back to their statement's own 5/3 so the diff is additive.
+- The stale Kilo worktree `.kilo/worktrees/few-chipmunk` (clean, at `5ff0f5b`) removed and pruned.
+- The `\b` mutant surviving is a JVM quirk (Java's `\b` is Unicode-aware before JDK 19; Android's
+  ICU regex likewise) — the product behaviour is the specified lookaround either way. Not a defect.
+
+Step 7 (device tests + probe) moves to the device session's sheet — it is device work and the
+phone was absent on 18 and 21 Sep.
+
 ## Notes for the next session
 
 - Step 1 Kotlin `SchemaTest`: 21 tests, 0 failures (spec §4 said "22"). The file at `9f05928` had
