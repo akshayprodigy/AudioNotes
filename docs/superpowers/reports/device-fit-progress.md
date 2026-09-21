@@ -10,7 +10,7 @@ Against `259ab72`, spec `docs/superpowers/specs/2026-09-21-device-fit-execution.
 - [x] Step 4 — onboarding: the sentence instead of the switch (96a30c4)
 - [x] Step 5 — the Pro screen: "Not on this phone" on the two rows it cannot keep (c35116b)
 - [x] Step 6 — Settings: the sentence instead of Get (ffd0b78)
-- [ ] Step 7 — the Summary tab: the phone before the model
+- [x] Step 7 — the Summary tab: the phone before the model (4483865)
 - [ ] Step 8 — the Ask screen and the meeting say the same processor sentence
 - [ ] Step 9 — the probe, the device, the gate, the report
 
@@ -40,5 +40,7 @@ Against `259ab72`, spec `docs/superpowers/specs/2026-09-21-device-fit-execution.
 - Step 3, `deviceFit.ts` `writerBlockedReason`: `?? null` → `?? ''` — 1 failed, restored.
 - Step 3, `deviceFit.ts` `sizeMb`: `/ 1e6` → `/ 1e5` — 1 failed, restored.
 - Step 3, `deviceFit.ts` `spaceFits`: `>=` → `>` — 1 failed, restored.
+- Step 7, `SummaryTab.tsx` `setReason` order: `!capable ? 'weak-device' : !available ? 'no-model'`
+  → `!available ? 'no-model' : !capable ? 'weak-device'` — 1 failed, restored.
 
 ## Notes
