@@ -64,6 +64,7 @@ type Model = {
   installed: boolean;
   sizeBytes: number;
   needsSubscription: boolean;
+  unsupportedReason?: string | null;
 };
 
 const mb = (bytes: number) => `${(bytes / 1e6).toFixed(0)} MB`;
@@ -425,6 +426,12 @@ export default function SettingsScreen({ navigation }: Props) {
       refresh();
       return;
     }
+    if (m.unsupportedReason) {
+      // No button reaches here — the row shows the sentence instead of Get — but the download is
+      // refused natively for the same reason, and a refusal should read the same as the row.
+      Alert.alert('Not on this phone', m.unsupportedReason);
+      return;
+    }
     if (m.needsSubscription && !lic?.paid) {
       // ModelManager.download would refuse this anyway — that refusal is the enforcement. Saying
       // so here is what stops the tap looking broken. The old code swallowed the error entirely,
@@ -483,6 +490,8 @@ export default function SettingsScreen({ navigation }: Props) {
             // read together, so the fallback keeps the render total-free rather than undefined.
             const prog = progress[m.id] ?? { downloaded: 0, total: 0 };
             const busy = progress[m.id] !== undefined && !m.installed;
+            // Present on disk is still theirs to remove; what the phone cannot run is not offered.
+            const off = !m.installed && !!m.unsupportedReason;
             return (
               <Pop key={m.id} index={i}>
                 <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={5}>
@@ -495,25 +504,27 @@ export default function SettingsScreen({ navigation }: Props) {
                       <View style={st.flex}>
                         <Txt variant="bodyStrong">{m.purpose}</Txt>
                         <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
-                          {m.detail}
+                          {off ? m.unsupportedReason : m.detail}
                         </Txt>
                       </View>
-                      <Pressable
-                        onPress={() => onToggle(m)}
-                        disabled={busy}
-                        accessibilityRole="button"
-                        accessibilityLabel={`${m.installed ? 'Remove' : 'Download'} ${m.purpose} (${m.name})`}
-                        style={[st.pill, { backgroundColor: m.installed ? colors.dangerSoft : colors.primary }]}>
-                        <Icon
-                          name={m.installed ? 'trash' : 'download'}
-                          size={s(15)}
-                          color={m.installed ? colors.danger : colors.onPrimary}
-                          strokeWidth={2.4}
-                        />
-                        <Txt variant="chip" color={m.installed ? colors.danger : colors.onPrimary}>
-                          {m.installed ? 'Remove' : busy ? '…' : 'Get'}
-                        </Txt>
-                      </Pressable>
+                      {off ? null : (
+                        <Pressable
+                          onPress={() => onToggle(m)}
+                          disabled={busy}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${m.installed ? 'Remove' : 'Download'} ${m.purpose} (${m.name})`}
+                          style={[st.pill, { backgroundColor: m.installed ? colors.dangerSoft : colors.primary }]}>
+                          <Icon
+                            name={m.installed ? 'trash' : 'download'}
+                            size={s(15)}
+                            color={m.installed ? colors.danger : colors.onPrimary}
+                            strokeWidth={2.4}
+                          />
+                          <Txt variant="chip" color={m.installed ? colors.danger : colors.onPrimary}>
+                            {m.installed ? 'Remove' : busy ? '…' : 'Get'}
+                          </Txt>
+                        </Pressable>
+                      )}
                     </View>
 
                     <View style={st.modelMeta}>
@@ -521,23 +532,27 @@ export default function SettingsScreen({ navigation }: Props) {
                         style={[
                           st.tag,
                           {
-                            backgroundColor: m.needsSubscription
-                              ? colors.successSoft
-                              : m.required
-                                ? colors.primarySoft
-                                : colors.cardAlt,
+                            backgroundColor: off
+                              ? colors.warningSoft
+                              : m.needsSubscription
+                                ? colors.successSoft
+                                : m.required
+                                  ? colors.primarySoft
+                                  : colors.cardAlt,
                           },
                         ]}>
                         <Txt
                           variant="chipSm"
                           color={
-                            m.needsSubscription
-                              ? colors.success
-                              : m.required
-                                ? colors.primary
-                                : colors.inkFaint
+                            off
+                              ? colors.warning
+                              : m.needsSubscription
+                                ? colors.success
+                                : m.required
+                                  ? colors.primary
+                                  : colors.inkFaint
                           }>
-                          {m.needsSubscription ? 'PRO' : m.required ? 'REQUIRED' : 'OPTIONAL'}
+                          {off ? 'NOT ON THIS PHONE' : m.needsSubscription ? 'PRO' : m.required ? 'REQUIRED' : 'OPTIONAL'}
                         </Txt>
                       </View>
                       <Txt variant="chipSoft" color={colors.inkFaint}>
