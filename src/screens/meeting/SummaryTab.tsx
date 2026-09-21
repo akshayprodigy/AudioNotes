@@ -10,7 +10,7 @@ import type { EditTarget, Item, Minute, Speaker } from '../../pipeline/types';
 import Llm from '../../native/NativeLlm';
 import Licence from '../../native/NativeLicence';
 import { TRIAL_DAYS, entitlement } from '../../billing/trial';
-import { TEMPLATE_IDS, templateHint, templateLabel } from './templateLabels';
+import { DICTATION_TEMPLATE, TEMPLATE_IDS, templateHint, templateLabel } from './templateLabels';
 import { threadLine } from '../threadData';
 import { soundsLike } from '../voiceCopy';
 import {
@@ -312,6 +312,8 @@ export default function SummaryTab({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`Meeting type: ${templateLabel(template)}`}
+                // Phase 5: a dictated note's type is fixed — the chip is a label, not a choice.
+                disabled={template === DICTATION_TEMPLATE}
                 onPress={() => setTemplateSheetOpen(true)}
                 style={st.templateChip}>
                 <Txt variant="chipSoft" color={colors.onPrimary}>
@@ -319,8 +321,11 @@ export default function SummaryTab({
                 </Txt>
               </Pressable>
               <Txt variant="chipSoft" color={colors.onPrimary} style={st.dim}>
-                {mins} min · {speakers.length || '—'}{' '}
-                {speakers.length === 1 ? 'speaker' : 'speakers'}
+                {`${mins} min · ${
+                  template === DICTATION_TEMPLATE
+                    ? 'one voice'
+                    : `${speakers.length || '—'} ${speakers.length === 1 ? 'speaker' : 'speakers'}`
+                }`}
               </Txt>
               {/* Only where there is prose. Offering Copy over one of the four "why there is no
                   summary" messages would put an explanation on somebody's clipboard, and offering

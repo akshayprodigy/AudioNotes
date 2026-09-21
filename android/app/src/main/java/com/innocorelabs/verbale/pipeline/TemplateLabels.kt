@@ -18,6 +18,8 @@ object TemplateLabels {
     "interview" to "Interview",
     "lecture" to "Lecture",
     "site_walk" to "Site walk",
+    // Phase 5: the fixed type of a dictated note; never offered, never suggested.
+    "dictation" to "Dictation",
   )
 
   fun labelFor(templateId: String?): String = LABEL[templateId] ?: "General"

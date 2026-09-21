@@ -12,6 +12,14 @@
 
 ## Decisions
 
+- **Session 2, Step 1**: the sheet's `SummaryTab.tsx` meta line (`{mins} min ·{' '}` then a ternary
+  as a separate JSX child) splits into a multi-item `children` array, so no node's `props.children`
+  is ever the plain string `'one voice'` — the sheet's own 1e test (`findAll(n => typeof
+  n.props.children === 'string')`) can never see it, on either branch, mutated or not. Collapsed
+  the whole line into one interpolated template-literal string (`` {`${mins} min · ${...}`} ``) so
+  it renders as a single string child; behaviour and copy are unchanged (still "`N min · one voice`"
+  / "`N min · K speakers`"), only how many child nodes the JSX produces. Verified no other test in
+  the suite reads that line's old multi-child shape.
 - **Step 2 golden c.8**: the spec's golden case `unicode letters count as letters` expected
   `"Ravié Ravi"`, but the spec's regex uses `\p{L}\p{N}` — a Unicode class — which (matching the
   test name) treats `é` as a word letter, so the inner `ravi` of `ravié` is NOT a whole-word match.
@@ -33,6 +41,16 @@
     here (treats `é` as a word char), so it agrees with `\p{L}\p{N}` on every case. Recorded as a
     surviving mutant; restored to the specified lookaround regex. (The spec expected `\b` ASCII;
     the runtime disagrees.)
+
+### Session 2
+
+- **Step 1**:
+  - remove `"dictation" to "Dictation"` from `TemplateLabels.kt` → Kotlin `TemplateLabelsTest` fails
+    (BUILD FAILED). Restored.
+  - `disabled={template === DICTATION_TEMPLATE}` → `disabled={false}` → SummaryTab's new test fails
+    on the `chip.props.disabled` assertion. Restored.
+  - `'one voice'` → `'1 speaker'` → SummaryTab's new test fails on the `speakers` assertion (the
+    string now contains neither `'one voice'` nor triggers the `speakers` branch). Restored.
 
 ### Step 7 — NOT RUN (phone absent)
 
@@ -94,3 +112,18 @@ phone was absent on 18 and 21 Sep.
 - Step 2 golden note: `vocabulary_apply.json` case "unicode letters count as letters" expects
   `"ravié Ravi"` (é is a `\p{L}` word letter → inner `ravi` not matched); the spec text read
   `"Ravié Ravi"`, which contradicts the regex + test name — corrected and recorded under Decisions.
+
+## Session 2
+
+Against `09d8037`. Two runs: 2A = Steps 1–4, 2B = Steps 5–8.
+
+### Steps
+
+- [x] **Step 1** — "Dictation" is a label, and a dictated note's chip is not a choice
+- [ ] **Step 2** — where a dictated note says so: the Library card and the meeting header
+- [ ] **Step 3** — the mode reaches native: store, controller, and a pure helper for the Record screen's words
+- [ ] **Step 4** — the Record screen: Meeting | Dictation
+- [ ] **Step 5** — Settings › Vocabulary: the screen
+- [ ] **Step 6** — Settings › Vocabulary: the row
+- [ ] **Step 7** — "Correct the words" offers a rule
+- [ ] **Step 8** — gate, report, hand-over

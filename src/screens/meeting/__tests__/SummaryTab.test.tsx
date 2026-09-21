@@ -90,6 +90,22 @@ describe('the meeting-type chip', () => {
     ).toHaveLength(1);
   });
 
+  test('a dictated note reads Dictation, says one voice, and the chip is not a choice', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: true });
+    const tree = await renderTab({ template: 'dictation', speakers: [] });
+    const chip = tree.root.findAllByProps(
+      { accessibilityLabel: 'Meeting type: Dictation' },
+      { deep: false },
+    )[0];
+    expect(chip).toBeDefined();
+    expect(chip.props.disabled).toBe(true);
+    const texts = tree.root
+      .findAll(n => typeof n.props.children === 'string')
+      .map(n => n.props.children as string);
+    expect(texts.some(t => t.includes('one voice'))).toBe(true);
+    expect(texts.some(t => t.includes('speakers'))).toBe(false);
+  });
+
   test('tapping it opens a sheet of all seven types, labels and hints included', async () => {
     (entitlement as jest.Mock).mockResolvedValue({ paid: true });
     const tree = await renderTab();

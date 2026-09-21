@@ -1,5 +1,5 @@
 {
-  "note": "What a meeting type wears on the Summary chip and in the sheet that changes it — the seven ids of docs/superpowers/specs/2026-09-17-phase-2-meeting-templates-brief.md §1, in table order, plus an unrecognised id and null, both of which read as General rather than throwing. Read by TemplateLabelsTest.kt and templateLabels.test.ts.",
+  "note": "What a meeting type wears on the Summary chip and in the sheet that changes it — the seven ids of docs/superpowers/specs/2026-09-17-phase-2-meeting-templates-brief.md §1, in table order, plus an unrecognised id and null, both of which read as General rather than throwing … plus `dictation`, the fixed type of a dictated note (Phase 5). Read by TemplateLabelsTest.kt and templateLabels.test.ts.",
   "cases": [
     { "id": "general", "label": "General" },
     { "id": "standup", "label": "Stand-up" },
@@ -8,6 +8,7 @@
     { "id": "interview", "label": "Interview" },
     { "id": "lecture", "label": "Lecture" },
     { "id": "site_walk", "label": "Site walk" },
+    { "id": "dictation", "label": "Dictation" },
     { "id": "not-a-real-template", "label": "General" },
     { "id": null, "label": "General" }
   ]

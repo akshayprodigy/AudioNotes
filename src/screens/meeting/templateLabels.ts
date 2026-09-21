@@ -9,6 +9,13 @@ export const TEMPLATE_IDS = [
 
 export type TemplateId = (typeof TEMPLATE_IDS)[number];
 
+/**
+ * Phase 5: the type a dictated note is fixed to. Not in TEMPLATE_IDS on purpose — it is never
+ * offered in the sheet, and a meeting never becomes one by choice; the Record screen's mode is
+ * what makes it.
+ */
+export const DICTATION_TEMPLATE = 'dictation';
+
 const LABEL: Record<TemplateId, string> = {
   general: 'General',
   standup: 'Stand-up',
@@ -36,6 +43,7 @@ function isTemplateId(id: string): id is TemplateId {
 
 /** "General" for null, undefined, and any id TemplateSuggester does not recognise. */
 export function templateLabel(id: string | null | undefined): string {
+  if (id === DICTATION_TEMPLATE) return 'Dictation';
   return id && isTemplateId(id) ? LABEL[id] : 'General';
 }
 
