@@ -180,4 +180,25 @@ From `docs/play-console.md:84-93`, the permission table without the `INTERNET` r
 
 ## 7. Report (status · what was read · what could not be measured · commits)
 
-pending
+**Status:** complete. All seven steps done; §0 written last; every section filled; no product code touched.
+
+**Files read** (exactly the ranges in the execution sheet's §1): `android/app/src/main/AndroidManifest.xml`, `scripts/check-network-egress.py` (also run twice), `src/privacy/ledger.ts`, `src/privacy/summary.ts`, `src/screens/PrivacyScreen.tsx`, `src/billing/subscription.ts`, `src/billing/trial.ts`, `android/.../billing/Licence.kt`, `android/.../billing/LicenceStore.kt`, `android/.../billing/BillingModule.kt`, `server/app/main.py`, `server/app/play.py`, `android/.../pipeline/ModelManagerModule.kt`, `android/.../data/ModelCatalog.kt`, `src/screens/OnboardingScreen.tsx`, `src/screens/PaywallScreen.tsx`, `src/screens/SettingsScreen.tsx`, `src/billing/SignInForm.tsx`, `src/telemetry/crash.ts`, `docs/play-console.md`, `docs/superpowers/specs/2026-09-06-privacy-proof-design.md`, `docs/superpowers/specs/2026-09-02-play-only-billing-and-admin-console-design.md`, `docs/superpowers/specs/2026-09-15-improvement-report-scorecard.md`, `docs/superpowers/plans/2026-09-17-release-phases.md`. `server/app/licence.py`, `server/app/store.py` and `server/app/entitlement.py` were grepped for symbol locations only, per the stop-condition rule — never read in full or by range.
+
+**What could not be measured, and why:**
+- The signed token's issued lifetime (§1.1, §2.2) — set in `issue()`, which lives in `server/app/entitlement.py`, outside the read list; the exact monthly `refreshIfNeeded` call count is therefore an estimate rather than a count.
+- Exact per-field JSON payload byte sizes (§1.1) — no device measurement was taken this session (Rule 0: no device); sized per the sheet's own "assume ≤ 200 bytes a field" guidance and marked estimate throughout.
+- Who uses the email sign-in path today (§3.2, §5.2) — the assigned range of the 2026-09-02 design doc (lines 1–60) does not name specific users; a single `grep -n "tester|founder"` over that whole file, per the stop-condition rule, found no match. Recorded as "to verify" rather than asserted.
+- Every Play Asset Delivery mechanic in §3.1 and §8 (pack types, the 1.5 GB/4 GB limits, Play Billing's IPC-not-permission behaviour) is carried exactly as *supplied* with its "verify" flag intact — this session did not independently confirm current Play documentation.
+
+**A correction the inventory surfaced, not anticipated by the sheet:** §3.3's "lost: JS errors that do not crash the process" is smaller than framed — `crash.ts` never re-exports a `recordError`-shaped call, and no file in the app calls one today, so Android Vitals would not regress anything currently shipping on that axis.
+
+**Verification pass (Step 6):** `python3 scripts/check-network-egress.py` → `exit=0`, re-run clean. Three quotes spot-checked verbatim with `grep -n` (`BillingModule.kt`'s "claim, not a proof", `OnboardingScreen.tsx`'s "That download stopped", `Licence.kt`'s "remaining life IS the grace period") — all matched exactly. The table of contents matches the execution sheet's §3 exactly. `git diff --stat 9c1b2a0..HEAD` shows **four** files, not two, because two docs commits (`d92bacd`, `9f70d5f` — the phase split and the execution sheet itself) already sat between `9c1b2a0` and this session's actual starting point; they predate this session and are not this session's edits. Scoped instead to this session's own start (`d92bacd..HEAD`), the diff is exactly the two files the rule intends: the brief and the progress file, nothing else.
+
+**Commits this session:**
+- `b15123e` docs(6a): the INTERNET decision brief — frame
+- `3adee1f` docs(6a): §1 inventory — every byte, by call site
+- `1f3caec` docs(6a): §2 what the permission buys, and today's offline behaviour
+- `5e0eb05` docs(6a): §3 the permission-less build, replacement by replacement
+- `05b9920` docs(6a): §4–§6 options, decisions, recommendation
+- `2574ea8` docs(6a): brief checked against its rules
+- (final) docs(6a): report; progress file retired
