@@ -52,14 +52,7 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
           // Every part, not just the first. A six-file model with five files on disk is not
           // installed, and reporting it as such would hand the engine a directory it cannot load.
           .put("installed", spec.parts.all { p ->
-            File(dir, p.filename).let {
-              it.exists() &&
-                // The catalog only knows the 64-bit runtime. A 32-bit bench build (the 2019
-                // Galaxy Tab A) has the 32-bit one hand-placed at the same name and a different
-                // size; reporting it "not installed" would make onboarding fetch the 64-bit one
-                // over it and the pipeline could never load again. Existence is the whole test there.
-                (it.length() == p.sizeBytes || (spec.kind == "runtime" && !DiarBudget.is64BitProcess()))
-            }
+            File(dir, p.filename).let { it.exists() && it.length() == p.sizeBytes }
           })
           // So the UI can say "Pro" against it rather than offering a download that will be
           // refused. The refusal in download() is the enforcement; this is only the honesty.
@@ -94,11 +87,6 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
     val spec = ModelCatalog.byId(id)
     if (spec == null) {
       promise.reject("no_model", "unknown model $id")
-      return
-    }
-    // See list(): the download would replace the hand-placed 32-bit runtime with the 64-bit one.
-    if (spec.kind == "runtime" && !DiarBudget.is64BitProcess()) {
-      promise.reject("runtime_32bit", "The 32-bit runtime is placed by hand on this device; nothing to download.")
       return
     }
     // The phone before the subscription: a trial on a 2 GB phone must hear "needs 4 GB", not
