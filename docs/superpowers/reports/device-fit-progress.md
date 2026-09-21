@@ -11,7 +11,7 @@ Against `259ab72`, spec `docs/superpowers/specs/2026-09-21-device-fit-execution.
 - [x] Step 5 — the Pro screen: "Not on this phone" on the two rows it cannot keep (c35116b)
 - [x] Step 6 — Settings: the sentence instead of Get (ffd0b78)
 - [x] Step 7 — the Summary tab: the phone before the model (4483865)
-- [ ] Step 8 — the Ask screen and the meeting say the same processor sentence
+- [x] Step 8 — the Ask screen and the meeting say the same processor sentence (verified by reading, no code change, no commit)
 - [ ] Step 9 — the probe, the device, the gate, the report
 
 **End of Run A.** Run B starts at Step 5.
@@ -44,3 +44,8 @@ Against `259ab72`, spec `docs/superpowers/specs/2026-09-21-device-fit-execution.
   → `!available ? 'no-model' : !capable ? 'weak-device'` — 1 failed, restored.
 
 ## Notes
+
+- Step 8: `AskScreen` refuses through `Llm.ask` (`NOT_CAPABLE`) and the meeting fails through
+  `NativeBridge.ensureLoaded`'s `check` added in Step 2(a); its message reaches the meeting's
+  failure reason unchanged. `grep -n "check(DeviceFit.cpuFits())" .../NativeBridge.kt` → one line
+  (28). No code change, no commit, per the sheet.
