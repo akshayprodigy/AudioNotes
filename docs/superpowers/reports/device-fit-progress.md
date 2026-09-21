@@ -7,14 +7,26 @@ Against `259ab72`, spec `docs/superpowers/specs/2026-09-21-device-fit-execution.
 - [x] Step 1 — the two gates read the one fact (65ec0cc)
 - [x] Step 2 — the rows say it, the download refuses it, the engine will not load where it would crash (d911ff8)
 - [x] Step 3 — the pure helper the screens share (b3453d9)
-- [ ] Step 4 — onboarding: the sentence instead of the switch
+- [x] Step 4 — onboarding: the sentence instead of the switch (96a30c4)
 - [ ] Step 5 — the Pro screen: "Not on this phone" on the two rows it cannot keep
 - [ ] Step 6 — Settings: the sentence instead of Get
 - [ ] Step 7 — the Summary tab: the phone before the model
 - [ ] Step 8 — the Ask screen and the meeting say the same processor sentence
 - [ ] Step 9 — the probe, the device, the gate, the report
 
+**End of Run A.** Run B starts at Step 5.
+
 ## Decisions
+
+- Step 4: the spec's own literal code for OnboardingScreen.tsx, applied verbatim, prints
+  `grep -c "writerBlocked[^R]"` → `6` (spec says `8`) and `grep -c "spaceShort\|cpuReason"` → `6`
+  (spec says `7`). Traced by hand: lines like `{writerBlocked` (the ternary's `?` on the next line,
+  exactly as the spec's own snippet has it) end the line right after the identifier, so
+  `[^R]` never matches them — true of the spec's given code too, not just this transcription.
+  Treated as an arithmetic error in the spec's narrative, not a stop condition: the formal §4 check
+  (`tsc --noEmit` → `0`) passes, `unsupportedReason` count in this file is `1` as §5 expects, and
+  the code is byte-for-byte what §2 Step 4 specifies. Did not alter the code to chase the stated
+  count.
 
 ## Mutants
 
