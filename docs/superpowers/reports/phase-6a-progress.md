@@ -12,7 +12,7 @@ Execution sheet: `docs/superpowers/specs/2026-09-21-phase-6a-internet-decision-e
   - Notes: found recordError is never called today (crash.ts doesn't re-export it) — the JS-crash "loss" under Vitals is currently null, not the loss the sheet assumed; email sign-in's user base not found in the design doc's read range (grep came back empty) — flagged to verify with the founder.
 - [x] Step 5 — the options and their cost (judgement, sized)
   - Notes: §4-§6 written; §0 summary written now (ahead of Step 6's verify pass, still "written last" relative to §1-§6).
-- [ ] Step 6 — verify the brief against its own rules
-  - Notes:
+- [x] Step 6 — verify the brief against its own rules
+  - Notes: found and fixed two leftover "pending" section-intro lines (§2, §3) from the frame step; egress check re-run exit=0; 3 quotes spot-checked verbatim via grep, all matched; TOC matches the sheet's §3 exactly; `git diff --stat 9c1b2a0..HEAD` shows 4 files because 2 docs commits (`d92bacd`, `9f70d5f`) predate this session's actual start — scoped to `d92bacd..HEAD` it is exactly the 2 files the rule intends (recorded in §7).
 - [ ] Step 7 — report and hand-over
   - Notes:

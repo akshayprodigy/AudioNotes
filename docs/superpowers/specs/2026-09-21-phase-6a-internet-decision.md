@@ -48,7 +48,9 @@ Every monthly-cadence figure above carries the same flag: **"lifetime: not in re
 
 ## 2. What the permission buys today
 
-pending
+Three purposes, in descending order of what a person notices: the model download (one-time, largest
+number on the privacy screen), the licence (ongoing, mostly invisible), and crash reports (rare,
+opt-in, and the one source the ledger cannot count).
 
 ### 2.1 Models
 
@@ -86,7 +88,9 @@ Files importing `telemetry/crash` (measured — `grep -rl "telemetry/crash" src 
 
 ## 3. The permission-less build, replacement by replacement
 
-pending
+Same three purposes, each mapped to what Google's own platform already provides without an app-held
+`INTERNET` permission: Play Asset Delivery for models, Play Billing's own local query for
+entitlement, and Android Vitals for crashes.
 
 ### 3.1 Models
 
