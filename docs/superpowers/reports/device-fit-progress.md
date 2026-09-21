@@ -8,7 +8,7 @@ Against `259ab72`, spec `docs/superpowers/specs/2026-09-21-device-fit-execution.
 - [x] Step 2 — the rows say it, the download refuses it, the engine will not load where it would crash (d911ff8)
 - [x] Step 3 — the pure helper the screens share (b3453d9)
 - [x] Step 4 — onboarding: the sentence instead of the switch (96a30c4)
-- [ ] Step 5 — the Pro screen: "Not on this phone" on the two rows it cannot keep
+- [x] Step 5 — the Pro screen: "Not on this phone" on the two rows it cannot keep (c35116b)
 - [ ] Step 6 — Settings: the sentence instead of Get
 - [ ] Step 7 — the Summary tab: the phone before the model
 - [ ] Step 8 — the Ask screen and the meeting say the same processor sentence
@@ -27,6 +27,12 @@ Against `259ab72`, spec `docs/superpowers/specs/2026-09-21-device-fit-execution.
   (`tsc --noEmit` → `0`) passes, `unsupportedReason` count in this file is `1` as §5 expects, and
   the code is byte-for-byte what §2 Step 4 specifies. Did not alter the code to chase the stated
   count.
+- Step 5: same kind of mismatch. The spec's own literal code for PaywallScreen.tsx prints
+  `grep -c "spaceShort"` → `3` (spec says `4`). The fourth occurrence the spec is counting is
+  `setSpaceShort(...)` in part (e) — `setSpaceShort` contains `SpaceShort` (capital S), not the
+  lowercase `spaceShort` the pattern requires, so a case-sensitive grep never counts it, verbatim
+  spec code or not. `writerBlocked[^R]` → `4` as expected. `tsc --noEmit` → `0`. Not a stop
+  condition, same reasoning as the Step 4 note above.
 
 ## Mutants
 
