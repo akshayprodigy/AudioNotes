@@ -118,7 +118,7 @@ Legend: ✅ done · ◐ partly · ✗ not built · ⛔ tried and rejected on evi
 | Delete search entries, caches with the source | ✅ | |
 | "Audio no longer available" when notes kept | ◐ | retention copy says playback is given up; no per-meeting notice |
 | Ledger + source scan as supplementary | ✅ | |
-| ONNX runtime packaged, not downloaded | ✗ | still a separate download, hash-checked |
+| ONNX runtime packaged, not downloaded | ✅ | in the APK since 21 Sep (Phase 6b Session 1) |
 | Announcement described as evidence, not agreement | ✅ | |
 
 ## Engineering improvements

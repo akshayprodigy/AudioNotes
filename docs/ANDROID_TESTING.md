@@ -43,8 +43,7 @@ skipped itself, and prints what the run did *not* exercise.
 > that module's `androidTest` variant — the app's own debug and release builds are unaffected.
 
 **Restoring the models without re-downloading them.** `eval/models/` on a dev machine holds the
-same bytes the catalog fetches, and `libonnxruntime.so` is in the Gradle cache under
-`onnxruntime-android-1.20.0/jni/arm64-v8a/`. With a debuggable build installed, stage each through
+same bytes the catalog fetches. With a debuggable build installed, stage each through
 `/data/local/tmp` (`adb push`, `chmod 644`, `run-as <pkg> cp … files/models/`) and check them with
 `run-as <pkg> sha256sum files/models/*` against the hashes in `ModelCatalog.kt`. The app treats a
 model as installed on file existence and exact size, so pushed files show up as installed.
@@ -148,8 +147,8 @@ actions). On a weak device or with no model, you simply keep the rule-based minu
 - **onnxruntime / CMake.** Resolved: the C++ core no longer uses `find_package(onnxruntime)`. It
   vendors the ORT API headers under `cpp/third_party/onnxruntime/include` and loads
   `libonnxruntime.so` at runtime via `dlopen` (`ORT_API_MANUAL_INIT` in `silero_vad.cpp`). The `.so`
-  is still supplied by the `com.microsoft.onnxruntime:onnxruntime-android` AAR (packaged into the
-  APK), so keep that dependency; no prefab config is needed.
+  ships in the APK from the `com.microsoft.onnxruntime:onnxruntime-android` AAR since 21 Sep 2026
+  (it was a first-run download before); keep that dependency; no prefab config is needed.
 - **Metro not connected / red screen.** Run `npm start` in a separate terminal, then `r` to reload.
 - **Out-of-memory during native build.** Add `org.gradle.jvmargs=-Xmx4g` to `android/gradle.properties`.
 
