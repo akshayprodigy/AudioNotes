@@ -1,0 +1,21 @@
+{
+  "note": "proposeRule(before, after): the one contiguous substitution of one to three words each side that Correct the words offers as a rule; null for everything else. Read by vocabularyRule.test.ts.",
+  "cases": [
+    { "name": "the report's own example", "before": "we sold it to in over last week", "after": "we sold it to Innova last week", "expect": { "heard": "in over", "meant": "Innova" } },
+    { "name": "a mark attached to the changed word belongs to the line", "before": "In over, the client, agreed.", "after": "Innova, the client, agreed.", "expect": { "heard": "In over", "meant": "Innova" } },
+    { "name": "a rewrite is not a rule", "before": "the whole thing is different", "after": "nothing here is the same", "expect": null },
+    { "name": "an inserted word is not a rule", "before": "we ship Monday", "after": "we ship on Monday", "expect": null },
+    { "name": "a deleted word is not a rule", "before": "we ship on Monday", "after": "we ship Monday", "expect": null },
+    { "name": "four words on one side is too many", "before": "a b c d e", "after": "a w x y z e", "expect": null },
+    { "name": "three words heard, two meant", "before": "send it to in over there", "after": "send it to Innova Ltd", "expect": { "heard": "in over there", "meant": "Innova Ltd" } },
+    { "name": "nothing changed", "before": "we ship Monday", "after": "we ship Monday", "expect": null },
+    { "name": "only the case changed is still a rule", "before": "innova sent it", "after": "Innova sent it", "expect": { "heard": "innova", "meant": "Innova" } },
+    { "name": "the change at the end of the line", "before": "we met prey", "after": "we met Priya", "expect": { "heard": "prey", "meant": "Priya" } },
+    { "name": "the change at the start of the line", "before": "prey will send it", "after": "Priya will send it", "expect": { "heard": "prey", "meant": "Priya" } },
+    { "name": "two fixes in one line is not one rule", "before": "prey said in over agreed", "after": "Priya said Innova agreed", "expect": null },
+    { "name": "marks added along a dictated line is not a rule", "before": "tell finance the invoice is late", "after": "Tell finance, the invoice is late.", "expect": null },
+    { "name": "a full stop added at the end is not a rule", "before": "we ship Monday", "after": "we ship Monday.", "expect": null },
+    { "name": "doubled spaces do not count as words", "before": "we  sold it to in  over", "after": "we sold it to Innova", "expect": { "heard": "in over", "meant": "Innova" } },
+    { "name": "an emptied line is not a rule", "before": "anything", "after": "", "expect": null }
+  ]
+}
