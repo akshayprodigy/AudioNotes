@@ -8,11 +8,13 @@ import type { Highlight } from './highlights';
 import { radius, s, useTheme, type Colors } from '../../theme';
 import type { EditTarget, Item, Minute, Speaker } from '../../pipeline/types';
 import Llm from '../../native/NativeLlm';
+import ModelManager from '../../native/NativeModelManager';
 import Licence from '../../native/NativeLicence';
 import { TRIAL_DAYS, entitlement } from '../../billing/trial';
 import { DICTATION_TEMPLATE, TEMPLATE_IDS, templateHint, templateLabel } from './templateLabels';
 import { threadLine } from '../threadData';
 import { soundsLike } from '../voiceCopy';
+import { writerBlockedReason } from '../deviceFit';
 import {
   DOC_KEY,
   EditedTag,
@@ -155,6 +157,11 @@ export default function SummaryTab({
     'checking' | 'expired' | 'locked' | 'no-model' | 'weak-device' | 'not-run'
   >('checking');
   const [lapsedCopy, setLapsedCopy] = React.useState('');
+  // The sentence for a phone under the writer's gate, from the catalog rows — the same one
+  // onboarding and Settings show, with the memory it needs and has.
+  const [weakCopy, setWeakCopy] = React.useState(
+    'This phone does not have enough memory to write the summary on-device.',
+  );
   // Whether choosing a type should also trigger "Write it again" (Phase 2, sub-project 6a). Not
   // derived from `reason`: `reason` conflates several distinct non-paid states (no model, weak
   // device, not yet run) that all still mean "this IS a paid entitlement" — the type sheet cares
@@ -189,9 +196,17 @@ export default function SummaryTab({
         }
         if (prose) return;
 
-        const [available, capable] = await Promise.all([Llm.available(), Llm.capable()]);
+        const [available, capable, rows] = await Promise.all([
+          Llm.available(),
+          Llm.capable(),
+          ModelManager.list().catch(() => '[]'),
+        ]);
         if (!alive) return;
-        setReason(!available ? 'no-model' : !capable ? 'weak-device' : 'not-run');
+        const blocked = writerBlockedReason(JSON.parse(rows));
+        if (blocked) setWeakCopy(blocked);
+        // The phone before the model. This used to be the other way round, which sent a phone
+        // under the gate to Settings to fetch 1.1 GB it could never run.
+        setReason(!capable ? 'weak-device' : !available ? 'no-model' : 'not-run');
       } catch {
         if (alive) setReason('not-run');
       }
@@ -377,7 +392,7 @@ export default function SummaryTab({
                     : reason === 'no-model'
                       ? 'The summary is written on your phone by a language model that has not been downloaded yet.'
                       : reason === 'weak-device'
-                        ? 'This phone does not have enough memory to write the summary on-device.'
+                        ? weakCopy
                         : 'This meeting was processed before summaries were written. Run it again and one will be.'}
               </Txt>
             )}

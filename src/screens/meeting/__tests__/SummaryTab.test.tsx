@@ -28,6 +28,8 @@ jest.mock('../../../billing/trial', () => ({
 
 import Licence from '../../../native/NativeLicence';
 import { entitlement } from '../../../billing/trial';
+import Llm from '../../../native/NativeLlm';
+import ModelManager from '../../../native/NativeModelManager';
 
 const minute = {
   id: 'min-1',
@@ -262,5 +264,35 @@ describe('the voice banner', () => {
     (entitlement as jest.Mock).mockResolvedValue({ paid: true });
     const tree = await renderTab({ voiceSuggestions: [], onConfirmVoices: jest.fn() });
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Confirm voices' })).toHaveLength(0);
+  });
+});
+
+describe('why there is no summary', () => {
+  test('a phone under the gate hears the memory sentence, not "Settings → Models"', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: true });
+    (Llm.available as jest.Mock).mockResolvedValue(false);
+    (Llm.capable as jest.Mock).mockResolvedValue(false);
+    (ModelManager.list as jest.Mock).mockResolvedValueOnce(
+      JSON.stringify([
+        { id: 'llm-qwen', kind: 'llm', installed: false, sizeBytes: 1, unsupportedReason: 'needs a phone with 4 GB of memory; this one has 2 GB.' },
+      ]),
+    );
+    const tree = await renderTab({ minutes: [] });
+    const texts = tree.root
+      .findAll(n => typeof n.props.children === 'string')
+      .map(n => n.props.children as string);
+    expect(texts.some(t => t.includes('this one has 2 GB'))).toBe(true);
+    expect(texts.some(t => t.includes('Settings → Models'))).toBe(false);
+  });
+
+  test('a capable phone with no model is sent to Settings', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: true });
+    (Llm.available as jest.Mock).mockResolvedValue(false);
+    (Llm.capable as jest.Mock).mockResolvedValue(true);
+    const tree = await renderTab({ minutes: [] });
+    const texts = tree.root
+      .findAll(n => typeof n.props.children === 'string')
+      .map(n => n.props.children as string);
+    expect(texts.some(t => t.includes('Settings → Models'))).toBe(true);
   });
 });
