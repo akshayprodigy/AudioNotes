@@ -1,8 +1,6 @@
 package com.innocorelabs.verbale.pipeline
 
 import android.content.Context
-import com.innocorelabs.verbale.data.ModelCatalog
-import java.io.File
 
 /**
  * JNI bridge into the shared C++ core (libaudionotes): VAD, ASR, diarization, rule-based minutes,
@@ -12,12 +10,10 @@ object NativeBridge {
   @Volatile private var loaded = false
 
   /**
-   * Load the native core. libonnxruntime.so is NOT packaged in the APK (kept out to keep the
-   * install small — see ModelCatalog "onnxruntime-lib" and app/build.gradle packaging excludes);
-   * ModelManager downloads it to filesDir/models on first run. It is System.load()ed by absolute
-   * path FIRST so libaudionotes.so's DT_NEEDED on libonnxruntime.so, and the RTLD_GLOBAL dlopen in
-   * util/ort_init.cpp, both resolve to this one loaded copy. Idempotent; every caller invokes it
-   * before its first native call.
+   * Load the native core: the ONNX runtime from the APK, then libaudionotes.so, whose DT_NEEDED on
+   * libonnxruntime.so and whose RTLD_GLOBAL dlopen in util/ort_init.cpp both resolve to that one
+   * loaded copy. Idempotent; every caller invokes it before its first native call. The `context`
+   * stays in the signature for the processor check and for callers that pass it.
    */
   @Synchronized
   fun ensureLoaded(context: Context) {
@@ -26,14 +22,9 @@ object NativeBridge {
     // in the first kernel, with no message. This is the last line of defence — onboarding says the
     // same sentence before anything is downloaded — and it protects an install that predates it.
     check(DeviceFit.cpuFits()) { DeviceFit.CPU_REASON }
-    val ort = File(ModelCatalog.modelsDir(context), "libonnxruntime.so")
-    check(ort.exists()) {
-      "libonnxruntime.so not downloaded yet — ModelManager must fetch \"onnxruntime-lib\" first"
-    }
-    // Loading executable code from a writable file draws a W^X warning ("will throw on a future
-    // Android version") — clear the write bit first so the loaded .so is read-only.
-    if (ort.canWrite()) ort.setReadOnly()
-    System.load(ort.absolutePath)
+    // The runtime first, by name from the APK's jniLibs, so libaudionotes.so's DT_NEEDED and the
+    // RTLD_GLOBAL dlopen in util/ort_init.cpp both resolve to this one loaded copy.
+    System.loadLibrary("onnxruntime")
     System.loadLibrary("audionotes")
     loaded = true
   }

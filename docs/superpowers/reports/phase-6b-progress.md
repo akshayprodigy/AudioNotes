@@ -4,8 +4,8 @@ Execution sheet: `docs/superpowers/specs/2026-09-21-phase-6b-session-1-runtime-i
 
 - [x] Step 1 — the `.so` comes back into the APK (`build.gradle`)
   - Notes: excludes line dropped `libonnxruntime.so`; comment rewritten. `grep -c "libonnxruntime.so'"` → 0.
-- [ ] Step 2 — the core loads it by name (`NativeBridge.kt`)
-  - Notes:
+- [x] Step 2 — the core loads it by name (`NativeBridge.kt`)
+  - Notes: `System.loadLibrary("onnxruntime")` then `"audionotes"`; File/ModelCatalog imports removed (unused). compileDebugKotlin clean.
 - [ ] Step 3 — the catalog forgets the download (`ModelCatalog.kt`)
   - Notes:
 - [ ] Step 4 — the two 32-bit special cases go (`ModelManagerModule.kt`)
