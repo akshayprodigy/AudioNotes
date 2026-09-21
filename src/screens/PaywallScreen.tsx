@@ -16,6 +16,7 @@ import Icon, { type IconName } from '../components/Icon';
 import Mascot from '../components/Mascot';
 import { Button, IconButton, Pop, ProgressBar, Raised, SoftButton, Txt } from '../components/ui';
 import { downloadLabel, downloadPct } from './downloadLabel';
+import { runnable, sizeMb, spaceFits, spaceReason, writerBlockedReason } from './deviceFit';
 import {
   TRIAL_DAYS,
   TRIAL_SUMMARIES,
@@ -56,8 +57,11 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Paywall'>;
  *     money, because that is where it is worth something. Export stays free deliberately: the
  *     document a free user forwards to five colleagues is the acquisition loop, and charging for
  *     it would be charging for our own marketing.
+ *   - Nothing is promised to a phone that cannot keep the promise. The two rows the writer
+ *     delivers say "Not on this phone" — with the memory it needs and has — on a phone under
+ *     the gate, before the trial or the price.
  */
-const INCLUDED: { icon: IconName; title: string; body: string }[] = [
+const INCLUDED: { icon: IconName; title: string; body: string; needsWriter?: boolean }[] = [
   {
     icon: 'search',
     title: 'Search everything you have recorded',
@@ -71,6 +75,7 @@ const INCLUDED: { icon: IconName; title: string; body: string }[] = [
     body:
       'A model on your phone reads the whole transcript and writes what the meeting was about, in ' +
       'sentences — instead of the highest-scoring lines lifted out of it.',
+    needsWriter: true,
   },
   {
     icon: 'list',
@@ -78,6 +83,7 @@ const INCLUDED: { icon: IconName; title: string; body: string }[] = [
     body:
       'The same model narrates the decisions and the actions into prose you can send to someone ' +
       'who was not there, with the rule-based list still underneath it.',
+    needsWriter: true,
   },
   {
     icon: 'ai',
@@ -115,6 +121,10 @@ export default function PaywallScreen({ navigation }: Props) {
   // entitlement to run a model the phone does not have is a trial of nothing.
   const [writerMb, setWriterMb] = useState(0);
   const [writerInstalled, setWriterInstalled] = useState(false);
+  // The sentence for a phone under the writer's gate — null when it runs here. From the rows.
+  const [writerBlocked, setWriterBlocked] = useState<string | null>(null);
+  // The disk sentence for the trial's download — null when it fits, or when nothing is pending.
+  const [spaceShort, setSpaceShort] = useState<string | null>(null);
   // Bytes, not a percentage. See downloadLabel: on a 1.1 GB model the percentage barely
   // moves, and a still number reads as a stalled download.
   const [dl, setDl] = useState<{ downloaded: number; total: number } | null>(null);
@@ -154,11 +164,25 @@ export default function PaywallScreen({ navigation }: Props) {
   useEffect(() => {
     ModelManager.list()
       .then(r => {
-        const all: { id: string; kind: string; sizeBytes: number; installed: boolean }[] =
+        const all: { id: string; kind: string; sizeBytes: number; installed: boolean; unsupportedReason?: string | null }[] =
           JSON.parse(r);
-        const writer = all.filter(m => m.kind === 'llm');
-        setWriterMb(Math.round(writer.reduce((a, m) => a + m.sizeBytes, 0) / 1e6));
+        // The writer's set on THIS phone: the meaning index everywhere, the model itself only
+        // where it fits. What the trial downloads and what the note prices are the same set.
+        const writer = runnable(all.filter(m => m.kind === 'llm'));
+        setWriterBlocked(writerBlockedReason(all));
+        setWriterMb(sizeMb(writer));
         setWriterInstalled(writer.length > 0 && writer.every(m => m.installed));
+        // Then the disk, for what the trial would still fetch. Said under the trial button; the
+        // native refusal repeats it on the tap.
+        const pendingBytes = writer.filter(m => !m.installed).reduce((a, m) => a + m.sizeBytes, 0);
+        if (pendingBytes > 0) {
+          ModelManager.deviceFit()
+            .then(r => {
+              const fit: { freeBytes: number } = JSON.parse(r);
+              setSpaceShort(spaceFits(pendingBytes, fit.freeBytes) ? null : spaceReason('the writer', pendingBytes, fit.freeBytes));
+            })
+            .catch(() => {});
+        }
       })
       .catch(() => {});
   }, []);
@@ -184,10 +208,10 @@ export default function PaywallScreen({ navigation }: Props) {
     try {
       await startTrial();
       await load();
-      const list: { id: string; kind: string; installed: boolean }[] = JSON.parse(
+      const list: { id: string; kind: string; installed: boolean; unsupportedReason?: string | null }[] = JSON.parse(
         await ModelManager.list(),
       );
-      const missing = list.filter(m => m.kind === 'llm' && !m.installed);
+      const missing = runnable(list).filter(m => m.kind === 'llm' && !m.installed);
       for (const m of missing) {
         setDl({ downloaded: 0, total: 0 });
         await ModelManager.download(m.id);
@@ -269,23 +293,31 @@ export default function PaywallScreen({ navigation }: Props) {
         </View>
 
         <View style={st.list}>
-          {INCLUDED.map((f, i) => (
-            <Pop key={f.title} index={i + 2}>
-              <Raised edge={colors.line} fill={colors.card} rad={radius.card} depth={5}>
-                <View style={st.feature}>
-                  <View style={[st.featureIcon, { backgroundColor: colors.primarySoft }]}>
-                    <Icon name={f.icon} size={s(20)} color={colors.primary} strokeWidth={2.4} />
+          {INCLUDED.map((f, i) => {
+            const off = f.needsWriter === true && writerBlocked !== null;
+            return (
+              <Pop key={f.title} index={i + 2}>
+                <Raised edge={colors.line} fill={colors.card} rad={radius.card} depth={5}>
+                  <View style={st.feature}>
+                    <View style={[st.featureIcon, { backgroundColor: off ? colors.warningSoft : colors.primarySoft }]}>
+                      <Icon name={f.icon} size={s(20)} color={off ? colors.warning : colors.primary} strokeWidth={2.4} />
+                    </View>
+                    <View style={st.flex}>
+                      <Txt variant="cardTitleSm">{f.title}</Txt>
+                      <Txt variant="chip" color={colors.inkSoft} style={st.featureBody}>
+                        {f.body}
+                      </Txt>
+                      {off ? (
+                        <Txt variant="chip" color={colors.warning} style={st.featureBody}>
+                          Not on this phone. {writerBlocked}
+                        </Txt>
+                      ) : null}
+                    </View>
                   </View>
-                  <View style={st.flex}>
-                    <Txt variant="cardTitleSm">{f.title}</Txt>
-                    <Txt variant="chip" color={colors.inkSoft} style={st.featureBody}>
-                      {f.body}
-                    </Txt>
-                  </View>
-                </View>
-              </Raised>
-            </Pop>
-          ))}
+                </Raised>
+              </Pop>
+            );
+          })}
         </View>
 
         {/* Said on the paywall, where it costs something to say. A free tier stated only in
@@ -302,7 +334,7 @@ export default function PaywallScreen({ navigation }: Props) {
         {dl !== null ? (
           <View style={st.dl}>
             <Txt variant="chip" color={colors.inkSoft}>
-              Downloading the writer — {downloadLabel(dl.downloaded, dl.total)}
+              Downloading the {writerBlocked ? 'meaning index' : 'writer'} — {downloadLabel(dl.downloaded, dl.total)}
             </Txt>
             <ProgressBar pct={downloadPct(dl.downloaded, dl.total)} color={colors.primary} track={colors.cardAlt} />
           </View>
@@ -330,6 +362,11 @@ export default function PaywallScreen({ navigation }: Props) {
                       ? '.'
                       : ` — but it downloads a ${writerMb} MB model first, so start it on wifi.`}
                   </Txt>
+                  {spaceShort ? (
+                    <Txt variant="chip" color={colors.warning} style={st.note}>
+                      {spaceShort}
+                    </Txt>
+                  ) : null}
                 </>
               ) : null}
 
