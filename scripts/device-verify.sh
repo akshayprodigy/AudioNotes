@@ -195,8 +195,10 @@ fi
 FAILED=0
 : > /tmp/instr.skips
 : > /tmp/instr-run.out
+MATCHED=0
 for CLASS in "${CLASSES[@]}"; do
   if [ -n "$FILTER" ] && [[ "$CLASS" != *"$FILTER"* ]]; then continue; fi
+  MATCHED=$((MATCHED + 1))
   echo
   echo "==> $CLASS"
   # Tests assumeTrue() their way out when a model is missing, so a clean device reports skipped
@@ -247,6 +249,17 @@ for CLASS in "${CLASSES[@]}"; do
     fi
   fi
 done
+
+# A filter that names no class in the list ran nothing — and then printed the pass epilogue, which
+# is how `device-verify.sh VerificationProbeTest` (a class deliberately kept OUT of CLASSES) read as
+# a pass on 21 Sep. Nothing here is allowed to pass by not running; that includes the loop itself.
+if [ -n "$FILTER" ] && [ "$MATCHED" = 0 ]; then
+  echo "no class in CLASSES matches '$FILTER' — nothing ran. The build was installed; for a class"
+  echo "outside the list run it by name:"
+  echo "  $ADB shell am instrument -w -r -e class com.innocorelabs.verbale.$FILTER \\"
+  echo "    com.innocorelabs.verbale.test/androidx.test.runner.AndroidJUnitRunner"
+  exit 1
+fi
 
 echo
 if [ "$FAILED" = "1" ]; then

@@ -104,6 +104,15 @@ PROBE device: total=1862561792 marketed=2 GB writerFits=false cpuFits=true free=
 because this is the 32-bit bench build — the same tablet's A53+A73 cores would read `false` under
 a 64-bit build, which is the point of the check; it cannot be exercised on this device by design.
 
+**Review (the brain, 21 Sep).** Faithful: every file byte-for-byte the sheet's where the sheet gave
+code; file set exactly §5; tree clean; no worktree. Kotlin JVM suites forced (`cleanTestDebugUnitTest`):
+305 tests, 0 failed; the other stages re-run clear. The three deviations in §3 are all the sheet's:
+two grep counts miscounted by the brain, and `device-verify.sh <Filter>` — which printed "passed"
+having run nothing; fixed in review (a filter that matches no class now fails and prints the
+`am instrument` line to run instead). **End-to-end on the tablet:** the release build's onboarding
+shows *…downloads 227 MB more. Writing the minutes in plain English needs a phone with 4 GB of
+memory; this one has 2 GB.* and the writer card amber, sentence, no switch — §7 step 1 as written.
+
 ## 7. For the founder to test by hand (on the Galaxy Tab A, 2 GB)
 
 1. **Onboarding.** Under *Try Pro free for 7 days* the note ends *…downloads 227 MB more. Writing
@@ -139,11 +148,9 @@ a 64-bit build, which is the point of the check; it cannot be exercised on this 
 - The two grep-count self-checks in Steps 4 and 5 (§3 above) don't match the spec's own literal
   code; recorded as spec arithmetic, not code defects — nothing in the actual behaviour is
   affected, and the formal `tsc --noEmit` checks all pass.
-- Step 9(b)'s literal `device-verify.sh` invocation does not exercise `VerificationProbeTest`
-  (§3 above); this session used the equivalent direct `am instrument` call instead. The script
-  itself was left unedited, so a future run of the literal command will reproduce the same
-  no-op unless `scripts/device-verify.sh` is changed to add the class or accept it as an explicit
-  target — out of scope here (`scripts/*` is must-not-change).
+- ~~Step 9(b)'s literal `device-verify.sh` invocation does not exercise `VerificationProbeTest`~~ —
+  **closed in review:** the script now fails on a filter that matches no class and prints the
+  `am instrument` command for a class outside the list.
 - The processor sentence (§6, §7 point 7) has no end-to-end device proof in this session — no
   available test device lacks the ARMv8.2 fp16/dot-product instructions. Coverage today is
   `DeviceFitTest`'s unit-level check against real A53/A73/A76 `/proc/cpuinfo` feature lines; live
