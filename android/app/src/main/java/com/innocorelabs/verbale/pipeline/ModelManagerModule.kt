@@ -64,10 +64,29 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
           // So the UI can say "Pro" against it rather than offering a download that will be
           // refused. The refusal in download() is the enforcement; this is only the honesty.
           .put("needsSubscription", ModelCatalog.needsSubscription(spec))
+          // Why THIS phone cannot run it, as the sentence every screen prints — or null. The
+          // screens used to offer the writer to every phone and let the Summary tab break the
+          // news after a 1.1 GB download; now the row carries the answer before the button.
+          .put("unsupportedReason", DeviceFit.unsupportedReason(ctx, spec) ?: JSONObject.NULL)
           .put("sizeBytes", spec.sizeBytes),
       )
     }
     promise.resolve(arr.toString())
+  }
+
+  /**
+   * The facts about the phone itself, for the screens that offer a download: whether the engines
+   * can run on its processor at all (a sentence, or null) and how much disk is free. One call, so
+   * onboarding and the Pro screen say the same thing DeviceFit says, before the tap.
+   */
+  @ReactMethod
+  fun deviceFit(promise: Promise) {
+    promise.resolve(
+      JSONObject()
+        .put("cpuReason", DeviceFit.cpuReason() ?: JSONObject.NULL)
+        .put("freeBytes", DeviceFit.freeBytes(ctx))
+        .toString(),
+    )
   }
 
   @ReactMethod
@@ -80,6 +99,17 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
     // See list(): the download would replace the hand-placed 32-bit runtime with the 64-bit one.
     if (spec.kind == "runtime" && !DiarBudget.is64BitProcess()) {
       promise.reject("runtime_32bit", "The 32-bit runtime is placed by hand on this device; nothing to download.")
+      return
+    }
+    // The phone before the subscription: a trial on a 2 GB phone must hear "needs 4 GB", not
+    // "subscription required". Like the subscription check, these are the enforcement — the
+    // screens hide the button, but a gate in the bundle is a gate anyone can edit.
+    DeviceFit.cpuReason()?.let {
+      promise.reject("cpu_unsupported", it)
+      return
+    }
+    DeviceFit.unsupportedReason(ctx, spec)?.let {
+      promise.reject("device_unsupported", it)
       return
     }
     // Checked here rather than in JS, for the same reason Narrator.run checks there: a gate in
@@ -121,6 +151,17 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
       for (p in spec.parts) File(modelsDir, p.filename + ".part").delete()
       emitProgress(id, spec.sizeBytes, spec.sizeBytes)
       promise.resolve(File(modelsDir, spec.parts.first().filename).absolutePath)
+      return
+    }
+    // The disk before the network. What is still to come is every part not yet complete, less the
+    // bytes a .part already holds (they are on the disk already and the resume keeps them).
+    val remaining = spec.parts.sumOf { p ->
+      val done = File(modelsDir, p.filename).let { it.exists() && it.length() == p.sizeBytes }
+      if (done) 0L else (p.sizeBytes - File(modelsDir, p.filename + ".part").length()).coerceAtLeast(0L)
+    }
+    val free = DeviceFit.freeBytes(ctx)
+    if (!DeviceFit.spaceFits(remaining, free)) {
+      promise.reject("no_space", DeviceFit.spaceReason(spec.name, remaining, free))
       return
     }
     Thread {

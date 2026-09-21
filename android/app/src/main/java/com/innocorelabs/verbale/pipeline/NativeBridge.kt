@@ -22,6 +22,10 @@ object NativeBridge {
   @Synchronized
   fun ensureLoaded(context: Context) {
     if (loaded) return
+    // Never load engines built for instructions this processor lacks: the crash would be a SIGILL
+    // in the first kernel, with no message. This is the last line of defence — onboarding says the
+    // same sentence before anything is downloaded — and it protects an install that predates it.
+    check(DeviceFit.cpuFits()) { DeviceFit.CPU_REASON }
     val ort = File(ModelCatalog.modelsDir(context), "libonnxruntime.so")
     check(ort.exists()) {
       "libonnxruntime.so not downloaded yet — ModelManager must fetch \"onnxruntime-lib\" first"
