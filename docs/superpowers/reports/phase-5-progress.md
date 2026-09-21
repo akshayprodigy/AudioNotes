@@ -71,6 +71,15 @@
   - `PipelineController.startRecording` passes `mode` unconditionally instead of only when set →
     the `not.toHaveProperty('mode')` assertion on the no-mode call fails. Restored.
   - drop `'question mark'` from `DICTATION_TIP` → the five-marks test fails. Restored.
+- **Step 5**:
+  - `onAdd` stores `'learned'` instead of `'typed'` → the Add test's `toHaveBeenCalledWith(…, 'typed')`
+    fails. Restored.
+  - `onChange` stores `'typed'` instead of `r.source` → the Change test's `toHaveBeenCalledWith(…,
+    'learned')` fails. Restored.
+  - drop the `!meant.trim()` guard in `onAdd` → the both-are-needed test's `not.toHaveBeenCalled()`
+    fails. Restored.
+  - `remove` calls `db.deleteVocabulary(r.id)` directly instead of only inside `onConfirm` → the
+    Remove test's `not.toHaveBeenCalled()` (before tapping the Alert's Remove button) fails. Restored.
 
 ### Step 7 — NOT RUN (phone absent)
 
@@ -143,7 +152,7 @@ Against `09d8037`. Two runs: 2A = Steps 1–4, 2B = Steps 5–8.
 - [x] **Step 2** — where a dictated note says so: the Library card and the meeting header
 - [x] **Step 3** — the mode reaches native: store, controller, and a pure helper for the Record screen's words
 - [x] **Step 4** — the Record screen: Meeting | Dictation
-- [ ] **Step 5** — Settings › Vocabulary: the screen
+- [x] **Step 5** — Settings › Vocabulary: the screen
 - [ ] **Step 6** — Settings › Vocabulary: the row
 - [ ] **Step 7** — "Correct the words" offers a rule
 - [ ] **Step 8** — gate, report, hand-over

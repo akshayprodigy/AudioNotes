@@ -15,6 +15,7 @@ import SearchScreen from '../screens/SearchScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import ArchiveScreen from '../screens/ArchiveScreen';
 import NoticesScreen from '../screens/NoticesScreen';
+import VocabularyScreen from '../screens/VocabularyScreen';
 import ActionsScreen from '../screens/ActionsScreen';
 import PaywallScreen from '../screens/PaywallScreen';
 import ConsentCardScreen from '../screens/ConsentCardScreen';
@@ -43,6 +44,8 @@ export type RootStackParamList = {
   Settings: undefined;
   Archive: undefined;
   Notices: undefined;
+  /** Phase 5: the correction rules, Pro (Settings › Vocabulary). */
+  Vocabulary: undefined;
   /** The card held up to the room. No params: it says the same thing for every meeting. */
   ConsentCard: undefined;
   /** What actually left the phone. No params: it is the whole ledger or nothing. */
@@ -161,6 +164,7 @@ export default function RootNavigator() {
           <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Archive" component={ArchiveScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Notices" component={NoticesScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Vocabulary" component={VocabularyScreen} options={{ headerShown: false }} />
           <Stack.Screen
             name="ConsentCard"
             component={ConsentCardScreen}
