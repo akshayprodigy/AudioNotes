@@ -52,15 +52,37 @@ pending
 
 ### 2.1 Models
 
-pending
+**Which models, and first-run totals** (measured, from §1.1's table, `ModelCatalog.kt`):
+- Free/essentials: `onnxruntime-lib`, `silero-vad`, `whisper-base`, `diar-seg`, `diar-emb` — 113,880,386 bytes (≈113.9 MB).
+- Pro adds, when downloaded: `whisper-small` (190,085,487, opt-in from Settings) and the writer bundle `llm-qwen` + `embed-bge-small` (1,154,127,680, offered at trial start and to Pro). Full Pro total if everything is fetched: 1,458,093,553 bytes (≈1.46 GB).
+
+**Nothing re-downloads later.** `ModelManagerModule.kt:141-152`: once every part of a model is on disk at its catalog size, `allPresent` returns early before any network call — "Guarded here rather than in each caller because this is the one path all three share" (`:134-135`). The comment cites a device observation: before this guard, re-entering onboarding re-fetched the whole 114 MB, "over the user's mobile data … and now off our own mirror's egress" (`:129-131`).
+
+**Offline today — the exact copy a person sees:**
+- Onboarding, the failed-download screen (`OnboardingScreen.tsx:283-289`): *"That download stopped"* / *""{current}" could not be fetched. Check your connection and try again — anything already downloaded is kept, so it picks up where it left off."* Two ways out: "Try again" or "Continue without it".
+- Paywall, trial-start writer download failure (`PaywallScreen.tsx:220-227`, an `Alert.alert`): *"The writer could not be downloaded"* / *"{message}\n\nYour trial has started and nothing has been spent. You can fetch the model from Settings once you are on a better connection."*
+- Settings, the Get failure (`SettingsScreen.tsx:446-448`, an `Alert.alert`): *"Could not download"* / *"{message}"* — the raw error string, no bespoke offline copy.
 
 ### 2.2 Licence
 
-pending
+**What each endpoint establishes** (`server/app/main.py:60-190`):
+- `POST /api/account/signin` (`:65-102`) — authenticates an email/password, registers the device (refusing past `DEVICE_LIMIT`, `:87-91`), issues a device-scoped refresh key and a signed licence token.
+- `POST /api/licence/refresh` (`:105-124`) — no password, just the device-scoped refresh key; also the one place a Play subscription's cancellation or expiry is noticed, since "a Play subscription is pulled, not pushed: there is no webhook telling us it lapsed" (`:117-119`) — silent on any Google failure so an outage there "must not revoke a paying customer" (`:119`).
+- `POST /api/billing/play/link` (`:129-148`) — exchanges a verified Play purchase token for the same token/refresh-key pair the web sign-in path returns; "safe to call repeatedly … each call re-verifies with Google and re-registers the device, so 'restore purchases' is this endpoint and nothing else" (`:138-140`).
+
+**What the device trusts without the network:** the signed token's `expiresAt` doubles as the offline grace window — "The token's remaining life IS the grace period" (`Licence.kt:14-15`) — verified purely by an on-device ECDSA signature check (`Licence.kt:76-107` `verify`), against a clock that only moves forward (`LicenceStore.kt:114-136` `advanceClock`/`monotonicNow`, `Licence.kt:70-72`). The trial is entirely local: `TRIAL_DAYS` / `TRIAL_SUMMARIES` counters live in the encrypted settings store and are checked against the same monotonic clock (`trial.ts:20-49`), with no server involved at all.
+
+**Offline today:** a Pro user with a valid token loses nothing until `exp` (the payload's expiry field, `Licence.kt:29,95`) — `verify` returns `ACTIVE` for any correctly signed, correctly device-bound token where `exp > now` (`Licence.kt:100-106`), and only flips to `EXPIRED` once time actually runs out; there is no separate "haven't phoned home lately" check. `refreshIfNeeded`'s failure path is silent by design — `catch { return null }` (`subscription.ts:120-122`) — so a failed background refresh produces no dialog; the only user-visible failure copy is `signIn`'s and comes from `post()`'s own error handling (`subscription.ts:38-46`): a non-JSON response reads *"The licence server sent something unexpected (HTTP {status})."*, and a JSON refusal surfaces the server's own `error` message or *"The licence server refused the request (HTTP {status})."*
+
+**The sentence the decision turns on** (`BillingModule.kt:27-30`): *"a purchase here produces one thing — a purchase token — and that token is a claim, not a proof. It goes to the licence server, which asks Google whether it is real and mints a signed licence if it is. … Somebody who patches this class gets a token the server will reject."*
 
 ### 2.3 Crash reports
 
-pending
+From `crash.ts`: sent is a stack trace, the app version, and the phone model, *"after somebody has said yes"* (`:5-6`); never sent is "no user id, no custom keys, no logs" and specifically nothing that could carry a transcript line, which is why `recordError` is "deliberately not re-exported" (`:17-19`). The consent gate is `CRASH_CONSENT_KEY` (`:45`), read/written through the encrypted settings store (`crashConsent`/`setCrashConsent`, `:58-79`) and re-applied on every launch — including to turn collection back *off*, because "Crashlytics persists this flag across launches" (`:84-86`). Collection is disabled by default in the manifest, "the only switch that works before any JavaScript runs" (`:15-16`).
+
+The ledger cannot count it: reports are "assembled and uploaded by native Play Services code that this app cannot inspect, intercept or measure" (`:25-26`), which is also why `scripts/check-network-egress.py` no longer lists `telemetry/crash.ts` as an enforced call site (§1).
+
+Files importing `telemetry/crash` (measured — `grep -rl "telemetry/crash" src --include='*.ts' --include='*.tsx' | grep -v __tests__ | wc -l`): **3** — `src/screens/PrivacyScreen.tsx`, `src/screens/SettingsScreen.tsx`, `src/screens/OnboardingScreen.tsx`.
 
 ## 3. The permission-less build, replacement by replacement
 
