@@ -422,7 +422,7 @@ export default function LibraryScreen({ navigation }: Props) {
               )}
               <View style={st.flex} />
               <Txt variant="chipSoft" color={colors.inkFaint}>
-                {[when(m.createdAt), dur(m.durationMs)].filter(Boolean).join(' · ')}
+                {[m.mode === 'dictation' ? 'Dictation' : null, when(m.createdAt), dur(m.durationMs)].filter(Boolean).join(' · ')}
               </Txt>
             </View>
             <Txt variant="cardTitle" style={st.cardTitle} numberOfLines={2}>
@@ -495,7 +495,7 @@ export default function LibraryScreen({ navigation }: Props) {
               {m.title || 'Untitled meeting'}
             </Txt>
             <Txt variant="chipSoft" color={colors.inkFaint} style={st.smallMeta}>
-              {[when(m.createdAt), dur(m.durationMs)].filter(Boolean).join(' · ')}
+              {[m.mode === 'dictation' ? 'Dictation' : null, when(m.createdAt), dur(m.durationMs)].filter(Boolean).join(' · ')}
             </Txt>
           </View>
         </Raised>

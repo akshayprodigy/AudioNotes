@@ -344,6 +344,19 @@ test('a marked moment shows as a highlight with the sentence said there', async 
   expect(texts).toContain('We ship Friday.');
 });
 
+/** Phase 5: a dictated note says so in its header, before the date. */
+test('a dictated note wears Dictation in the header', async () => {
+  (db.getMeeting as jest.Mock).mockResolvedValue({
+    id: 'm1', title: 'Note to Priya', createdAt: 1, durationMs: 60_000, status: 'done',
+    tierUsed: 'free', language: 'en', audioPath: null, audioRetained: 1, mode: 'dictation',
+  });
+  const tree = await render();
+  const texts = tree.root
+    .findAll(n => typeof n.props.children === 'string')
+    .map(n => n.props.children as string);
+  expect(texts.some(t => t.startsWith('Dictation · '))).toBe(true);
+});
+
 /** The processing screen, mid-run: what the running stage's own counts do to it. */
 describe('progress inside a stage', () => {
   /** The "10% · about 13 min left" pill, from the rendered tree rather than component props. */

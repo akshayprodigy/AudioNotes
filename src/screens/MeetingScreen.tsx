@@ -1048,14 +1048,15 @@ export default function MeetingScreen({ route, navigation }: Props) {
             {meeting?.title || 'Meeting'}
           </Txt>
           <Txt variant="chipSoft" color={colors.inkFaint}>
-            {meeting?.createdAt
-              ? new Date(meeting.createdAt).toLocaleString(undefined, {
-                  day: 'numeric',
-                  month: 'short',
-                  hour: 'numeric',
-                  minute: '2-digit',
-                })
-              : ''}
+            {(meeting?.mode === 'dictation' ? 'Dictation · ' : '') +
+              (meeting?.createdAt
+                ? new Date(meeting.createdAt).toLocaleString(undefined, {
+                    day: 'numeric',
+                    month: 'short',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })
+                : '')}
           </Txt>
         </Pressable>
         {meeting?.status === 'done' ? (

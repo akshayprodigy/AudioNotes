@@ -250,6 +250,17 @@ test('badges a paused meeting PAUSED and returns it to TRANSCRIBING on resume', 
   await act(async () => tree.unmount());
 });
 
+/** Phase 5: a dictated note says so on its card, before the date. */
+test('a dictated note wears Dictation on its card', async () => {
+  (db.listMeetings as jest.Mock).mockResolvedValue([{
+    id: 'm1', title: 'Note to Priya', createdAt: Date.now(), durationMs: 90_000, language: 'en',
+    status: 'done', tierUsed: 'free', audioRetained: 1, mode: 'dictation',
+  }]);
+  const tree = await focusTheLibrary();
+  expect(JSON.stringify(tree.toJSON())).toContain('Dictation · ');
+  await act(async () => tree.unmount());
+});
+
 /**
  * The action tracker's front door. The screen existed for a month with nothing opening it; the
  * tally that feeds this card was computed on every focus and rendered nowhere.

@@ -51,6 +51,14 @@
     on the `chip.props.disabled` assertion. Restored.
   - `'one voice'` → `'1 speaker'` → SummaryTab's new test fails on the `speakers` assertion (the
     string now contains neither `'one voice'` nor triggers the `speakers` branch). Restored.
+- **Step 2**:
+  - drop `, mode` from `listMeetings`' SELECT → no test fails, as the spec predicted (the screens
+    under test mock `db.listMeetings` directly, so the real SQL never runs). Recorded per the sheet
+    as covered only by the by-hand run, §7 step 4. Restored.
+  - Library card prefix `'Dictation'` → `'Meeting'` → the new `LibraryScreen.test.tsx` card test
+    fails (`toContain('Dictation · ')`). Restored.
+  - drop the `meeting?.mode === 'dictation' ? 'Dictation · ' : ''` prefix from the `MeetingScreen.tsx`
+    header → the new header test fails (`startsWith('Dictation · ')`). Restored.
 
 ### Step 7 — NOT RUN (phone absent)
 
@@ -120,7 +128,7 @@ Against `09d8037`. Two runs: 2A = Steps 1–4, 2B = Steps 5–8.
 ### Steps
 
 - [x] **Step 1** — "Dictation" is a label, and a dictated note's chip is not a choice
-- [ ] **Step 2** — where a dictated note says so: the Library card and the meeting header
+- [x] **Step 2** — where a dictated note says so: the Library card and the meeting header
 - [ ] **Step 3** — the mode reaches native: store, controller, and a pure helper for the Record screen's words
 - [ ] **Step 4** — the Record screen: Meeting | Dictation
 - [ ] **Step 5** — Settings › Vocabulary: the screen
