@@ -1,7 +1,5 @@
 package com.innocorelabs.verbale.pipeline
 
-import android.app.ActivityManager
-import android.content.Context
 import android.util.Log
 import com.innocorelabs.verbale.data.ModelCatalog
 import com.facebook.react.bridge.Promise
@@ -28,13 +26,10 @@ class LlmModule(private val ctx: ReactApplicationContext) :
     promise.resolve(f != null && f.exists() && f.length() > 0)
   }
 
-  /** Rough device gate: enough RAM to run a ~1.5B Q4 model without thrashing. */
+  /** The device gate, from the one place that also tells the person about it (DeviceFit). */
   @ReactMethod
   fun capable(promise: Promise) {
-    val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-    val mem = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
-    val enoughRam = mem.totalMem >= 3L * 1024 * 1024 * 1024 // >= 3 GB total
-    promise.resolve(enoughRam)
+    promise.resolve(DeviceFit.writerFits(ctx))
   }
 
   /**

@@ -1,6 +1,5 @@
 package com.innocorelabs.verbale.pipeline
 
-import android.app.ActivityManager
 import android.content.Context
 import android.util.Log
 import com.innocorelabs.verbale.billing.LicenceStore
@@ -95,12 +94,8 @@ object Narrator {
     fun isCancelled(): Boolean
   }
 
-  /** Rough device gate: enough RAM to run a ~1.5B Q4 model without thrashing. Matches LlmModule. */
-  fun capable(ctx: Context): Boolean {
-    val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-    val mem = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
-    return mem.totalMem >= 3L * 1024 * 1024 * 1024
-  }
+  /** The device gate, from the one place that also tells the person about it (DeviceFit). */
+  fun capable(ctx: Context): Boolean = DeviceFit.writerFits(ctx)
 
   fun modelFile(ctx: Context) = ModelCatalog.fileFor(ctx, "llm-qwen")?.takeIf { it.exists() }
 
