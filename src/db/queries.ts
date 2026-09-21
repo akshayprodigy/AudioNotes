@@ -593,7 +593,7 @@ export const db = {
    * attempt costs nothing but a retry. The caller is the meeting screen's read
    * (MeetingScreen.refresh), which has to await it before reading.
    *
-   * It can reject on a phone that has not finished downloading libonnxruntime.so, because the
+   * It can reject on a phone that has not finished downloading its models, because the
    * migration re-runs the rule pass through the native core. That is deliberate on the Kotlin side
    * and must never be fatal here: a meeting is readable whether or not it has been migrated yet.
    */

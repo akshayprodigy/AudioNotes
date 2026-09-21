@@ -192,7 +192,7 @@ export type ItemRow = {
  *
  * IT ASKS ABOUT RULE ROWS, NOT ABOUT ROWS, and that is the half Task 12 could most easily have got
  * wrong. `carryUserMinutesOntoItems` runs before the native load — deliberately, so a phone still
- * downloading `libonnxruntime.so` does not open a meeting with the person's own notes missing — so
+ * downloading `its models` does not open a meeting with the person's own notes missing — so
  * an unmigrated meeting somebody typed a decision into arrives here with EXACTLY ONE item, the
  * typed one, and all of its rule-extracted rows still in `minutes`. Under "does this meeting have
  * any items at all" the fallback switches off at that moment and the whole MOM disappears, leaving

@@ -116,7 +116,7 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
     // Nothing upstream checked. Onboarding, Settings and the paywall all call download() for every
     // model they want, so re-entering onboarding re-fetched the whole 114 MB — over the user's
     // mobile data, under a screen that says "Downloading once", and now off our own mirror's
-    // egress. Observed on a device: libonnxruntime.so and silero_vad.onnx were both served again
+    // egress. Observed on a device: two model files were both served again
     // in full, byte for byte, having never left the phone.
     //
     // Guarded here rather than in each caller because this is the one path all three share, which

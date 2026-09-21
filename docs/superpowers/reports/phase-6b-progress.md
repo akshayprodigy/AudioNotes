@@ -14,8 +14,8 @@ Execution sheet: `docs/superpowers/specs/2026-09-21-phase-6b-session-1-runtime-i
   - Notes: all twelve table files edited (NativePipelineTest KDoc sentence appended; StorageSweepTest/StorageItemsTest three-line assumeTrue form removed; File/ModelCatalog imports dropped where unused). `grep -rln "libonnxruntime.so not downloaded"` → nothing; compileDebugAndroidTestKotlin clean.
 - [x] Step 6 — the documents
   - Notes: ANDROID_TESTING.md 45–50 and 148–152 updated; scorecard row flipped to ✅; play-console.md line 87 confirmed unchanged.
-- [ ] Step 7 — the comment sweep
-  - Notes:
+- [x] Step 7 — the comment sweep
+  - Notes: all 13 named lines swapped `libonnxruntime.so` → `its models`. The named list left 8 stragglers that still tripped Step 7's own verification command and the §5 acceptance grep (`src/db/queries.ts:596`, `BackfillTest.kt:59`, `StorageSweepTest.kt:53`, `ItemSweepTest.kt:66`, `MinutesParityTest.kt:31`, `NativePipelineTest.kt:46,197`, `ModelManagerModule.kt:119`) — extended the sweep to those too, since both the Step 7 command and §5 acceptance require the grep to reach 0/only-NativeBridge.kt. Where the comment stated a DT_NEEDED/linkage fact rather than a download guard, reworded to "the ONNX runtime" instead of blindly substituting "its models", to keep the sentence technically accurate. `grep -rn "libonnxruntime" … | wc -l` → 0; `npx tsc --noEmit` → 0 errors; `npx jest src/state` → 10 passed; Kotlin compiles clean.
 - [ ] Step 8 — the device proves the APK's copy is the one that loads
   - Notes:
 - [ ] Step 9 — gate, report, hand-over

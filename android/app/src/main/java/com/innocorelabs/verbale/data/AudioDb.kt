@@ -2492,7 +2492,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    *
    * It was `items(meetingId).isEmpty()` until Task 12, and the difference is the trap that task
    * sets. [carryUserMinutesOntoItems] runs on every open and BEFORE the native load — deliberately,
-   * so a phone still downloading libonnxruntime.so does not open a meeting with the person's own
+   * so a phone still downloading its models does not open a meeting with the person's own
    * notes missing — so it puts an item into a meeting the rules have never run over. Under the old
    * spelling that meeting is excluded from [ensureItems] and from [UNMIGRATED] forever: it never
    * gains its rule items, and its rule-extracted `minutes` stop being drawn the moment the tabs'

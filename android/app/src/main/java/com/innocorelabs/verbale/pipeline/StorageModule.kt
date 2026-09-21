@@ -77,7 +77,7 @@ class StorageModule(private val ctx: ReactApplicationContext) :
       // of a meeting passes through before reading it.
       //
       // Before `ensureLoaded` because both carries are pure SQL — no rules, no core — and a phone
-      // still downloading libonnxruntime.so would otherwise open every meeting with the user's own
+      // still downloading its models would otherwise open every meeting with the user's own
       // corrections and their own typed decisions missing from it. Both are idempotent from the
       // data rather than from a marker, so running them on every open costs one indexed lookup and
       // one scan of this meeting's `minutes` — a scan `db.minutes` pays again on the same open.
@@ -100,7 +100,7 @@ class StorageModule(private val ctx: ReactApplicationContext) :
       // meeting that silently never migrates.
       //
       // Rejecting is the right answer on a phone that has not finished downloading
-      // libonnxruntime.so yet: ensureLoaded fails loudly, and because ensureItems derives "has
+      // its models yet: ensureLoaded fails loudly, and because ensureItems derives "has
       // this been migrated" from the data rather than a flag, the next open simply tries again.
       NativeBridge.ensureLoaded(ctx)
       db.ensureItems(meetingId)

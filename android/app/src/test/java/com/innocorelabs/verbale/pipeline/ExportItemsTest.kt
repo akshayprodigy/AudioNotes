@@ -374,7 +374,7 @@ class ExportItemsTest {
    * THE HOLE THE MOVE OPENS, and the reason the fallback asks about RULE rows rather than rows.
    *
    * `carryUserMinutesOntoItems` runs before the native load, deliberately — a phone still
-   * downloading `libonnxruntime.so` must not open a meeting with the person's own notes missing.
+   * downloading `its models` must not open a meeting with the person's own notes missing.
    * So an unmigrated meeting somebody typed a decision into arrives here with EXACTLY ONE item,
    * the typed one, and every rule-extracted row still in `minutes`. Under "does this meeting have
    * any items" the fallback switches off at that moment and the exported document loses its entire

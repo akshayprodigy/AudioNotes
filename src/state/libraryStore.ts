@@ -235,7 +235,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       if (remaining <= 0) itemsSweptAtCount = count;
     } catch {
       // Left unlatched on purpose: what rejects here is loading the native core on a phone still
-      // downloading libonnxruntime.so, and a meeting reads fine unmigrated. The next focus retries.
+      // downloading its models, and a meeting reads fine unmigrated. The next focus retries.
     } finally {
       itemsRunning = false;
     }

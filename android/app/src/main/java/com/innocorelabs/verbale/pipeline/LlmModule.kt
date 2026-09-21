@@ -43,7 +43,7 @@ class LlmModule(private val ctx: ReactApplicationContext) :
     if (handle != 0L) return handle
     val f = ModelCatalog.fileFor(ctx, "llm-qwen")
     if (f == null || !f.exists()) return 0L
-    // Loads libaudionotes.so + its downloaded libonnxruntime.so dependency first.
+    // Loads libaudionotes.so + its downloaded its models dependency first.
     NativeBridge.ensureLoaded(ctx)
     val threads = maxOf(1, Runtime.getRuntime().availableProcessors() / 2)
     val h = NativeBridge.nativeLlmLoad(f.absolutePath, 8192, threads, /*greedy=*/true, /*repeatPenalty=*/1.15f)

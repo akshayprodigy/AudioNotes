@@ -157,7 +157,7 @@ describe('libraryStore.backfillItems', () => {
 
   /**
    * A rejection is not a latch either, for the same reason and one more: what fails here is
-   * loading the native core on a phone still downloading libonnxruntime.so, which is temporary by
+   * loading the native core on a phone still downloading its models, which is temporary by
    * definition.
    */
   it('does not latch when native rejects', async () => {

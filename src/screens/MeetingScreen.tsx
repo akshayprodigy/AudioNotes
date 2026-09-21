@@ -225,7 +225,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
    * real one.
    *
    * A failure is swallowed and not retried here. What fails is loading the native core — a phone
-   * still downloading libonnxruntime.so — and a meeting is readable whether or not it has been
+   * still downloading its models — and a meeting is readable whether or not it has been
    * migrated. `ensureItems` works out whether a meeting still needs migrating from the data rather
    * than from a flag, so the next open simply tries again.
    *

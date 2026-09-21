@@ -63,7 +63,7 @@ class ItemSweepTest {
 
   /**
    * Rules are pure string work and need no model — but libaudionotes.so carries a DT_NEEDED on
-   * libonnxruntime.so and cannot load without it. Same assumption BackfillTest makes.
+   * the ONNX runtime and cannot load without it. Same assumption BackfillTest makes.
    */
   private fun ensureCore() {
     NativeBridge.ensureLoaded(ctx)

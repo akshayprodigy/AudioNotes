@@ -439,7 +439,7 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
       // question is "have the RULES produced items", not "are there items".
       //
       // `AudioDb.carryUserMinutesOntoItems` runs before the native load, on purpose, so a phone
-      // still downloading libonnxruntime.so does not open a meeting with the person's own notes
+      // still downloading its models does not open a meeting with the person's own notes
       // missing. An unmigrated meeting somebody typed a decision into therefore arrives here with
       // EXACTLY ONE item — the typed one — and every rule-extracted row still in `minutes`. Asked
       // as `items.length() == 0`, the fallback switches off at that moment and the exported

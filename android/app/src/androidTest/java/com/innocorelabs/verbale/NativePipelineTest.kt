@@ -43,7 +43,7 @@ class NativePipelineTest {
    * Load libaudionotes before any external fun is touched.
    *
    * NativeBridge used to self-load in an `init { System.loadLibrary("audionotes") }` block, so
-   * these tests never had to. `2cbc1a2` moved libonnxruntime.so out of the APK to a first-run
+   * these tests never had to. `2cbc1a2` moved the ONNX runtime out of the APK to a first-run
    * download, which means it must now be System.load()ed by absolute path FIRST — so the static
    * init became the explicit ensureLoaded(context) below, and this file was never updated. Every
    * native test here threw UnsatisfiedLinkError as a result; it went unnoticed because the
@@ -193,8 +193,8 @@ class NativePipelineTest {
    * First execution of the diarization path, and the real point of this test is not accuracy —
    * it is that sherpa-onnx and the Silero VAD share ONE ONNX Runtime without blowing up.
    *
-   * Silero resolves ORT lazily via dlopen with ORT_API_MANUAL_INIT, while sherpa links
-   * libonnxruntime.so at load time. Both end up touching the same Ort::Global api pointer, so if
+   * Silero resolves ORT lazily via dlopen with ORT_API_MANUAL_INIT, while sherpa links against the
+   * ONNX runtime at load time. Both end up touching the same Ort::Global api pointer, so if
    * that arrangement is wrong it fails here (or crashes the process) rather than in front of a
    * user. Running VAD first is deliberate: it forces the manual-init path to happen before
    * sherpa's first call.

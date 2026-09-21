@@ -35,7 +35,7 @@ class ProcessingEngine(
 
   fun run() {
     try {
-      // Loads libaudionotes.so, first System.load()ing the downloaded libonnxruntime.so it
+      // Loads libaudionotes.so, first System.load()ing the downloaded its models it
       // depends on (kept out of the APK). Throws a clear error if that download is missing,
       // which the catch below surfaces as a failed run rather than a native crash.
       NativeBridge.ensureLoaded(ctx)

@@ -50,7 +50,7 @@ class StorageSweepTest {
    *
    * The rejection assertion is kept and is not the one that catches a missing `ensureLoaded` (see
    * the class note): it covers the failures that DO reach the outer catch — `AudioDb.get`, the
-   * backlog query, and a genuinely absent libonnxruntime.so, which is the module's business to
+   * backlog query, and a genuinely absent model, which is the module's business to
    * report rather than this test's to pretend about. The items assertion is the one that fails when
    * the core was never loaded.
    *

@@ -553,7 +553,7 @@ class UserItemsMigrationTest {
    * A MEETING WHOSE ONLY ITEM IS HAND-TYPED IS STILL MIGRATED, and this is the trap the move sets.
    *
    * `ensureItems` asked "does this meeting have items yet". The move runs before the native load —
-   * deliberately, so a phone still downloading libonnxruntime.so does not open a meeting with the
+   * deliberately, so a phone still downloading its models does not open a meeting with the
    * person's own notes missing — so it puts an item into a meeting the rules have never run over.
    * Under the old guard that meeting is excluded from `ensureItems` and from the sweep FOREVER: it
    * never gains its rule items, and because the tabs' fallback also asked "are there items" it
@@ -599,7 +599,7 @@ class UserItemsMigrationTest {
    * with it forever. Both can hold typed rows, and on a library swept before this build was
    * installed they are the ONLY meetings that hold them. So `StorageModule.ensureItems` carries as
    * well — before `NativeBridge.ensureLoaded`, because the move is pure SQL and a phone still
-   * downloading libonnxruntime.so must not open every meeting with the person's own notes missing.
+   * downloading its models must not open every meeting with the person's own notes missing.
    *
    * Driven through the bridge method rather than through `AudioDb` directly, because the ordering
    * inside it is the thing under test: the typed rows have to become items BEFORE

@@ -101,7 +101,7 @@ class LiveTranscriber(
 
     try {
       // Before ANY native call. NativeBridge.ensureLoaded System.load()s the downloaded
-      // libonnxruntime.so by absolute path and then libaudionotes.so, and this pass is the first
+      // its models by absolute path and then libaudionotes.so, and this pass is the first
       // thing in the process to touch native code: it runs as the recording STARTS, long before
       // ProcessingEngine would have loaded it. Without this the handles fail with
       // UnsatisfiedLinkError on every meeting, silently, because the live pass swallows its own

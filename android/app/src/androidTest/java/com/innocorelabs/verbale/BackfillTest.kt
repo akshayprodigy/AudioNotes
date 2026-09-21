@@ -56,7 +56,7 @@ class BackfillTest {
 
   /**
    * Rules are pure string work and need no model — but libaudionotes.so carries a DT_NEEDED on
-   * libonnxruntime.so and cannot load without it. Same assumption MinutesParityTest makes.
+   * the ONNX runtime and cannot load without it. Same assumption MinutesParityTest makes.
    */
   private fun ensureCore() {
     NativeBridge.ensureLoaded(ctx)

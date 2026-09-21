@@ -28,7 +28,7 @@ import org.junit.runner.RunWith
  *     all checked against one artifact and cannot quietly diverge.
  *
  * Unlike the rest of NativePipelineTest this needs NO model files — the rules are pure string work
- * — so it runs on any device. It does still need libonnxruntime.so present, because
+ * — so it runs on any device. It does still need the ONNX runtime present, because
  * libaudionotes.so carries a DT_NEEDED on it and cannot load without it.
  *
  * Run with:  ./gradlew connectedDebugAndroidTest
