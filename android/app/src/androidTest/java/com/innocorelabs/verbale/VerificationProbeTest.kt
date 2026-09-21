@@ -20,7 +20,7 @@ class VerificationProbeTest {
     val db = AudioDb.get(ctx)
     val meetings = JSONArray(
       db.rawQueryJson(
-        "SELECT id, title, status, duration_ms, embedded_at, tier_used, template, template_source " +
+        "SELECT id, title, status, duration_ms, embedded_at, tier_used, template, template_source, mode " +
           "FROM meetings ORDER BY created_at DESC LIMIT 3",
         arrayOf(),
       ),
@@ -33,7 +33,7 @@ class VerificationProbeTest {
       val id = m.getString("id")
       println("PROBE meeting $id status=${m.optString("status")} title=${m.optString("title")} " +
         "duration=${m.optLong("duration_ms")} embedded_at=${m.opt("embedded_at")} tier=${m.optString("tier_used")} " +
-        "template=${m.opt("template")} template_source=${m.opt("template_source")}")
+        "template=${m.opt("template")} template_source=${m.opt("template_source")} mode=${m.opt("mode")}")
       val tagNames = JSONArray(db.rawQueryJson("SELECT name FROM tags WHERE meeting_id=? ORDER BY name", arrayOf(id)))
         .let { arr -> (0 until arr.length()).map { arr.getJSONObject(it).getString("name") } }
       println("PROBE   tags: $tagNames")
@@ -57,6 +57,12 @@ class VerificationProbeTest {
       println("PROBE   edits: " + db.rawQueryJson("SELECT target_kind, target_key, content FROM edits WHERE meeting_id=?", arrayOf(id)))
       val utts = db.utterances(id)
       println("PROBE   utterances (${utts.size}): " + utts.take(12).joinToString(" | ") { "${it.startMs / 1000}s ${it.speakerId ?: "?"}: ${it.text}" })
+      // Phase 5: which of the first lines a rule or a spoken mark rewrote (text_raw kept).
+      val raw = JSONArray(db.rawQueryJson(
+        "SELECT text_raw IS NOT NULL AS rewritten FROM utterances WHERE meeting_id=? ORDER BY start_ms LIMIT 6",
+        arrayOf(id),
+      ))
+      println("PROBE   rewritten: " + (0 until raw.length()).joinToString(",") { raw.getJSONObject(it).getInt("rewritten").toString() })
       // Phase 4: per-speaker voice + suggestion, and the total people count.
       val spkRows = JSONArray(db.rawQueryJson(
         "SELECT display_name, voice IS NOT NULL AS has_voice, suggested_person " +
@@ -70,6 +76,9 @@ class VerificationProbeTest {
       }
     }
     println("PROBE people count: ${db.peopleCount()}")
+    // Phase 5: the vocabulary, whole — it is small and it is the thing a by-hand run changes.
+    val vocab = JSONArray(db.rawQueryJson("SELECT heard, meant, source, uses FROM vocabulary ORDER BY created_at", arrayOf()))
+    println("PROBE vocabulary (${vocab.length()}): $vocab")
     if (threadTagToProbe != null) {
       println("PROBE thread($threadTagToProbe): ${db.threadJson(ctx, threadTagToProbe)}")
     } else {

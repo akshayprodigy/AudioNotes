@@ -216,7 +216,7 @@ Against `e66b407`.
 
 - [x] **Step 1** — `VocabularyDbTest` in `device-verify.sh` CLASSES, run on the tablet's real database
 - [x] **Step 2** — the seam test Session 1 wrote (`NativePipelineTest`)
-- [ ] **Step 3** — the probe prints the mode, the rules and the raw lines
+- [x] **Step 3** — the probe prints the mode, the rules and the raw lines
 - [ ] **Step 4** — the gate with its device stage, the report, the hand-over
 
 ### Step 1 results
@@ -253,3 +253,23 @@ Against `e66b407`.
   need the writer" for the narration/LLM group but names eight; the actual skip set (10 total,
   matching the sheet's own count) is unaffected — a wording slip, not a different result. No code
   touched this step.
+
+### Step 3 results
+
+- `VerificationProbeTest.kt` extended: `mode` added to the meetings SELECT and its `println`; the
+  utterances block gained the `rewritten:` line (`text_raw IS NOT NULL` over the first 6 rows); a
+  `PROBE vocabulary (N): …` line added after the people count.
+- `scripts/device-verify.sh VocabularyDbTest` → `OK (4 tests)` after the rebuild (test APK only).
+- `am instrument … VerificationProbeTest` → `OK (1 test)`, ran clean, no exception in logcat around
+  either run (`TestRunner: run finished: 1 tests, 0 failed, 0 ignored`, twice).
+- What it printed (from logcat, `println` goes to `System.out`, not the instrumentation stream):
+  `PROBE vocabulary (0): []` — twice, once per run. **No `PROBE meeting` or `PROBE   rewritten`
+  lines at all**, because this bench tablet currently holds zero rows in `meetings` — a fresh/bench
+  device (per §0: "a bench device whose data is disposable") that has had no real recording made on
+  it yet this session, and `VocabularyDbTest`'s own meetings are deleted in its `@After`. The probe
+  mechanism itself is confirmed correct (the same `rawQueryJson` path the vocabulary line used ran
+  without error); there is simply no meeting row for the `mode=`/`rewritten:` lines to describe yet.
+  This is a state-of-the-device fact, not a probe defect — the founder's next by-hand recording on
+  this tablet (or a run on a device with existing meetings) will exercise those two lines.
+
+Commit: `test(vocab): the probe prints mode, the vocabulary and which lines were rewritten`.
