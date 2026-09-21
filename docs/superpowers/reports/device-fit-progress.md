@@ -6,7 +6,7 @@ Against `259ab72`, spec `docs/superpowers/specs/2026-09-21-device-fit-execution.
 
 - [x] Step 1 — the two gates read the one fact (65ec0cc)
 - [x] Step 2 — the rows say it, the download refuses it, the engine will not load where it would crash (d911ff8)
-- [ ] Step 3 — the pure helper the screens share
+- [x] Step 3 — the pure helper the screens share (b3453d9)
 - [ ] Step 4 — onboarding: the sentence instead of the switch
 - [ ] Step 5 — the Pro screen: "Not on this phone" on the two rows it cannot keep
 - [ ] Step 6 — Settings: the sentence instead of Get
@@ -17,5 +17,10 @@ Against `259ab72`, spec `docs/superpowers/specs/2026-09-21-device-fit-execution.
 ## Decisions
 
 ## Mutants
+
+- Step 3, `deviceFit.ts` `runnable`: `!m.unsupportedReason` → `true` — 1 failed, restored.
+- Step 3, `deviceFit.ts` `writerBlockedReason`: `?? null` → `?? ''` — 1 failed, restored.
+- Step 3, `deviceFit.ts` `sizeMb`: `/ 1e6` → `/ 1e5` — 1 failed, restored.
+- Step 3, `deviceFit.ts` `spaceFits`: `>=` → `>` — 1 failed, restored.
 
 ## Notes
