@@ -25,7 +25,15 @@ import Mascot from '../components/Mascot';
 import Icon, { type IconName } from '../components/Icon';
 import { Button, IconButton, Pop, Raised, Segmented, SoftButton, Txt } from '../components/ui';
 import { capMsFor, capPhase, countdown, FREE_CAP_MS } from '../billing/recordingCap';
-import { DICTATION_TIP, RECORD_MODES, RECORD_MODE_KEY, idleHint, modeLabel, recordModeOf, type RecordMode } from './recordMode';
+import {
+  DICTATION_TIP,
+  RECORD_MODES,
+  RECORD_MODE_KEY,
+  idleHint,
+  modeLabel,
+  recordModeOf,
+  type RecordMode,
+} from './recordMode';
 import { entitlement, startTrial } from '../billing/trial';
 import { radius, s, sv, useTheme, type Colors } from '../theme';
 

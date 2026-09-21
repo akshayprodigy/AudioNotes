@@ -139,6 +139,26 @@ Findings, all the sheet's fault, fixed in the review commit:
 Step 7 (device tests + probe) moves to the device session's sheet — it is device work and the
 phone was absent on 18 and 21 Sep.
 
+## Review of Session 2 (Opus, 21 Sep)
+
+Gate re-run with the Kotlin suites forced: 298 Kotlin / 0, jest 584 / 0 (the +35 over Session 1 is
+exactly the new tests), types, scans, mutations, cpp ok. `git diff --stat 09d8037..HEAD` names only
+the §5 files. `VocabularyScreen.tsx` and its test are byte-for-byte the sheet's listings; every
+other diff read against the sheet — faithful. No stale worktree this time.
+
+Both decisions the builder took were the SHEET's defects, and both were handled right:
+- The SummaryTab meta line: my JSX made a multi-child `Txt`, so my own 1e test could never have seen
+  `'one voice'` as a string child. Collapsing it to one template string is the correct fix.
+- The Step 4 copy grep expected 3 and matches 4 because the import line names `DICTATION_TIP`.
+  Arithmetic error in the sheet.
+
+One hygiene fix in the review commit: the 133-character `recordMode` import in `RecordScreen.tsx`
+wrapped one name per line, as the file's other long imports are. Nothing else to change.
+
+Not covered by any test and to be watched on the phone: the `, mode` in `listMeetings` (mocked in
+jest), and a dictated meeting's Script with no speaker rows at all (the no-diar-models path renders
+it; never exercised with `mode='dictation'`).
+
 ## Notes for the next session
 
 - Step 1 Kotlin `SchemaTest`: 21 tests, 0 failures (spec §4 said "22"). The file at `9f05928` had
