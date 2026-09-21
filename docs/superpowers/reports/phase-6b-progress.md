@@ -6,8 +6,8 @@ Execution sheet: `docs/superpowers/specs/2026-09-21-phase-6b-session-1-runtime-i
   - Notes: excludes line dropped `libonnxruntime.so`; comment rewritten. `grep -c "libonnxruntime.so'"` → 0.
 - [x] Step 2 — the core loads it by name (`NativeBridge.kt`)
   - Notes: `System.loadLibrary("onnxruntime")` then `"audionotes"`; File/ModelCatalog imports removed (unused). compileDebugKotlin clean.
-- [ ] Step 3 — the catalog forgets the download (`ModelCatalog.kt`)
-  - Notes:
+- [x] Step 3 — the catalog forgets the download (`ModelCatalog.kt`)
+  - Notes: `onnxruntime-lib` ModelSpec + comment deleted; silero-vad is now the first row. compileDebugKotlin clean.
 - [ ] Step 4 — the two 32-bit special cases go (`ModelManagerModule.kt`)
   - Notes:
 - [ ] Step 5 — thirteen device tests stop waiting for a download that will never come
