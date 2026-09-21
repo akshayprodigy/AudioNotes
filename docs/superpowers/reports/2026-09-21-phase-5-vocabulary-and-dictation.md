@@ -230,5 +230,5 @@ Session 3 (device, 21 Sep):
 Review of Session 3 (the brain, 21 Sep):
 
 ```
-6be5974 fix(vocab): COALESCE is the one guard on text_raw — the Kotlin binding duplicated it and made the device mutant equivalent
+1b20e4b fix(vocab): COALESCE is the one guard on text_raw — the Kotlin binding duplicated it and made the device mutant equivalent
 ```
