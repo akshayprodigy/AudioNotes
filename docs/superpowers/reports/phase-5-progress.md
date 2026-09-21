@@ -20,6 +20,12 @@
   it renders as a single string child; behaviour and copy are unchanged (still "`N min · one voice`"
   / "`N min · K speakers`"), only how many child nodes the JSX produces. Verified no other test in
   the suite reads that line's old multi-child shape.
+- **Session 2, Step 4 copy check**: the sheet's `grep -c "idleHint(mode, capMs)\|{modeLabel(mode)} ·\|DICTATION_TIP" src/screens/RecordScreen.tsx` expects 3; the faithful implementation gives 4,
+  because the `import { DICTATION_TIP, … } from './recordMode';` line itself contains the substring
+  `DICTATION_TIP` and is a 4th matching line — grep counts matching lines, and an import that names
+  the symbol it uses can never avoid matching its own usage pattern. The three call/usage sites
+  (`{modeLabel(mode)} ·`, `{DICTATION_TIP}`, `idleHint(mode, capMs)`) are exactly the three the sheet
+  intended; the count is an off-by-one in the sheet's arithmetic, not a defect in the screen.
 - **Step 2 golden c.8**: the spec's golden case `unicode letters count as letters` expected
   `"Ravié Ravi"`, but the spec's regex uses `\p{L}\p{N}` — a Unicode class — which (matching the
   test name) treats `é` as a word letter, so the inner `ravi` of `ravié` is NOT a whole-word match.
@@ -136,7 +142,7 @@ Against `09d8037`. Two runs: 2A = Steps 1–4, 2B = Steps 5–8.
 - [x] **Step 1** — "Dictation" is a label, and a dictated note's chip is not a choice
 - [x] **Step 2** — where a dictated note says so: the Library card and the meeting header
 - [x] **Step 3** — the mode reaches native: store, controller, and a pure helper for the Record screen's words
-- [ ] **Step 4** — the Record screen: Meeting | Dictation
+- [x] **Step 4** — the Record screen: Meeting | Dictation
 - [ ] **Step 5** — Settings › Vocabulary: the screen
 - [ ] **Step 6** — Settings › Vocabulary: the row
 - [ ] **Step 7** — "Correct the words" offers a rule

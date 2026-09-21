@@ -23,8 +23,9 @@ import MicVisualizer from '../components/MicVisualizer';
 import LiveWaveform from '../components/LiveWaveform';
 import Mascot from '../components/Mascot';
 import Icon, { type IconName } from '../components/Icon';
-import { Button, IconButton, Pop, Raised, SoftButton, Txt } from '../components/ui';
+import { Button, IconButton, Pop, Raised, Segmented, SoftButton, Txt } from '../components/ui';
 import { capMsFor, capPhase, countdown, FREE_CAP_MS } from '../billing/recordingCap';
+import { DICTATION_TIP, RECORD_MODES, RECORD_MODE_KEY, idleHint, modeLabel, recordModeOf, type RecordMode } from './recordMode';
 import { entitlement, startTrial } from '../billing/trial';
 import { radius, s, sv, useTheme, type Colors } from '../theme';
 
@@ -85,6 +86,8 @@ export default function RecordScreen({ navigation }: Props) {
   // limit without interrupting the recording. Native enforces it; this is only what is shown.
   const [capMs, setCapMs] = useState(FREE_CAP_MS);
   const [lifting, setLifting] = useState(false);
+  // Phase 5: meeting or dictation. Read once with the consent flag; written back on every change.
+  const [mode, setMode] = useState<RecordMode>('meeting');
   const levelRef = useRef(0);
 
   // Acknowledged once, not before every recording — repeating the same notice trains people to
@@ -96,7 +99,16 @@ export default function RecordScreen({ navigation }: Props) {
     db.getSetting('announceRecording')
       .then(v => setAnnounceOn(v !== '0'))
       .catch(() => setAnnounceOn(true));
+    db.getSetting(RECORD_MODE_KEY)
+      .then(v => setMode(recordModeOf(v)))
+      .catch(() => {});
   }, []);
+
+  const onChangeMode = (key: string) => {
+    const next = recordModeOf(key);
+    setMode(next);
+    db.setSetting(RECORD_MODE_KEY, next).catch(() => {});
+  };
 
   useEffect(() => {
     const emitter = new NativeEventEmitter(NativeModules.AudioPipeline);
@@ -214,7 +226,7 @@ export default function RecordScreen({ navigation }: Props) {
           });
         }
       } else if (await ensurePermissions()) {
-        await start(null);
+        await start(null, mode === 'dictation' ? 'dictation' : undefined);
       }
     } finally {
       setBusy(false);
@@ -361,13 +373,24 @@ export default function RecordScreen({ navigation }: Props) {
             </Txt>
           </View>
           <Txt variant="meta" color={colors.inkDim}>
-            Meeting ·{' '}
+            {modeLabel(mode)} ·{' '}
             {new Date().toLocaleDateString(undefined, {
               weekday: 'short',
               day: 'numeric',
               month: 'short',
             })}
           </Txt>
+        </View>
+
+        {/* Phase 5: meeting or dictation, chosen before the first word. Kept mounted while recording —
+            dimmed and inert, not removed — so the stage does not jump under the finger. */}
+        <View style={[st.modeRow, isRecording && st.modeDim]} pointerEvents={isRecording ? 'none' : 'auto'}>
+          <Segmented items={RECORD_MODES} value={mode} onChange={onChangeMode} />
+          {mode === 'dictation' && !isRecording ? (
+            <Txt variant="chip" color={colors.inkSoft} style={st.modeTip}>
+              {DICTATION_TIP}
+            </Txt>
+          ) : null}
         </View>
 
         <View style={st.stage}>
@@ -381,9 +404,7 @@ export default function RecordScreen({ navigation }: Props) {
           </Txt>
           <Txt variant="bodyStrong" color={colors.inkDim} style={st.hint}>
             {!isRecording
-              ? capMs > 0
-                ? 'Tap to start recording · up to 15 min on Free'
-                : 'Tap to start recording'
+              ? idleHint(mode, capMs)
               : paused
               ? 'Paused — tap resume to continue'
               : 'Listening — tap to finish'}
@@ -491,6 +512,9 @@ function makeStyles(c: Colors) {
 
     topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     statusPill: { paddingHorizontal: s(13), paddingVertical: s(8), borderRadius: radius.pill },
+    modeRow: { marginTop: s(14), gap: s(8) },
+    modeDim: { opacity: 0.45 },
+    modeTip: { textAlign: 'center', paddingHorizontal: s(8) },
 
     stage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     clock: { marginTop: sv(14) },
