@@ -10,6 +10,7 @@ import Icon, { type IconName } from '../components/Icon';
 import Mascot from '../components/Mascot';
 import { Button, Pop, ProgressBar, Raised, SoftButton, Switch, Txt } from '../components/ui';
 import { downloadLabel, downloadPct } from './downloadLabel';
+import { runnable, sizeMb, spaceFits, spaceReason, writerBlockedReason, type DeviceFit } from './deviceFit';
 import { db } from '../db/queries';
 import SignInForm from '../billing/SignInForm';
 import { TRIAL_DAYS, startTrial } from '../billing/trial';
@@ -39,6 +40,7 @@ type Essential = {
   required: boolean;
   needsSubscription: boolean;
   installed: boolean;
+  unsupportedReason?: string | null;
 };
 
 const BULLETS: { icon: IconName; title: string; body: string; tone: 'primary' | 'success' | 'warning' }[] = [
@@ -93,6 +95,15 @@ export default function OnboardingScreen({ navigation }: Props) {
   // `writer` because the switch belongs to the writer: the Pro screen sells the larger
   // transcriber as part of the subscription, not as something to turn off.
   const [proExtras, setProExtras] = useState<Essential[]>([]);
+  // The sentence this phone gets instead of the writer's switch — null on a phone that can run it.
+  // Read from the catalog rows (composed natively, the memory in the GB the phone was sold as) so
+  // this screen never offers a 1.1 GB download the phone cannot use. The meaning index, the other
+  // `llm`-kind model, runs anywhere and stays in the plan.
+  const writerBlocked = writerBlockedReason(writer);
+  // The phone itself: whether the engines can run on its processor at all, and the disk that is
+  // free. null until native answers; the buttons wait for it rather than offer a download that
+  // would be refused on the tap.
+  const [fit, setFit] = useState<DeviceFit | null>(null);
   // Whether the writer model may be fetched at all. ModelManager.download refuses it without a
   // subscription — that refusal is the enforcement — so offering the switch to someone who has
   // not subscribed would be offering a button that cannot work.
@@ -132,6 +143,9 @@ export default function OnboardingScreen({ navigation }: Props) {
         setProExtras(all.filter(m => !m.required && m.needsSubscription && m.kind !== 'llm'));
       })
       .catch(() => {});
+    ModelManager.deviceFit()
+      .then(r => setFit(JSON.parse(r)))
+      .catch(() => setFit({ cpuReason: null, freeBytes: Number.MAX_SAFE_INTEGER }));
   }, []);
 
   useEffect(() => {
@@ -153,16 +167,20 @@ export default function OnboardingScreen({ navigation }: Props) {
   const proChosen = paid || tier === 'pro';
 
   const chosen = proChosen
-    ? [...essentials, ...proExtras, ...(wantWriter ? writer : [])]
+    ? runnable([...essentials, ...proExtras, ...(wantWriter ? writer : [])])
     : essentials;
-  const totalMb = Math.round(
-    chosen.filter(m => !m.installed).reduce((a, m) => a + m.sizeBytes, 0) / 1e6,
-  );
-  const writerMb = Math.round(writer.reduce((a, m) => a + m.sizeBytes, 0) / 1e6);
-  /** What taking Pro adds over free, which is more than the writer on its own. */
-  const proMb = Math.round(
-    [...proExtras, ...writer].reduce((a, m) => a + m.sizeBytes, 0) / 1e6,
-  );
+  const pending = chosen.filter(m => !m.installed);
+  const totalMb = sizeMb(pending);
+  const writerMb = sizeMb(runnable(writer));
+  /** What taking Pro adds over free on THIS phone, which is more than the writer on its own. */
+  const proMb = sizeMb(runnable([...proExtras, ...writer]));
+  // The disk sentence for THIS plan, or null. Said in place of the Download button, because a
+  // button that fails on the tap with the same sentence is a worse version of the sentence.
+  const pendingBytes = pending.reduce((a, m) => a + m.sizeBytes, 0);
+  const spaceShort =
+    fit !== null && pendingBytes > 0 && !spaceFits(pendingBytes, fit.freeBytes)
+      ? spaceReason(proChosen ? 'the Pro models' : 'the speech models', pendingBytes, fit.freeBytes)
+      : null;
 
   /**
    * Taking Pro at setup starts the TRIAL, not a purchase.
@@ -329,6 +347,20 @@ export default function OnboardingScreen({ navigation }: Props) {
     );
   }
 
+  if (fit?.cpuReason) {
+    return (
+      <View style={[st.root, st.center, pad]}>
+        <Mascot mood="asleep" size={sv(140)} />
+        <Txt variant="display" style={st.mt}>
+          Not this phone
+        </Txt>
+        <Txt variant="body" color={colors.inkSoft} style={[st.sub, st.failBody]}>
+          {fit.cpuReason}
+        </Txt>
+      </View>
+    );
+  }
+
   return (
     // A ScrollView, not a View. This screen is the tallest in the app and on a 6" phone its
     // content is ~50dp taller than the viewport. In a plain View the only give was `list`'s
@@ -381,9 +413,9 @@ export default function OnboardingScreen({ navigation }: Props) {
             <SoftButton label={`Try Pro free for ${TRIAL_DAYS} days`} icon="ai" onPress={choosePro} />
           </View>
           <Txt variant="chip" color={colors.inkFaint} style={[st.centerText, st.note]}>
-            Free records, transcribes and pulls out the decisions and actions — no account, for as
-            long as you use it. Pro writes the minutes as prose, transcribes with a larger model,
-            and downloads {proMb} MB more.
+            {writerBlocked
+              ? `Free records, transcribes and pulls out the decisions and actions — no account, for as long as you use it. Pro transcribes with a larger model and searches by meaning, and downloads ${proMb} MB more. ${writerBlocked}`
+              : `Free records, transcribes and pulls out the decisions and actions — no account, for as long as you use it. Pro writes the minutes as prose, transcribes with a larger model, and downloads ${proMb} MB more.`}
           </Txt>
         </Pop>
       ) : null}
@@ -412,20 +444,23 @@ export default function OnboardingScreen({ navigation }: Props) {
         {writer.length > 0 ? (
           <Raised edge={colors.line} fill={colors.card} rad={radius.card} depth={5}>
             <View style={st.bullet}>
-              <View style={[st.bulletIcon, { backgroundColor: colors.primarySoft }]}>
-                <Icon name="edit" size={s(20)} color={colors.primary} strokeWidth={2.4} />
+              <View style={[st.bulletIcon, { backgroundColor: writerBlocked ? colors.warningSoft : colors.primarySoft }]}>
+                <Icon name="edit" size={s(20)} color={writerBlocked ? colors.warning : colors.primary} strokeWidth={2.4} />
               </View>
               <View style={st.flex}>
                 <Txt variant="cardTitleSm">Write the minutes in plain English</Txt>
                 <Txt variant="chip" color={colors.inkSoft} style={st.bulletBody}>
-                  {proChosen
-                    ? `Adds ${writerMb} MB. Without it you still get minutes, pulled out by rule rather than written as prose.`
-                    : `Part of the subscription — a ${writerMb} MB model that runs on your phone. You still get minutes without it, pulled out by rule rather than written as prose.`}
+                  {writerBlocked
+                    ? `${writerBlocked} The minutes here are pulled out by rule, and everything else in Pro works on this phone.`
+                    : proChosen
+                      ? `Adds ${writerMb} MB. Without it you still get minutes, pulled out by rule rather than written as prose.`
+                      : `Part of the subscription — a ${writerMb} MB model that runs on your phone. You still get minutes without it, pulled out by rule rather than written as prose.`}
                 </Txt>
               </View>
               {/* No switch when there is nothing to switch on. A control that reports a
-                  subscription error on tap is worse than an honest sentence. */}
-              {proChosen ? <Switch on={wantWriter} onToggle={() => setWantWriter(v => !v)} /> : null}
+                  subscription error on tap is worse than an honest sentence.
+                  No switch either when the phone cannot run the model — the sentence is the whole card. */}
+              {proChosen && !writerBlocked ? <Switch on={wantWriter} onToggle={() => setWantWriter(v => !v)} /> : null}
             </View>
           </Raised>
         ) : null}
@@ -480,12 +515,16 @@ export default function OnboardingScreen({ navigation }: Props) {
               />
             )}
           </View>
+        ) : spaceShort ? (
+          <Txt variant="chip" color={colors.warning} style={[st.centerText, st.note]}>
+            {spaceShort}
+          </Txt>
         ) : (
           <Button
             label={totalMb > 0 ? `Download (${totalMb} MB)` : 'Download'}
             icon="download"
             onPress={downloadAll}
-            disabled={chosen.length === 0}
+            disabled={chosen.length === 0 || fit === null}
             full
           />
         )}
