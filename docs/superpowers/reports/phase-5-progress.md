@@ -215,7 +215,7 @@ Against `e66b407`.
 ### Steps
 
 - [x] **Step 1** — `VocabularyDbTest` in `device-verify.sh` CLASSES, run on the tablet's real database
-- [ ] **Step 2** — the seam test Session 1 wrote (`NativePipelineTest`)
+- [x] **Step 2** — the seam test Session 1 wrote (`NativePipelineTest`)
 - [ ] **Step 3** — the probe prints the mode, the rules and the raw lines
 - [ ] **Step 4** — the gate with its device stage, the report, the hand-over
 
@@ -237,3 +237,19 @@ Against `e66b407`.
     unreachable from this test class, not a defect in `AudioDb.kt`.
   - Restored the line (`git diff --stat` on `AudioDb.kt` clean); re-ran → `OK (4 tests)`, logcat
     `run finished: 4 tests, 0 failed, 0 ignored`.
+
+### Step 2 results
+
+- `scripts/device-verify.sh NativePipelineTest` → `OK (18 tests)`; logcat
+  `run finished: 18 tests, 0 failed, 0 ignored` with exactly ten `assumption failed` lines — the
+  same named set the sheet predicted (`a_recording_too_short_to_be_a_meeting_is_not_narrated`,
+  `narration_writes_a_summary_a_narrative_and_a_headline`, `llm_loads_and_generates`,
+  `speaker_voices_returns_one_row_per_speaker`,
+  `diarization_runs_and_shares_the_onnx_runtime_with_vad`,
+  `classifier_grammar_constrains_the_answer`, `processing_a_meeting_headlessly_leaves_it_narrated`,
+  `embedding_is_a_unit_vector_and_near_beats_far`,
+  `narration_with_a_template_covers_at_least_two_of_its_sections`,
+  `narration_resumes_from_committed_digests`). Minor note: the sheet's prose says "the seven that
+  need the writer" for the narration/LLM group but names eight; the actual skip set (10 total,
+  matching the sheet's own count) is unaffected — a wording slip, not a different result. No code
+  touched this step.
