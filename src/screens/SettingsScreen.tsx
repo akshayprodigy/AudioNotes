@@ -826,6 +826,34 @@ export default function SettingsScreen({ navigation }: Props) {
           />
         )}
 
+        {/* Phase 5: the words it should write. Pro, like every cross-meeting memory — but the row is
+            shown to everyone so it can be found, and on free it opens the paywall. `voicesPaid` is the
+            entitlement Settings already holds; it is not about voices. */}
+        <View style={st.ruleWrap}>
+          <SectionRule label="VOCABULARY" />
+        </View>
+        <View style={st.list}>
+          <Raised
+            edge={colors.line}
+            fill={colors.card}
+            rad={radius.xl}
+            depth={5}
+            onPress={() => navigation.navigate(voicesPaid ? 'Vocabulary' : 'Paywall')}>
+            <View style={[st.rowPad, st.row]}>
+              <View style={st.flex}>
+                <Txt variant="bodyStrong">
+                  {voicesPaid ? 'Words it should write' : 'Words it should write (Pro)'}
+                </Txt>
+                <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
+                  Names, companies and terms it keeps mis-hearing — “in over” becomes “Innova”. Applied
+                  after recognition to every recording; the original wording is kept.
+                </Txt>
+              </View>
+              <Icon name="chevronRight" size={s(18)} color={colors.inkFaint} strokeWidth={2.4} />
+            </View>
+          </Raised>
+        </View>
+
         <View style={st.ruleWrap}>
           <SectionRule label="PRIVACY" />
         </View>

@@ -153,6 +153,6 @@ Against `09d8037`. Two runs: 2A = Steps 1–4, 2B = Steps 5–8.
 - [x] **Step 3** — the mode reaches native: store, controller, and a pure helper for the Record screen's words
 - [x] **Step 4** — the Record screen: Meeting | Dictation
 - [x] **Step 5** — Settings › Vocabulary: the screen
-- [ ] **Step 6** — Settings › Vocabulary: the row
+- [x] **Step 6** — Settings › Vocabulary: the row
 - [ ] **Step 7** — "Correct the words" offers a rule
 - [ ] **Step 8** — gate, report, hand-over
