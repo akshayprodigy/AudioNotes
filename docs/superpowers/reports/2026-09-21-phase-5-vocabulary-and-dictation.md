@@ -6,6 +6,9 @@ Session 2 (Steps 1–8, the screens: dictation on the Record screen, the labels,
 Vocabulary, the rule offer) is complete: all eight steps built, tested, mutation-tested and
 committed to `main`; the gate is clear; nothing pushed.
 
+Session 3 (device, 21 September 2026): VocabularyDbTest 4/4 on the Galaxy Tab A (32-bit),
+NativePipelineTest OK (18 tests), the probe extended, the gate clear with its device stage.
+
 ## 2. What was built
 
 **Session 1** (native and data, from `docs/superpowers/reports/phase-5-progress.md`):
@@ -62,6 +65,10 @@ committed to `main`; the gate is clear; nothing pushed.
   specified *regex* both agree on `"ravié Ravi"`; only the golden's expected value disagreed.
   Corrected the golden value to `"ravié Ravi"` so the oracle matches the specified implementation
   and its name. The regex (`Vocabulary.apply`) is left EXACTLY as specified.
+- **Session 3**: a rule whose `meant` is changed does not re-correct lines a previous pass already
+  corrected (rules run over the current text; `text_raw` is a record, not a source) — pinned by
+  `rules_apply_and_keep_the_raw_wording`. ⚑ To make Change retroactive within a meeting,
+  `applyVocabularyToMeeting` would apply rules to `COALESCE(text_raw, text)` instead.
 
 ## 4. Tests
 
@@ -100,8 +107,44 @@ gate: all clear in 113s
 
 ## 6. Device
 
-Not run — Session 3 is the device session. Session 1's Step 7 (VocabularyDbTest, the probe,
-device-verify CLASSES) is still open and is listed there.
+Session 3, 21 September 2026, on the Galaxy Tab A 10.1 (`R52N611D8FE`, SM-T515, 32-bit,
+`-PreactNativeArchitectures=armeabi-v7a`) — a bench device with disposable data.
+
+- **`VocabularyDbTest`** added to `device-verify.sh`'s `CLASSES` after `PeopleDbTest`. `OK (4 tests)`
+  (`dictation_applies_the_marks_and_keeps_raw`, `mode_round_trips`,
+  `rules_apply_and_keep_the_raw_wording`, `put_rejects_blank_and_unknown_source`); logcat confirms
+  `run finished: 4 tests, 0 failed, 0 ignored`.
+- **Device mutant** (`AudioDb.applyVocabularyToMeeting`: `text_raw=COALESCE(text_raw, ?)` →
+  `text_raw=?`): re-ran the class → **did not kill** — `OK (4 tests)` again, logcat
+  `run finished: 4 tests, 0 failed, 0 ignored`. Confirmed genuine (not a stale build): the edited
+  `AudioDb.kt` predated the rebuilt APK. Cause: in both of the test's "second pass" assertions, the
+  row's text after the first pass no longer matches the rule/punctuation input, so
+  `Vocabulary.apply`/`punctuate` return the same string, `next == text`, and the loop's
+  `if (next == text) continue` skips the `UPDATE` before it ever reaches `COALESCE` on a row whose
+  `text_raw` is already set — the mutant is structurally unreachable from this test's call sequence,
+  not a defect in `AudioDb.kt`. Line restored; re-ran → `OK (4 tests)` (logcat confirms), diff clean.
+- **`NativePipelineTest`**: `OK (18 tests)`; logcat `run finished: 18 tests, 0 failed, 0 ignored`
+  with exactly ten `assumption failed` lines, the same named set predicted on 21 Sep
+  (`a_recording_too_short_to_be_a_meeting_is_not_narrated`,
+  `narration_writes_a_summary_a_narrative_and_a_headline`, `llm_loads_and_generates`,
+  `speaker_voices_returns_one_row_per_speaker`,
+  `diarization_runs_and_shares_the_onnx_runtime_with_vad`,
+  `classifier_grammar_constrains_the_answer`, `processing_a_meeting_headlessly_leaves_it_narrated`,
+  `embedding_is_a_unit_vector_and_near_beats_far`,
+  `narration_with_a_template_covers_at_least_two_of_its_sections`,
+  `narration_resumes_from_committed_digests`) — no code touched.
+- **The probe.** `VerificationProbeTest` extended: `mode` in the meetings SELECT and its `println`;
+  a `rewritten:` line per meeting (`text_raw IS NOT NULL` over the first 6 utterances); a
+  `PROBE vocabulary (N): …` line. Ran clean (`OK (1 test)`, no exception in logcat). Printed:
+  `PROBE vocabulary (0): []`. No `PROBE meeting` or `PROBE   rewritten` lines, because this tablet
+  currently holds zero rows in `meetings` — no real recording has been made on it yet this session,
+  and `VocabularyDbTest` deletes its own meetings in `@After`. The mechanism is confirmed correct
+  (the same query path the vocabulary line used ran without error); the `mode=`/`rewritten:` lines
+  are unexercised until a real meeting exists on this device — the founder's by-hand run (§7) or a
+  future session will show them.
+- **The gate**, with its device stage: seven stages `ok` (types, js, scans, mutations, kotlin, cpp,
+  device), the device stage naming `R52N611D8FE`, `gate: all clear in 520s`. `VocabularyDbTest`
+  showed `OK (4 tests)` inside this run too.
 
 ## 7. For the founder to test by hand
 
@@ -150,6 +193,17 @@ device-verify CLASSES) is still open and is listed there.
   runtime.
 - No `RecordScreen` or `SettingsScreen` render test — the wiring for both is `npx tsc --noEmit` plus
   the by-hand run (§7).
+- **Surviving mutant (Session 3, device):** `text_raw=?` in place of `text_raw=COALESCE(text_raw, ?)`
+  in `AudioDb.applyVocabularyToMeeting` is not caught by `VocabularyDbTest` — every "second pass" in
+  that test hits a row whose text no longer matches the rule/punctuation, so the loop's
+  `if (next == text) continue` skips the `UPDATE` before `COALESCE` is ever reached on an
+  already-non-null `text_raw`. Not a product defect (the specified `COALESCE` is in place); would
+  need a test that re-applies a *still-matching* rule to a row already carrying `text_raw` to close.
+- **Unexercised by the device probe (Session 3):** `VerificationProbeTest`'s new `mode=` and
+  `rewritten:` lines printed nothing on the Galaxy Tab A, because the tablet currently has zero rows
+  in `meetings` (bench device, no real recording made on it this session). The query path is
+  confirmed correct via the `PROBE vocabulary (0): []` line; the two new lines need a real meeting
+  on the device to show anything — the founder's by-hand run (§7) will exercise them.
 
 ## 9. Commits
 
@@ -162,4 +216,12 @@ device-verify CLASSES) is still open and is listed there.
 e4508e0 feat(dictation): Dictation on the library card and the meeting header
 56c6dc9 feat(dictation): the Dictation label — chip fixed, one voice
 0afef4c docs(phase5): Session 2 execution sheet — the screens; release plan row updated
+```
+
+Session 3 (device, 21 Sep):
+
+```
+419907e test(vocab): the probe prints mode, the vocabulary and which lines were rewritten
+348d600 test(vocab): NativePipelineTest 18/18 on the Galaxy Tab A, ten assumption skips as predicted
+1d7c2df test(vocab): VocabularyDbTest in device-verify CLASSES — 4/4 on the Galaxy Tab A
 ```
