@@ -141,10 +141,11 @@ class PipelineControllerImpl {
    * the Quick Settings tile, the notification — gets the same limit. A tile that recorded without
    * one would be a free unlimited recorder with a different button.
    */
-  async startRecording(language: string | null): Promise<string> {
+  async startRecording(language: string | null, mode?: 'dictation'): Promise<string> {
     const ent = await entitlement().catch(() => null);
     const capMs = capMsFor(Boolean(ent?.paid));
-    return AudioPipeline.start({ sampleRate: 16000, language, capMs });
+    // Phase 5: the key is absent for a meeting, not null — AudioPipelineModule reads hasKey("mode").
+    return AudioPipeline.start({ sampleRate: 16000, language, capMs, ...(mode ? { mode } : {}) });
   }
 
   async stopRecording(sessionId: string): Promise<void> {

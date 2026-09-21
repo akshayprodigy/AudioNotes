@@ -59,6 +59,12 @@
     fails (`toContain('Dictation · ')`). Restored.
   - drop the `meeting?.mode === 'dictation' ? 'Dictation · ' : ''` prefix from the `MeetingScreen.tsx`
     header → the new header test fails (`startsWith('Dictation · ')`). Restored.
+- **Step 3**:
+  - `recordModeOf` compares case-insensitively (`stored?.toLowerCase() === 'dictation'`) →
+    `recordModeOf('Dictation')` test fails (expects `'meeting'`). Restored.
+  - `PipelineController.startRecording` passes `mode` unconditionally instead of only when set →
+    the `not.toHaveProperty('mode')` assertion on the no-mode call fails. Restored.
+  - drop `'question mark'` from `DICTATION_TIP` → the five-marks test fails. Restored.
 
 ### Step 7 — NOT RUN (phone absent)
 
@@ -129,7 +135,7 @@ Against `09d8037`. Two runs: 2A = Steps 1–4, 2B = Steps 5–8.
 
 - [x] **Step 1** — "Dictation" is a label, and a dictated note's chip is not a choice
 - [x] **Step 2** — where a dictated note says so: the Library card and the meeting header
-- [ ] **Step 3** — the mode reaches native: store, controller, and a pure helper for the Record screen's words
+- [x] **Step 3** — the mode reaches native: store, controller, and a pure helper for the Record screen's words
 - [ ] **Step 4** — the Record screen: Meeting | Dictation
 - [ ] **Step 5** — Settings › Vocabulary: the screen
 - [ ] **Step 6** — Settings › Vocabulary: the row

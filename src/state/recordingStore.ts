@@ -8,7 +8,7 @@ interface RecordingState {
   silenced: boolean;
   paused: boolean;
   startedAt: number | null; // wall-clock ms, so the timer survives a trip to the background
-  start: (language: string | null) => Promise<void>;
+  start: (language: string | null, mode?: 'dictation') => Promise<void>;
   stop: () => Promise<string | null>; // returns sessionId that was captured
   togglePause: () => Promise<void>;
   sync: () => Promise<void>;
@@ -22,8 +22,8 @@ export const useRecordingStore = create<RecordingState>((set, get) => ({
   silenced: false,
   paused: false,
   startedAt: null,
-  start: async language => {
-    const sessionId = await PipelineController.startRecording(language);
+  start: async (language, mode) => {
+    const sessionId = await PipelineController.startRecording(language, mode);
     set({
       sessionId,
       isRecording: true,
