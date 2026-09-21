@@ -202,3 +202,45 @@ From `docs/play-console.md:84-93`, the permission table without the `INTERNET` r
 - `05b9920` docs(6a): §4–§6 options, decisions, recommendation
 - `2574ea8` docs(6a): brief checked against its rules
 - (final) docs(6a): report; progress file retired
+
+## 8. Review (the brain, 21 Sep)
+
+Faithful to its sheet: one file, the progress file created and retired, every figure sourced or
+flagged, the three spot-checked quotes verbatim. The two gaps it flagged close from the server code
+it was not allowed to read, and three considerations are added.
+
+**Closed — the token's lifetime (measured).** `DEFAULT_TTL_SECONDS = 14 * 24 * 60 * 60`
+(`server/app/licence.py:40`); `issue()` caps it at the subscription's own ceiling
+(`server/app/entitlement.py:74`). With `RENEW_WINDOW_SECONDS` = 5 days, a Pro phone refreshes about
+every 9 days: **≈3.3 calls and ≈3 kB a month.** After a lapsed renewal the server allows 3 days
+(`PAYMENT_GRACE_SECONDS`, `entitlement.py:29`) before the token stops being reissued.
+
+**Closed — who uses the email sign-in (measured).** Nobody can, today. `store.create_account()` is
+called from one place, the Play-link path (`server/app/billing.py:140`), with no email and no
+password; a password is set only by `store.py:325`, reached from `deploy/seed-test-account.sh`; the
+admin console is read-only by construction (`server/app/admin.py:4-7`). The schema's own comment says
+what the path is for: "They can add an email later to use the subscription on a desktop" — a client
+that does not exist. **Decision 2 therefore costs nothing today**; it forecloses a desktop client
+sharing one subscription, which would need a server again.
+
+**Added — the store-visible size (supplied, verify).** Under B the essentials become install-time
+packs, so the listing's download size rises from ≈30 MB (today's AAB) to ≈130 MB. The repo's own
+comment (`src/native/NativeModelManager.ts:1-2`) records why that matters: size kills install
+conversion. Fast-follow packs — fetched by Play right after install, not shown as install size — may
+avoid it; verify on the Play docs before sizing B's first session.
+
+**Added — the server itself.** B retires the licence server as a running cost and as a single point
+of failure for paying customers (today the 14-day token is the only thing standing between a server
+outage and a lockout). The brief lists the server's losses; this is its gain.
+
+**Corrected — what Android Vitals sees.** In a release build an uncaught JavaScript exception IS a
+process crash (`com.facebook.react.common.JavascriptException`, with the JS stack in its message), so
+Vitals reports it. The only class B loses is non-fatal JS errors — which, as §3.3 found, are zero.
+
+**Review verdict on the recommendation.** C is right and belongs in 6b's build regardless. On B the
+brief is fair; with the two closures above, B's real remaining costs are (1) server-side purchase
+verification, (2) ≈3 sessions with Play Asset Delivery never used here, (3) no device test until the
+Play product exists, (4) the listing's size unless fast-follow works. Its gain is the one claim this
+product's buyer can verify before installing. Sequencing suggestion (judgement): launch on C; make B
+the first post-launch release, tested on a Play internal track once the product exists — removing a
+permission in an update is a change users welcome, adding one is not, so nothing is lost by the order.
