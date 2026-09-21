@@ -3,6 +3,8 @@ package com.innocorelabs.verbale
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.innocorelabs.verbale.data.AudioDb
+import com.innocorelabs.verbale.data.ModelCatalog
+import com.innocorelabs.verbale.pipeline.DeviceFit
 import org.json.JSONArray
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -79,6 +81,11 @@ class VerificationProbeTest {
     // Phase 5: the vocabulary, whole — it is small and it is the thing a by-hand run changes.
     val vocab = JSONArray(db.rawQueryJson("SELECT heard, meant, source, uses FROM vocabulary ORDER BY created_at", arrayOf()))
     println("PROBE vocabulary (${vocab.length()}): $vocab")
+    // Device fit: what every screen is told about this phone before any download.
+    val total = DeviceFit.totalBytes(ctx)
+    println("PROBE device: total=$total marketed=${DeviceFit.marketedGb(total)} GB writerFits=${DeviceFit.writerFits(total)} " +
+      "cpuFits=${DeviceFit.cpuFits()} free=${DeviceFit.freeBytes(ctx)} " +
+      "reason=${DeviceFit.unsupportedReason(ctx, ModelCatalog.byId("llm-qwen")!!)}")
     if (threadTagToProbe != null) {
       println("PROBE thread($threadTagToProbe): ${db.threadJson(ctx, threadTagToProbe)}")
     } else {
