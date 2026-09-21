@@ -21,7 +21,8 @@ import java.io.File
 
 /**
  * Phase 5 (custom vocabulary, dictation) on the phone's real SQLCipher database: a rule corrects a
- * line and keeps the recogniser's wording in text_raw; a second pass never overwrites that wording;
+ * line and keeps the recogniser's wording in text_raw; neither a second pass nor a later rule
+ * overwrites that wording;
  * a dictated meeting's spoken marks become marks through the JNI; the mode round-trips.
  *
  * The rule's `heard` is a word no real recording contains ("zorp co"), and every meeting and rule
@@ -97,6 +98,11 @@ class VocabularyDbTest {
     // a rule whose heard is "zorp co" — it already reads "Zorp". text_raw still holds the original.
     assertEquals(0, db.applyVocabularyToMeeting(id, null, listOf(Vocabulary.Rule("zorp co", "Zorp Ltd"))))
     assertEquals("we sold it to Zorp" to "we sold it to zorp co", lines(id)[0])
+
+    // A different rule that DOES match the corrected line rewrites it a second time — and text_raw
+    // still holds the wording before the first correction, not "…Zorp": the COALESCE.
+    assertEquals(1, db.applyVocabularyToMeeting(id, null, listOf(Vocabulary.Rule("sold", "licensed"))))
+    assertEquals("we licensed it to Zorp" to "we sold it to zorp co", lines(id)[0])
   }
 
   @Test fun dictation_applies_the_marks_and_keeps_raw() {

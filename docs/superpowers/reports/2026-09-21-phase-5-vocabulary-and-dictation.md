@@ -115,14 +115,18 @@ Session 3, 21 September 2026, on the Galaxy Tab A 10.1 (`R52N611D8FE`, SM-T515, 
   `rules_apply_and_keep_the_raw_wording`, `put_rejects_blank_and_unknown_source`); logcat confirms
   `run finished: 4 tests, 0 failed, 0 ignored`.
 - **Device mutant** (`AudioDb.applyVocabularyToMeeting`: `text_raw=COALESCE(text_raw, ?)` →
-  `text_raw=?`): re-ran the class → **did not kill** — `OK (4 tests)` again, logcat
-  `run finished: 4 tests, 0 failed, 0 ignored`. Confirmed genuine (not a stale build): the edited
-  `AudioDb.kt` predated the rebuilt APK. Cause: in both of the test's "second pass" assertions, the
-  row's text after the first pass no longer matches the rule/punctuation input, so
-  `Vocabulary.apply`/`punctuate` return the same string, `next == text`, and the loop's
-  `if (next == text) continue` skips the `UPDATE` before it ever reaches `COALESCE` on a row whose
-  `text_raw` is already set — the mutant is structurally unreachable from this test's call sequence,
-  not a defect in `AudioDb.kt`. Line restored; re-ran → `OK (4 tests)` (logcat confirms), diff clean.
+  `text_raw=?`): the builder re-ran the class with the mutant in → **did not kill** — `OK (4 tests)`
+  again, confirmed against a fresh build. The builder's finding: no assertion in the test rewrote a
+  line that already carried `text_raw`. **Review (the brain, same day):** true, and the deeper cause
+  was the sheet's own code — the Kotlin side bound `raw ?: text` as the parameter, so the existing
+  `text_raw` was re-supplied by the binding and `COALESCE` was a second guard on the same invariant;
+  with two guards the mutant was *equivalent* and no test could have killed it. Fixed in review:
+  the loop no longer reads `text_raw` and binds the current `text`; `COALESCE` is the only guard.
+  The test gained the missing assertion — a *different* rule (`sold` → `licensed`) rewrites the
+  already-corrected line and `text_raw` must still be the wording before the first correction.
+  Proved on the tablet: mutant in → `FAILURES!!! Tests run: 4, Failures: 1`
+  (`expected:<(we licensed it to Zorp, we sold it to zorp co)> but was:<(…, we sold it to Zorp)>`);
+  restored → `OK (4 tests)`, logcat `run finished: 4 tests, 0 failed, 0 ignored`.
 - **`NativePipelineTest`**: `OK (18 tests)`; logcat `run finished: 18 tests, 0 failed, 0 ignored`
   with exactly ten `assumption failed` lines, the same named set predicted on 21 Sep
   (`a_recording_too_short_to_be_a_meeting_is_not_narrated`,
@@ -193,12 +197,9 @@ Session 3, 21 September 2026, on the Galaxy Tab A 10.1 (`R52N611D8FE`, SM-T515, 
   runtime.
 - No `RecordScreen` or `SettingsScreen` render test — the wiring for both is `npx tsc --noEmit` plus
   the by-hand run (§7).
-- **Surviving mutant (Session 3, device):** `text_raw=?` in place of `text_raw=COALESCE(text_raw, ?)`
-  in `AudioDb.applyVocabularyToMeeting` is not caught by `VocabularyDbTest` — every "second pass" in
-  that test hits a row whose text no longer matches the rule/punctuation, so the loop's
-  `if (next == text) continue` skips the `UPDATE` before `COALESCE` is ever reached on an
-  already-non-null `text_raw`. Not a product defect (the specified `COALESCE` is in place); would
-  need a test that re-applies a *still-matching* rule to a row already carrying `text_raw` to close.
+- ~~Surviving mutant (Session 3, device): `text_raw=?` for `COALESCE(text_raw, ?)`~~ — **closed in
+  review** (§6): it was equivalent because the Kotlin binding duplicated the guard; the duplicate is
+  gone and the test now kills it on the tablet.
 - **Unexercised by the device probe (Session 3):** `VerificationProbeTest`'s new `mode=` and
   `rewritten:` lines printed nothing on the Galaxy Tab A, because the tablet currently has zero rows
   in `meetings` (bench device, no real recording made on it this session). The query path is
@@ -224,4 +225,10 @@ Session 3 (device, 21 Sep):
 419907e test(vocab): the probe prints mode, the vocabulary and which lines were rewritten
 348d600 test(vocab): NativePipelineTest 18/18 on the Galaxy Tab A, ten assumption skips as predicted
 1d7c2df test(vocab): VocabularyDbTest in device-verify CLASSES — 4/4 on the Galaxy Tab A
+```
+
+Review of Session 3 (the brain, 21 Sep):
+
+```
+6be5974 fix(vocab): COALESCE is the one guard on text_raw — the Kotlin binding duplicated it and made the device mutant equivalent
 ```

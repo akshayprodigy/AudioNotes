@@ -2854,17 +2854,20 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     var changed = 0
     db.beginTransaction()
     try {
-      val rows = ArrayList<Triple<String, String, String?>>()  // id, text, text_raw
-      db.rawQuery("SELECT id, text, text_raw FROM utterances WHERE meeting_id=?", arrayOf(meetingId)).use { c ->
-        while (c.moveToNext()) rows.add(Triple(c.getString(0), c.getString(1), if (c.isNull(2)) null else c.getString(2)))
+      val rows = ArrayList<Pair<String, String>>()  // id, text
+      db.rawQuery("SELECT id, text FROM utterances WHERE meeting_id=?", arrayOf(meetingId)).use { c ->
+        while (c.moveToNext()) rows.add(c.getString(0) to c.getString(1))
       }
-      for ((id, text, raw) in rows) {
+      for ((id, text) in rows) {
         var next = Vocabulary.apply(text, rules)
         if (punctuate != null) next = punctuate(next)
         if (next == text) continue
+        // text_raw is the wording before the FIRST correction and is written once: COALESCE keeps
+        // whatever is there. The SQL is the only guard on purpose — a second one in Kotlin made
+        // both untestable (VocabularyDbTest watches this one).
         db.execSQL(
           "UPDATE utterances SET text=?, text_raw=COALESCE(text_raw, ?) WHERE id=?",
-          arrayOf<Any?>(next, raw ?: text, id),
+          arrayOf<Any?>(next, text, id),
         )
         changed++
       }
