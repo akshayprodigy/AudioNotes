@@ -17,7 +17,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { db } from '../db/queries';
 import { countsExcluding } from './threadData';
 import { PipelineController } from '../pipeline/PipelineController';
-import { shouldOfferPaywall } from '../billing/trial';
+import { entitlement, shouldOfferPaywall } from '../billing/trial';
 import FileExport from '../native/NativeFileExport';
 import Icon from '../components/Icon';
 import Mascot from '../components/Mascot';
@@ -44,6 +44,7 @@ import SpeakerPicker from './meeting/SpeakerPicker';
 import { linesForScope, nextSpeakerName, type Scope } from './meeting/speakerRepair';
 import PlayerBar from './meeting/PlayerBar';
 import { usePlayer } from './meeting/usePlayer';
+import { proposeRule } from './meeting/vocabularyRule';
 import type {
   EditTarget,
   Item,
@@ -500,6 +501,38 @@ export default function MeetingScreen({ route, navigation }: Props) {
   );
 
   /**
+   * Phase 5: a correction that is one substitution of one to three words — "in over" → "Innova" —
+   * is offered once as a rule. Yes stores it as `learned` and re-runs the rules over this meeting;
+   * No stores nothing. Pro only: a free user's correction stays a correction. `proposeRule` decides
+   * what counts; this only asks.
+   */
+  const offerRule = useCallback(
+    async (before: string, after: string) => {
+      const rule = proposeRule(before, after);
+      if (!rule) return;
+      const ent = await entitlement().catch(() => null);
+      if (!ent?.paid) return;
+      Alert.alert(
+        `Always write “${rule.meant}” when it hears “${rule.heard}”?`,
+        'Applies to the rest of this meeting and to every recording after it. Change or remove it in Settings › Vocabulary.',
+        [
+          { text: 'No', style: 'cancel' },
+          {
+            text: 'Yes',
+            onPress: () => {
+              db.putVocabulary(rule.heard, rule.meant, 'learned')
+                .then(() => db.applyVocabulary(meetingId))
+                .then(() => refresh())
+                .catch(() => {});
+            },
+          },
+        ],
+      );
+    },
+    [meetingId, refresh],
+  );
+
+  /**
    * Save a correction, or a newly typed item.
    *
    * Corrections go into the `edits` side table rather than over the text they correct, because
@@ -542,12 +575,13 @@ export default function MeetingScreen({ route, navigation }: Props) {
         // render reads. A failed write is put right by the refresh in the catch.
         setEdits(prev => new Map(prev).set(editKey(kind, key), value));
         await db.putEdit(meetingId, kind, key, value);
+        if (kind === 'utterance') void offerRule(spec.initial, value);
       } catch (e: any) {
         Alert.alert('Could not save that', String(e?.message ?? e));
         refresh();
       }
     },
-    [editing, meetingId, refresh],
+    [editing, meetingId, refresh, offerRule],
   );
 
   /** Drop a correction, restoring whatever the pipeline wrote. */

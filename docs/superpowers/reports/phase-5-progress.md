@@ -80,6 +80,19 @@
     fails. Restored.
   - `remove` calls `db.deleteVocabulary(r.id)` directly instead of only inside `onConfirm` → the
     Remove test's `not.toHaveBeenCalled()` (before tapping the Alert's Remove button) fails. Restored.
+- **Step 7**:
+  - `offerRule` stores the rule as `'typed'` instead of `'learned'` → test 1
+    (`toHaveBeenCalledWith(…, 'learned')`) fails. Restored.
+  - drop `if (!ent?.paid) return;` → test 3 ("does not ask on free") fails: `Alert.alert` is called.
+    Restored.
+  - drop `.then(() => db.applyVocabulary(meetingId))` → test 1 fails on the `applyVocabulary`
+    assertion. Restored.
+  - `onSaveEdit` calls `offerRule` for every `kind`, not just `'utterance'` (drop `kind ===
+    'utterance'`) → SURVIVING MUTANT, exactly as the sheet predicted: neither `MeetingScreen.test.tsx`
+    nor `ItemProvenance.test.tsx` fails (65/65 still green), because every non-utterance edit exercised
+    by those suites is a rewrite that `proposeRule` itself rejects (`heard === meant` or too many
+    words), so `offerRule` still no-ops even when called. Restored to the specified `if (kind ===
+    'utterance')` guard.
 
 ### Step 7 — NOT RUN (phone absent)
 
@@ -154,5 +167,5 @@ Against `09d8037`. Two runs: 2A = Steps 1–4, 2B = Steps 5–8.
 - [x] **Step 4** — the Record screen: Meeting | Dictation
 - [x] **Step 5** — Settings › Vocabulary: the screen
 - [x] **Step 6** — Settings › Vocabulary: the row
-- [ ] **Step 7** — "Correct the words" offers a rule
+- [x] **Step 7** — "Correct the words" offers a rule
 - [ ] **Step 8** — gate, report, hand-over

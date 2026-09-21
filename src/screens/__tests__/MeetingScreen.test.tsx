@@ -1,4 +1,5 @@
 import React from 'react';
+import { Alert } from 'react-native';
 import renderer, { act } from 'react-test-renderer';
 import MeetingScreen from '../MeetingScreen';
 import { db } from '../../db/queries';
@@ -504,5 +505,86 @@ describe('the review banner', () => {
     ]);
     const tree = await render();
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Review' }, { deep: false })).toHaveLength(0);
+  });
+});
+
+/**
+ * Phase 5: "Correct the words" offers the one substitution it finds as a rule, once, on Pro. Yes
+ * stores it as learned and re-runs the rules over this meeting; No and free store nothing.
+ */
+describe('a correction offered as a rule', () => {
+  const { TextPrompt } = require('../../components/ui');
+  const licence = () => (global as any).__TEST_NATIVE_MODULES__.Licence;
+  const utts = [
+    { id: 'u1', meetingId: 'm1', startMs: 0, endMs: 2000, speakerId: 's1', text: 'we sold it to in over last week' },
+  ];
+  const openScript = async (tree: renderer.ReactTestRenderer) => {
+    const tab = tree.root.findAllByProps({ accessibilityRole: 'tab', accessibilityLabel: 'Script' })[0];
+    await act(async () => {
+      tab.props.onPress();
+    });
+  };
+  const correct = async (tree: renderer.ReactTestRenderer, to: string) => {
+    const line = tree.root.findAllByProps({ accessibilityLabel: utts[0].text }, { deep: false })[0];
+    await act(async () => {
+      line.props.onLongPress();
+    });
+    const row = tree.root.findAllByProps({ accessibilityLabel: 'Correct the words' }, { deep: false })[0];
+    await act(async () => {
+      row.props.onPress();
+    });
+    const prompt = tree.root.findAllByType(TextPrompt).find((p: any) => p.props.visible)!;
+    await act(async () => prompt.props.onSubmit(to, ''));
+  };
+
+  const PAID = {
+    plan: 'unlicensed-build', state: 'active', paid: true, expiresAt: 0, account: null,
+    lapsedCopy: 'Your subscription has ended.',
+  };
+  // Persistent, not `Once`: SummaryTab asks entitlement() on mount, before the correction does.
+  afterEach(() => licence().status.mockResolvedValue(PAID));
+
+  beforeEach(() => {
+    jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    (db.utterances as jest.Mock).mockResolvedValue(utts);
+    (db.speakers as jest.Mock).mockResolvedValue([
+      { id: 's1', meetingId: 'm1', clusterLabel: 'S0', displayName: 'Speaker 1' },
+    ]);
+    (db.putEdit as jest.Mock).mockResolvedValue(undefined);
+    (db.putVocabulary as jest.Mock).mockResolvedValue('v1');
+    (db.applyVocabulary as jest.Mock).mockResolvedValue(1);
+  });
+
+  it('asks, and Yes stores a learned rule and re-runs it over this meeting', async () => {
+    const tree = await render();
+    await openScript(tree);
+    await correct(tree, 'we sold it to Innova last week');
+    expect(db.putEdit).toHaveBeenCalledWith('m1', 'utterance', 'u1', 'we sold it to Innova last week');
+    expect((Alert.alert as jest.Mock).mock.calls[0][0]).toBe('Always write “Innova” when it hears “in over”?');
+    const buttons: any[] = (Alert.alert as jest.Mock).mock.calls[0][2];
+    expect(buttons.find(b => b.text === 'No').onPress).toBeUndefined();
+    const before = (db.utterances as jest.Mock).mock.calls.length;
+    await act(async () => buttons.find(b => b.text === 'Yes').onPress());
+    expect(db.putVocabulary).toHaveBeenCalledWith('in over', 'Innova', 'learned');
+    expect(db.applyVocabulary).toHaveBeenCalledWith('m1');
+    expect((db.utterances as jest.Mock).mock.calls.length).toBeGreaterThan(before);
+  });
+
+  it('does not ask for a rewrite', async () => {
+    const tree = await render();
+    await openScript(tree);
+    await correct(tree, 'nothing like the original at all');
+    expect(db.putEdit).toHaveBeenCalled();
+    expect(Alert.alert).not.toHaveBeenCalled();
+  });
+
+  it('does not ask on free', async () => {
+    licence().status.mockResolvedValue({ ...PAID, plan: 'free', state: 'none', paid: false });
+    const tree = await render();
+    await openScript(tree);
+    await correct(tree, 'we sold it to Innova last week');
+    expect(db.putEdit).toHaveBeenCalled();
+    expect(Alert.alert).not.toHaveBeenCalled();
+    expect(db.putVocabulary).not.toHaveBeenCalled();
   });
 });
