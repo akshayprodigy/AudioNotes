@@ -4,8 +4,8 @@ Execution sheet: `docs/superpowers/specs/2026-09-21-phase-6a-internet-decision-e
 
 - [x] Step 1 — the frame
   - Notes: progress file + brief skeleton created.
-- [ ] Step 2 — the inventory (measured)
-  - Notes:
+- [x] Step 2 — the inventory (measured)
+  - Notes: egress check exit=0 (203 files); 3 enforced call sites + Crashlytics (uncounted) + Play's own connection (uncounted); token lifetime not in read list, flagged to verify; §1.1 monthly bytes are estimates per the sheet's own "≤200 bytes/field" rule.
 - [ ] Step 3 — what the permission buys, and what its absence looks like today (measured)
   - Notes:
 - [ ] Step 4 — the permission-less build: what replaces each (supplied + judgement)
