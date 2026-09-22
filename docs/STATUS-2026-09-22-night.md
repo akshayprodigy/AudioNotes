@@ -207,15 +207,21 @@ I do not yet know which of these it is, and I did not guess at it tonight:
 - **The audio.** Three voices out of one synthesiser have no room, no microphone and no channel
   difference — exactly the things a speaker-embedding model leans on. Synthetic audio may simply
   be a bad test.
-- **The threshold.** Auto-clustering merges below a distance of `1.0` (`cpp/diar/diarizer.h`;
-  "smaller splits more"). Android and the offline harness use the same value, so there is no
-  divergence — but the harness measured **DER 48.8%** on real AMI meetings, and over-merging is
-  the classic cause of a number that size.
+- **The threshold.** Auto-clustering merges below a distance of `1.0` (`cpp/diar/diarizer.h`).
+  Android and the offline harness use the same value, so there is no divergence — and **that value
+  is not a guess.** It was chosen by a sweep on real AMI meetings that took DER from 48.8% to
+  **18.3%**, validated on two held-out meetings, and the curve turns at 1.2, meaning it already
+  over-merges above 1.0 and gets worse. So "the threshold is simply too loose" is the one
+  explanation the measurements argue against.
 
-**What settles it is your capture tomorrow** — a real room, real microphone, real voices. I will
-read the speaker count off it first thing. If real speakers come out separate, this was my test
-file. If they do not, the threshold is a tuning job with an existing harness (`eval/`) to measure
-it, and it is a day's work, not a rewrite.
+  What *is* still open, and has been since that sweep: **the 1.0 value has never been verified on a
+  device.** Tonight is the closest thing to a device look at it, and it came back with one cluster.
+
+**What settles it is your capture tomorrow** — a real room, a real microphone, real voices. I will
+read the speaker count off it first thing. On the evidence I have, my test file is the likelier
+culprit: three voices out of one synthesiser share a channel exactly the way one person recorded
+twice would. If real speakers come out separate, that is the answer. If they do not, it is a
+tuning job with a harness (`eval/`) already built to measure it — a day's work, not a rewrite.
 
 **Nothing was changed on the strength of one synthetic file**, and the store screenshots make no
 "who said what" claim — that slot went to Ask instead.

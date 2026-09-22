@@ -24,9 +24,10 @@ placed on a 1080×1920 (9:16) frame under a headline. Fonts (Nunito) and colours
 both in `src/screens/PaywallScreen.tsx`; the headlines say nothing the build does not do.
 
 **There is deliberately no "who said what" shot.** Diarization collapsed a three-voice recording
-into a single speaker on the emulator (14 segments, 1 cluster). Whether that is the synthetic
-audio or the clustering threshold is unsettled — see the status note — and a store screenshot is a
-promise, so the slot went to Ask instead. Add one when a real recording shows real speakers.
+into a single speaker on the emulator (14 segments, 1 cluster). The likeliest cause is the audio —
+three voices out of one synthesiser share a channel — and the clustering threshold is a measured,
+validated value, not a guess; the status note has the detail. Either way a store screenshot is a
+promise, so the slot went to Ask. Add one when a real recording shows real speakers.
 
 ## Rebuilding them — `tools/`
 
