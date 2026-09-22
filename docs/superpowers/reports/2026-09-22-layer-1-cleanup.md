@@ -4,8 +4,9 @@ Against `docs/superpowers/specs/2026-09-22-layer-1-cleanup-execution.md`, `55d85
 
 ## 1. Status
 
-All nine steps built, tested, mutant-checked and committed; the gate is clear; Session D (the
-device checks) was not run — no A07 attached to either session.
+All nine steps built, tested, mutant-checked and committed; the gate is clear; Session D ran on
+the A07 afterwards (§6) with D1–D4 and half of D5 confirmed on a freshly built release APK.
+Reviewed the same evening — see §10.
 
 ## 2. What was built
 
@@ -176,8 +177,9 @@ exercise on the bench A07, plus the one item every session has deferred:
 
 ## 8. Known gaps
 
-- **Session D was not run** — needs the A07 physically attached; D1–D5 in the spec are still
-  outstanding.
+- **Session D's one remaining half**: D1–D4 and the "not offered when spent" half of D5 are
+  confirmed on the phone (§6). The scroll-on-tap half of Step 9 needs an install whose trial has
+  not been spent, which this bench device is not.
 - **Step 4**: a real six-hour foreground-service timeout was not provoked on a bench, and no debug
   hook was added to fake one, per the sheet's own instruction — `ServiceTimeout.notice` is covered
   only by its own unit tests, not by the real Android callback.
@@ -212,3 +214,97 @@ ce8351d fix(summary): a spent trial is not offered again — the card says Get P
 5e1d5d1 fix(extractor): a date that moved is a decision — "shipping moved to Thursday" now lands in the thread
 7e3de5e docs: an execution sheet for the nine open Layer 1 items, in three sessions
 ```
+
+---
+
+## 10. Review (Opus, 22 September, evening)
+
+Read against the sheet, per `docs/kilo-best-practices.md` §8. **The work is faithful**: every step
+does what the sheet said, in the files it named, and no file outside §6's list was touched.
+
+**The gate, re-run and forced.** `gate: all clear in 95s`. Gradle served the Kotlin stage from
+cache in the builder's run (3s) and in mine (2s), so it was forced:
+`./gradlew :app:testDebugUnitTest --rerun-tasks` → 45 suites, **309 tests, 0 failures, 0 skipped**
+(305 before this sheet + the four `ServiceTimeoutTest` cases). The C++ stage really rebuilds and
+really runs `ctest` (30 tests, 23s), so it needed no forcing.
+
+**One device check the sheet did not ask for, run because the change deserved it.** D1 proved the
+*nine-row* sheet scrolls. The risk a ScrollView actually carries is the opposite case — a card with
+no height of its own, where a ScrollView can collapse to nothing. The **four-row Export sheet** was
+opened on the A07 against the same build: all four rows render, the card sizes to its content, the
+title and Cancel are where they were. The Step 7 change is safe at both ends of the range.
+(Incidentally re-confirmed Step 5 on a second meeting — "We agreed to hire two more testers" shows
+`Get Pro` — and Step 7's title clearance on a different title.)
+
+**Two things fixed in review**, both the reviewer's own:
+
+1. **`ProcessingService.onTimeout` cleared `running` from outside the worker** (the sheet's code,
+   so the sheet's fault). Only the worker may clear that flag, under the lock, at the moment it
+   exits — `cancel()` has always left it alone. Clearing it in `onTimeout` would let the next
+   `onStartCommand` start a second worker while the first is still winding down, and the two would
+   overwrite each other's `current`/`currentId`. The queue is cleared and the engine cancelled, so
+   the worker exits on its own and clears the flag itself. Fixed, with the reasoning in the code.
+2. **Two comments in `minutes.golden.test.ts` carried a literal `\u2014`** where an em dash was
+   meant — an escaping artefact of the sheet's text. Fixed.
+
+**One defect the review found, and it is the important one: Step 1's rule did not fire on the
+phone.** Nobody had watched the new extractor rule against real audio — the report's own §7.4 said
+so. Recorded on the A07, four sentences through the Mac's speaker, against Session D's build:
+**0 decisions**. The transcript says why:
+
+> Shipping **move** to Thursday because QA is not done.
+> I **moved** to Bangalore last year.
+
+Whisper-base swallows the "-d" of "moved to" before the /t/ of "to" — and keeps it in "moved to
+Bangalore", where no /t/ follows. The same mis-transcription is sitting in the library from
+2:51 pm, in a meeting titled "Shipping move to Th…". So the rule as designed — past and passive
+forms only, on the reasoning that a bare infinitive is an intention — fired on the written
+sentence in the goldens and **never on the spoken one**, which is the only kind a meeting
+produces. The sheet's fault, twice over: the design, and a §Device table that never asked for this
+run.
+
+Fixed: the verb list now holds every form, and a new `SCHEDULE_INTENT` pattern carries the
+distinction the tense used to ("to move", or a modal with an optional pronoun — `can you push`,
+`let's move`, `we should move`). It is a positive pattern, not a lookbehind, because `std::regex`
+has none. Eleven boundary sentences checked against the three patterns; the intent guard alone is
+what saves four of them. TS and C++ both, goldens regenerated with the ASR form as its own fixture
+row, `ctest` green.
+
+**Re-proved on the phone** (release APK rebuilt from this fix, `versionCode` 10000, installed
+19:43): the same three sentences now give **1 decision, 1 action** —
+
+| | |
+|---|---|
+| DECISIONS (1) | "Shipping move to Thursday because QA is not done." · 0:09 |
+| ACTION ITEMS (1) | "We need to move the review to Friday." · Speaker 1 · 0:16 |
+| absent, correctly | "I moved to Bangalore last year." |
+
+Two bench meetings were added to the A07 doing this (7:36 pm and 7:44 pm); they are the evidence
+and can be deleted whenever.
+
+**Three corrections to the sheet**, all correctly caught by the builder and confirmed here: Step 2's
+named mutant fails `test_evidence`, not `test_minutes` (the fixture row lives in
+`evidence_spans.json`); §6's `useBoundsForWidth` grep expects 1 where the file has always had 2 (an
+`<item>` and a comment); and §6's file list omitted the sheet's own commit, which sits inside the
+range it names. None of them touched the code.
+
+**A flaky gate, chased down rather than re-rolled.** The gate failed once tonight in
+`VoicesSection.test.tsx` — a suite nothing in this sheet touches — with
+`getNativeTagFromPublicInstance is not a function` deep in Animated. It then failed three runs out
+of three under load, and passed alone. The cause: the new `PaywallScreen.test.tsx` runs the
+screen's `Pop` entrance animations on real timers, so their frame loop keeps firing after that
+suite's environment is torn down and the error is attributed to whichever suite the worker takes
+next. Every other screen test uses fake timers for exactly this reason; the new one did not.
+`beforeEach(jest.useFakeTimers)` added there — the pair now passes in one process, the full suite
+passed three runs out of three, and the gate is clear again:
+
+```
+gate: all clear in 97s   (types 2s · js 6s · scans 3s · mutations 58s · kotlin 3s · cpp 25s)
+kotlin, forced with --rerun-tasks: 45 suites, 309 tests, 0 failures, 0 skipped
+```
+
+**One thing for the founder, unrelated to this work.** The tree carries an uncommitted change to
+`android/app/build.gradle`: `appVersionName` "1.0.0" → **"0.9.0"**, which derives `versionCode`
+10000 → **900**. It was stashed and popped around Session D's rebuild, so the APK on the phone is
+still 1.0.0/10000. It is nobody's in this sheet — but it must not reach the AAB by accident, and a
+first upload at 900 would make a later 10000 the only way forward.
