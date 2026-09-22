@@ -163,9 +163,13 @@ tells them so and refuses. A second, slower build would let them run at about ha
 
 ### 8. Push
 
-**117 commits** sit on `main` locally, against `origin/main` at `5ff0f5b`. You push.
+`main` is a long way ahead of `origin/main` (at `5ff0f5b`). You push.
 
-*(An earlier draft of this note said 35. That was wrong — `git rev-list --count origin/main..HEAD` says 114. Nothing about the work changed; the count did.)*
+```
+git rev-list --count origin/main..HEAD   # 118 as this was written
+```
+
+*(An earlier draft of this note said 35, which was simply wrong. The number moves with every commit, so the command above is the answer rather than a figure that goes stale.)*
 
 - [ ] Pushed
 
