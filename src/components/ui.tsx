@@ -2,6 +2,7 @@ import React, { useEffect, useId, useRef } from 'react';
 import {
   Animated,
   Easing,
+  KeyboardAvoidingView,
   Modal,
   Pressable,
   StyleSheet,
@@ -90,21 +91,39 @@ export function GradientFill({
   const rad = ((angle - 90) * Math.PI) / 180;
   const dx = Math.cos(rad) / 2;
   const dy = Math.sin(rad) / 2;
+
+  // Drawn at a MEASURED size, in numbers, not at "100%" of an absoluteFill Svg. A percentage
+  // rect is rasterised once against the Svg's size at render and is not redrawn when only the
+  // layout changes underneath it — so a card that grows after mount (the Summary card, whose
+  // sentence arrives from an async entitlement check) kept its first height of gradient and
+  // showed the flat base colour below it (Galaxy A07, 22 Sep). A size that comes through props
+  // is a re-render, and the fill follows the box.
+  const [size, setSize] = React.useState<{ w: number; h: number } | null>(null);
   return (
-    <Svg style={StyleSheet.absoluteFill} preserveAspectRatio="none">
-      <Defs>
-        <LinearGradient
-          id={id}
-          x1={`${(0.5 - dx) * 100}%`}
-          y1={`${(0.5 - dy) * 100}%`}
-          x2={`${(0.5 + dx) * 100}%`}
-          y2={`${(0.5 + dy) * 100}%`}>
-          <Stop offset="0" stopColor={from} />
-          <Stop offset="1" stopColor={to} />
-        </LinearGradient>
-      </Defs>
-      <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${id})`} />
-    </Svg>
+    <View
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+      onLayout={e => {
+        const { width, height } = e.nativeEvent.layout;
+        setSize(prev => (prev && prev.w === width && prev.h === height ? prev : { w: width, h: height }));
+      }}>
+      {size && size.w > 0 && size.h > 0 ? (
+        <Svg width={size.w} height={size.h} preserveAspectRatio="none">
+          <Defs>
+            <LinearGradient
+              id={id}
+              x1={`${(0.5 - dx) * 100}%`}
+              y1={`${(0.5 - dy) * 100}%`}
+              x2={`${(0.5 + dx) * 100}%`}
+              y2={`${(0.5 + dy) * 100}%`}>
+              <Stop offset="0" stopColor={from} />
+              <Stop offset="1" stopColor={to} />
+            </LinearGradient>
+          </Defs>
+          <Rect x="0" y="0" width={size.w} height={size.h} fill={`url(#${id})`} />
+        </Svg>
+      ) : null}
+    </View>
   );
 }
 
@@ -485,7 +504,11 @@ export function TextPrompt({
       <Pressable style={styles.sheetBackdrop} onPress={onCancel} accessibilityLabel="Dismiss">
         <View style={[styles.promptScrim, { backgroundColor: colors.scrim }]} />
       </Pressable>
-      <View style={styles.promptWrap} pointerEvents="box-none">
+      {/* A Modal is its own window on Android, so the activity's adjustResize does nothing for
+          it: on the Galaxy A07 the keyboard sat over Cancel and Add of the two-field prompt and
+          the only way to them was the keyboard's own Done. The padding behaviour listens to the
+          keyboard directly and lifts the card clear of it, on either platform. */}
+      <KeyboardAvoidingView style={styles.promptWrap} behavior="padding" pointerEvents="box-none">
         <View style={[styles.promptCard, { backgroundColor: colors.card, borderColor: colors.line }]}>
           <Text style={text('sectionTitle', colors.ink)}>{title}</Text>
           {hint ? (
@@ -521,6 +544,11 @@ export function TextPrompt({
                 { borderColor: colors.line, color: colors.ink, backgroundColor: colors.cardAlt },
               ]}
               returnKeyType="done"
+              // The last field's Done is the natural end of typing a pair; hiding the keyboard
+              // and leaving the buttons was the A07's experience of it.
+              onSubmitEditing={() => {
+                if (trimmed) onSubmit(trimmed, extra.trim());
+              }}
             />
           ) : null}
           {/* The buttons sit DIRECTLY in the row. SoftButton's outer view is already `flex: 1`,
@@ -542,7 +570,7 @@ export function TextPrompt({
             />
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
