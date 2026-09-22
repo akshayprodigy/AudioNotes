@@ -4,6 +4,9 @@
 if two documents disagree, this one is right. Written after the Layer 1 cleanup was built,
 reviewed and device-verified, and after your consent clip went into the build.*
 
+*Updated 23:30 with the store screenshots, two defects the screenshot run found, and one
+diarization finding. §3 and §6 are the new parts.*
+
 ---
 
 ## 1. What changed today
@@ -39,11 +42,32 @@ this test is actually for: disk growth, the wake lock, and whether the service s
 
 | | What | State |
 |---|---|---|
-| 1 | **Play Store screenshots, ASO-ready** — captured on a Pixel 9 emulator at 1080×2424 as you asked, then composed onto 9:16 frames with headlines. (Raw emulator shots are 1 : 2.24 and Play rejects anything past 1 : 2, so they have to be composed rather than uploaded as-is.) | in progress tonight |
-| 2 | **The two screen recordings** Google asks for — the recording notification and the processing notification. | after the shots |
-| 3 | **The 90-minute capture**, once you have run it — I read the numbers off the phone and write them up. | waits for you, tomorrow |
-| 4 | **Build the AAB** and re-run the full gate against it. | after 3 |
-| 5 | **Your server**, the moment you say "yes": the service-account JSON on the box, and the model mirror re-run so the meaning index stops falling back to Hugging Face. | waits for you |
+| 1 | **Play Store screenshots, ASO-ready.** Eight of them, in `docs/store/screenshots/`, numbered in listing order and ready to upload. Captured on a Pixel 9 emulator as you asked, then composed onto 1080×1920 frames with headlines — a raw emulator capture is 1 : 2.24 and Play rejects anything past 1 : 2. `docs/store/README.md` says what each one is and how to rebuild them. | **done** |
+| 2 | **The AAB**, version 1.0.0, rebuilt tonight with the two fixes below: `android/app/build/outputs/bundle/release/app-release.aab`, 43 MB, signed. Gate green against it. | **done** |
+| 3 | **The two screen recordings** Google asks for — the recording notification and the processing notification. | next |
+| 4 | **A feature graphic**, 1024×500. Play wants one. | next |
+| 5 | **The 90-minute capture**, once you have run it — I read the numbers off the phone and write them up. | waits for you, tomorrow |
+| 6 | **Your server**, the moment you say "yes": the service-account JSON on the box, and the model mirror re-run so the meaning index stops falling back to Hugging Face. | waits for you |
+
+### Two defects the screenshot run found, both fixed (`7eda0fc`)
+
+Driving the app for the captures put it through screens no test had watched on a real display.
+
+- **The Ask composer was hidden behind the keyboard.** You typed your question blind. Its
+  keyboard-avoiding view trusted the activity's `adjustResize`, which under the edge-to-edge
+  window an app targeting SDK 35 gets no longer resizes anything — the keyboard took the bottom
+  883px while the input stayed put. Same one-word fix the Rename card already carries.
+- **The running stage's label was clipped.** *"Written up in plain English · 13 of 17"* lost its
+  "7" off the edge of the card. **This one was about to matter to you:** a ninety-minute meeting
+  counts into three digits, so tomorrow's capture would have shown it worse.
+
+Both have a test, and both tests were checked against their mutant. Gate: 614 JS tests, plus
+scans, mutations, Kotlin and the 30 C++ tests — all clear.
+
+> **The A07 was unplugged when I built this, so it still has the older build.** Plug it in before
+> you start tomorrow and say so — reinstalling takes two minutes and keeps the models and
+> permissions. If you would rather not, the capture still works; you will just see that clipped
+> label on the progress screen.
 
 ---
 
@@ -130,7 +154,9 @@ tells them so and refuses. A second, slower build would let them run at about ha
 
 ### 8. Push
 
-**35 commits** sit on `main` locally. You push.
+**114 commits** sit on `main` locally, against `origin/main` at `5ff0f5b`. You push.
+
+*(An earlier draft of this note said 35. That was wrong — `git rev-list --count origin/main..HEAD` says 114. Nothing about the work changed; the count did.)*
 
 - [ ] Pushed
 
@@ -157,6 +183,33 @@ problem and I cannot fix it from here — it is points 1 and 2 above.
 
 **What is not tested:** a MIUI or ColorOS phone, an older-chip phone, a ninety-minute capture, and
 an incoming call mid-recording.
+
+---
+
+## 6. One open finding: diarization put three voices in one bucket
+
+Building the screenshots needed a multi-speaker meeting, so I made one — fourteen turns, three
+different synthetic voices (US female, UK male, AU female), real pauses between them. The app
+segmented it perfectly: **14 segments for 14 turns.** Then it labelled every one of them
+*Speaker 1*.
+
+I do not yet know which of these it is, and I did not guess at it tonight:
+
+- **The audio.** Three voices out of one synthesiser have no room, no microphone and no channel
+  difference — exactly the things a speaker-embedding model leans on. Synthetic audio may simply
+  be a bad test.
+- **The threshold.** Auto-clustering merges below a distance of `1.0` (`cpp/diar/diarizer.h`;
+  "smaller splits more"). Android and the offline harness use the same value, so there is no
+  divergence — but the harness measured **DER 48.8%** on real AMI meetings, and over-merging is
+  the classic cause of a number that size.
+
+**What settles it is your capture tomorrow** — a real room, real microphone, real voices. I will
+read the speaker count off it first thing. If real speakers come out separate, this was my test
+file. If they do not, the threshold is a tuning job with an existing harness (`eval/`) to measure
+it, and it is a day's work, not a rewrite.
+
+**Nothing was changed on the strength of one synthetic file**, and the store screenshots make no
+"who said what" claim — that slot went to Ask instead.
 
 ---
 

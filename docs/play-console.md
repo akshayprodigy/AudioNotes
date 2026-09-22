@@ -352,7 +352,9 @@ Done and no longer listed: the upload keystore (`AUDIONOTES_STORE_FILE`, every r
       above and see the 503 gone. **Nothing can be bought until this is done**
 - [ ] Upload the `.aab` to an internal testing track; add a licensed tester; put one phone through
       the paywall and note what it showed
-- [ ] Screenshots: phone, 2–8, at least 1080px on the short side
+- [x] Screenshots: phone, 2–8, at least 1080px on the short side — **eight are in
+      `docs/store/screenshots/`, ready to upload**, numbered in listing order (see
+      `docs/store/README.md`)
 - [ ] Feature graphic, 1024×500
 - [ ] Record the two foreground-service videos
 - [ ] Data safety form, from the table above
