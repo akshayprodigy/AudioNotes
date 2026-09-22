@@ -65,6 +65,12 @@ class RecordingService : Service(), CaptureListener {
     /** Generous: the prefix fills in real time, so this only bites when a meeting is cut short. */
     private const val ANNOUNCE_PREFIX_WAIT_MS = 25_000L
 
+    /**
+     * How long the finish path waits for the verifier's verdict. The check itself is a fraction
+     * of a second; the wait exists for a stop that lands while the clip is still playing.
+     */
+    private const val ANNOUNCE_FINISH_WAIT_MS = 2_500L
+
     /** Little-endian PCM16 bytes to samples, for the announcement check. */
     private fun toPcm(bytes: ByteArray, len: Int): ShortArray =
       ShortArray(len / 2) { i ->
@@ -114,6 +120,17 @@ class RecordingService : Service(), CaptureListener {
 
   @Volatile private var recording = false
   private var worker: Thread? = null
+  /**
+   * The announcement verifier, and the latch it waits on for the opening seconds of audio. Fields
+   * rather than locals of startCapture because the finish path has to reach both: a recording
+   * stopped before the prefix fills would otherwise leave the verifier waiting on audio that will
+   * never come, and one stopped just after it fills would race it — the pipeline read
+   * `announced_lag_ms` before the verdict was written, transcribed the clip, and whisper dropped
+   * the sentence after it (Galaxy A07, 22 Sep, a 12-second note). Every voice note under about
+   * thirteen seconds took that path.
+   */
+  private var announcer: Thread? = null
+  private var prefixReady: java.util.concurrent.CountDownLatch? = null
   private var meetingId: String? = null
   private var audioPath: String? = null
   private var wakeLock: android.os.PowerManager.WakeLock? = null
@@ -310,6 +327,7 @@ class RecordingService : Service(), CaptureListener {
     var announcedLagMs: Long? = null
     var prefixLen = 0
     val prefixReady = java.util.concurrent.CountDownLatch(1)
+    this.prefixReady = prefixReady
 
     worker = thread(name = "audionotes-capture") {
       val buf = ByteArray(4096)
@@ -326,7 +344,7 @@ class RecordingService : Service(), CaptureListener {
         // drop the first seconds of the room. The outcome still gates the stamp: nothing is
         // claimed until playback has actually finished.
         if (!resumed && prefix != null) {
-          thread(name = "audionotes-announce") {
+          announcer = thread(name = "audionotes-announce") {
             val db = AudioDb.get(applicationContext)
             val enabled = db.getSetting("announceRecording") != "0"
             val playback = AnnouncementPlayer.announce(applicationContext, enabled)
@@ -556,6 +574,16 @@ class RecordingService : Service(), CaptureListener {
     stopNotificationTicker()
     worker?.join(2000)
     worker = null
+    // The verdict before the row: release a verifier still waiting for the full prefix (it
+    // checks what it has — the clip sits at the start, so a few seconds are enough to find it,
+    // and findClip answers null for a capture shorter than the clip), then wait for it to stamp
+    // the meeting. Bounded, because this runs on the main thread: a stop inside the clip's own
+    // playback is the only case that comes near the cap, and that recording holds nothing.
+    prefixReady?.countDown()
+    announcer?.join(ANNOUNCE_FINISH_WAIT_MS)
+    if (announcer?.isAlive == true) Log.w(TAG, "announcement verdict not in before capture finished")
+    announcer = null
+    prefixReady = null
     unregisterAudioWatchers()
     CaptureController.level = 0f
     try { if (wakeLock?.isHeld == true) wakeLock?.release() } catch (_: Exception) {}
