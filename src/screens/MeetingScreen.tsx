@@ -1032,7 +1032,12 @@ export default function MeetingScreen({ route, navigation }: Props) {
                         ) : (
                           <View style={[st.checkDot, { backgroundColor: colors.cardAlt }]} />
                         )}
+                        {/* The active row clips at its own rounded edge (overflow: hidden, for the
+                            gradient), so the label has to be allowed to wrap rather than run past it.
+                            "Written up in plain English · 13 of 17" already overflows at 1080px, and a
+                            long meeting counts into three digits. */}
                         <Txt
+                          style={st.checkLabel}
                           variant={state === 'active' ? 'bodyBlack' : 'bodyStrong'}
                           color={state === 'active' ? colors.primary : state === 'todo' ? colors.inkDim : colors.ink}>
                           {x.label}
@@ -1529,6 +1534,7 @@ function makeStyles(c: Colors) {
     checkWrap: { marginTop: sv(26) },
     checkInner: { padding: s(8) },
     checkRow: { flexDirection: 'row', alignItems: 'center', gap: s(12), padding: s(14) },
+    checkLabel: { flexShrink: 1 },
     checkDot: { width: s(30), height: s(30), borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
     divider: { height: 1, backgroundColor: c.cardAlt, marginHorizontal: s(14) },
 

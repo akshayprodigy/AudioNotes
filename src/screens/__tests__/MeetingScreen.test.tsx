@@ -420,6 +420,31 @@ describe('progress inside a stage', () => {
     // 14 of 40 through ASR is less than the 40% guess, so the ETA grew and the pill moved.
     expect(pill(tree)).not.toEqual(before);
   });
+
+  /**
+   * The running row is the one with overflow: 'hidden' (it clips the gradient to its own rounded
+   * corners), and it is also the only row that carries a count. On the Pixel 9 emulator
+   * "Written up in plain English · 13 of 17" ran past the card and the "7" was cut off; a long
+   * meeting counts into three digits. The label has to be allowed to wrap instead.
+   */
+  it('the running stage label wraps rather than being clipped by its row', async () => {
+    (db.getMeeting as jest.Mock).mockResolvedValue({
+      id: 'm1', title: 'Standup', createdAt: 1, durationMs: 600_000, status: 'minutes',
+      tierUsed: 'pro', language: 'en', audioPath: null, audioRetained: 1,
+    });
+    (db.minutes as jest.Mock).mockResolvedValue([]);
+    const tree = await render();
+    await act(async () => {
+      emit('onStageProgress', { meetingId: 'm1', stage: 'narrate', chunk: 13, total: 17 });
+    });
+    const { StyleSheet, Text } = require('react-native');
+    const label = tree.root
+      .findAllByType(Text)
+      .find(n => JSON.stringify(n.props.children ?? '').includes('Written up in plain English'));
+    expect(label).toBeTruthy();
+    expect(JSON.stringify(label!.props.children)).toContain('13 of 17');
+    expect(StyleSheet.flatten(label!.props.style)).toMatchObject({ flexShrink: 1 });
+  });
 });
 
 /** The pipeline stopped for the phone's sake; the screen has to say so, and stop promising a time. */

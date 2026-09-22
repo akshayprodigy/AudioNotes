@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -102,9 +102,14 @@ export default function AskScreen({ route, navigation }: Props) {
   }, [draft, busy, meetingId, navigation]);
 
   return (
+    // On Android the behaviour used to be left undefined, trusting the activity's adjustResize to
+    // shrink the window. Under the edge-to-edge window an app targeting SDK 35 gets, it no longer
+    // does: on the Pixel 9 emulator the keyboard covered the composer from y=1541 while the input
+    // stayed at y=2248, so you typed your question blind. Same fix as the TextPrompt card in
+    // components/ui.tsx — the padding behaviour listens to the keyboard itself, on either platform.
     <KeyboardAvoidingView
       style={[st.root, { paddingTop: insets.top + s(8) }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      behavior="padding">
       <View style={st.nav}>
         <IconButton icon="chevronLeft" label="Back" onPress={() => navigation.goBack()} />
         <View style={st.flex}>

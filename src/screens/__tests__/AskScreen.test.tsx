@@ -1,5 +1,6 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
+import { TextInput } from 'react-native';
 import AskScreen from '../AskScreen';
 import { db } from '../../db/queries';
 
@@ -139,5 +140,21 @@ describe('AskScreen', () => {
       tree.unmount();
     });
     expect(Llm.unload).toHaveBeenCalled();
+  });
+
+  /**
+   * The composer used to leave the Android behaviour undefined and trust the activity's
+   * adjustResize. Under the edge-to-edge window an app targeting SDK 35 gets, it does not resize:
+   * on the Pixel 9 emulator the keyboard covered the input from y=1541 while it stayed at y=2248,
+   * so the question was typed blind. Same 'padding' fix as the TextPrompt card.
+   */
+  it('the composer moves out from under the keyboard on both platforms', async () => {
+    const tree = await render();
+    const { KeyboardAvoidingView } = require('react-native');
+    const kav = tree.root.findAllByType(KeyboardAvoidingView);
+    expect(kav.length).toBe(1);
+    expect(kav[0].props.behavior).toBe('padding');
+    // The input is inside it, so it is what moves.
+    expect(kav[0].findAllByType(TextInput).length).toBe(1);
   });
 });
