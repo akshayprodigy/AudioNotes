@@ -59,6 +59,8 @@ const baseProps = {
    onConfirmVoices: jest.fn(),
   transcriptChars: undefined as number | undefined,
   onUpgrade: jest.fn(),
+  onEdit: jest.fn(),
+  onCopy: jest.fn(),
 };
 
 async function renderTab(props: Partial<typeof baseProps> = {}) {
@@ -354,5 +356,32 @@ describe('the trial offer on the card (Step 5)', () => {
       .findAll(n => typeof n.props.children === 'string')
       .map(n => n.props.children as string);
     expect(t.some(s => s.includes('Try it free'))).toBe(false);
+  });
+});
+
+describe('the header row at 384 dp (Step 8)', () => {
+  test('the meeting meta is the part of the header that shrinks', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: true });
+    const tree = await renderTab();
+    const { Text } = require('react-native');
+    const meta = tree.root
+      .findAllByType(Text)
+      .find(n => typeof n.props.children === 'string' && /min ·/.test(n.props.children as string));
+    expect(meta).toBeDefined();
+    expect(meta!.props.numberOfLines).toBe(1);
+    const flatMeta: Record<string, unknown> = [meta!.props.style]
+      .flat(Infinity)
+      .reduce((acc: Record<string, unknown>, st) => Object.assign(acc, st), {});
+    expect(flatMeta.flexShrink).toBe(1);
+
+    const copyButton = tree.root.findByProps({ accessibilityLabel: 'Copy' });
+    let node = copyButton.parent;
+    while (
+      node &&
+      !(node.props.style && [node.props.style].flat(Infinity).some((st: any) => st?.flexShrink === 0))
+    ) {
+      node = node.parent;
+    }
+    expect(node).not.toBeNull();
   });
 });

@@ -11,7 +11,7 @@ Against `docs/superpowers/specs/2026-09-22-layer-1-cleanup-execution.md`.
 - [x] Step 5. The card must not offer a trial that is over
 - [x] Step 6. BACK with the keyboard up closes the keyboard
 - [x] Step 7. A sheet never runs off the top of the screen
-- [ ] Step 8. The Summary card's header row at 384 dp
+- [x] Step 8. The Summary card's header row at 384 dp
 - [ ] Step 9. The paywall answers where you are looking
 
 ## Decisions
@@ -19,6 +19,8 @@ Against `docs/superpowers/specs/2026-09-22-layer-1-cleanup-execution.md`.
 - Step 5: the sheet's 5b does not mention that `baseProps` in `SummaryTab.test.tsx` has no
   `onUpgrade`, needed for the `reason === 'locked'` CTA to render at all. Added
   `onUpgrade: jest.fn()` to `baseProps` (every existing test still passes it through unused).
+- Step 8: same gap for `onEdit`/`onCopy` — neither was in `baseProps`, and both are needed for the
+  header row's tools (Edit, Copy) to render at all. Added both as `jest.fn()` to `baseProps`.
 
 ## Mutants
 
@@ -54,6 +56,9 @@ Against `docs/superpowers/specs/2026-09-22-layer-1-cleanup-execution.md`.
 - Step 7: removed `maxHeight` from the card's style array. `npx jest Sheet.test.tsx` failed exactly
   as named — "a long sheet scrolls instead of growing past the screen" (no ancestor of the
   ScrollView carried a `maxHeight` style any more). Restored.
+- Step 8: dropped `numberOfLines={1}` from the meta `Txt`. `npx jest SummaryTab.test.tsx` failed
+  exactly as named — "the meeting meta is the part of the header that shrinks" (`numberOfLines`
+  undefined). Restored.
 
 ## Notes for the next session
 

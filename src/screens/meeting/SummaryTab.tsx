@@ -362,7 +362,7 @@ export default function SummaryTab({
                   {templateLabel(template)}
                 </Txt>
               </Pressable>
-              <Txt variant="chipSoft" color={colors.onPrimary} style={st.dim}>
+              <Txt variant="chipSoft" color={colors.onPrimary} style={[st.dim, st.meta]} numberOfLines={1}>
                 {`${mins} min · ${
                   template === DICTATION_TEMPLATE
                     ? 'one voice'
@@ -589,7 +589,7 @@ function makeStyles(_c: Colors) {
     highlight: { flexDirection: 'row', gap: s(10), padding: s(14), alignItems: 'flex-start' },
     flex: { flex: 1, gap: s(8) },
     gist: { padding: s(18), gap: s(12) },
-    headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: s(6) },
     templateChip: {
       flexShrink: 0,
       paddingHorizontal: s(8),
@@ -598,7 +598,10 @@ function makeStyles(_c: Colors) {
       backgroundColor: 'rgba(255,255,255,0.18)',
     },
     dim: { opacity: 0.8 },
-    tools: { flexDirection: 'row', gap: s(14) },
+    // The one member of the header row that may lose characters: at 384 dp the chip, the meta,
+    // Edit and Copy do not fit, and without this the row overflows and clips "Copy" to "Co".
+    meta: { flexShrink: 1 },
+    tools: { flexDirection: 'row', gap: s(14), flexShrink: 0 },
     cta: { marginTop: s(4) },
     note: { opacity: 0.85 },
     lapsed: { textAlign: 'center', paddingHorizontal: s(12) },
