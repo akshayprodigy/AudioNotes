@@ -1,0 +1,18 @@
+<resources>
+
+    <!--
+      Android 15 changed how a TextView sizes its text: for apps targeting API 35 it uses the
+      glyphs' visual bounds (useBoundsForWidth) instead of their advance widths, so a trailing
+      "y", "p" or "?" in Nunito draws wider than React Native measured the line to be. The last
+      word then wraps onto a line the layout never allotted and is clipped: "Try Pro free for 7"
+      lost "days", "up to 15 min on" lost "Free", "When will we" lost "ship?" — on the Galaxy A07
+      (Android 16) and the Pixel 7 Pro (17), never on the Android 11 tablet. React Native's own
+      measurement never used the bounds (facebook/react-native#53286, fixes not yet landed), so
+      the render is told not to either, and the two agree again. Restores the Android 14 sizing
+      for every TextView in the app, through the theme's textViewStyle.
+    -->
+    <style name="VerbaleTextView" parent="Widget.AppCompat.TextView">
+        <item name="android:useBoundsForWidth">false</item>
+    </style>
+
+</resources>
