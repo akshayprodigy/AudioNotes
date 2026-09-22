@@ -44,10 +44,19 @@ this test is actually for: disk growth, the wake lock, and whether the service s
 |---|---|---|
 | 1 | **Play Store screenshots, ASO-ready.** Eight of them, in `docs/store/screenshots/`, numbered in listing order and ready to upload. Captured on a Pixel 9 emulator as you asked, then composed onto 1080×1920 frames with headlines — a raw emulator capture is 1 : 2.24 and Play rejects anything past 1 : 2. `docs/store/README.md` says what each one is and how to rebuild them. | **done** |
 | 2 | **The AAB**, version 1.0.0, rebuilt tonight with the two fixes below: `android/app/build/outputs/bundle/release/app-release.aab`, 43 MB, signed. Gate green against it. | **done** |
-| 3 | **The two screen recordings** Google asks for — the recording notification and the processing notification. | next |
-| 4 | **A feature graphic**, 1024×500. Play wants one. | next |
-| 5 | **The 90-minute capture**, once you have run it — I read the numbers off the phone and write them up. | waits for you, tomorrow |
+| 3 | **The two foreground-service videos** Play asks for, one per declared type: `docs/store/videos/`, about forty seconds each, single take. The microphone one shows a recording still counting in the picture-in-picture control and the notification after you leave the app; the dataSync one shows the stages running from the launcher through to "Your notes are ready". | **done** |
+| 4 | **The feature graphic**, 1024×500: `docs/store/feature-graphic.png`. | **done** |
+| 5 | **The 90-minute capture**, once you have run it — I read the numbers off the phone and write them up, starting with the speaker count (§6). | waits for you, tomorrow |
 | 6 | **Your server**, the moment you say "yes": the service-account JSON on the box, and the model mirror re-run so the meaning index stops falling back to Hugging Face. | waits for you |
+
+**Every store asset Play asks for now exists** — eight screenshots, the feature graphic and both
+videos, all in `docs/store/`, with `docs/store/README.md` saying what each is. The listing text and
+the Data safety table are already in `docs/play-console.md`. Nothing on the listing is waiting on
+me.
+
+Both videos were shot on the emulator, whose microphone records silence. They demonstrate the
+service behaviour, which is what review asks for; if review pushes back, sixty seconds on the A07
+in a real room is the better answer and the scripts run unattended against a device serial.
 
 ### Two defects the screenshot run found, both fixed (`7eda0fc`)
 
@@ -154,7 +163,7 @@ tells them so and refuses. A second, slower build would let them run at about ha
 
 ### 8. Push
 
-**114 commits** sit on `main` locally, against `origin/main` at `5ff0f5b`. You push.
+**117 commits** sit on `main` locally, against `origin/main` at `5ff0f5b`. You push.
 
 *(An earlier draft of this note said 35. That was wrong — `git rev-list --count origin/main..HEAD` says 114. Nothing about the work changed; the count did.)*
 
