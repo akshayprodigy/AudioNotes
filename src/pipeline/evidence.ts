@@ -4,7 +4,7 @@
 // files because the rules are a parity contract with cpp/minutes/ and must not acquire new
 // reasons to change, while provenance is bookkeeping that will keep changing.
 import {
-  DECISION,
+  isDecision,
   isAction,
   isQuestion,
   detectOwner,
@@ -228,7 +228,7 @@ export function extractItems(
         add(questions, 'question', sentence, source);
         continue;
       }
-      if (DECISION.test(sentence)) {
+      if (isDecision(sentence)) {
         add(decisions, 'decision', sentence, source);
         continue;
       }

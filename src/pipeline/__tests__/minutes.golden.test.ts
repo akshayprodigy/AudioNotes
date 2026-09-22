@@ -55,6 +55,15 @@ const RULES = [
   // NAMED_OWNER superficially matches "This will", but "This" is on the exclusion list, so the
   // owner must fall through to Unassigned rather than being reported as a person.
   { text: 'This will need to be fixed by Friday.', speakerId: 'S0' },
+  // A schedule change reported as made. Neither half alone is enough, which the two rows after
+  // this one pin from both sides.
+  { text: 'Shipping moved to Thursday because QA is not done.', speakerId: 'S0' },
+  { text: 'The demo was pushed to next week.', speakerId: 'S1' },
+  // Must NOT be decisions: a verb with no new time, and a new time with no change verb.
+  { text: 'I moved to Bangalore last year.', speakerId: 'S0' },
+  { text: 'He pushed back on the price.', speakerId: 'S1' },
+  // Still an action, not a decision: nobody has moved anything yet.
+  { text: 'We need to move the review to Friday.', speakerId: 'S0' },
 ];
 
 // Decision dedup DOES collapse case/punctuation variants: unlike actions, decision content is
@@ -121,6 +130,12 @@ test('write golden files for the C++ parity tests', () => {
   expect(content).toContain('Priya should send the report by next week. — Priya (due next week)');
   expect(content).toContain('How should we proceed with this rollout.');
   expect(content).toContain('This will need to be fixed by Friday. — Unassigned (due by Friday)');
+  const kindOf = (t: string) => rules.find(m => m.content.startsWith(t))?.kind;
+  expect(kindOf('Shipping moved to Thursday')).toBe('decision');
+  expect(kindOf('The demo was pushed to next week')).toBe('decision');
+  expect(kindOf('I moved to Bangalore')).toBeUndefined();
+  expect(kindOf('He pushed back on the price')).toBeUndefined();
+  expect(kindOf('We need to move the review to Friday')).toBe('action');
 
   const decisionDedup = extractMinutes(DECISION_DEDUP as any, SPEAKERS as any);
   write('minutes_decision_dedup', {

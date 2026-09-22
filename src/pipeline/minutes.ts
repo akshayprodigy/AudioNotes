@@ -29,6 +29,23 @@ const IMPERATIVE_VERBS = [
 // actually report one. Mirrored in cpp/minutes/minutes_extractor.cpp.
 export const DECISION = /\b(we decided|we have decided|we['’]ve decided|it was decided|it['’]s been decided|decided (that|to)|the decision|decision (is|was)|we agreed|agreed (to|that)|let['’]s go with|we['’]ll go with|we chose|going with|we['’]re going with|finali[sz]ed|sign(ed)? off|approved|conclusion is)\b/i;
 
+// A schedule change reported as already made is a decision. "Shipping moved to Thursday because
+// QA is not done" produced no item at all on the A07 (22 Sep), so a thread's "changes:" link
+// never fired on the commonest kind of changed decision.
+//
+// Two halves, both required on the same sentence: a verb in a form that REPORTS the change, and
+// an explicit new time. Bare infinitives are absent on purpose — "we need to move the review to
+// Friday" is an action somebody still owes and must stay one. The time half is why "I moved to
+// Bangalore last year" and "he pushed back on the price" are not decisions.
+// Mirrored in cpp/minutes/minutes_extractor.cpp; the goldens keep the two in step.
+export const SCHEDULE_VERB = /\b(moved|pushed|postponed|delayed|rescheduled|shifted|slipped|bumped|brought forward|pulled forward|put back)\b/i;
+export const SCHEDULE_WHEN = /\b(to|till|until|into|for)\s+(the\s+)?(today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next (week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|this (week|month|morning|afternoon|evening)|the (end of (the )?(day|week|month)|weekend)|q[1-4]|\d{1,2}(st|nd|rd|th)?( of)? (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*|(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]* \d{1,2})\b/i;
+
+/** The decision test both extractors use. A wrapper so there is one place the rule can drift. */
+export function isDecision(sentence: string): boolean {
+  return DECISION.test(sentence) || (SCHEDULE_VERB.test(sentence) && SCHEDULE_WHEN.test(sentence));
+}
+
 export const DUE = /\b(today|tonight|tomorrow|this (morning|afternoon|evening|week|month)|next (week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|by (the )?(end of (the )?(day|week|month)|eod|cob|monday|tuesday|wednesday|thursday|friday|saturday|sunday|noon|\w+day)|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|in \d+ (day|days|week|weeks)|\d{1,2}(st|nd|rd|th)?( of)? (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b/i;
 
 const NAMED_OWNER = /\b([A-Z][a-z]{1,20})\s+(?:will|to|should|is going to|needs to|has to|can|could|please)\b/;
@@ -173,7 +190,7 @@ export function extractMinutes(
         add(questions, 'question', sentence);
         continue; // a question is not also an action
       }
-      if (DECISION.test(sentence)) {
+      if (isDecision(sentence)) {
         add(decisions, 'decision', sentence);
         continue;
       }

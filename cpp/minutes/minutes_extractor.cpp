@@ -30,6 +30,14 @@ const std::regex ACTION_OBLIGATION(
 const std::regex DECISION(
     R"rx(\b(we decided|we have decided|we've decided|it was decided|it's been decided|decided (that|to)|the decision|decision (is|was)|we agreed|agreed (to|that)|let's go with|we'll go with|we chose|going with|we're going with|finali[sz]ed|sign(ed)? off|approved|conclusion is)\b)rx",
     std::regex::icase);
+// JS: SCHEDULE_VERB / SCHEDULE_WHEN in src/pipeline/minutes.ts. Both must match the same sentence
+// for it to be a decision; see the JS comment for why the bare infinitives are absent.
+const std::regex SCHEDULE_VERB(
+    R"rx(\b(moved|pushed|postponed|delayed|rescheduled|shifted|slipped|bumped|brought forward|pulled forward|put back)\b)rx",
+    std::regex::icase);
+const std::regex SCHEDULE_WHEN(
+    R"rx(\b(to|till|until|into|for)\s+(the\s+)?(today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next (week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|this (week|month|morning|afternoon|evening)|the (end of (the )?(day|week|month)|weekend)|q[1-4]|\d{1,2}(st|nd|rd|th)?( of)? (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*|(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]* \d{1,2})\b)rx",
+    std::regex::icase);
 // JS DUE regex, verbatim (only ['’] simplified):
 const std::regex DUE(
     R"rx(\b(today|tonight|tomorrow|this (morning|afternoon|evening|week|month)|next (week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|by (the )?(end of (the )?(day|week|month)|eod|cob|monday|tuesday|wednesday|thursday|friday|saturday|sunday|noon|\w+day)|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|in \d+ (day|days|week|weeks)|\d{1,2}(st|nd|rd|th)?( of)? (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b)rx",
@@ -170,7 +178,10 @@ bool isQuestion(const std::string& sentence) {
 // JS: DECISION.test(sentence) at the extractMinutes/extractItems call site. A wrapper, not a
 // second copy of the pattern: DECISION itself stays private to this file so there is exactly one
 // place it can drift.
-bool isDecision(const std::string& sentence) { return std::regex_search(sentence, DECISION); }
+bool isDecision(const std::string& sentence) {
+  if (std::regex_search(sentence, DECISION)) return true;
+  return std::regex_search(sentence, SCHEDULE_VERB) && std::regex_search(sentence, SCHEDULE_WHEN);
+}
 
 // JS: sentence.match(DUE) — `*out` receives match[0], the whole matched phrase, which is what
 // both extractors interpolate into "(due ...)".
