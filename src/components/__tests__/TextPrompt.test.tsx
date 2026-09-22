@@ -95,7 +95,8 @@ describe('TextPrompt and BACK (Step 6)', () => {
   function withCapturedKeyboard() {
     const { Keyboard } = require('react-native');
     const handlers: Record<string, () => void> = {};
-    jest.spyOn(Keyboard, 'addListener').mockImplementation((event: string, cb: () => void) => {
+    jest.spyOn(Keyboard, 'addListener').mockImplementation((...args: unknown[]) => {
+      const [event, cb] = args as [string, () => void];
       handlers[event] = cb;
       return { remove: jest.fn() };
     });
