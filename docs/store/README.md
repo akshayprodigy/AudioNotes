@@ -42,6 +42,28 @@ controls over it, so the mark and the words sit in the middle band with a wide m
 sizes itself down to stay inside that margin rather than trusting a hard-coded size.
 Rebuild: `python3 tools/feature.py <ic_launcher_foreground.png> feature-graphic.png`.
 
+## Foreground-service videos — `videos/`
+
+Play asks for one per declared service type, showing why the type is needed. Both are ~40 s,
+720×1616, no audio track, captured on the Pixel 9 emulator in a single take each.
+
+**`fgs-microphone.mp4`** — the `microphone` type on `RecordingService`. Start a recording; go to
+the launcher and the picture-in-picture control keeps counting; pull the shade and the
+notification shows the timer with Pause, Mark and Stop; come back and it is still running. That is
+the whole case: the recording survives leaving the app.
+
+**`fgs-datasync.mp4`** — the `dataSync` type on `ProcessingService`. The in-app progress screen
+with its stages, then the same work reported in the notification from the launcher
+("Pulling out the minutes…"), through to "Your notes are ready". The user is waiting for a single
+multi-minute computation and can watch it from outside the app.
+
+**Both were shot on an emulator, whose microphone records silence.** The `microphone` take
+therefore ends at the stop rather than on real notes, and the `dataSync` one uses a short import.
+They demonstrate the service behaviour, which is what review asks for. If review pushes back, the
+better answer is sixty seconds on a real phone in a room with real speech —
+`tools/fgs_mic_video.sh` and `tools/fgs_sync_video.sh` take a device serial and do it unattended.
+
 ## Still missing
 
-- The two foreground-service screen recordings Google asks for (recording, processing).
+Nothing for the store assets. The listing text and the Data safety table live in
+`docs/play-console.md`.

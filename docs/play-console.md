@@ -356,7 +356,7 @@ Done and no longer listed: the upload keystore (`AUDIONOTES_STORE_FILE`, every r
       `docs/store/screenshots/`, ready to upload**, numbered in listing order (see
       `docs/store/README.md`)
 - [x] Feature graphic, 1024×500 — `docs/store/feature-graphic.png`
-- [ ] Record the two foreground-service videos
+- [x] Record the two foreground-service videos — `docs/store/videos/`, one per type
 - [ ] Data safety form, from the table above
 - [ ] Content rating questionnaire
 - [ ] Staged rollout at 5–10 % with crash reporting available, so a bad build is recoverable
