@@ -58,6 +58,12 @@ const RULES = [
   // A schedule change reported as made. Neither half alone is enough, which the two rows after
   // this one pin from both sides.
   { text: 'Shipping moved to Thursday because QA is not done.', speakerId: 'S0' },
+  // The form the PHONE produces. Whisper-base swallows the "-d" of "moved to" before the /t/ of
+  // "to", so this is what the same sentence looks like in a real transcript (A07, twice on
+  // 22 Sep). A rule cued on the past tense alone fired in this file and never on a meeting.
+  { text: 'Shipping move to Thursday because QA is not done.', speakerId: 'S0' },
+  // ...and the other side of allowing the bare verb: a modal in front of it is an intention.
+  { text: "Let's move the demo to Monday.", speakerId: 'S1' },
   { text: 'The demo was pushed to next week.', speakerId: 'S1' },
   // Must NOT be decisions: a verb with no new time, and a new time with no change verb.
   { text: 'I moved to Bangalore last year.', speakerId: 'S0' },
@@ -132,6 +138,8 @@ test('write golden files for the C++ parity tests', () => {
   expect(content).toContain('This will need to be fixed by Friday. — Unassigned (due by Friday)');
   const kindOf = (t: string) => rules.find(m => m.content.startsWith(t))?.kind;
   expect(kindOf('Shipping moved to Thursday')).toBe('decision');
+  expect(kindOf('Shipping move to Thursday')).toBe('decision');
+  expect(kindOf("Let's move the demo to Monday")).toBe('action');
   expect(kindOf('The demo was pushed to next week')).toBe('decision');
   expect(kindOf('I moved to Bangalore')).toBeUndefined();
   expect(kindOf('He pushed back on the price')).toBeUndefined();
@@ -276,10 +284,10 @@ const SPANS = [
   // item's `text`, not only in a span buried in a merged source list.
   { text: '\uFEFFWe agreed to launch.', speakerId: 'S0' },
   // Row 12: the three-word floor on questions. Nine characters, so the length filter cannot be
-  // what excludes it \u2014 only the floor can. This is the fragment the phone produced on real
+  // what excludes it — only the floor can. This is the fragment the phone produced on real
   // speech ("And what?", "Okay?", "What?").
   { text: 'And what?', speakerId: 'S1' },
-  // Row 13: the other side of the same floor \u2014 four words, so a real short question survives it.
+  // Row 13: the other side of the same floor — four words, so a real short question survives it.
   { text: 'Should we revisit pricing?', speakerId: 'S0' },
 ];
 

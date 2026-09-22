@@ -22,6 +22,14 @@
     "speakerId": "S0"
    },
    {
+    "text": "Shipping move to Thursday because QA is not done.",
+    "speakerId": "S0"
+   },
+   {
+    "text": "Let's move the demo to Monday.",
+    "speakerId": "S1"
+   },
+   {
     "text": "The demo was pushed to next week.",
     "speakerId": "S1"
    },
@@ -52,7 +60,7 @@
  "output": [
   {
    "kind": "summary",
-   "content": "Decided: The decision is final: we ship on Monday; Shipping moved to Thursday because QA is not done. Next: Priya should send the report by next week. — Priya (due next week); We need to move the review to Friday. — Speaker 1; This will need to be fixed by Friday. — Unassigned (due by Friday). 3 action items, 3 decisions, 1 open question.",
+   "content": "Decided: The decision is final: we ship on Monday; Shipping moved to Thursday because QA is not done. Next: Priya should send the report by next week. — Priya (due next week); Let's move the demo to Monday. — Speaker 2; We need to move the review to Friday. — Speaker 1. 4 action items, 4 decisions, 1 open question.",
    "source": "rule"
   },
   {
@@ -63,6 +71,11 @@
   {
    "kind": "decision",
    "content": "Shipping moved to Thursday because QA is not done.",
+   "source": "rule"
+  },
+  {
+   "kind": "decision",
+   "content": "Shipping move to Thursday because QA is not done.",
    "source": "rule"
   },
   {
@@ -78,6 +91,11 @@
   {
    "kind": "action",
    "content": "This will need to be fixed by Friday. — Unassigned (due by Friday)",
+   "source": "rule"
+  },
+  {
+   "kind": "action",
+   "content": "Let's move the demo to Monday. — Speaker 2",
    "source": "rule"
   },
   {

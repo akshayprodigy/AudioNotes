@@ -33,17 +33,31 @@ export const DECISION = /\b(we decided|we have decided|we['’]ve decided|it was
 // QA is not done" produced no item at all on the A07 (22 Sep), so a thread's "changes:" link
 // never fired on the commonest kind of changed decision.
 //
-// Two halves, both required on the same sentence: a verb in a form that REPORTS the change, and
-// an explicit new time. Bare infinitives are absent on purpose — "we need to move the review to
-// Friday" is an action somebody still owes and must stay one. The time half is why "I moved to
-// Bangalore last year" and "he pushed back on the price" are not decisions.
-// Mirrored in cpp/minutes/minutes_extractor.cpp; the goldens keep the two in step.
-export const SCHEDULE_VERB = /\b(moved|pushed|postponed|delayed|rescheduled|shifted|slipped|bumped|brought forward|pulled forward|put back)\b/i;
+// Three parts. The verb and an explicit new time must both be in the sentence; a phrasing that
+// makes the verb an INTENTION disqualifies it, because "we need to move the review to Friday" is
+// an action somebody still owes and must stay one.
+//
+// The verb list holds every form, including the bare infinitive, and that is not laziness: on the
+// A07 (22 Sep, twice) whisper-base transcribed the spoken "shipping moved to Thursday" as
+// "Shipping move to Thursday" — the "-d" is swallowed before the /t/ of "to". A rule that leaned
+// on the past tense fired on the written sentence and never on the spoken one, which is the only
+// one a meeting produces. SCHEDULE_INTENT carries the distinction instead, and it is a positive
+// pattern rather than a lookbehind because std::regex has none (see the port's header).
+// The time half is why "I moved to Bangalore last year" and "he pushed back on the price" are not
+// decisions. Mirrored in cpp/minutes/minutes_extractor.cpp; the goldens keep the two in step.
+export const SCHEDULE_VERB = /\b(move|moves|moved|push|pushes|pushed|postpone|postpones|postponed|delay|delays|delayed|reschedule|reschedules|rescheduled|shift|shifts|shifted|slip|slips|slipped|bump|bumps|bumped|bring forward|brings forward|brought forward|pull forward|pulls forward|pulled forward|put back|puts back)\b/i;
 export const SCHEDULE_WHEN = /\b(to|till|until|into|for)\s+(the\s+)?(today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next (week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|this (week|month|morning|afternoon|evening)|the (end of (the )?(day|week|month)|weekend)|q[1-4]|\d{1,2}(st|nd|rd|th)?( of)? (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*|(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]* \d{1,2})\b/i;
+
+// The verb as an intention rather than a report: after "to" (which covers need to / have to /
+// going to / want to / plan to in one), or after a modal, with an optional pronoun between.
+export const SCHEDULE_INTENT = /\b(to|must|should|shall|will|would|can|could|may|might|let['’]s|please)\s+(you |we |i |they |he |she |it )?(move|push|postpone|delay|reschedule|shift|bump|bring forward|pull forward|put back)\b/i;
 
 /** The decision test both extractors use. A wrapper so there is one place the rule can drift. */
 export function isDecision(sentence: string): boolean {
-  return DECISION.test(sentence) || (SCHEDULE_VERB.test(sentence) && SCHEDULE_WHEN.test(sentence));
+  if (DECISION.test(sentence)) return true;
+  return (
+    SCHEDULE_VERB.test(sentence) && SCHEDULE_WHEN.test(sentence) && !SCHEDULE_INTENT.test(sentence)
+  );
 }
 
 export const DUE = /\b(today|tonight|tomorrow|this (morning|afternoon|evening|week|month)|next (week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|by (the )?(end of (the )?(day|week|month)|eod|cob|monday|tuesday|wednesday|thursday|friday|saturday|sunday|noon|\w+day)|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|in \d+ (day|days|week|weeks)|\d{1,2}(st|nd|rd|th)?( of)? (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b/i;

@@ -30,13 +30,18 @@ const std::regex ACTION_OBLIGATION(
 const std::regex DECISION(
     R"rx(\b(we decided|we have decided|we've decided|it was decided|it's been decided|decided (that|to)|the decision|decision (is|was)|we agreed|agreed (to|that)|let's go with|we'll go with|we chose|going with|we're going with|finali[sz]ed|sign(ed)? off|approved|conclusion is)\b)rx",
     std::regex::icase);
-// JS: SCHEDULE_VERB / SCHEDULE_WHEN in src/pipeline/minutes.ts. Both must match the same sentence
-// for it to be a decision; see the JS comment for why the bare infinitives are absent.
+// JS: SCHEDULE_VERB / SCHEDULE_WHEN / SCHEDULE_INTENT in src/pipeline/minutes.ts. Verb and time
+// must both be in the sentence and the intent phrasing must not be; see the JS comment for why
+// the bare infinitive is in the list (whisper drops the "-d" of "moved to" before the /t/).
 const std::regex SCHEDULE_VERB(
-    R"rx(\b(moved|pushed|postponed|delayed|rescheduled|shifted|slipped|bumped|brought forward|pulled forward|put back)\b)rx",
+    R"rx(\b(move|moves|moved|push|pushes|pushed|postpone|postpones|postponed|delay|delays|delayed|reschedule|reschedules|rescheduled|shift|shifts|shifted|slip|slips|slipped|bump|bumps|bumped|bring forward|brings forward|brought forward|pull forward|pulls forward|pulled forward|put back|puts back)\b)rx",
     std::regex::icase);
 const std::regex SCHEDULE_WHEN(
     R"rx(\b(to|till|until|into|for)\s+(the\s+)?(today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next (week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|this (week|month|morning|afternoon|evening)|the (end of (the )?(day|week|month)|weekend)|q[1-4]|\d{1,2}(st|nd|rd|th)?( of)? (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*|(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]* \d{1,2})\b)rx",
+    std::regex::icase);
+// JS: SCHEDULE_INTENT (only ['’] simplified) — the verb as an intention, which is an action.
+const std::regex SCHEDULE_INTENT(
+    R"rx(\b(to|must|should|shall|will|would|can|could|may|might|let's|please)\s+(you |we |i |they |he |she |it )?(move|push|postpone|delay|reschedule|shift|bump|bring forward|pull forward|put back)\b)rx",
     std::regex::icase);
 // JS DUE regex, verbatim (only ['’] simplified):
 const std::regex DUE(
@@ -195,7 +200,8 @@ bool isQuestion(const std::string& sentence) {
 // place it can drift.
 bool isDecision(const std::string& sentence) {
   if (std::regex_search(sentence, DECISION)) return true;
-  return std::regex_search(sentence, SCHEDULE_VERB) && std::regex_search(sentence, SCHEDULE_WHEN);
+  return std::regex_search(sentence, SCHEDULE_VERB) && std::regex_search(sentence, SCHEDULE_WHEN) &&
+         !std::regex_search(sentence, SCHEDULE_INTENT);
 }
 
 // JS: sentence.match(DUE) — `*out` receives match[0], the whole matched phrase, which is what
