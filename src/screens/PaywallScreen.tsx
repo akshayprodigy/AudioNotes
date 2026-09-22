@@ -50,31 +50,37 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Paywall'>;
  *
  * Two rules this screen holds itself to:
  *
- *   - Nothing on it is advertised that is not built. The paid half is prose summaries, narrated
- *     minutes, and the larger transcriber. There is no roadmap on this page.
+ *   - Nothing on it is advertised that is not built. The paid half is search by meaning, prose
+ *     summaries shaped to the kind of meeting, narrated minutes, asking a meeting a question,
+ *     remembered voices, threads across meetings, the vocabulary, and the larger transcriber —
+ *     each one shipped and run on a phone before its row went in here. There is no roadmap on
+ *     this page.
  *   - Nothing free is dressed up as paid. The free tier's floor — record, transcribe, tell the
  *     speakers apart, rule-based minutes, export — is stated on the page that is trying to take
  *     money, because that is where it is worth something. Export stays free deliberately: the
  *     document a free user forwards to five colleagues is the acquisition loop, and charging for
  *     it would be charging for our own marketing.
- *   - Nothing is promised to a phone that cannot keep the promise. The two rows the writer
- *     delivers say "Not on this phone" — with the memory it needs and has — on a phone under
- *     the gate, before the trial or the price.
+ *   - Nothing is promised to a phone that cannot keep the promise. The rows the writer delivers
+ *     say "Not on this phone" — with the memory it needs and has — on a phone under the gate,
+ *     before the trial or the price. The rows that need no writer (search, voices, threads, the
+ *     vocabulary, the transcriber) stay promised, because the phone can keep them.
  */
 const INCLUDED: { icon: IconName; title: string; body: string; needsWriter?: boolean }[] = [
   {
     icon: 'search',
     title: 'Search everything you have recorded',
     body:
-      'Every word of every transcript, searchable across all your meetings — for when you know it ' +
-      'was said and not which meeting it was said in.',
+      'Every word of every transcript, across all your meetings — and by meaning, so "what it ' +
+      'will cost" is found when you search for the budget. For when you know it was said and not ' +
+      'which meeting it was said in.',
   },
   {
     icon: 'edit',
     title: 'Summaries written, not extracted',
     body:
       'A model on your phone reads the whole transcript and writes what the meeting was about, in ' +
-      'sentences — instead of the highest-scoring lines lifted out of it.',
+      'sentences — shaped to the kind of meeting it was, a stand-up or a client call or an ' +
+      'interview — instead of the highest-scoring lines lifted out of it.',
     needsWriter: true,
   },
   {
@@ -84,6 +90,35 @@ const INCLUDED: { icon: IconName; title: string; body: string; needsWriter?: boo
       'The same model narrates the decisions and the actions into prose you can send to someone ' +
       'who was not there, with the rule-based list still underneath it.',
     needsWriter: true,
+  },
+  {
+    icon: 'chat',
+    title: 'Ask the meeting',
+    body:
+      'Ask what was agreed about the deadline and get an answer that points at the moment it was ' +
+      'said — or tells you plainly that nothing in this meeting settles it.',
+    needsWriter: true,
+  },
+  {
+    icon: 'users',
+    title: 'Voices it remembers',
+    body:
+      'Name someone once and the next time their voice is in the room the app asks "Sounds like ' +
+      'Priya?" — off until you switch it on, kept on this phone, forgotten in one tap.',
+  },
+  {
+    icon: 'inbox',
+    title: 'One thread across meetings',
+    body:
+      'Meetings that share a tag become a thread: what is still open across all of them, and ' +
+      'every decision in the order it was made, with the ones that changed an earlier one marked.',
+  },
+  {
+    icon: 'sliders',
+    title: 'Your words, spelled your way',
+    body:
+      'Correct a name or a term once — "in over" to "Innova" — and it is written that way in ' +
+      'every meeting after.',
   },
   {
     icon: 'ai',
@@ -322,7 +357,7 @@ export default function PaywallScreen({ navigation }: Props) {
 
         {/* Said on the paywall, where it costs something to say. A free tier stated only in
             marketing copy is a claim; stated here it is a commitment. */}
-        <Pop index={5} style={st.floorWrap}>
+        <Pop index={INCLUDED.length + 2} style={st.floorWrap}>
           <View style={[st.floor, { backgroundColor: colors.successSoft }]}>
             <Icon name="shield" size={s(20)} color={colors.success} strokeWidth={2.4} />
             <Txt variant="chip" color={colors.ink} style={st.flex}>
