@@ -527,7 +527,13 @@ function makeStyles(c: Colors) {
     stage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     clock: { marginTop: sv(14) },
     capNote: { padding: s(14), gap: s(8), alignItems: 'flex-start' },
-    hint: { marginTop: s(4) },
+    // Fills the column, not the text's measured width: Android measured "Tap to dictate · up to
+    // 15 min on Free" a few pixels short of how it rendered whenever the string CHANGED under the
+    // node (Meeting → Dictation, a permission dialog re-render), wrapped "Free" to a second line
+    // and clipped it; a fresh mount of the same string was fine. Same defect and same fix as the
+    // speaker-repair scope labels (b6dac40). A text that fills the column has nothing to wrap
+    // against.
+    hint: { marginTop: s(4), alignSelf: 'stretch', textAlign: 'center' },
     meter: { marginTop: sv(22), marginBottom: sv(6) },
 
     footer: { flexDirection: 'row', gap: s(10), minHeight: s(52) },
