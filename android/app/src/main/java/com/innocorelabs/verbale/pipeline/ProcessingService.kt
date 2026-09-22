@@ -188,7 +188,12 @@ class ProcessingService : Service() {
     synchronized(lock) {
       current?.cancelled = true
       queue.clear()
-      running = false
+      // `running` is deliberately NOT cleared here. Only the worker clears it, under this same
+      // lock, at the moment it decides to exit — clearing it from outside would let the next
+      // onStartCommand start a SECOND worker while this one is still winding down, and the two
+      // would overwrite each other's `current`/`currentId`. cancel() has always left it alone for
+      // the same reason. The worker finds the queue empty at its next poll, clears the flag itself
+      // and stops.
     }
     ServiceTimeout.notice(id, waiting)?.let { postTimeoutNotice(it) }
     try { stopForegroundCompat() } catch (_: Exception) {}
