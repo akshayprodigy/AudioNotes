@@ -701,11 +701,19 @@ export default function MeetingScreen({ route, navigation }: Props) {
       try {
         await db.addTag(meetingId, name);
         setTags(await db.tagsFor(meetingId));
+        // A type the person CHOSE is a statement about this meeting; tagging it afterwards
+        // extends the statement to the tag, the same as choosing the type on a tagged meeting
+        // would. Without this the order "choose, then tag" taught nothing, and the next meeting
+        // with the tag came up General (A07, 22 Sep). A suggested type is the app's guess, not
+        // the person's word, so it teaches nothing.
+        if (meeting?.templateSource === 'chosen' && meeting.template) {
+          await db.rememberTemplateForTags(meetingId, meeting.template);
+        }
       } catch (e: any) {
         Alert.alert('Could not add that tag', String(e?.message ?? e));
       }
     },
-    [meetingId],
+    [meetingId, meeting?.templateSource, meeting?.template],
   );
 
   /**

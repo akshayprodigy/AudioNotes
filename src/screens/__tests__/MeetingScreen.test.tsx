@@ -277,6 +277,46 @@ test('choosing a meeting type writes it and remembers it for the meeting\'s tags
 });
 
 /**
+ * The memory is written when a type is CHOSEN, with the tags the meeting has then. The by-hand
+ * order in the Phase 2 report — choose Client call, then tag the meeting "weekly", then record a
+ * "weekly" meeting — wrote nothing under "weekly" on the Galaxy A07, and the new meeting came up
+ * General. Tagging a meeting whose type was chosen teaches the tag too.
+ */
+test('adding a tag to a meeting with a chosen type remembers the type for that tag', async () => {
+  (db.getMeeting as jest.Mock).mockResolvedValue({
+    id: 'm1', title: 'Client', createdAt: 1, durationMs: 60_000, status: 'done',
+    tierUsed: 'free', language: 'en', audioPath: null, audioRetained: 1,
+    template: 'client', templateSource: 'chosen',
+  });
+  (db.addTag as jest.Mock).mockResolvedValue(undefined);
+  const { TextPrompt } = require('../../components/ui');
+  const tree = await render();
+  const prompt = tree.root.findAllByType(TextPrompt).find(p => p.props.title === 'Add a tag');
+  await act(async () => {
+    prompt!.props.onSubmit('weekly');
+  });
+  expect(db.addTag).toHaveBeenCalledWith('m1', 'weekly');
+  expect(db.rememberTemplateForTags).toHaveBeenCalledWith('m1', 'client');
+});
+
+test('adding a tag to a meeting whose type was only suggested teaches nothing', async () => {
+  (db.getMeeting as jest.Mock).mockResolvedValue({
+    id: 'm1', title: 'Standup', createdAt: 1, durationMs: 60_000, status: 'done',
+    tierUsed: 'free', language: 'en', audioPath: null, audioRetained: 1,
+    template: 'standup', templateSource: 'suggested',
+  });
+  (db.addTag as jest.Mock).mockResolvedValue(undefined);
+  const { TextPrompt } = require('../../components/ui');
+  const tree = await render();
+  const prompt = tree.root.findAllByType(TextPrompt).find(p => p.props.title === 'Add a tag');
+  await act(async () => {
+    prompt!.props.onSubmit('weekly');
+  });
+  expect(db.addTag).toHaveBeenCalledWith('m1', 'weekly');
+  expect(db.rememberTemplateForTags).not.toHaveBeenCalled();
+});
+
+/**
  * The Summary tab's thread lines (Phase 3): MeetingScreen resolves db.thread per tag and hands
  * SummaryTab counts with this meeting's OWN rows excluded — the line says what is earlier, not
  * what this meeting itself just produced.
