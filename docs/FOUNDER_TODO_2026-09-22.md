@@ -1,56 +1,30 @@
-# What I need from you — 22 September 2026
+# What I need from you — the final list
 
-Everything on the way to the Play Store that only you can do, in the order that unblocks the most.
-Each point says what to do, and why. Tick them as you go; I am working through "Layer 1" on the
-A07 in parallel and will not need you for that.
+*Rewritten the night of 22 September 2026, after the Layer 1 cleanup was built, reviewed and
+device-verified. This supersedes the morning version of this file. Everything the app itself
+needs is now done except one build step; what is below is the part only you can do.*
 
----
-
-## A. Record the consent sentence in your voice
-
-**What:** On any phone, in a quiet room, at a normal speaking pace, record exactly this sentence:
-
-> "This meeting is being recorded by Verbale. The recording stays on this phone."
-
-Any format is fine (voice memo, m4a, wav). Send me the file. About five seconds.
-
-**Why:** The app says this out loud at the start of every recording so the recording itself proves
-the room was told. Today it uses a robot voice, and the transcriber hears "Verbal". This is the last
-piece of content missing from the build — the production build waits on it.
-
-- [ ] Done
+**Point A is closed** — you made the consent clip and I found it
+(`~/Downloads/ElevenLabs_2026-09-22T11_02_31_…mp3`). Whisper reads it back as *"This meeting is
+being recorded by Verbali. The recording stays on this phone."* I am landing it in the build; no
+further action from you.
 
 ---
 
-## B. Make one phone call to the A07 when I ask
-
-**What:** When I say "now", call the A07's phone number from another phone. Let it ring, answer,
-talk for about ten seconds, hang up. I will be recording on the A07 at the time.
-
-**Why:** Proves a recording survives an incoming call and marks the gap correctly. Five minutes of
-your time, and I cannot place a call to the phone from the Mac.
-
-- [ ] Done
-
----
-
-## C. Google Play Console — three things
+## 1. Google Play Console — three things *(the one real blocker)*
 
 **What:**
 
-1. Create the app in Play Console: name **Verbale**, package name **`com.innocorelabs.verbale`**,
-   app (not game), free. When it asks about signing, choose **Play App Signing** — this has to be
-   chosen at creation; it cannot be added cleanly later.
-2. Under *Monetise › Products › Subscriptions*, create **one** subscription:
-   - Product ID: **`verbale_pro`** (exactly this — the app is built with this id)
-   - Base plan 1, ID **`monthly`**, renews monthly: **₹299** in India, **$4.99** everywhere else
-     (let Play convert the other currencies from USD)
-   - Base plan 2, ID **`annual`**, renews yearly: **₹2,499** in India, **$39.99** everywhere else
-3. Tell me the **Google account email** you will test purchases with. It goes on the licence-tester
-   list so you can buy with test money.
+1. Create the app: name **Verbale**, package **`com.innocorelabs.verbale`**, app (not game), free.
+   When it asks about signing, choose **Play App Signing** — it has to be chosen at creation.
+2. *Monetise › Products › Subscriptions* → **one** subscription:
+   - Product ID **`verbale_pro`** (exactly this — the app is built with this id)
+   - Base plan **`monthly`**: **₹299** in India, **$4.99** elsewhere
+   - Base plan **`annual`**: **₹2,499** in India, **$39.99** elsewhere
+3. Tell me the **Google account email** you will test purchases with, for the licence-tester list.
 
-**Why:** Nothing in the app can be bought until the product exists. Every "not ready" verdict since
-14 September has been this one thing. The app shows the price Play sends, so the prices are set
+**Why:** nothing in the app can be bought until the product exists. Every "not ready" verdict since
+14 September has been this one thing. The app shows whatever price Play sends, so the prices live
 here and nowhere else.
 
 - [ ] App created, Play App Signing on
@@ -59,100 +33,123 @@ here and nowhere else.
 
 ---
 
-## D. A Google Cloud service account (so purchases become licences)
+## 2. A Google Cloud service account *(so a purchase becomes a licence)*
 
 **What:**
 
-1. Go to **console.cloud.google.com**. Use the same Google account as the Play Console. Create a
-   project (or use an existing one), for example "Verbale".
-2. *APIs & Services › Library* → search **"Google Play Android Developer API"** → **Enable**.
-3. *IAM & Admin › Service Accounts* → **Create service account**. Name it "verbale-licence".
-   Skip the optional role steps. After it is created, open it → *Keys* → **Add key › Create new
-   key › JSON**. A `.json` file downloads. **Send me that file** (it is a secret — WhatsApp or
-   email to me is fine, do not commit it anywhere).
+1. **console.cloud.google.com**, same Google account as Play Console. Create a project, e.g.
+   "Verbale".
+2. *APIs & Services › Library* → **"Google Play Android Developer API"** → **Enable**.
+3. *IAM & Admin › Service Accounts* → **Create service account**, name it "verbale-licence", skip
+   the optional roles. Open it → *Keys* → **Add key › Create new key › JSON**. **Send me that
+   file** — it is a secret; WhatsApp or email is fine, it is never committed anywhere.
 4. Back in **Play Console** → *Users and permissions* → **Invite new users** → paste the service
-   account's email (it looks like `verbale-licence@…iam.gserviceaccount.com`) → under *App
-   permissions* pick Verbale → under *Account permissions* tick **"Manage orders and
-   subscriptions"** → Invite.
+   account's email (`verbale-licence@….iam.gserviceaccount.com`) → *App permissions*: Verbale →
+   *Account permissions*: tick **"Manage orders and subscriptions"** → Invite.
 
-**Why:** When someone buys Pro, the app hands the purchase to your server, and the server asks
-Google "is this real?" before it issues a licence. Today the server has no way to ask — I checked
-the live server this morning and it answers "Play Billing is not configured". In that state a buyer
-pays and gets nothing. The JSON file is the server's key to ask Google.
+**Why:** when somebody buys Pro, the app hands the purchase to your server and the server asks
+Google "is this real?" before issuing a licence. Today the live server answers *"Play Billing is
+not configured"* — in that state **a buyer pays and gets nothing**. This JSON is the server's key
+to ask.
 
 - [ ] JSON file sent to me
-- [ ] Service account invited in Play Console with "Manage orders and subscriptions"
+- [ ] Service account invited with "Manage orders and subscriptions"
 
 ---
 
-## E. Say "yes" to two small changes on your server
+## 3. Say "yes" to two changes on your server
 
-**What:** Reply "yes to E" and I will do both:
+**What:** reply **"yes to 3"** and I do both:
 
-1. Put the JSON from D on the server and restart it (one minute).
-2. Re-run the model mirror script so the 37 MB "meaning index" downloads from your server instead
-   of Hugging Face (a few minutes; nothing else changes).
+1. Put the JSON from point 2 on the server and restart it (one minute).
+2. Re-run the model mirror so the 37 MB meaning index downloads from your server instead of
+   Hugging Face (a few minutes; nothing else changes).
 
-**Why:** Both touch the live server, so I do not do them without your word.
+**Why:** both touch the live server, so I do not do them without your word.
 
-- [ ] Yes to E
+- [ ] Yes to 3
 
 ---
 
-## F. Borrow a Xiaomi / Redmi / Poco or Realme phone for one day
+## 4. One decision: the version number
 
-**What:** Any Redmi, Poco, Xiaomi or Realme phone from the last four years, unlocked, with USB
-debugging turned on (I can talk you through that in two minutes). Plug it into the Mac next to the
-A07. I install the app, run one meeting, and remove it afterwards.
+**What:** the tree carries an uncommitted change to `android/app/build.gradle` dropping
+`appVersionName` from **1.0.0** to **0.9.0** (which makes the versionCode 10000 → 900). Tell me
+which you want. I have left it exactly as you made it and built around it.
 
-**Why:** Those brands (MIUI / HyperOS / ColorOS) kill background work far more aggressively than
-Samsung or Google. The app has never run on one. A meeting that dies mid-recording there is a user
-who never gets their notes and never comes back. Testing on cheap phones is what found six real
-bugs already.
+**Why:** it is the number Play remembers forever. A first upload at 900 means every later build
+must be above 900, and "0.9.0" on a store listing says beta to a reader. Decide it on purpose
+rather than letting whichever state the file is in at build time decide it.
+
+- [ ] 1.0.0 (what is committed) — or — [ ] 0.9.0 (your uncommitted change)
+
+---
+
+## 5. One phone call, when I ask
+
+**What:** when I say "now", call the A07 from another phone, let it ring, answer, talk for about
+ten seconds, hang up. I will be recording at the time.
+
+**Why:** proves a recording survives an incoming call and marks the gap. Five minutes, and I
+cannot place a call to the phone from the Mac.
+
+- [ ] Done
+
+---
+
+## 6. Borrow a Xiaomi / Redmi / Poco or Realme phone for a day
+
+**What:** any of those from the last four years, unlocked, USB debugging on (two minutes, I can
+talk you through it). Plug it in next to the A07. I install, run one meeting, remove it after.
+
+**Why:** MIUI / HyperOS / ColorOS kill background work far more aggressively than Samsung or
+Google, and the app has never run on one. A meeting that dies mid-recording there is a user who
+never gets their notes. Cheap phones have found nine real bugs so far.
 
 - [ ] Phone arranged
 
 ---
 
-## G. One decision: the older-chip phones
+## 7. One decision: the older-chip phones
 
-**What:** Phones with older processors — Redmi 9, Redmi 9A, Redmi Note 9, Realme C-series, most
-phones with a Helio G25/G35/G80/G85 or Snapdragon 4xx/636/660 chip — cannot run the speech engines
-as built. Today the app tells them so, politely, at first run, and refuses. A second, slower build
-of the engine would let them run, at roughly half speed.
+**What:** phones with older processors — Redmi 9/9A/Note 9, Realme C-series, most Helio
+G25/G35/G80/G85 and Snapdragon 4xx/636/660 — cannot run the speech engines as built. Today the app
+tells them so at first run and refuses. A second, slower build of the engine would let them run at
+roughly half speed.
 
 Decide: **(a) launch with the refusal** and add the slow build later, or **(b) build it before
-launch**. If (b), I also need one such phone for a day, like F.
+launch**. If (b), I also need one such phone for a day.
 
-**Why:** It is a real slice of the Indian market, and it is the slowest piece of work on this list —
-so it should be your call, not mine.
+**Why:** a real slice of the Indian market, and the slowest piece of work left — so it is your
+call, not mine.
 
-- [ ] Decision: (a) or (b)
-
----
-
-## H. Leave the A07 plugged in and on Wi-Fi
-
-**What:** Nothing to do — just do not unplug it. Its data is disposable; I will tell you before any
-wipe.
-
-**Why:** I am running the remaining by-hand checks on it, and later a 90-minute recording with
-audio played from the Mac.
+- [ ] (a) or (b)
 
 ---
 
-## I. Later, not now: the store listing and the rollout
+## 8. Push, when you are ready
 
-**What:** When the build is ready I will hand you screenshots from the A07, two short screen
-recordings Google asks for (the recording notification and the processing notification), and the
-listing text — all in `docs/play-console.md`. You upload them, fill in the Data safety form from the
-table in that file, and set the first rollout to **5–10 %**.
+**What:** 33 commits sit on `main` locally, unpushed. You push.
 
-**Why:** Only the account owner can upload. A small first rollout means a bad build is recoverable.
+**Why:** your rule, and it has been right — several of those commits were rewritten after the
+phone disagreed with them.
+
+- [ ] Pushed
+
+---
+
+## 9. Last, once I hand you the build
+
+**What:** the store listing (screenshots and two short screen recordings I will give you, plus the
+text and the Data safety table in `docs/play-console.md`), then the first rollout at **5–10%**.
+
+**Why:** only the account owner can upload, and a small first rollout makes a bad build
+recoverable.
 
 - [ ] Listing uploaded
-- [ ] Rollout set to 5–10 %
+- [ ] Rollout at 5–10%
 
 ---
 
-**If you do only two things today, do A and C.** Then D. Everything else can follow.
+**If you do only one thing, do point 1.** Then 2, then reply "yes to 3". Points 1–3 are the entire
+reason the app cannot be sold today; everything else on this list can follow the launch.
