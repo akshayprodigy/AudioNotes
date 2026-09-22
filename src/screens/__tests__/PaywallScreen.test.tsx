@@ -33,6 +33,18 @@ jest.mock('../../native/NativeModelManager', () => ({
 }));
 jest.mock('../../billing/SignInForm', () => () => null);
 
+// The screen's `Pop` entrance animations start on mount and drive a native-driver frame loop.
+// Left on real timers, those frames keep firing after this suite's environment is torn down, and
+// the error they then throw is attributed to whichever suite the worker runs next — it was
+// VoicesSection ("getNativeTagFromPublicInstance is not a function"), which passes on its own.
+// Fake timers end the loop with the suite. Same convention as the other screen tests.
+beforeEach(() => {
+  jest.useFakeTimers();
+});
+afterEach(() => {
+  jest.useRealTimers();
+});
+
 const nav = { navigate: jest.fn(), goBack: jest.fn() } as any;
 const route = { key: 'paywall', name: 'Paywall', params: undefined } as any;
 
