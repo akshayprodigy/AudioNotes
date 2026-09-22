@@ -1,7 +1,9 @@
 #include "minutes/templates.h"
 
+#include <algorithm>
 #include <cctype>
 #include <unordered_map>
+#include <vector>
 
 namespace audionotes {
 
@@ -95,6 +97,34 @@ bool isBullet(const std::string& line) {
   while (i < t.size() && std::isdigit(static_cast<unsigned char>(t[i]))) ++i;
   return i > 0 && i + 1 < t.size() && (t[i] == '.' || t[i] == ')') && t[i + 1] == ' ';
 }
+
+// A section label that begins inside a line rather than at the start of one: "<Name>:" preceded
+// by a space, and before that the end of a sentence. The 1.5B writer does this with the longer
+// section lists — a client call came back on the A07 as one paragraph holding all four (22 Sep),
+// where the stand-up's three arrived on lines of their own.
+//
+// Returns the byte offsets at which `line` should be cut, in order, never including 0.
+std::vector<std::size_t> inlineLabelCuts(const std::string& line,
+                                         const std::vector<std::string>& sections) {
+  std::vector<std::size_t> cuts;
+  const std::string low = lowered(line);
+  for (const auto& name : sections) {
+    const std::string needle = lowered(name) + ":";
+    for (std::size_t at = low.find(needle); at != std::string::npos;
+         at = low.find(needle, at + 1)) {
+      if (at == 0) continue;                       // already opens its line: the existing shape
+      if (line[at - 1] != ' ') continue;           // "…and what we committed to:" is not a label
+      std::size_t before = at - 1;
+      while (before > 0 && line[before] == ' ') --before;
+      const char end = line[before];
+      if (end != '.' && end != '!' && end != '?') continue;  // mid-sentence: leave it alone
+      cuts.push_back(at);
+    }
+  }
+  std::sort(cuts.begin(), cuts.end());
+  cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
+  return cuts;
+}
 }  // namespace
 
 std::string foldDictation(const std::string& text) {
@@ -158,7 +188,45 @@ std::string foldSections(const std::string& text, const std::string& template_id
   // one with no headers at all) is untouched, blank lines and all.
   bool anyHeader = false;
   for (const auto& l : lines) if (headerIndex(l, sections) >= 0) { anyHeader = true; break; }
-  if (!anyHeader) return text;
+  if (!anyHeader) {
+    // No header on a line of its own. The writer may still have put the labels inside the prose;
+    // two or more of them is a shape, one is a sentence. Each piece becomes its own paragraph,
+    // opened by the canonical section name so the casing matches the folded path.
+    std::vector<std::string> pieces;
+    for (const auto& l : lines) {
+      const auto cuts = inlineLabelCuts(l, sections);
+      std::size_t from = 0;
+      for (const std::size_t at : cuts) {
+        pieces.push_back(trimmed(l.substr(from, at - from)));
+        from = at;
+      }
+      pieces.push_back(trimmed(l.substr(from)));
+    }
+    std::size_t labelled = 0;
+    for (const auto& p : pieces) {
+      for (const auto& name : sections) {
+        if (lowered(p).rfind(lowered(name) + ":", 0) == 0) { ++labelled; break; }
+      }
+    }
+    if (labelled < 2) return text;
+    std::string out;
+    for (std::size_t i = 0; i < pieces.size(); ++i) {
+      if (pieces[i].empty()) continue;
+      if (!out.empty()) out += "\n\n";
+      // Canonical casing for the label, the rest of the piece as written.
+      bool named = false;
+      for (const auto& name : sections) {
+        const std::string needle = lowered(name) + ":";
+        if (lowered(pieces[i]).rfind(needle, 0) == 0) {
+          out += name + ":" + pieces[i].substr(needle.size());
+          named = true;
+          break;
+        }
+      }
+      if (!named) out += pieces[i];
+    }
+    return out;
+  }
 
   std::vector<std::string> paragraphs;
   std::string before;    // the lines before the first header, verbatim

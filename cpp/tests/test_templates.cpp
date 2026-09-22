@@ -124,6 +124,39 @@ static void foldedOutputSurvivesStripLabels() {
   CHECK(stripLabels(foldSections(in, "standup")) == "Blockers: The phone is with QA.");
 }
 
+static void foldSplitsInlineLabelsWhenNoLineIsAHeader() {
+  // What the A07 showed for a client call on 22 Sep: four labels, one paragraph.
+  const std::string in =
+      "What the client asked for: a fixed date for the pilot. "
+      "What we committed to: a build by Friday. "
+      "Risks and open points: the licence server is still returning 500. "
+      "Next steps: Ravi sends the revised plan.";
+  const std::string want =
+      "What the client asked for: a fixed date for the pilot.\n\n"
+      "What we committed to: a build by Friday.\n\n"
+      "Risks and open points: the licence server is still returning 500.\n\n"
+      "Next steps: Ravi sends the revised plan.";
+  CHECK(foldSections(in, "client") == want);
+}
+
+static void foldLeavesASingleInlineLabelInsideProse() {
+  // One label is a sentence, not a shape: two are needed before anything is cut.
+  const std::string in =
+      "The call ran long. Next steps: Ravi sends the revised plan by Friday.";
+  CHECK(foldSections(in, "client") == in);
+  // ...and a label that is part of a sentence is never a cut, however many there are.
+  const std::string mid =
+      "We talked about what the client asked for: a date. Then we agreed what we committed to: a build.";
+  CHECK(foldSections(mid, "client") == mid);
+}
+
+static void foldNormalisesTheCasingOfAnInlineLabel() {
+  const std::string in =
+      "what the client asked for: a date. next steps: Ravi sends the plan.";
+  CHECK(foldSections(in, "client") ==
+        "What the client asked for: a date.\n\nNext steps: Ravi sends the plan.");
+}
+
 // Phase 5: "dictation" is a narrative shape, not one of the seven meeting types — sectionsFor
 // knows nothing of it, narrativePrompt routes it to dictationPrompt, and the record is fenced.
 static void dictationIsItsOwnPromptAndStillFenced() {
@@ -170,6 +203,9 @@ int main() {
   foldLeavesAnInlineOpenerAndItsParagraphAlone();
   foldKeepsProseBeforeTheFirstHeaderAndIsIdentityForGeneral();
   foldedOutputSurvivesStripLabels();
+  foldSplitsInlineLabelsWhenNoLineIsAHeader();
+  foldLeavesASingleInlineLabelInsideProse();
+  foldNormalisesTheCasingOfAnInlineLabel();
   dictationIsItsOwnPromptAndStillFenced();
   dictationKeepsItsOpeningLabelAsASentence();
   twoArgNarrativePromptEqualsThreeArgWithGeneral();

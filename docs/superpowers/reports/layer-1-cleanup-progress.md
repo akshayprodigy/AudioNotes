@@ -6,7 +6,7 @@ Against `docs/superpowers/specs/2026-09-22-layer-1-cleanup-execution.md`.
 
 - [x] Step 1. A schedule change is a decision
 - [x] Step 2. A question needs three words
-- [ ] Step 3. Inline section labels are still sections
+- [x] Step 3. Inline section labels are still sections
 - [ ] Step 4. The six-hour foreground-service limit
 - [ ] Step 5. The card must not offer a trial that is over
 - [ ] Step 6. BACK with the keyboard up closes the keyboard
@@ -33,6 +33,10 @@ Against `docs/superpowers/specs/2026-09-22-layer-1-cleanup-execution.md`.
   three-word floor under this mutant) while `test_evidence` failed with 17 assertion failures,
   "And what?" surviving as a question. Recorded as a spec imprecision, not a step defect; the
   mutant does prove the guard. Restored.
+
+- Step 3: `if (labelled < 2) return text;` → `if (labelled < 1) return text;`. `ctest -R
+  test_templates` failed exactly as named — `foldLeavesASingleInlineLabelInsideProse` (a single
+  inline label no longer left alone). Restored.
 
 ## Notes for the next session
 

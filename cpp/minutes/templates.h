@@ -31,6 +31,8 @@ std::vector<std::string> sectionsFor(const std::string& template_id);
 // the fragments with any bullet marker removed, each capitalised and given a full stop if it has
 // no end. Text before the first header is kept as it is. Identity for "general" and for any id
 // without sections, and for a narrative already in the asked-for shape.
+// When NO line is a bare header but two or more section labels open sentences inside the prose,
+// each label starts a new paragraph instead — the shape a longer section list came back in.
 std::string foldSections(const std::string& text, const std::string& template_id);
 
 // The dictation shape (Phase 5). A dictated note has no sections, but the writer likes to open
