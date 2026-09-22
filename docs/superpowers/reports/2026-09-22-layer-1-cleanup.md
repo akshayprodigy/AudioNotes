@@ -121,25 +121,58 @@ noise, not failures; every suite is still marked PASS and the stage returns `ok`
 
 ## 6. Session D
 
-Not run — device unavailable. No A07 (`R9ZL402YH5A`) was attached to Session A or Session B; both
-ran entirely without `adb`, per the sheet's §0 rule for those two sessions.
+Run this session, on the A07 (`R9ZL402YH5A`), against `HEAD` (`11dd33f`).
+
+**Before running D1–D5: the release APK on the phone was stale and had to be rebuilt.** The APK
+already at `android/app/build/outputs/apk/release/app-release.apk` was built 22 Sep 15:07 and
+installed on the phone at 15:20 — over ninety minutes **before** the first Layer-1 commit
+(`5e1d5d1`, 17:07). None of Steps 1–9 were in that binary. Asked the founder how to proceed;
+chosen: rebuild from `HEAD` and reinstall, then run D1–D5 against the real fixes. An unrelated
+uncommitted change already in the tree (`android/app/build.gradle`, `appVersionName` dropped to
+"0.9.0") was stashed before the build and popped back afterward — untouched, not part of this
+sheet. `./gradlew assembleRelease` (`android/`) built clean in 9s; the freshly generated JS bundle
+was checked for five fix-specific identifiers before installing —
+`trialOffer`, `SHEET_MAX_FRACTION`, `keyboardUp`, `onBack`, `scroller` — all five present in
+`android/app/build/intermediates/sourcemaps/react/release/index.android.bundle.packager.map`.
+Installed with `adb install -r`; `lastUpdateTime` moved to 19:13:06, after every commit in
+`55d8575..HEAD`. D1–D5 below ran against that build. Screenshots for each row are in `/tmp`
+(`d1_*.png` … `d5_*.png`); the meeting used for D1–D4 is "The evening and the Friday" (22 Sept,
+2:17 pm, `weekly` tag, a `Client call` written summary) unless noted otherwise.
+
+| # | What the phone showed |
+|---|---|
+| D1 | Opened the meeting, tapped ⋮. The sheet's title ("The evening and the Friday") stayed fully visible below the status bar and the Library header for the whole gesture — it never scrolled with the rows. Scrolling the sheet reached all nine rows in order: Ask this meeting, Speakers, Rename, Add a tag, Export, Copy, Redo, Archive, Delete, with Cancel pinned below them throughout. **Matches Step 7.** (`d1_sheet_top.png`, `d1_sheet_scrolled_archive_delete.png`) |
+| D2 | Script tab, long-pressed "Good morning." → "Correct the words" → the prompt opened with that line in the field. Tapped the field, the keyboard came up, typed text in (the field read "Good morning.Testing" — `adb input text`'s handling of the space and the rest of the string is an artifact of the shell command, not the app). Pressed BACK once: the keyboard closed, and the prompt stayed open with the typed text still in the field, untouched. Cancelled the prompt afterward so the meeting was left as found. **Matches Step 6.** (`d2_correct_menu.png`, `d2_prompt_open.png`, `d2_typed_keyboard_up.png`, `d2_after_first_back.png`) |
+| D3 | Screenshotted the Summary card on the same meeting. The header row reads `SUMMARY · Client call · 1 min… · [pencil] Edit · [copy icon] Copy` — "Copy" is fully spelled out, and the meta ("1 min · 1 speaker") is what's shortened, to "1 min…" with an ellipsis. **Matches Step 8.** (`d3_summary_card.png`, close-up crop `d3_header_zoom.png`) |
+| D4 | Settings → Subscription showed the "Free" tier with a "Subscribe" button and no trial wording anywhere (see D5 below for the confirmation that the trial is spent). Opened a meeting with no written summary yet ("This meeting is being recorded by…", 22 Sept 2:52 pm, still on the locked/generic card). Its CTA reads "Get Pro" — never "Try it free for 7 days". **Matches Step 5.** (`d4_get_pro_no_prose.png`) |
+| D5 | Tapping Settings' own "Subscribe" surfaced a Play Billing error ("Could not complete the purchase — No subscription 'verbale_pro' is available… this build was installed from Play") — expected on a sideloaded bench build with no configured Play product ([[production-readiness-2026-09-14]], [[pre-production-build-sequence]]), not a Layer-1 regression. Opened the real Paywall screen instead (Library → Search, Pro-gated). Its hero reads "That was the 3 trial summaries. Everything they wrote is still in your library." — the trial is spent — and "Try Pro free for 7 days" is **not offered anywhere** on the screen; the only CTA is "Subscribe", with copy underneath reading "Nothing was taken away when the trial ended…". **Matches Step 9's "not offered" half.** The other half — fresh install, tap the trial button, watch it scroll to the top — could not be run: this bench device's trial is already spent, and the sheet says not to `pm clear` it without being told to, so no fresh install was made. **Not run: the scroll-on-tap behavior itself, only the "not offered when spent" half.** (`d5_settings_subscribe_playstore_error.png`, `d5_paywall_hero.png`, `d5_paywall_subscribe_only.png`) |
+
+Nothing was fixed. `android/app/build.gradle`'s pre-existing uncommitted change was restored
+exactly as found; no other file changed. `git status` is clean except that one pre-existing diff.
 
 ## 7. For the founder to test by hand
 
-1. Open any meeting and tap ⋮ (the overflow sheet). Look for: the grip and title fully visible
-   below the status bar, and all nine rows reachable by scrolling the sheet (Step 7).
-2. On the same meeting, long-press a transcript line → "Correct the words" → type something, then
-   press BACK once. Look for: the keyboard closes; the prompt and what you typed both stay on
-   screen (Step 6).
-3. Open a meeting that has a written summary and screenshot the Summary card. Look for: the header
-   reads "Copy" in full; the meta line ("43 min · 3 speakers") may be shortened with "…" if the
-   screen is narrow (Step 8).
-4. In Settings, spend the trial on this phone (all 7 days or all 3 summaries), then open any
-   meeting with no summary written yet. Look for: the button reads "Get Pro", never "Try it free
-   for 7 days" (Step 5).
-5. With the trial already spent, open the Paywall. Look for: "Try Pro free for 7 days" is NOT
-   offered. If you ever do a fresh install, tap that button instead and look for: the screen
-   scrolls to the top so the hero line's confirmation is what you're looking at (Step 9).
+Session D above already verified D1–D4 and the "not offered" half of D5 on-device, against a
+freshly built release APK from `HEAD`. What's left for hand-testing is what this session could not
+exercise on the bench A07, plus the one item every session has deferred:
+
+1. **Step 9, the other half.** On a fresh install (trial not yet spent), tap "Try Pro free for 7
+   days" on the Paywall and watch the screen. Look for: it scrolls to the top so the hero line's
+   confirmation is what you're looking at, not silently changed off-screen near the bottom. Session
+   D could only confirm the button is correctly *absent* once the trial is spent — not this.
+2. **Step 4, the six-hour foreground-service limit.** Not reachable on a bench per the sheet's own
+   instruction (no real 6-hour timeout was provoked, no fake hook added). If a meeting ever runs
+   that long in practice: look for a "Paused for today" notification instead of a crash, and that
+   reopening the app resumes the meeting from where it stopped rather than losing it.
+3. **The Play Store product itself.** D5 hit "No subscription 'verbale_pro' is available… this
+   build was installed from Play" the moment Settings' own Subscribe button was tapped — this is
+   the same live-server/Play-link gap recorded in [[pre-production-build-sequence]], not something
+   this session's fixes touch. Worth a from-Play install once the Play Console side is configured,
+   specifically to confirm Subscribe actually opens a billing sheet rather than erroring.
+4. Everything else in this sheet (Steps 1–3, the C++ extractor and template rules; Step 4's
+   Kotlin unit tests) was verified by the automated gate in §5, not by hand — no device-side
+   behaviour is expected to differ, but nobody has watched a real meeting exercise the new
+   "shipping moved to Thursday" / "Okay?" / inline-label rules end to end on this phone.
 
 ## 8. Known gaps
 
