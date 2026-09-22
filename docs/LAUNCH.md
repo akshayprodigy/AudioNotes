@@ -3,6 +3,12 @@
 **As of 1 September 2026.** Tick things off as they land.
 **Amended 5 September 2026: v1 ships English only** — see the decision below.
 
+> **22 September 2026 — this file is history, not the list.** The live list is `docs/NEXT.md` §1 and the release
+> plan `docs/superpowers/plans/2026-09-17-release-phases.md`; the store paperwork is `docs/play-console.md`,
+> re-checked against the code that day. Several boxes below are done and were never ticked (the phone smoke
+> test, the server deploy, the website); others name things that no longer exist (`verbale_pro_monthly` — the
+> product is `verbale_pro` with two base plans). Read it for the reasoning; do not work from it.
+
 Six workstreams. Stream 3 decided what the product *is*, and it is now decided; what remains
 of it is post-launch. Streams 5 and 6 are what stand between here and the store.
 
