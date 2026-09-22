@@ -2,6 +2,7 @@ import React, { useEffect, useId, useRef } from 'react';
 import {
   Animated,
   Easing,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Pressable,
@@ -498,9 +499,24 @@ export function TextPrompt({
     }
   }, [visible, initial]);
 
+  // A Modal's onRequestClose is Android's BACK. With the keyboard up, BACK belongs to the
+  // keyboard: on the A07 the first press closed the whole prompt and threw away what had been
+  // typed. Tracked with the keyboard's own events rather than Keyboard.isVisible(), which is a
+  // snapshot taken before the event this handler is reacting to.
+  const keyboardUp = React.useRef(false);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => { keyboardUp.current = true; });
+    const hide = Keyboard.addListener('keyboardDidHide', () => { keyboardUp.current = false; });
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+  const onBack = React.useCallback(() => {
+    if (keyboardUp.current) { Keyboard.dismiss(); return; }
+    onCancel();
+  }, [onCancel]);
+
   const trimmed = value.trim();
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onBack}>
       <Pressable style={styles.sheetBackdrop} onPress={onCancel} accessibilityLabel="Dismiss">
         <View style={[styles.promptScrim, { backgroundColor: colors.scrim }]} />
       </Pressable>

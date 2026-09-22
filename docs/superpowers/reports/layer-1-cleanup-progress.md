@@ -9,7 +9,7 @@ Against `docs/superpowers/specs/2026-09-22-layer-1-cleanup-execution.md`.
 - [x] Step 3. Inline section labels are still sections
 - [x] Step 4. The six-hour foreground-service limit
 - [x] Step 5. The card must not offer a trial that is over
-- [ ] Step 6. BACK with the keyboard up closes the keyboard
+- [x] Step 6. BACK with the keyboard up closes the keyboard
 - [ ] Step 7. A sheet never runs off the top of the screen
 - [ ] Step 8. The Summary card's header row at 384 dp
 - [ ] Step 9. The paywall answers where you are looking
@@ -48,6 +48,9 @@ Against `docs/superpowers/specs/2026-09-22-layer-1-cleanup-execution.md`.
 - Step 5: made the CTA label unconditional again (`` label={`Try it free for ${TRIAL_DAYS} days`} ``).
   `npx jest SummaryTab.test.tsx` failed exactly as named — "never offers a spent trial" (no `Get
   Pro` button rendered). Restored.
+- Step 6: deleted the `if (keyboardUp.current)` guard in `onBack`. `npx jest TextPrompt.test.tsx`
+  failed exactly as named — "the first BACK closes the keyboard, not the prompt" (`Keyboard.dismiss`
+  never called; BACK always fell through to `onCancel`). Restored.
 
 ## Notes for the next session
 

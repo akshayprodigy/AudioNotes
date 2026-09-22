@@ -84,3 +84,64 @@ describe('TextPrompt and the keyboard', () => {
     expect(onSubmit).toHaveBeenCalledWith('in over', 'Innova');
   });
 });
+
+// BACK with the keyboard up belongs to the keyboard (A07). The listeners are captured rather than
+// emitted, so the test does not depend on a native event ever arriving in jest.
+describe('TextPrompt and BACK (Step 6)', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  function withCapturedKeyboard() {
+    const { Keyboard } = require('react-native');
+    const handlers: Record<string, () => void> = {};
+    jest.spyOn(Keyboard, 'addListener').mockImplementation((event: string, cb: () => void) => {
+      handlers[event] = cb;
+      return { remove: jest.fn() };
+    });
+    const dismiss = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
+    return { handlers, dismiss };
+  }
+
+  it('the first BACK closes the keyboard, not the prompt', async () => {
+    const { handlers, dismiss } = withCapturedKeyboard();
+    const { Modal } = require('react-native');
+    const onCancel = jest.fn();
+    let tree!: renderer.ReactTestRenderer;
+    await act(async () => {
+      tree = renderer.create(
+        <TextPrompt visible title="Rename" initial="" placeholder="Name" onCancel={onCancel} onSubmit={noop} />,
+      );
+    });
+    act(() => {
+      handlers['keyboardDidShow']?.();
+    });
+    const modal = tree.root.findByType(Modal);
+    act(() => {
+      modal.props.onRequestClose();
+    });
+    expect(dismiss).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it('BACK with no keyboard closes the prompt', async () => {
+    const { handlers, dismiss } = withCapturedKeyboard();
+    const { Modal } = require('react-native');
+    const onCancel = jest.fn();
+    let tree!: renderer.ReactTestRenderer;
+    await act(async () => {
+      tree = renderer.create(
+        <TextPrompt visible title="Rename" initial="" placeholder="Name" onCancel={onCancel} onSubmit={noop} />,
+      );
+    });
+    act(() => {
+      handlers['keyboardDidHide']?.();
+    });
+    const modal = tree.root.findByType(Modal);
+    act(() => {
+      modal.props.onRequestClose();
+    });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(dismiss).not.toHaveBeenCalled();
+  });
+});
