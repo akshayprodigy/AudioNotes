@@ -198,7 +198,7 @@ class ProcessingService : Service() {
   }
   private fun buildNotification(text: String): android.app.Notification =
     NotificationCompat.Builder(this, CHANNEL_ID)
-      .setSmallIcon(R.drawable.ic_notification_rec)
+      .setSmallIcon(R.drawable.ic_notification_notes)
       .setContentTitle("Verbale")
       .setContentText(text)
       .setOngoing(true)
@@ -255,7 +255,7 @@ class ProcessingService : Service() {
         this, meetingId.hashCode(), open,
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
       val n = NotificationCompat.Builder(this, chan)
-        .setSmallIcon(R.drawable.ic_notification_rec)
+        .setSmallIcon(R.drawable.ic_notification_notes)
         .setContentTitle("Your notes are ready")
         .setContentText("Tap to see the summary and transcript.")
         .setAutoCancel(true)
