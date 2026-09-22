@@ -8,13 +8,17 @@ Against `docs/superpowers/specs/2026-09-22-layer-1-cleanup-execution.md`.
 - [x] Step 2. A question needs three words
 - [x] Step 3. Inline section labels are still sections
 - [x] Step 4. The six-hour foreground-service limit
-- [ ] Step 5. The card must not offer a trial that is over
+- [x] Step 5. The card must not offer a trial that is over
 - [ ] Step 6. BACK with the keyboard up closes the keyboard
 - [ ] Step 7. A sheet never runs off the top of the screen
 - [ ] Step 8. The Summary card's header row at 384 dp
 - [ ] Step 9. The paywall answers where you are looking
 
 ## Decisions
+
+- Step 5: the sheet's 5b does not mention that `baseProps` in `SummaryTab.test.tsx` has no
+  `onUpgrade`, needed for the `reason === 'locked'` CTA to render at all. Added
+  `onUpgrade: jest.fn()` to `baseProps` (every existing test still passes it through unused).
 
 ## Mutants
 
@@ -41,6 +45,9 @@ Against `docs/superpowers/specs/2026-09-22-layer-1-cleanup-execution.md`.
   `./gradlew :app:testDebugUnitTest --tests '*ServiceTimeoutTest*'` failed exactly as named —
   `aQueueWithNothingRunningStillSpeaks` (a cleared queue with nothing running went silent).
   Restored.
+- Step 5: made the CTA label unconditional again (`` label={`Try it free for ${TRIAL_DAYS} days`} ``).
+  `npx jest SummaryTab.test.tsx` failed exactly as named — "never offers a spent trial" (no `Get
+  Pro` button rendered). Restored.
 
 ## Notes for the next session
 

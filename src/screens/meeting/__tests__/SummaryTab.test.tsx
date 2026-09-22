@@ -58,6 +58,7 @@ const baseProps = {
    voiceSuggestions: [] as string[],
    onConfirmVoices: jest.fn(),
   transcriptChars: undefined as number | undefined,
+  onUpgrade: jest.fn(),
 };
 
 async function renderTab(props: Partial<typeof baseProps> = {}) {
@@ -333,5 +334,25 @@ describe('a transcript too short to write up', () => {
   test('prose already written is never hidden by the floor', async () => {
     const tree = await renderTab({ transcriptChars: 95 });
     expect(texts(tree)).toContain('A short account of the meeting.');
+  });
+});
+
+describe('the trial offer on the card (Step 5)', () => {
+  test('offers the trial to somebody who has not started one', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: false, trial: { status: 'unstarted' } });
+    const tree = await renderTab({ minutes: [] });
+    expect(
+      tree.root.findAllByProps({ label: 'Try it free for 7 days' }, { deep: false }),
+    ).toHaveLength(1);
+  });
+
+  test('never offers a spent trial', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: false, trial: { status: 'ended' } });
+    const tree = await renderTab({ minutes: [] });
+    expect(tree.root.findAllByProps({ label: 'Get Pro' }, { deep: false })).toHaveLength(1);
+    const t = tree.root
+      .findAll(n => typeof n.props.children === 'string')
+      .map(n => n.props.children as string);
+    expect(t.some(s => s.includes('Try it free'))).toBe(false);
   });
 });

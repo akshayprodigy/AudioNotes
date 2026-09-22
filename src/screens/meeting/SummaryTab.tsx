@@ -183,6 +183,10 @@ export default function SummaryTab({
   // alone. Stays false (its safe default) on every path that returns before `ent` is known,
   // including 'expired' — a lapsed subscriber gets the same "relabel only" as free.
   const [paid, setPaid] = React.useState(false);
+  // Whether the free trial is still there to be offered. Read from the same entitlement call
+  // below, and false until it answers: a button that promises a trial somebody has already spent
+  // is the one thing this card must not do (A07, 22 Sep).
+  const [trialOffer, setTrialOffer] = React.useState(false);
   React.useEffect(() => {
     let alive = true;
     (async () => {
@@ -204,6 +208,7 @@ export default function SummaryTab({
         const ent = await entitlement();
         if (!alive) return;
         setPaid(ent.paid);
+        setTrialOffer(ent.trial?.status === 'unstarted');
         if (!ent.paid) {
           setReason('locked');
           return;
@@ -429,7 +434,7 @@ export default function SummaryTab({
               <View style={st.cta}>
                 <SoftButton
                   icon="ai"
-                  label={`Try it free for ${TRIAL_DAYS} days`}
+                  label={trialOffer ? `Try it free for ${TRIAL_DAYS} days` : 'Get Pro'}
                   onPress={onUpgrade}
                 />
               </View>
