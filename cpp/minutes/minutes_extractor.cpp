@@ -169,10 +169,25 @@ bool isAction(const std::string& sentence) {
          std::regex_search(sentence, ACTION_OBLIGATION) || startsWithImperative(sentence);
 }
 
+// JS: /[A-Za-z0-9]+/g counted over the trimmed sentence. ASCII on purpose — see the JS comment.
+int asciiWordCount(const std::string& s) {
+  int n = 0;
+  bool in_word = false;
+  for (unsigned char c : s) {
+    const bool w = c < 128 && std::isalnum(c) != 0;
+    if (w && !in_word) ++n;
+    in_word = w;
+  }
+  return n;
+}
+
 bool isQuestion(const std::string& sentence) {
   const std::string t = trim(sentence);
-  if (!t.empty() && t.back() == '?') return true;
-  return std::regex_search(t, QUESTION_WORDS) && t.size() < 160;
+  const bool asked = (!t.empty() && t.back() == '?') ||
+                     (std::regex_search(t, QUESTION_WORDS) && t.size() < 160);
+  if (!asked) return false;
+  const int words = asciiWordCount(t);
+  return words == 0 || words >= 3;
 }
 
 // JS: DECISION.test(sentence) at the extractMinutes/extractItems call site. A wrapper, not a

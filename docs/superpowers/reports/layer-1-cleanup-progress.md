@@ -5,7 +5,7 @@ Against `docs/superpowers/specs/2026-09-22-layer-1-cleanup-execution.md`.
 ## Steps
 
 - [x] Step 1. A schedule change is a decision
-- [ ] Step 2. A question needs three words
+- [x] Step 2. A question needs three words
 - [ ] Step 3. Inline section labels are still sections
 - [ ] Step 4. The six-hour foreground-service limit
 - [ ] Step 5. The card must not offer a trial that is over
@@ -26,4 +26,16 @@ Against `docs/superpowers/specs/2026-09-22-layer-1-cleanup-execution.md`.
   `'action'`, got `'decision'`, because SCHEDULE_WHEN alone now matched "to Friday"), which is the
   same guard the "I moved to Bangalore" row exercises. Restored.
 
+- Step 2, C++: `asciiWordCount`'s `if (w && !in_word) ++n;` → `if (w) ++n;` (count characters, not
+  words). Sheet says `ctest -R test_minutes` must fail; in practice the affected fixture row ("And
+  what?") lives only in SPANS/`evidence_spans.json`, exercised by `test_evidence`, not
+  `test_minutes` — `test_minutes` stayed green (no RULES/other minutes-golden row crosses the
+  three-word floor under this mutant) while `test_evidence` failed with 17 assertion failures,
+  "And what?" surviving as a question. Recorded as a spec imprecision, not a step defect; the
+  mutant does prove the guard. Restored.
+
 ## Notes for the next session
+
+- Step 2's named mutant command in the sheet (`ctest -R test_minutes`) does not exercise the row
+  the mutant breaks; `ctest -R test_evidence` (or the combined `"test_minutes|test_evidence"` used
+  in the Run step) is what actually fails. Worth a sheet correction if this spec is reused.

@@ -234,11 +234,11 @@ const SPANS = [
   // unconditionally, whitespace-ness aside), so only a direct equality check on the item's own
   // text - not the dedup key, and not row 4's merged item - can catch it.
   { text: 'We finalized the report early.', speakerId: 'S0' },
-  // The length filter (`sentence.length < 4`) is unconstrained by every row above: nothing there
-  // is short enough to hit it. A bare "Ok?" would otherwise unconditionally become a question -
-  // isQuestion checks endsWith('?') with no length floor of its own - so its absence from the
-  // output is proof the filter, not classification, is what excluded it.
-  { text: 'Ok?', speakerId: 'S0' },
+  // The length filter (`sentence.length < 4`), still with nothing else able to exclude it: three
+  // characters, no words, so isQuestion's own three-word floor does NOT apply (it exempts a
+  // sentence with no ASCII words, which is what keeps the emoji row below reaching the question
+  // branch). Its absence from the output is therefore proof of the length filter alone.
+  { text: '?!?', speakerId: 'S0' },
   // The same filter counting the wrong UNIT is invisible on ASCII. Two astral emoji plus '?' is
   // 5 UTF-16 units but only 3 code points: correct (UTF-16) behaviour keeps it, a port that
   // measured code points instead would wrongly drop it as "too short".
@@ -275,6 +275,12 @@ const SPANS = [
   // to this row, so it becomes its own item and a port that cannot see U+FEFF differs in the
   // item's `text`, not only in a span buried in a merged source list.
   { text: '\uFEFFWe agreed to launch.', speakerId: 'S0' },
+  // Row 12: the three-word floor on questions. Nine characters, so the length filter cannot be
+  // what excludes it \u2014 only the floor can. This is the fragment the phone produced on real
+  // speech ("And what?", "Okay?", "What?").
+  { text: 'And what?', speakerId: 'S1' },
+  // Row 13: the other side of the same floor \u2014 four words, so a real short question survives it.
+  { text: 'Should we revisit pricing?', speakerId: 'S0' },
 ];
 
 // Pins the caps (20 decisions / 30 actions / 20 questions) the same way evidence.test.ts's
@@ -402,10 +408,15 @@ it('writes the evidence goldens', () => {
     SPANS[4].text,
   );
 
-  // The length filter: "Ok?" would otherwise unconditionally become a question (endsWith('?')),
+  // The length filter: "?!?" would otherwise unconditionally become a question (endsWith('?')),
   // so its absence is proof the < 4 filter fired. The astral-emoji question survives because the
   // filter counts UTF-16 units (5), not code points (3) - a code-point-counting port would drop it.
-  expect(spans.some(i => i.text === 'Ok?')).toBe(false);
+  expect(spans.some(i => i.text === '?!?')).toBe(false);
+  // The three-word floor: a fragment that ends in '?' and passes the length filter is still not
+  // an open question. "And what?" is nine characters, so only the floor can exclude it.
+  expect(spans.some(i => i.text === 'And what?')).toBe(false);
+  // ...and a real short question survives it.
+  expect(spans.some(i => i.text === 'Should we revisit pricing?')).toBe(true);
   const rocketQuestion = spans.find(i => i.text === '🚀🚀?');
   expect(rocketQuestion).toBeDefined();
   expect(rocketQuestion!.kind).toBe('question');

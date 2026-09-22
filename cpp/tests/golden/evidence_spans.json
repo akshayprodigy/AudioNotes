@@ -47,7 +47,7 @@
         "startMs": 22500,
         "endMs": 26500,
         "speakerId": "S0",
-        "text": "Ok?"
+        "text": "?!?"
       },
       {
         "id": "u6",
@@ -88,6 +88,22 @@
         "endMs": 46500,
         "speakerId": "S0",
         "text": "﻿We agreed to launch."
+      },
+      {
+        "id": "u11",
+        "meetingId": "m",
+        "startMs": 46500,
+        "endMs": 50500,
+        "speakerId": "S1",
+        "text": "And what?"
+      },
+      {
+        "id": "u12",
+        "meetingId": "m",
+        "startMs": 50500,
+        "endMs": 54500,
+        "speakerId": "S0",
+        "text": "Should we revisit pricing?"
       }
     ],
     "speakers": [
@@ -244,6 +260,21 @@
       ],
       "anchorStartMs": 26500,
       "anchorEndMs": 30500
+    },
+    {
+      "kind": "question",
+      "text": "Should we revisit pricing?",
+      "sources": [
+        {
+          "utteranceId": "u12",
+          "startMs": 50500,
+          "endMs": 54500,
+          "charStart": 0,
+          "charEnd": 26
+        }
+      ],
+      "anchorStartMs": 50500,
+      "anchorEndMs": 54500
     }
   ]
 }

@@ -90,9 +90,19 @@ export function isAction(sentence: string): boolean {
   );
 }
 
+// ASCII-alnum runs rather than \p{L}: the C++ port matches bytes with std::regex and has no
+// Unicode classes, so a Unicode-aware count here would diverge from it on exactly the text no
+// golden covers. English-only for v1.
+const WORDS = /[A-Za-z0-9]+/g;
+
 export function isQuestion(sentence: string): boolean {
   const t = sentence.trim();
-  return t.endsWith('?') || (QUESTION_WORDS.test(t) && t.length < 160);
+  if (!(t.endsWith('?') || (QUESTION_WORDS.test(t) && t.length < 160))) return false;
+  // "Okay?", "What?", "And what?" are how a transcript renders a pause, and they were listed as
+  // open questions on real speech. Three words is the floor. A sentence with no ASCII words at
+  // all is left to the caller's length filter — see the emoji row in the goldens.
+  const words = t.match(WORDS)?.length ?? 0;
+  return words === 0 || words >= 3;
 }
 
 
