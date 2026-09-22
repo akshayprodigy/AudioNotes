@@ -78,6 +78,34 @@ class VerificationProbeTest {
       }
     }
     println("PROBE people count: ${db.peopleCount()}")
+    // Phase 4, the number behind a null suggestion: the cosine of every remembered person against
+    // every speaker with a voice in the probed meetings. PeopleMatch suggests at MATCH_COSINE with
+    // MATCH_MARGIN over the runner-up; a by-hand run that sees no "Sounds like" needs to know
+    // whether it missed by a hair or by a mile. Voices come out as hex because rawQueryJson reads
+    // blobs as strings.
+    val people = JSONArray(db.rawQueryJson("SELECT name, hex(voice) AS v FROM people ORDER BY created_at", arrayOf()))
+    if (people.length() > 0) {
+      val spk = JSONArray(db.rawQueryJson(
+        "SELECT s.display_name, hex(s.voice) AS v, substr(s.meeting_id, 1, 8) AS m " +
+          "FROM speakers s JOIN meetings mt ON mt.id = s.meeting_id " +
+          "WHERE s.voice IS NOT NULL ORDER BY mt.created_at DESC LIMIT 12",
+        arrayOf(),
+      ))
+      fun vec(hex: String): FloatArray = com.innocorelabs.verbale.pipeline.VecCodec.decode(
+        ByteArray(hex.length / 2) { i -> hex.substring(2 * i, 2 * i + 2).toInt(16).toByte() },
+      )
+      for (i in 0 until people.length()) {
+        val pv = vec(people.getJSONObject(i).getString("v"))
+        for (j in 0 until spk.length()) {
+          val s = spk.getJSONObject(j)
+          val sv = vec(s.getString("v"))
+          var dot = 0f
+          for (k in pv.indices) dot += pv[k] * sv[k]
+          println("PROBE voice cos ${people.getJSONObject(i).getString("name")} vs ${s.getString("m")}/${s.getString("display_name")} = ${"%.3f".format(dot)} " +
+            "(match at ${com.innocorelabs.verbale.pipeline.PeopleMatch.MATCH_COSINE})")
+        }
+      }
+    }
     // Phase 5: the vocabulary, whole — it is small and it is the thing a by-hand run changes.
     val vocab = JSONArray(db.rawQueryJson("SELECT heard, meant, source, uses FROM vocabulary ORDER BY created_at", arrayOf()))
     println("PROBE vocabulary (${vocab.length()}): $vocab")
