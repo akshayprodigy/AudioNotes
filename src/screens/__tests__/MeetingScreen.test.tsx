@@ -470,6 +470,25 @@ describe('who said this', () => {
     expect(db.addSpeaker).toHaveBeenCalledWith('m1', 'Rahul');
     expect(db.setLineSpeaker).toHaveBeenCalledWith('m1', ['u1'], 's9');
   });
+
+  /** Phase 5: a dictation is one voice, so the sheet has one action, not two. */
+  it('a dictation offers to correct the words and nothing about who said them', async () => {
+    (db.getMeeting as jest.Mock).mockResolvedValue({
+      id: 'm1', title: 'Note to Priya', createdAt: 1, durationMs: 60_000, status: 'done',
+      tierUsed: 'free', language: 'en', audioPath: null, audioRetained: 1, mode: 'dictation',
+    });
+    (db.utterances as jest.Mock).mockResolvedValue(utts.map(u => ({ ...u, speakerId: null })));
+    (db.speakers as jest.Mock).mockResolvedValue([]);
+    const tree = await render();
+    await openScript(tree);
+    await longPress(tree, 'Second line.');
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Correct the words' }, { deep: false }).length).toBe(1);
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Change who said it' }, { deep: false }).length).toBe(0);
+    // And the Script itself carries no speaker head to tap.
+    expect(
+      tree.root.findAllByProps({ accessibilityLabel: 'Unlabelled — change who said this' }, { deep: false }).length,
+    ).toBe(0);
+  });
 });
 
 /**

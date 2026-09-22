@@ -57,6 +57,7 @@ const baseProps = {
    onOpenThread: jest.fn(),
    voiceSuggestions: [] as string[],
    onConfirmVoices: jest.fn(),
+  transcriptChars: undefined as number | undefined,
 };
 
 async function renderTab(props: Partial<typeof baseProps> = {}) {
@@ -294,5 +295,43 @@ describe('why there is no summary', () => {
       .findAll(n => typeof n.props.children === 'string')
       .map(n => n.props.children as string);
     expect(texts.some(t => t.includes('Settings → Models'))).toBe(true);
+  });
+});
+
+/**
+ * The narrator refuses a transcript under MIN_TRANSCRIPT_CHARS (Narrator.kt: 400, about 35 s of
+ * speech — below that a 1.5B model invents a meeting). On the Galaxy A07 the tab then kept
+ * saying "processed before summaries were written — run it again and one will be" and kept the
+ * button, and running it again did nothing, silently. The tab applies the same floor itself.
+ */
+describe('a transcript too short to write up', () => {
+  const texts = (tree: renderer.ReactTestRenderer) =>
+    tree.root.findAll(n => typeof n.props.children === 'string').map(n => n.props.children as string);
+
+  beforeEach(() => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: true });
+    (Llm.available as jest.Mock).mockResolvedValue(true);
+    (Llm.capable as jest.Mock).mockResolvedValue(true);
+    (ModelManager.list as jest.Mock).mockResolvedValue('[]');
+  });
+
+  test('under the floor: says so, and offers no button', async () => {
+    const tree = await renderTab({ minutes: [], transcriptChars: 95 });
+    const t = texts(tree);
+    expect(t.some(s => s.startsWith('Too little was said to write up'))).toBe(true);
+    expect(t.some(s => s.includes('Run it again'))).toBe(false);
+    expect(tree.root.findAllByProps({ label: 'Write the summary' }, { deep: false })).toHaveLength(0);
+  });
+
+  test('at the floor: the ordinary not-run copy and the button', async () => {
+    const tree = await renderTab({ minutes: [], transcriptChars: 400 });
+    const t = texts(tree);
+    expect(t.some(s => s.includes('Run it again and one will be.'))).toBe(true);
+    expect(tree.root.findAllByProps({ label: 'Write the summary' }, { deep: false })).toHaveLength(1);
+  });
+
+  test('prose already written is never hidden by the floor', async () => {
+    const tree = await renderTab({ transcriptChars: 95 });
+    expect(texts(tree)).toContain('A short account of the meeting.');
   });
 });

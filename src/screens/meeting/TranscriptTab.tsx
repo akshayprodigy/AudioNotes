@@ -133,9 +133,16 @@ export default function TranscriptTab({
   onLineActions,
   onReassignTurn,
   onRevertLine,
+  oneVoice = false,
 }: {
   utterances: Utterance[];
   speakers: Speaker[];
+  /**
+   * A dictation: one voice by definition, diarization skipped, no utterance has a speaker. The
+   * turns then carry a stamp but no head — nobody else it could have been, so "Unlabelled" and
+   * "change who said it" would be an invitation to fix something that is not wrong.
+   */
+  oneVoice?: boolean;
   /** Where playback is, so the turn being spoken can be marked. */
   positionMs?: number;
   /** Tapping a turn. Absent when the audio is gone, which makes the rows plain text again. */
@@ -230,10 +237,14 @@ export default function TranscriptTab({
             <Txt variant="chipSoft" color={colors.inkFaint} style={st.flex}>
               {onPlayTurn
                 ? onLineActions
-                  ? 'Tap a line to hear it. Long press to correct it or change who said it.'
+                  ? oneVoice
+                    ? 'Tap a line to hear it. Long press to correct it.'
+                    : 'Tap a line to hear it. Long press to correct it or change who said it.'
                   : 'Tap any line to hear it.'
                 : onLineActions
-                  ? 'The recording has been deleted. Long press a line to correct it or change who said it.'
+                  ? oneVoice
+                    ? 'The recording has been deleted. Long press a line to correct it.'
+                    : 'The recording has been deleted. Long press a line to correct it or change who said it.'
                   : 'The recording for this meeting has been deleted.'}
             </Txt>
             {onCopy ? (
@@ -322,22 +333,26 @@ export default function TranscriptTab({
         return (
           <View style={st.turn}>
             <View style={st.who}>
-              <View style={[st.avatar, { backgroundColor: tintSoft }]}>
-                <Txt variant="chipSm" color={tint}>
-                  {initials(t.who)}
-                </Txt>
-              </View>
-              {/* The name is the way to say the whole turn was somebody else. */}
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`${t.who} — change who said this`}
-                onPress={onReassignTurn ? () => onReassignTurn(t) : undefined}
-                disabled={!onReassignTurn}
-                hitSlop={8}>
-                <Txt variant="chip" color={tint}>
-                  {t.who}
-                </Txt>
-              </Pressable>
+              {oneVoice ? null : (
+                <>
+                  <View style={[st.avatar, { backgroundColor: tintSoft }]}>
+                    <Txt variant="chipSm" color={tint}>
+                      {initials(t.who)}
+                    </Txt>
+                  </View>
+                  {/* The name is the way to say the whole turn was somebody else. */}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`${t.who} — change who said this`}
+                    onPress={onReassignTurn ? () => onReassignTurn(t) : undefined}
+                    disabled={!onReassignTurn}
+                    hitSlop={8}>
+                    <Txt variant="chip" color={tint}>
+                      {t.who}
+                    </Txt>
+                  </Pressable>
+                </>
+              )}
               <Txt variant="chipSoft" color={on ? colors.primaryDeep : colors.inkFaint}>
                 {stamp(t.startMs)}
               </Txt>

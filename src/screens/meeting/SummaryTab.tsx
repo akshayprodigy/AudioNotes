@@ -27,6 +27,12 @@ import {
 } from './shared';
 
 /**
+ * Mirrors Narrator.kt MIN_TRANSCRIPT_CHARS. The narrator's own floor is the one that decides;
+ * this copy only lets the tab explain a refusal the phone would otherwise repeat in silence.
+ */
+const MIN_TRANSCRIPT_CHARS = 400;
+
+/**
  * The landing tab: what the conversation was about, in prose.
  *
  * Deliberately NOT a work list. It used to fall back to "30 actions, 0 decisions and 17 open
@@ -65,6 +71,7 @@ export default function SummaryTab({
    onOpenThread,
    voiceSuggestions,
    onConfirmVoices,
+  transcriptChars,
 }: {
   /**
    * Taken for the COUNTERS alone — the prose still comes from `minutes`, which is where it lives.
@@ -115,6 +122,13 @@ export default function SummaryTab({
    /** Phase 4: the names voice matching proposes for this meeting's speakers, in speaker order. Paid only. */
    voiceSuggestions?: string[];
    onConfirmVoices?: () => void;
+  /**
+   * Characters of transcript, summed over the utterances. The narrator refuses anything under
+   * MIN_TRANSCRIPT_CHARS (Narrator.kt) rather than let a 1.5B model invent a meeting out of one
+   * sentence; the refusal is a log line, not a row, so the tab applies the same floor to say
+   * what happened instead of "run it again" — which would refuse again, silently.
+   */
+  transcriptChars?: number;
  }) {
   const { colors } = useTheme();
   const st = React.useMemo(() => makeStyles(colors), [colors]);
@@ -154,7 +168,7 @@ export default function SummaryTab({
   // Checked even when prose EXISTS, because a lapsed subscriber keeps every summary already
   // written and must not be offered a "Write it again" that would silently do nothing.
   const [reason, setReason] = React.useState<
-    'checking' | 'expired' | 'locked' | 'no-model' | 'weak-device' | 'not-run'
+    'checking' | 'expired' | 'locked' | 'no-model' | 'weak-device' | 'not-run' | 'too-short'
   >('checking');
   const [lapsedCopy, setLapsedCopy] = React.useState('');
   // The sentence for a phone under the writer's gate, from the catalog rows — the same one
@@ -206,7 +220,15 @@ export default function SummaryTab({
         if (blocked) setWeakCopy(blocked);
         // The phone before the model. This used to be the other way round, which sent a phone
         // under the gate to Settings to fetch 1.1 GB it could never run.
-        setReason(!capable ? 'weak-device' : !available ? 'no-model' : 'not-run');
+        setReason(
+          !capable
+            ? 'weak-device'
+            : !available
+              ? 'no-model'
+              : transcriptChars !== undefined && transcriptChars < MIN_TRANSCRIPT_CHARS
+                ? 'too-short'
+                : 'not-run',
+        );
       } catch {
         if (alive) setReason('not-run');
       }
@@ -393,7 +415,9 @@ export default function SummaryTab({
                       ? 'The summary is written on your phone by a language model that has not been downloaded yet.'
                       : reason === 'weak-device'
                         ? weakCopy
-                        : 'This meeting was processed before summaries were written. Run it again and one will be.'}
+                        : reason === 'too-short'
+                          ? 'Too little was said to write up without inventing — under about half a minute of speech. The lines below are what was said, as it was said.'
+                          : 'This meeting was processed before summaries were written. Run it again and one will be.'}
               </Txt>
             )}
             {!prose && reason === 'no-model' ? (

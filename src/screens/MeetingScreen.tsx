@@ -1196,6 +1196,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 minutes={minutes}
                 speakers={speakers}
                 speechMs={speechMs}
+                transcriptChars={utterances.reduce((n, u) => n + u.text.length, 0)}
                 highlights={highlights}
                 onOpenProvenance={openProvenance}
                 onReview={() => navigation.navigate('Review', { meetingId })}
@@ -1261,6 +1262,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 scrollSeq={scrollTo?.seq}
                 onCopy={() => copyDoc('transcript', 'Transcript')}
                 edits={edits}
+                oneVoice={meeting?.mode === 'dictation'}
                 onLineActions={(part, turn) => setLineSheet({ part, turn })}
                 onReassignTurn={turn =>
                   setPicker({ lineId: turn.parts[0].id, text: turn.parts[0].text, turn, scopes: false })
@@ -1357,8 +1359,9 @@ export default function MeetingScreen({ route, navigation }: Props) {
         onSubmit={onRename}
       />
 
-      {/* Long press on a line: the two things a person can do to it. Sheet closes itself before
-          calling the action, so the prompt or the picker opens over a clean screen. */}
+      {/* Long press on a line: the two things a person can do to it — one, for a dictation, where
+          there is nobody else who could have said it. Sheet closes itself before calling the
+          action, so the prompt or the picker opens over a clean screen. */}
       <Sheet
         visible={lineSheet !== null}
         title={lineSheet ? lineSheet.part.text : undefined}
@@ -1378,20 +1381,24 @@ export default function MeetingScreen({ route, navigation }: Props) {
               });
             },
           },
-          {
-            icon: 'users',
-            label: 'Change who said it',
-            hint: 'This line, the rest of the turn, or the whole turn.',
-            onPress: () => {
-              if (!lineSheet) return;
-              setPicker({
-                lineId: lineSheet.part.id,
-                text: lineSheet.part.text,
-                turn: lineSheet.turn,
-                scopes: lineSheet.turn.parts.length > 1,
-              });
-            },
-          },
+          ...(meeting?.mode === 'dictation'
+            ? []
+            : [
+                {
+                  icon: 'users' as const,
+                  label: 'Change who said it',
+                  hint: 'This line, the rest of the turn, or the whole turn.',
+                  onPress: () => {
+                    if (!lineSheet) return;
+                    setPicker({
+                      lineId: lineSheet.part.id,
+                      text: lineSheet.part.text,
+                      turn: lineSheet.turn,
+                      scopes: lineSheet.turn.parts.length > 1,
+                    });
+                  },
+                },
+              ]),
         ]}
         onClose={() => setLineSheet(null)}
       />
