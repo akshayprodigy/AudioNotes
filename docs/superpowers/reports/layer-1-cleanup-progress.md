@@ -10,7 +10,7 @@ Against `docs/superpowers/specs/2026-09-22-layer-1-cleanup-execution.md`.
 - [x] Step 4. The six-hour foreground-service limit
 - [x] Step 5. The card must not offer a trial that is over
 - [x] Step 6. BACK with the keyboard up closes the keyboard
-- [ ] Step 7. A sheet never runs off the top of the screen
+- [x] Step 7. A sheet never runs off the top of the screen
 - [ ] Step 8. The Summary card's header row at 384 dp
 - [ ] Step 9. The paywall answers where you are looking
 
@@ -51,6 +51,9 @@ Against `docs/superpowers/specs/2026-09-22-layer-1-cleanup-execution.md`.
 - Step 6: deleted the `if (keyboardUp.current)` guard in `onBack`. `npx jest TextPrompt.test.tsx`
   failed exactly as named — "the first BACK closes the keyboard, not the prompt" (`Keyboard.dismiss`
   never called; BACK always fell through to `onCancel`). Restored.
+- Step 7: removed `maxHeight` from the card's style array. `npx jest Sheet.test.tsx` failed exactly
+  as named — "a long sheet scrolls instead of growing past the screen" (no ancestor of the
+  ScrollView carried a `maxHeight` style any more). Restored.
 
 ## Notes for the next session
 

@@ -6,10 +6,12 @@ import {
   KeyboardAvoidingView,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
+  useWindowDimensions,
   type StyleProp,
   type TextStyle,
   type ViewStyle,
@@ -375,6 +377,10 @@ export function Sheet({
 }) {
   const { colors } = useTheme();
   const rise = useRef(new Animated.Value(0)).current;
+  // Nine rows are taller than a 720-dp phone: on the A07 the grip and the title sat under the
+  // status bar and the top row could not be reached. The card is capped and the rows scroll; the
+  // title and Cancel are not part of the scroll, so they are always where the thumb expects them.
+  const { height } = useWindowDimensions();
 
   useEffect(() => {
     Animated.timing(rise, {
@@ -401,6 +407,7 @@ export function Sheet({
           styles.sheetCard,
           {
             backgroundColor: colors.card,
+            maxHeight: height * SHEET_MAX_FRACTION,
             transform: [{ translateY: rise.interpolate({ inputRange: [0, 1], outputRange: [s(360), 0] }) }],
           },
         ]}>
@@ -410,37 +417,39 @@ export function Sheet({
             {title}
           </Text>
         ) : null}
-        {actions.map(a => {
-          const tint = a.destructive ? colors.danger : colors.primaryDeep;
-          const soft = a.destructive ? colors.dangerSoft : colors.primarySoft;
-          return (
-            <Pressable
-              key={a.label}
-              onPress={() => {
-                onClose();
-                a.onPress();
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={a.label}
-              accessibilityHint={a.hint}
-              style={({ pressed }) => [
-                styles.sheetRow,
-                { backgroundColor: pressed ? colors.cardAlt : 'transparent' },
-              ]}>
-              <View style={[styles.sheetIcon, { backgroundColor: soft }]}>
-                <Icon name={a.icon} size={s(19)} color={tint} strokeWidth={2.4} />
-              </View>
-              <View style={styles.flex}>
-                <Text style={text('bodyStrong', a.destructive ? colors.danger : colors.ink)}>
-                  {a.label}
-                </Text>
-                {a.hint ? (
-                  <Text style={[text('chipSoft', colors.inkSoft), styles.sheetHint]}>{a.hint}</Text>
-                ) : null}
-              </View>
-            </Pressable>
-          );
-        })}
+        <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
+          {actions.map(a => {
+            const tint = a.destructive ? colors.danger : colors.primaryDeep;
+            const soft = a.destructive ? colors.dangerSoft : colors.primarySoft;
+            return (
+              <Pressable
+                key={a.label}
+                onPress={() => {
+                  onClose();
+                  a.onPress();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={a.label}
+                accessibilityHint={a.hint}
+                style={({ pressed }) => [
+                  styles.sheetRow,
+                  { backgroundColor: pressed ? colors.cardAlt : 'transparent' },
+                ]}>
+                <View style={[styles.sheetIcon, { backgroundColor: soft }]}>
+                  <Icon name={a.icon} size={s(19)} color={tint} strokeWidth={2.4} />
+                </View>
+                <View style={styles.flex}>
+                  <Text style={text('bodyStrong', a.destructive ? colors.danger : colors.ink)}>
+                    {a.label}
+                  </Text>
+                  {a.hint ? (
+                    <Text style={[text('chipSoft', colors.inkSoft), styles.sheetHint]}>{a.hint}</Text>
+                  ) : null}
+                </View>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
         <View style={styles.sheetCancel}>
           <SoftButton label="Cancel" onPress={onClose} />
         </View>
@@ -1004,6 +1013,9 @@ export function makeCommon(c: Colors) {
     row: { flexDirection: 'row', alignItems: 'center' },
   });
 }
+
+/** How much of the screen a sheet may take before its rows scroll instead. */
+const SHEET_MAX_FRACTION = 0.85;
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
