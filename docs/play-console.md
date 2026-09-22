@@ -355,7 +355,7 @@ Done and no longer listed: the upload keystore (`AUDIONOTES_STORE_FILE`, every r
 - [x] Screenshots: phone, 2–8, at least 1080px on the short side — **eight are in
       `docs/store/screenshots/`, ready to upload**, numbered in listing order (see
       `docs/store/README.md`)
-- [ ] Feature graphic, 1024×500
+- [x] Feature graphic, 1024×500 — `docs/store/feature-graphic.png`
 - [ ] Record the two foreground-service videos
 - [ ] Data safety form, from the table above
 - [ ] Content rating questionnaire

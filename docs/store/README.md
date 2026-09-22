@@ -35,7 +35,13 @@ scripts, one per row of `SHOTS`, and run `python3 aso.py`. Needs Pillow and the 
 in `fonts/`. The frames are regenerated from the raws, so re-capturing one screen does not
 disturb the other seven.
 
+## Feature graphic — `feature-graphic.png`
+
+1024×500, RGB with no alpha channel (Play rejects one). Play may crop this and can lay its own
+controls over it, so the mark and the words sit in the middle band with a wide margin; the text
+sizes itself down to stay inside that margin rather than trusting a hard-coded size.
+Rebuild: `python3 tools/feature.py <ic_launcher_foreground.png> feature-graphic.png`.
+
 ## Still missing
 
-- Feature graphic, 1024×500.
 - The two foreground-service screen recordings Google asks for (recording, processing).
