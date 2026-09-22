@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   NativeEventEmitter,
@@ -163,6 +163,9 @@ export default function PaywallScreen({ navigation }: Props) {
   // Bytes, not a percentage. See downloadLabel: on a 1.1 GB model the percentage barely
   // moves, and a still number reads as a stalled download.
   const [dl, setDl] = useState<{ downloaded: number; total: number } | null>(null);
+  // The trial's confirmation is the hero line at the top of the scroll, and the button that starts
+  // it is near the bottom. Without this the screen answers somewhere the reader is not looking.
+  const scroller = useRef<ScrollView>(null);
 
   const load = useCallback(async () => {
     setEnt(await entitlement());
@@ -243,6 +246,7 @@ export default function PaywallScreen({ navigation }: Props) {
     try {
       await startTrial();
       await load();
+      scroller.current?.scrollTo({ y: 0, animated: true });
       const list: { id: string; kind: string; installed: boolean; unsupportedReason?: string | null }[] = JSON.parse(
         await ModelManager.list(),
       );
@@ -311,6 +315,7 @@ export default function PaywallScreen({ navigation }: Props) {
       </View>
 
       <ScrollView
+        ref={scroller}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[st.body, { paddingBottom: insets.bottom + s(28) }]}>
         <View style={st.hero}>

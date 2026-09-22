@@ -12,7 +12,7 @@ Against `docs/superpowers/specs/2026-09-22-layer-1-cleanup-execution.md`.
 - [x] Step 6. BACK with the keyboard up closes the keyboard
 - [x] Step 7. A sheet never runs off the top of the screen
 - [x] Step 8. The Summary card's header row at 384 dp
-- [ ] Step 9. The paywall answers where you are looking
+- [x] Step 9. The paywall answers where you are looking
 
 ## Decisions
 
@@ -21,6 +21,10 @@ Against `docs/superpowers/specs/2026-09-22-layer-1-cleanup-execution.md`.
   `onUpgrade: jest.fn()` to `baseProps` (every existing test still passes it through unused).
 - Step 8: same gap for `onEdit`/`onCopy` — neither was in `baseProps`, and both are needed for the
   header row's tools (Edit, Copy) to render at all. Added both as `jest.fn()` to `baseProps`.
+- Step 9b (the one decision the sheet left open): the ScrollView's `scrollTo` COULD be spied on
+  through `react-test-renderer` — `tree.root.findByType(ScrollView).instance.scrollTo = jest.fn()`
+  works, because RN's jest preset ScrollView mock is a class component whose instance carries a
+  real `scrollTo` method. Used the instance directly, not a mocked `ScrollView` module.
 
 ## Mutants
 
@@ -59,6 +63,9 @@ Against `docs/superpowers/specs/2026-09-22-layer-1-cleanup-execution.md`.
 - Step 8: dropped `numberOfLines={1}` from the meta `Txt`. `npx jest SummaryTab.test.tsx` failed
   exactly as named — "the meeting meta is the part of the header that shrinks" (`numberOfLines`
   undefined). Restored.
+- Step 9: deleted the `scroller.current?.scrollTo(...)` line. `npx jest PaywallScreen.test.tsx`
+  failed exactly as named — "starting the trial scrolls back to the answer" (`scrollTo` never
+  called). Restored.
 
 ## Notes for the next session
 
