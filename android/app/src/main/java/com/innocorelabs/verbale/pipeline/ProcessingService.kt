@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -169,6 +170,48 @@ class ProcessingService : Service() {
     super.onTaskRemoved(rootIntent)
   }
 
+  /**
+   * Android's six-hour limit on a dataSync foreground service (API 35+).
+   *
+   * We have seconds, not minutes: the system kills the app with
+   * ForegroundServiceDidNotStopInTimeException if the service is still up. So this cancels rather
+   * than waits — the engine stops at its next stage boundary, every stage it finished is already
+   * in the database, and the next foreground sweep resumes from there via ResumePlan. The
+   * notification exists because a meeting that quietly stops for six hours is indistinguishable
+   * from one that failed.
+   */
+  @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+  override fun onTimeout(startId: Int, fgsType: Int) {
+    val id = currentId
+    val waiting = queue.size
+    Log.w(TAG, "foreground service timed out (type=$fgsType) with running=$id queued=$waiting")
+    synchronized(lock) {
+      current?.cancelled = true
+      queue.clear()
+      running = false
+    }
+    ServiceTimeout.notice(id, waiting)?.let { postTimeoutNotice(it) }
+    try { stopForegroundCompat() } catch (_: Exception) {}
+    stopSelf(startId)
+  }
+
+  private fun postTimeoutNotice(n: ServiceTimeout.Notice) {
+    try {
+      NotificationManagerCompat.from(this).notify(
+        NOTIF_TIMEOUT_ID,
+        NotificationCompat.Builder(this, CHANNEL_ID)
+          .setSmallIcon(R.drawable.ic_notification_notes)
+          .setContentTitle(n.title)
+          .setContentText(n.text)
+          .setStyle(NotificationCompat.BigTextStyle().bigText(n.text))
+          .setAutoCancel(true)
+          .build(),
+      )
+    } catch (_: Exception) {
+      // POST_NOTIFICATIONS denied — the resume still happens, only the telling is lost.
+    }
+  }
+
   override fun onDestroy() {
     if (instance === this) instance = null
     super.onDestroy()
@@ -271,6 +314,8 @@ class ProcessingService : Service() {
     private const val EXTRA_MEETING_ID = "meetingId"
     private const val EXTRA_FORCE = "force"
     private const val NOTIF_ID = 43
+    /** Its own id: the progress notification is being torn down at the same moment. */
+    private const val NOTIF_TIMEOUT_ID = 44
     // ".v2" for the same reason as RecordingService.CHANNEL_ID: LOW importance hid the stage
     // notification on Android 17, and importance cannot be raised on an existing channel.
     private const val CHANNEL_ID = "audionotes.processing.v2"

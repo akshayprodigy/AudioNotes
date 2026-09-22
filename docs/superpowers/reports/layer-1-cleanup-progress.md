@@ -7,7 +7,7 @@ Against `docs/superpowers/specs/2026-09-22-layer-1-cleanup-execution.md`.
 - [x] Step 1. A schedule change is a decision
 - [x] Step 2. A question needs three words
 - [x] Step 3. Inline section labels are still sections
-- [ ] Step 4. The six-hour foreground-service limit
+- [x] Step 4. The six-hour foreground-service limit
 - [ ] Step 5. The card must not offer a trial that is over
 - [ ] Step 6. BACK with the keyboard up closes the keyboard
 - [ ] Step 7. A sheet never runs off the top of the screen
@@ -37,9 +37,16 @@ Against `docs/superpowers/specs/2026-09-22-layer-1-cleanup-execution.md`.
 - Step 3: `if (labelled < 2) return text;` → `if (labelled < 1) return text;`. `ctest -R
   test_templates` failed exactly as named — `foldLeavesASingleInlineLabelInsideProse` (a single
   inline label no longer left alone). Restored.
+- Step 4: `ServiceTimeout.notice`'s `if (running == null && queued == 0)` → `if (running == null)`.
+  `./gradlew :app:testDebugUnitTest --tests '*ServiceTimeoutTest*'` failed exactly as named —
+  `aQueueWithNothingRunningStillSpeaks` (a cleared queue with nothing running went silent).
+  Restored.
 
 ## Notes for the next session
 
 - Step 2's named mutant command in the sheet (`ctest -R test_minutes`) does not exercise the row
   the mutant breaks; `ctest -R test_evidence` (or the combined `"test_minutes|test_evidence"` used
   in the Run step) is what actually fails. Worth a sheet correction if this spec is reused.
+- Step 4: a real six-hour foreground-service timeout was NOT provoked and no debug hook was added
+  to fake one, per the sheet — not reachable on a bench, and a fake would only test the fake.
+  `ServiceTimeout.notice` is covered by its own unit tests instead.
