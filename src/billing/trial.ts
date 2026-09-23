@@ -2,40 +2,16 @@ import Licence, { type LicenceStatus } from '../native/NativeLicence';
 import { db } from '../db/queries';
 
 /**
- * The free trial of Pro.
+ * What the screens may SAY about Pro, and when to offer it.
  *
- * Pro sells one thing today: prose. A free user gets minutes pulled out by rule, which is a real
- * product and always will be — but nobody buys prose minutes off a screenshot. They buy them
- * after seeing what the model wrote about THEIR meeting, with their colleagues' names in it. So
- * the trial exists to put that on the screen once, on real material, and then get out of the way.
+ * The free trial is Play's (an offer on each base plan, see trialTerms.ts) and arrives as an
+ * ordinary paid licence, so there is one question here: is there a licence. The in-app trial
+ * that lived in this file until 23 Sep 2026 is gone from the product; its native half survives
+ * in Trial.kt as a debug-only lever for the device tests.
  *
- * Two limits, whichever runs out first, because each one alone fails a different person:
- *
- *   - A time window alone is worthless to the person who records one meeting a fortnight. Seven
- *     days of a trial they never opened is not a trial.
- *   - A summary cap alone never ends for the person who stops using the app in week two, so the
- *     entitlement hangs around indefinitely and the decision never gets made.
- *
- * Both numbers are here at the top on purpose: they are a pricing decision, not an engineering
- * one, and they will be tuned before launch by someone reading a spreadsheet rather than this file.
+ * Enforcement is native and not here: Narrator, the model download and the Ask gate check a
+ * signed licence a JS bundle cannot forge.
  */
-export const TRIAL_DAYS = 7;
-export const TRIAL_SUMMARIES = 3;
-
-const DAY_SECONDS = 24 * 60 * 60;
-
-/**
- * The three keys the trial lives in, and the one thing that makes them tamper-resistant.
- *
- * BackupManager.LOCAL_SETTINGS strips exactly these names from an export. That is not tidiness:
- * without it, "back up, burn the trial, restore" resets the counter forever and the trial is a
- * subscription. Renaming any of them silently re-opens that hole, because the strip list matches
- * on literal names — so if one of these ever changes, it changes in BackupManager in the same
- * commit. (Lane 1 owns that file; the names below are the ones already listed there.)
- */
-const KEY_STARTED = 'trial_started_at';
-const KEY_USED = 'trial_summaries_used';
-const KEY_ENDED = 'trial_ended_at';
 
 /**
  * The licence store's monotonic clock, borrowed.
@@ -56,33 +32,6 @@ const KEY_PAYWALL_SEEN = 'paywall_seen_at';
 /** The recurring library offer: how many times it has been declined, and when it last appeared. */
 const KEY_NUDGE_REFUSALS = 'pro_nudge_refusals';
 const KEY_NUDGE_LAST_COUNT = 'pro_nudge_last_count';
-
-export type TrialStatus = 'unstarted' | 'active' | 'ended';
-
-/** Why a trial is over. Worth distinguishing: the two want different sentences on screen. */
-export type TrialEndReason = 'time' | 'summaries' | null;
-
-export interface TrialState {
-  status: TrialStatus;
-  /** Whole days remaining, rounded up so the last part-day still reads as "1 day left". */
-  daysLeft: number;
-  summariesLeft: number;
-  /** Unix seconds, 0 when it has not started. */
-  startedAt: number;
-  endedAt: number;
-  used: number;
-  endedBecause: TrialEndReason;
-}
-
-const UNSTARTED: TrialState = {
-  status: 'unstarted',
-  daysLeft: TRIAL_DAYS,
-  summariesLeft: TRIAL_SUMMARIES,
-  startedAt: 0,
-  endedAt: 0,
-  used: 0,
-  endedBecause: null,
-};
 
 const int = (v: string | null): number => {
   const n = Number(v);
@@ -108,146 +57,30 @@ export async function monotonicNow(): Promise<number> {
   return floor > 0 ? Math.max(system, floor) : system;
 }
 
-function shape(started: number, used: number, ended: number, now: number): TrialState {
-  if (started === 0) return UNSTARTED;
-
-  // A start stamp in the future means the floor moved under us — a corrected clock, or a licence
-  // refresh landing between two reads. Clamping is kinder than showing "8 days left" on a
-  // seven-day trial, and it can only ever shorten the window, never extend it.
-  const from = Math.min(started, now);
-  const expiresAt = from + TRIAL_DAYS * DAY_SECONDS;
-  const summariesLeft = Math.max(0, TRIAL_SUMMARIES - used);
-  const daysLeft = Math.max(0, Math.ceil((expiresAt - now) / DAY_SECONDS));
-
-  if (ended > 0 || now >= expiresAt || summariesLeft === 0) {
-    return {
-      status: 'ended',
-      daysLeft: 0,
-      summariesLeft,
-      startedAt: started,
-      endedAt: ended > 0 ? ended : Math.min(now, expiresAt),
-      used,
-      // The cap is reported first when both have run out, because it is the one the person
-      // actually experienced — they watched the third summary get written.
-      endedBecause: summariesLeft === 0 ? 'summaries' : 'time',
-    };
-  }
-
-  return {
-    status: 'active',
-    daysLeft,
-    summariesLeft,
-    startedAt: started,
-    endedAt: 0,
-    used,
-    endedBecause: null,
-  };
-}
-
-/**
- * What the trial is doing right now.
- *
- * Ending is written down as well as computed. The stamp is what the rest of the app — including
- * the native side, which cannot call into JS — can read without re-deriving the rule, and it is
- * what stops a lapsed trial flickering back to life for a few seconds after a clock correction.
- */
-export async function trialState(): Promise<TrialState> {
-  const [started, used, ended, now] = await Promise.all([
-    db.getSetting(KEY_STARTED).then(int).catch(() => 0),
-    db.getSetting(KEY_USED).then(int).catch(() => 0),
-    db.getSetting(KEY_ENDED).then(int).catch(() => 0),
-    monotonicNow(),
-  ]);
-
-  const state = shape(started, used, ended, now);
-  if (state.status === 'ended' && ended === 0) {
-    await db.setSetting(KEY_ENDED, String(state.endedAt)).catch(() => {});
-  }
-  return state;
-}
-
-/**
- * Begin the trial. Idempotent, and deliberately so.
- *
- * A second tap on "Start the free trial" — from the paywall, from Settings, from a re-install that
- * restored a backup — returns the trial already running rather than restarting the clock. There is
- * exactly one place a trial can begin, and it is the absence of a start stamp.
- */
-export async function startTrial(): Promise<TrialState> {
-  const existing = await trialState();
-  if (existing.status !== 'unstarted') return existing;
-
-  const now = await monotonicNow();
-  await db.setSetting(KEY_STARTED, String(now));
-  await db.setSetting(KEY_USED, '0');
-  await db.setSetting(KEY_ENDED, '0');
-  return shape(now, 0, 0, now);
-}
-
-/**
- * Count one prose summary against the trial.
- *
- * Called after a summary has actually been written, never before: a model that failed to load, or
- * a meeting the user cancelled half way, must not cost one of three. A subscriber's summaries
- * never count either — if they later cancel, the trial they never used is still theirs.
- */
-export async function noteTrialSummary(): Promise<TrialState> {
-  const state = await trialState();
-  if (state.status !== 'active') return state;
-
-  const status = await Licence.status().catch(() => null);
-  if (status?.paid) return state;
-
-  const used = state.used + 1;
-  await db.setSetting(KEY_USED, String(used));
-  const now = await monotonicNow();
-  const next = shape(state.startedAt, used, 0, now);
-  if (next.status === 'ended') await db.setSetting(KEY_ENDED, String(next.endedAt)).catch(() => {});
-  return next;
-}
-
 export interface Entitlement {
-  /** May the paid features run at all — bought or borrowed. */
+  /** May the paid features run: a Play subscription, including Play's free trial. */
   paid: boolean;
-  /** True when the only thing granting it is the trial, which changes what the screens say. */
-  viaTrial: boolean;
-  trial: TrialState;
   licence: LicenceStatus | null;
 }
 
 /**
- * The one question every screen in this lane actually asks.
- *
- * Note what this is NOT: enforcement. Narrator refuses to run without an entitlement natively,
- * where a patched JS bundle cannot reach it, and that remains the only thing standing between a
- * free user and the model. This decides what the UI is allowed to SAY, and nothing more — which
- * is the same division the licence module has always drawn.
+ * The one question every screen asks. Not enforcement — that is native — only what the UI may say.
  */
 export async function entitlement(): Promise<Entitlement> {
-  const [licence, trial] = await Promise.all([
-    Licence.status().catch(() => null),
-    trialState(),
-  ]);
-  const bought = Boolean(licence?.paid);
-  const borrowed = trial.status === 'active';
-  return { paid: bought || borrowed, viaTrial: !bought && borrowed, trial, licence };
+  const licence = await Licence.status().catch(() => null);
+  return { paid: Boolean(licence?.paid), licence };
 }
 
 /**
- * Whether this is the moment to offer Pro.
- *
- * Once, on the first meeting that finished processing — the only point at which somebody has seen
- * what the app does and can judge what the paid half would add. Never to a subscriber, never to
- * somebody who already made this decision by starting the trial, and never twice, because the
- * second showing is not persuasion, it is a nag, and this app's entire pitch is that it does not
- * behave like that.
+ * Whether this is the moment to offer Pro: once, off the first meeting that finished processing,
+ * never to a subscriber, and never twice — the second showing is a nag, and this app's pitch is
+ * that it does not behave like that.
  */
 export async function shouldOfferPaywall(): Promise<boolean> {
   const seen = int(await db.getSetting(KEY_PAYWALL_SEEN).catch(() => null));
   if (seen > 0) return false;
-  const { licence, trial } = await entitlement();
-  if (licence?.paid) return false;
-  return trial.status === 'unstarted';
+  const { licence } = await entitlement();
+  return !licence?.paid;
 }
 
 /** Remember that the offer was made. The paywall screen calls this itself, on open. */
@@ -281,7 +114,7 @@ export interface NudgeInput {
   /** `completed` at the moment the card was last shown; 0 if it never has been. */
   lastShownAt: number;
   refusals: number;
-  /** Only `paid` is read: it is already true for a subscriber OR a running trial. */
+  /** Only `paid` is read: it is already true for a subscriber, including one on Play's trial. */
   entitlement: Pick<Entitlement, 'paid'>;
 }
 
