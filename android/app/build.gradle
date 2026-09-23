@@ -251,7 +251,7 @@ android {
         // mismatch surfaces as "this item is not available" on the customer's phone, with nothing
         // in the build to suggest why.
         buildConfigField "String", "PLAY_SUBSCRIPTION_ID",
-            "\"${project.findProperty('playSubscriptionId') ?: 'verbale_pro_monthly'}\""
+            "\"${project.findProperty('playSubscriptionId') ?: 'verbale_pro'}\""
 
         externalNativeBuild {
             cmake {

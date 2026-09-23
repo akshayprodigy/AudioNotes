@@ -155,6 +155,18 @@ class BillingModule(private val ctx: ReactApplicationContext) :
     }
   }
 
+  private fun offersOf(details: ProductDetails): List<OfferChoice.Offer> =
+    details.subscriptionOfferDetails.orEmpty().map { o ->
+      OfferChoice.Offer(
+        basePlanId = o.basePlanId,
+        offerId = o.offerId,
+        offerToken = o.offerToken,
+        phases = o.pricingPhases.pricingPhaseList.map { p ->
+          OfferChoice.Phase(p.formattedPrice, p.priceAmountMicros, p.billingPeriod, p.billingCycleCount)
+        },
+      )
+    }
+
   /**
    * Every base plan Play offers for this subscription, already localised by Google.
    *
@@ -169,6 +181,9 @@ class BillingModule(private val ctx: ReactApplicationContext) :
    *   period        ISO-8601 ("P1M", "P1Y")
    *   fullPrice     the price BEFORE an introductory or promotional phase, when Play reports
    *                 more than one phase — otherwise null
+   *   trialPeriod   ISO-8601 length of Play's free trial for this account ("P1W"), or null when
+   *                 there is none or the account has already had one
+   *   trialCycles   how many trialPeriods the free trial lasts (1 for a one-week trial), 0 without
    *
    * `fullPrice` is the only honest source for a struck-through price. It exists when Play itself
    * says the user is being charged less than the standing rate, and it is null the rest of the
@@ -179,23 +194,21 @@ class BillingModule(private val ctx: ReactApplicationContext) :
   @ReactMethod
   fun plans(promise: Promise) {
     productDetails({ promise.resolve(Arguments.createArray()) }) { details ->
+      val offers = offersOf(details)
       val out = Arguments.createArray()
-      for (offer in details.subscriptionOfferDetails.orEmpty()) {
-        val phases = offer.pricingPhases.pricingPhaseList
-        if (phases.isEmpty()) continue
-        // The LAST phase is what the user keeps paying; an introductory phase comes first and
-        // ends. Charging is what the price must describe, so read the phase they land on and
-        // treat anything before it as the discount, not the price.
-        val charged = phases.last()
-        val intro = if (phases.size > 1) phases.first() else null
+      // One row per BASE PLAN. Play lists the free trial as a second offer on the same plan;
+      // OfferChoice picks the one this account will actually be sold.
+      for (id in OfferChoice.basePlanIds(offers)) {
+        val plan = OfferChoice.choose(offers, id)?.let(OfferChoice::describe) ?: continue
         out.pushMap(
           Arguments.createMap().apply {
-            putString("basePlanId", offer.basePlanId)
-            // An introductory phase IS the price for now, so show it and strike the standing one.
-            putString("price", (intro ?: charged).formattedPrice)
-            putDouble("priceMicros", ((intro ?: charged).priceAmountMicros).toDouble())
-            putString("period", charged.billingPeriod)
-            putString("fullPrice", if (intro != null) charged.formattedPrice else null)
+            putString("basePlanId", plan.basePlanId)
+            putString("price", plan.price)
+            putDouble("priceMicros", plan.priceMicros.toDouble())
+            putString("period", plan.period)
+            putString("fullPrice", plan.fullPrice)
+            putString("trialPeriod", plan.trialPeriod)
+            putInt("trialCycles", plan.trialCycles)
             putString("title", details.title)
           },
         )
@@ -237,24 +250,21 @@ class BillingModule(private val ctx: ReactApplicationContext) :
       return
     }
     productDetails({ promise.reject("billing_unavailable", it) }) { details ->
-      val offers = details.subscriptionOfferDetails.orEmpty()
-      // Named, not positional. With one base plan firstOrNull() was harmless; with monthly AND
-      // annual it silently sells whichever Play happened to list first, so a tap on "monthly"
-      // could charge a year up front. A caller that does not say which plan it means is refused
-      // rather than guessed at.
-      val offer = when {
-        basePlanId != null -> offers.firstOrNull { it.basePlanId == basePlanId }
-        offers.size == 1 -> offers.first()
-        else -> null
-      }
+      val offers = offersOf(details)
+      val ids = OfferChoice.basePlanIds(offers)
+      // Named, not positional. With monthly AND annual, the first-listed plan could charge a year
+      // up front for a tap on "monthly"; a caller that does not say which plan is refused. Within
+      // the plan, OfferChoice sells the free trial when this account is eligible for one.
+      val planId = basePlanId ?: ids.singleOrNull()
+      val offer = planId?.let { OfferChoice.choose(offers, it) }
       if (offer == null) {
         promise.reject(
           "no_offer",
-          if (basePlanId == null && offers.size > 1) {
-            "This subscription has ${offers.size} base plans; say which one to buy."
+          if (basePlanId == null && ids.size > 1) {
+            "This subscription has ${ids.size} base plans; say which one to buy."
           } else {
             "No base plan '" + (basePlanId ?: "") + "' is configured in Play Console. " +
-              "Available: " + offers.joinToString(", ") { it.basePlanId }
+              "Available: " + ids.joinToString(", ")
           },
         )
         return@productDetails
