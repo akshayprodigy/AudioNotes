@@ -22,6 +22,7 @@ import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.innocorelabs.verbale.R
+import com.innocorelabs.verbale.billing.LicenceStore
 import com.innocorelabs.verbale.data.AudioDb
 import java.io.BufferedOutputStream
 import java.io.File
@@ -434,9 +435,19 @@ class RecordingService : Service(), CaptureListener {
             if (capMs > 0L && reads % DISK_CHECK_EVERY_READS == 0) {
               val capturedMs = File(path).length() / BYTES_PER_MS
               if (capturedMs >= capMs) {
-                Log.i(TAG, "free tier limit reached at ${capturedMs}ms — stopping and keeping it")
-                endReason = END_CAP_REACHED
-                recording = false
+                // The cap was read once, from the start intent. The cap card sells Play's trial
+                // three minutes before this line; a purchase made there must lift the cap for the
+                // recording ALREADY RUNNING, or "Keep recording" is a promise the service breaks.
+                // Asked here, once, rather than every second: it is a database read and a
+                // signature check.
+                if (LicenceStore.entitled(this@RecordingService)) {
+                  Log.i(TAG, "free tier limit reached at ${capturedMs}ms, but now entitled — cap lifted")
+                  capMs = 0L
+                } else {
+                  Log.i(TAG, "free tier limit reached at ${capturedMs}ms — stopping and keeping it")
+                  endReason = END_CAP_REACHED
+                  recording = false
+                }
               }
             }
             if (reads % DISK_CHECK_EVERY_READS == 0 && filesDir.usableSpace < MIN_FREE_BYTES) {
