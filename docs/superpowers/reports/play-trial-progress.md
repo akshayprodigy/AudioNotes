@@ -6,8 +6,8 @@ Tracking `docs/superpowers/specs/2026-09-23-play-trial-and-billing-execution.md`
 
 - [x] 0. Land the release-prep changes already in the tree
 - [x] 1. `OfferChoice` — which offer sells a base plan (pure, JVM-tested)
-- [ ] 2. `BillingModule` uses `OfferChoice`
-- [ ] 3. The in-app trial grants nothing in a release build
+- [x] 2. `BillingModule` uses `OfferChoice`
+- [x] 3. The in-app trial grants nothing in a release build
 - [ ] 4. Pro bought mid-recording lifts the cap on the recording already running
 - [ ] 5. Server: no grace on top of a cancelled subscription's token
 - [ ] 6. `PlayPlan` gains the trial; the pure trial helpers (Session B)
