@@ -14,7 +14,7 @@ Tracking `docs/superpowers/specs/2026-09-23-play-trial-and-billing-execution.md`
 - [x] 7. Remove the in-app trial from `trial.ts` (Session B)
 - [x] 8. The paywall sells Play's trial (Session B)
 - [x] 9. The Summary tab offers Play's trial (Session B)
-- [ ] 10. RecordScreen / OnboardingScreen (Session B)
+- [x] 10. RecordScreen / OnboardingScreen (Session B)
 - [ ] 11. Docs (Session B)
 - [ ] 12. Gate / report (Session B)
 
@@ -62,3 +62,11 @@ Tracking `docs/superpowers/specs/2026-09-23-play-trial-and-billing-execution.md`
 - Steps 8–9: `npx tsc --noEmit` is clean for `PaywallScreen.tsx` and `SummaryTab.tsx` after their
   edits — two of the nine Step 7 errors resolved, `RecordScreen.tsx`/`OnboardingScreen.tsx` (Step
   10) still pending as expected.
+- Step 10: after RecordScreen and OnboardingScreen, `npx tsc --noEmit` is fully clean (all nine
+  Step 7 errors gone) and the full `npx jest` run is 65/65 suites, 617/617 tests passed. A
+  post-teardown `ReferenceError` from `MeetingScreen.test.tsx` (`PixelRatio` access after Jest's
+  environment tore down) prints after the summary but does not fail any test or suite — it is a
+  pre-existing leak in a file this session did not touch, not a regression from Steps 6–10.
+  `git grep` for `TRIAL_DAYS|TRIAL_SUMMARIES|startTrial|noteTrialSummary|trialState` and for
+  "No card, nothing to cancel"/"no account, no card" under `src` both return nothing, ahead of
+  the Step 12 acceptance check.
