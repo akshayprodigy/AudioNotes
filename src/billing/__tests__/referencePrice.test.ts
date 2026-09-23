@@ -16,6 +16,8 @@ const plan = (over: Partial<PlayPlan>): PlayPlan => ({
   priceMicros: 0,
   period: null,
   fullPrice: null,
+  trialPeriod: null,
+  trialCycles: 0,
   title: 'Verbale Pro',
   ...over,
 });

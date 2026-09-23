@@ -36,6 +36,10 @@ export interface PlayPlan {
   period: string | null;
   /** The standing price, when an introductory phase means it is not what is charged today. */
   fullPrice: string | null;
+  /** ISO 8601 length of Play's free trial for this account ("P1W"); null when none is offered. */
+  trialPeriod: string | null;
+  /** How many trialPeriods the trial lasts; 0 without a trial. */
+  trialCycles: number;
   title: string | null;
 }
 
