@@ -138,8 +138,8 @@ class BillingModule(private val ctx: ReactApplicationContext) :
           ),
         )
         .build()
-      billing.queryProductDetailsAsync(params) { result, details ->
-        val found = details.firstOrNull()
+      billing.queryProductDetailsAsync(params) { result, queryResult ->
+        val found = queryResult.productDetailsList.firstOrNull()
         if (result.responseCode != BillingClient.BillingResponseCode.OK || found == null) {
           // Almost always the product id here and the one in Play Console disagreeing, or a build
           // Play does not recognise. Said plainly, because the symptom on the phone is a blank

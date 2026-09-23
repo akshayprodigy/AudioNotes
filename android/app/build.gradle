@@ -136,7 +136,7 @@ react {
 /**
  * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
  */
-def enableProguardInReleaseBuilds = false
+def enableProguardInReleaseBuilds = true
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -152,7 +152,7 @@ def enableProguardInReleaseBuilds = false
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
 // See the versioning note in defaultConfig below. Change THIS line for a release, nothing else.
-def appVersionName = "1.0.0"
+def appVersionName = "1.0.1"
 def versionParts = appVersionName.tokenize('.').collect { it.toInteger() }
 if (versionParts.size() != 3) {
     throw new GradleException("appVersionName must be MAJOR.MINOR.PATCH, got '${appVersionName}'")
@@ -336,6 +336,7 @@ android {
                 : signingConfigs.debug
 
             minifyEnabled enableProguardInReleaseBuilds
+            shrinkResources enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
@@ -397,7 +398,7 @@ dependencies {
     // Google Play Billing. Pinned: Google retires Billing Library versions on a schedule and an
     // app on a retired one stops being updatable on Play, so this is a version to review at each
     // release rather than to float.
-    implementation("com.android.billingclient:billing-ktx:7.1.1")
+    implementation("com.android.billingclient:billing-ktx:8.3.0")
     implementation("net.zetetic:sqlcipher-android:4.6.1")                  // encrypted storage
     implementation("androidx.sqlite:sqlite:2.4.0")
 

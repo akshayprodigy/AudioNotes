@@ -335,7 +335,7 @@ The build refuses a minor or patch above 99, because the arithmetic would carry 
 field and could produce a code that *decreases* — which Play rejects with the same unhelpful
 duplicate-version message. Both guards are verified to fire.
 
-The current release is `1.0.0` / `10000`. Do not start higher "to leave room": there is no
+The current release is `1.0.1` / `10001`. Do not start higher "to leave room": there is no
 benefit, and the room is what you would be destroying.
 
 ## Still to do before filing
