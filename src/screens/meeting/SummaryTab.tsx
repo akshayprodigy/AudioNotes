@@ -10,7 +10,9 @@ import type { EditTarget, Item, Minute, Speaker } from '../../pipeline/types';
 import Llm from '../../native/NativeLlm';
 import ModelManager from '../../native/NativeModelManager';
 import Licence from '../../native/NativeLicence';
-import { TRIAL_DAYS, entitlement } from '../../billing/trial';
+import { entitlement } from '../../billing/trial';
+import { playAvailable, playPlans } from '../../billing/subscription';
+import { trialLength, trialPlan } from '../../billing/trialTerms';
 import { DICTATION_TEMPLATE, TEMPLATE_IDS, templateHint, templateLabel } from './templateLabels';
 import { threadLine } from '../threadData';
 import { soundsLike } from '../voiceCopy';
@@ -183,10 +185,9 @@ export default function SummaryTab({
   // alone. Stays false (its safe default) on every path that returns before `ent` is known,
   // including 'expired' — a lapsed subscriber gets the same "relabel only" as free.
   const [paid, setPaid] = React.useState(false);
-  // Whether the free trial is still there to be offered. Read from the same entitlement call
-  // below, and false until it answers: a button that promises a trial somebody has already spent
-  // is the one thing this card must not do (A07, 22 Sep).
-  const [trialOffer, setTrialOffer] = React.useState(false);
+  // Play's free trial, when this account can still have one: "7 days", or null. Play lists the
+  // trial only to an account that never subscribed, so a spent trial is simply absent (A07, 22 Sep).
+  const [trialFree, setTrialFree] = React.useState<string | null>(null);
   React.useEffect(() => {
     let alive = true;
     (async () => {
@@ -208,9 +209,12 @@ export default function SummaryTab({
         const ent = await entitlement();
         if (!alive) return;
         setPaid(ent.paid);
-        setTrialOffer(ent.trial?.status === 'unstarted');
         if (!ent.paid) {
           setReason('locked');
+          if (await playAvailable()) {
+            const t = trialPlan(await playPlans(), 'P1Y');
+            if (alive) setTrialFree(t ? trialLength(t) : null);
+          }
           return;
         }
         if (prose) return;
@@ -434,7 +438,7 @@ export default function SummaryTab({
               <View style={st.cta}>
                 <SoftButton
                   icon="ai"
-                  label={trialOffer ? `Try it free for ${TRIAL_DAYS} days` : 'Get Pro'}
+                  label={trialFree ? `Try it free for ${trialFree}` : 'Get Pro'}
                   onPress={onUpgrade}
                 />
               </View>

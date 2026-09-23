@@ -22,12 +22,17 @@ jest.mock('../../../native/NativeLlm', () => ({
 }));
 jest.mock('../../../billing/trial', () => ({
   __esModule: true,
-  TRIAL_DAYS: 7,
   entitlement: jest.fn(),
+}));
+jest.mock('../../../billing/subscription', () => ({
+  __esModule: true,
+  playAvailable: jest.fn().mockResolvedValue(false),
+  playPlans: jest.fn().mockResolvedValue([]),
 }));
 
 import Licence from '../../../native/NativeLicence';
 import { entitlement } from '../../../billing/trial';
+import { playAvailable, playPlans } from '../../../billing/subscription';
 import Llm from '../../../native/NativeLlm';
 import ModelManager from '../../../native/NativeModelManager';
 
@@ -339,18 +344,29 @@ describe('a transcript too short to write up', () => {
   });
 });
 
-describe('the trial offer on the card (Step 5)', () => {
-  test('offers the trial to somebody who has not started one', async () => {
-    (entitlement as jest.Mock).mockResolvedValue({ paid: false, trial: { status: 'unstarted' } });
+describe('Play\'s trial on the card', () => {
+  const annualTrial = {
+    basePlanId: 'annual', price: '₹2,499', priceMicros: 2499e6, period: 'P1Y',
+    fullPrice: null, trialPeriod: 'P1W', trialCycles: 1, title: null,
+  };
+
+  test('offers the trial when Play has one for this account', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: false, licence: null });
+    (playAvailable as jest.Mock).mockResolvedValue(true);
+    (playPlans as jest.Mock).mockResolvedValue([annualTrial]);
     const tree = await renderTab({ minutes: [] });
+    await act(async () => {});
     expect(
       tree.root.findAllByProps({ label: 'Try it free for 7 days' }, { deep: false }),
     ).toHaveLength(1);
   });
 
-  test('never offers a spent trial', async () => {
-    (entitlement as jest.Mock).mockResolvedValue({ paid: false, trial: { status: 'ended' } });
+  test('says Get Pro when Play offers no trial', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: false, licence: null });
+    (playAvailable as jest.Mock).mockResolvedValue(true);
+    (playPlans as jest.Mock).mockResolvedValue([]);
     const tree = await renderTab({ minutes: [] });
+    await act(async () => {});
     expect(tree.root.findAllByProps({ label: 'Get Pro' }, { deep: false })).toHaveLength(1);
     const t = tree.root
       .findAll(n => typeof n.props.children === 'string')
