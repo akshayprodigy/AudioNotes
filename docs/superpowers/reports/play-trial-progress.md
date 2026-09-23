@@ -5,7 +5,7 @@ Tracking `docs/superpowers/specs/2026-09-23-play-trial-and-billing-execution.md`
 ## Steps
 
 - [x] 0. Land the release-prep changes already in the tree
-- [ ] 1. `OfferChoice` — which offer sells a base plan (pure, JVM-tested)
+- [x] 1. `OfferChoice` — which offer sells a base plan (pure, JVM-tested)
 - [ ] 2. `BillingModule` uses `OfferChoice`
 - [ ] 3. The in-app trial grants nothing in a release build
 - [ ] 4. Pro bought mid-recording lifts the cap on the recording already running
@@ -24,7 +24,10 @@ Tracking `docs/superpowers/specs/2026-09-23-play-trial-and-billing-execution.md`
 
 ## Mutants
 
-- None yet.
+- Step 1, M1: `OfferChoice.choose` return replaced with `mine.firstOrNull()` — killed by *a free
+  trial is chosen…* and *a paid introductory offer is chosen…*. Restored.
+- Step 1, M2: `OfferChoice.describe`'s `<` changed to `<=` — killed by *a trial plan is priced…*
+  and *a plain base plan…*. Restored.
 
 ## Notes for the next session
 
