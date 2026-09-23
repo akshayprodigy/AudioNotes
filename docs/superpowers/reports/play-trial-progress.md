@@ -12,8 +12,8 @@ Tracking `docs/superpowers/specs/2026-09-23-play-trial-and-billing-execution.md`
 - [x] 5. Server: no grace on top of a cancelled subscription's token
 - [x] 6. `PlayPlan` gains the trial; the pure trial helpers (Session B)
 - [x] 7. Remove the in-app trial from `trial.ts` (Session B)
-- [ ] 8. The paywall sells Play's trial (Session B)
-- [ ] 9. The Summary tab offers Play's trial (Session B)
+- [x] 8. The paywall sells Play's trial (Session B)
+- [x] 9. The Summary tab offers Play's trial (Session B)
 - [ ] 10. RecordScreen / OnboardingScreen (Session B)
 - [ ] 11. Docs (Session B)
 - [ ] 12. Gate / report (Session B)
@@ -33,6 +33,12 @@ Tracking `docs/superpowers/specs/2026-09-23-play-trial-and-billing-execution.md`
 - Step 6, M4: `trialLength`'s `factor *` changed to `1 *` — killed by *reads a week and seven
   days…*, *multiplies by the cycle count* (x2) and *never invents a period it cannot name*.
   Restored.
+- Step 8, M5: `PaywallScreen`'s `priceLabel` had its `chosenFree ?` arm deleted — killed by
+  *offers the trial on the preselected plan…* and two other tests. Restored.
+- Step 8, M6: the `route.params?.from === 'onboarding'` early-return in `onBuy` deleted — killed
+  by *from first run, a purchase goes straight back to setup*. Restored.
+- Step 9, M7: `SummaryTab`'s CTA label hardcoded to `'Get Pro'` — killed by *offers the trial when
+  Play has one for this account*. Restored.
 
 ## Notes for the next session
 
@@ -50,3 +56,9 @@ Tracking `docs/superpowers/specs/2026-09-23-play-trial-and-billing-execution.md`
   `OnboardingScreen.tsx` (Steps 8–10). `withNativeClock` and the `entitlement` import are now
   unused in `trial.test.ts`, but neither `tsc` nor `jest` flags them (no `noUnusedLocals`), so
   per the sheet's rule they were left in place, not deleted.
+- Step 8: `PaywallScreen.tsx`'s style object already had inconsistent indentation around
+  `secondary`/`note`/`signIn` before this sheet touched it; only the `secondary` line was removed,
+  the pre-existing indentation of its neighbours was left as found.
+- Steps 8–9: `npx tsc --noEmit` is clean for `PaywallScreen.tsx` and `SummaryTab.tsx` after their
+  edits — two of the nine Step 7 errors resolved, `RecordScreen.tsx`/`OnboardingScreen.tsx` (Step
+  10) still pending as expected.
