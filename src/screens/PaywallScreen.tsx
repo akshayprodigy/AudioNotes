@@ -17,14 +17,7 @@ import Mascot from '../components/Mascot';
 import { Button, IconButton, Pop, ProgressBar, Raised, SoftButton, Txt } from '../components/ui';
 import { downloadLabel, downloadPct } from './downloadLabel';
 import { runnable, sizeMb, spaceFits, spaceReason, writerBlockedReason } from './deviceFit';
-import {
-  TRIAL_DAYS,
-  TRIAL_SUMMARIES,
-  entitlement,
-  markPaywallSeen,
-  startTrial,
-  type Entitlement,
-} from '../billing/trial';
+import { entitlement, markPaywallSeen, type Entitlement } from '../billing/trial';
 import SignInForm from '../billing/SignInForm';
 import {
   buyWithPlay,
@@ -33,6 +26,7 @@ import {
   playPrice,
   referencePrice,
 } from '../billing/subscription';
+import { trialLength, trialTerms } from '../billing/trialTerms';
 import type { PlayPlan } from '../native/NativeBilling';
 import { radius, s, sv, useTheme, type Colors } from '../theme';
 
@@ -44,9 +38,9 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Paywall'>;
  * Pro unlocks one idea — a model that reads the transcript and writes about it — and nobody buys
  * that from a feature list. They buy it after seeing what it wrote about their own meeting, with
  * their own colleagues in it. So this screen is opened once, off the first meeting that finished
- * processing, and it offers the trial before it offers the price: seven days and three summaries
- * is a cheaper thing to ask for than a card, and it is the only honest way to answer "is it any
- * good on MY meetings", which is the only question that matters here.
+ * processing, and it leads with Play's free trial — seven days, then the price, cancellable in Play
+ * — because it is the only honest way to answer "is it any good on MY meetings", which is the only
+ * question that matters here.
  *
  * Two rules this screen holds itself to:
  *
@@ -62,7 +56,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Paywall'>;
  *     it would be charging for our own marketing.
  *   - Nothing is promised to a phone that cannot keep the promise. The rows the writer delivers
  *     say "Not on this phone" — with the memory it needs and has — on a phone under the gate,
- *     before the trial or the price. The rows that need no writer (search, voices, threads, the
+ *     before the trial and the price. The rows that need no writer (search, voices, threads, the
  *     vocabulary, the transcriber) stay promised, because the phone can keep them.
  */
 const INCLUDED: { icon: IconName; title: string; body: string; needsWriter?: boolean }[] = [
@@ -133,7 +127,7 @@ const FREE_FOREVER =
   'Recording, transcripts, who-said-what, export and rule-based minutes stay free — with or ' +
   'without a subscription, before or after a trial. Free meetings run up to 15 minutes.';
 
-export default function PaywallScreen({ navigation }: Props) {
+export default function PaywallScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const st = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
@@ -149,7 +143,7 @@ export default function PaywallScreen({ navigation }: Props) {
   // Whether the price simply has not arrived yet. Distinct from "Play answered and had none":
   // a spinner-shaped silence and a genuine failure deserve different sentences.
   const [priceAsked, setPriceAsked] = useState(false);
-  const [busy, setBusy] = useState<'trial' | 'buy' | null>(null);
+  const [busy, setBusy] = useState<'buy' | null>(null);
   const [showSignIn, setShowSignIn] = useState(false);
 
   // The writer model, which is what a trial actually needs on disk. A trial that grants an
@@ -234,18 +228,14 @@ export default function PaywallScreen({ navigation }: Props) {
   }, []);
 
   /**
-   * Start the trial, then fetch the model it is a trial of.
+   * Fetch the writer the subscription pays for, straight after the purchase.
    *
-   * The download is deliberately not silent and not in the background: it is over a gigabyte, and
-   * a person who taps "start my trial" and watches nothing happen for ten minutes on hotel wifi
-   * has been lied to. The trial clock starts first regardless, because a download that fails and
-   * is retried tomorrow must not be able to restart the window.
+   * Not silent and not in the background: it is over a gigabyte, and somebody who has just
+   * started a trial and watches nothing happen for ten minutes on hotel wifi has been lied to. A
+   * failure is said plainly and costs nothing — Settings fetches it later.
    */
-  const onStartTrial = useCallback(async () => {
-    setBusy('trial');
+  const fetchWriter = useCallback(async () => {
     try {
-      await startTrial();
-      await load();
       scroller.current?.scrollTo({ y: 0, animated: true });
       const list: { id: string; kind: string; installed: boolean; unsupportedReason?: string | null }[] = JSON.parse(
         await ModelManager.list(),
@@ -257,26 +247,37 @@ export default function PaywallScreen({ navigation }: Props) {
       }
       setWriterInstalled(true);
     } catch (e: any) {
-      // Most likely cause today: the native download gate still asks for a paid licence and does
-      // not yet know about trials. Say what happened rather than leaving a dead progress bar.
       Alert.alert(
         'The writer could not be downloaded',
-        `${String(e?.message ?? e)}\n\nYour trial has started and nothing has been spent. You can ` +
-          'fetch the model from Settings once you are on a better connection.',
+        `${String(e?.message ?? e)}\n\nPro is on and nothing has been lost. You can fetch the ` +
+          'model from Settings once you are on a better connection.',
       );
     } finally {
       setDl(null);
-      setBusy(null);
     }
-  }, [load]);
+  }, []);
 
   const onBuy = useCallback(async () => {
     setBusy('buy');
     try {
+      const plan = plans.find(p => p.basePlanId === chosenPlan) ?? null;
       const result = await buyWithPlay(chosenPlan);
       if (result.paid) {
         await load();
-        Alert.alert('You are on Pro', 'The written summary and the narrated minutes are on.');
+        // From first run: straight back to setup, whose Download button fetches the writer along
+        // with everything else. A second download started here would race it.
+        if (route.params?.from === 'onboarding') {
+          navigation.goBack();
+          return;
+        }
+        const free = plan ? trialLength(plan) : null;
+        Alert.alert(
+          free ? 'Your free trial has started' : 'You are on Pro',
+          free
+            ? `Pro is on, free for ${free}. Cancel in Google Play before then and you pay nothing.`
+            : 'The written summary and the narrated minutes are on.',
+        );
+        await fetchWriter();
       }
       // Not paid means the buyer backed out or the payment is still authorising. Neither is a
       // failure, and neither earns a dialog.
@@ -285,28 +286,25 @@ export default function PaywallScreen({ navigation }: Props) {
     } finally {
       setBusy(null);
     }
-  }, [chosenPlan, load]);
+  }, [chosenPlan, plans, load, fetchWriter, navigation, route.params]);
 
-  const trial = ent?.trial;
   const bought = Boolean(ent?.licence?.paid);
+  const chosen = plans.find(p => p.basePlanId === chosenPlan) ?? null;
+  // Play shows its trial only to an account that has never subscribed, so its presence on the
+  // chosen plan is the whole eligibility check.
+  const chosenFree = chosen ? trialLength(chosen) : null;
+  const terms = chosen ? trialTerms(chosen) : null;
 
   /** The one line under the title, which is the only line most people will read. */
-  const headline = (() => {
-    if (bought) return 'You are on Pro. Everything below is already on.';
-    if (trial?.status === 'active') {
-      const days = trial.daysLeft === 1 ? '1 day' : `${trial.daysLeft} days`;
-      const left = trial.summariesLeft === 1 ? '1 summary' : `${trial.summariesLeft} summaries`;
-      return `Your trial is running: ${days} and ${left} left, whichever goes first.`;
-    }
-    if (trial?.status === 'ended') {
-      return trial.endedBecause === 'summaries'
-        ? `That was the ${TRIAL_SUMMARIES} trial summaries. Everything they wrote is still in your library.`
-        : 'Your trial has ended. Everything it wrote is still in your library.';
-    }
-    return 'Let the phone write your minutes for you, in sentences, before you decide.';
-  })();
+  const headline = bought
+    ? 'You are on Pro. Everything below is already on.'
+    : 'Let the phone write your minutes for you, in sentences, before you decide.';
 
-  const priceLabel = playCost ? `Subscribe — ${playCost}` : 'Subscribe';
+  const priceLabel = chosenFree
+    ? `Try it free for ${chosenFree}`
+    : playCost
+      ? `Subscribe — ${playCost}`
+      : 'Subscribe';
 
   return (
     <View style={[st.root, { paddingTop: insets.top + s(8) }]}>
@@ -320,7 +318,7 @@ export default function PaywallScreen({ navigation }: Props) {
         contentContainerStyle={[st.body, { paddingBottom: insets.bottom + s(28) }]}>
         <View style={st.hero}>
           <Pop>
-            <Mascot mood={bought || trial?.status === 'active' ? 'happy' : 'idle'} size={sv(112)} />
+            <Mascot mood={bought ? 'happy' : 'idle'} size={sv(112)} />
           </Pop>
           <Pop index={1} style={st.heroText}>
             <Txt variant="display" style={st.centerText}>
@@ -385,31 +383,6 @@ export default function PaywallScreen({ navigation }: Props) {
             <SoftButton icon="check" label="Close" onPress={() => navigation.goBack()} />
           ) : (
             <>
-              {trial?.status === 'unstarted' ? (
-                <>
-                  <Button
-                    label={busy === 'trial' ? 'Starting…' : `Try Pro free for ${TRIAL_DAYS} days`}
-                    icon="ai"
-                    onPress={onStartTrial}
-                    disabled={busy !== null}
-                    full
-                  />
-                  {/* Both limits, and the download, before the tap rather than after it. */}
-                  <Txt variant="chip" color={colors.inkFaint} style={st.note}>
-                    {TRIAL_DAYS} days or {TRIAL_SUMMARIES} written summaries, whichever runs out
-                    first. No card, nothing to cancel
-                    {writerInstalled || writerMb === 0
-                      ? '.'
-                      : ` — but it downloads a ${writerMb} MB model first, so start it on wifi.`}
-                  </Txt>
-                  {spaceShort ? (
-                    <Txt variant="chip" color={colors.warning} style={st.note}>
-                      {spaceShort}
-                    </Txt>
-                  ) : null}
-                </>
-              ) : null}
-
               {playCan ? (
                 <>
                   {plans.length > 1 ? (
@@ -437,6 +410,11 @@ export default function PaywallScreen({ navigation }: Props) {
                             <Txt variant="body" color={colors.ink}>
                               {pl.price ?? '—'}
                             </Txt>
+                            {trialLength(pl) ? (
+                              <Txt variant="chip" color={colors.primary}>
+                                {trialLength(pl)} free
+                              </Txt>
+                            ) : null}
                             {/* Struck through ONLY from referencePrice, which draws on Play's own
                                 full price or on twelve times the monthly rate. Never a constant:
                                 a "was" nobody was charged is a fabricated anchor. */}
@@ -453,24 +431,28 @@ export default function PaywallScreen({ navigation }: Props) {
                       })}
                     </View>
                   ) : null}
-                  <View style={trial?.status === 'unstarted' ? st.secondary : undefined}>
-                    {trial?.status === 'unstarted' ? (
-                      <SoftButton
-                        icon="check"
-                        label={busy === 'buy' ? 'One moment…' : priceLabel}
-                        onPress={onBuy}
-                        disabled={busy !== null}
-                      />
-                    ) : (
-                      <Button
-                        label={busy === 'buy' ? 'One moment…' : priceLabel}
-                        icon="check"
-                        onPress={onBuy}
-                        disabled={busy !== null}
-                        full
-                      />
-                    )}
-                  </View>
+                  <Button
+                    label={busy === 'buy' ? 'One moment…' : priceLabel}
+                    icon="check"
+                    onPress={onBuy}
+                    disabled={busy !== null}
+                    full
+                  />
+                  {terms ? (
+                    <Txt variant="chip" color={colors.inkFaint} style={st.note}>
+                      {terms}
+                    </Txt>
+                  ) : null}
+                  {!bought && !writerInstalled && writerMb > 0 ? (
+                    <Txt variant="chip" color={colors.inkFaint} style={st.note}>
+                      Pro downloads a {writerMb} MB model once you start, so start on wifi.
+                    </Txt>
+                  ) : null}
+                  {spaceShort ? (
+                    <Txt variant="chip" color={colors.warning} style={st.note}>
+                      {spaceShort}
+                    </Txt>
+                  ) : null}
                   {/* A blank where a price should be is the thing people distrust most on a paid
                       screen, so the absence is explained instead of hidden. */}
                   {!playCost && priceAsked ? (
@@ -508,13 +490,6 @@ export default function PaywallScreen({ navigation }: Props) {
                     />
                   )}
                 </View>
-              ) : null}
-
-              {trial?.status === 'ended' ? (
-                <Txt variant="chip" color={colors.inkFaint} style={st.note}>
-                  Nothing was taken away when the trial ended: every summary and every set of
-                  minutes it wrote is still in your library, and always will be.
-                </Txt>
               ) : null}
             </>
           )}
@@ -578,7 +553,6 @@ function makeStyles(c: Colors) {
   wasPrice: {
     textDecorationLine: 'line-through',
   },
-  secondary: { flexDirection: 'row' },
     note: { marginTop: s(2) },
     signIn: { marginTop: s(18) },
   });

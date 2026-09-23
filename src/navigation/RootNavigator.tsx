@@ -52,7 +52,7 @@ export type RootStackParamList = {
   Privacy: undefined;
   Actions: undefined;
   /** `meetingId` is the meeting that prompted the sell, so the screen can name it. */
-  Paywall: { meetingId?: string } | undefined;
+  Paywall: { meetingId?: string; from?: 'onboarding' } | undefined;
 };
 
 export type MeetingTab = 'summary' | 'mom' | 'transcript' | 'actions';
