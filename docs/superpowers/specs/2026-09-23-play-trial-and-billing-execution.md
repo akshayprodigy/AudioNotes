@@ -103,7 +103,8 @@ a builder can supply.
   for any product id and for a trial (Google reports a trial as `SUBSCRIPTION_STATE_ACTIVE`).
 - `src/billing/subscription.ts` — `buyWithPlay`, `redeem`, `referencePrice` are unchanged. The
   new helpers go in a NEW file (Step 6) so screen tests need not mock them.
-- `android/gradle.properties` — `playSubscriptionId=verbale_pro` is already right.
+- `android/gradle.properties` — `playSubscriptionId=verbale_pro_1m` was set by the brain between
+  sessions (the founder's live product id; it holds both base plans).
 - `Trial.kt` code (only its doc comment changes), `Narrator.kt`, `BackupManager.kt`, and every
   file under `android/app/src/androidTest/` — the device tests keep using the trial keys, which
   keep working in debug builds.
@@ -1342,24 +1343,25 @@ In `docs/play-console.md`:
 | | |
 |---|---|
 | Type | Subscription |
-| Product ID | `verbale_pro` — must match `playSubscriptionId` in `android/gradle.properties` exactly |
-| Base plan `monthly` | Auto-renewing, 1 month. ₹299 in India, $4.99 in the United States |
-| Base plan `annual` | Auto-renewing, 1 year. ₹2,499 in India, $39.99 in the United States |
-| Offer `free-trial-7d` on EACH base plan | Free trial, 1 week. Eligibility: *New customer acquisition → Never had any subscription* — one trial per Google account, across both plans |
+| Product ID | `verbale_pro_1m` (name "Verbale Pro") — must match `playSubscriptionId` in `android/gradle.properties` exactly. It carries BOTH plans; "1m" is history, Play ids are permanent |
+| Base plan `verbale-pro-1m` | Monthly, auto-renewing. ₹299 in India, $4.99 in the United States |
+| Base plan `verbale-pro-12m` | Yearly, auto-renewing. ₹2,499 in India, $39.99 in the United States |
+| Offers `starter-offer-001` (monthly), `starter-annual-offer-001` (yearly) | Free trial, 1 week. Eligibility: *New customer acquisition → Never had any subscription* — one trial per Google account, across both plans |
 | Other markets | Let Play convert from USD unless a market needs a hand-set figure |
 ```
 
 and after that table's following paragraph add:
 
 ```markdown
-The app never names an offer id: `OfferChoice` sells a base plan's free-trial offer whenever Play
-lists one for the account (Play lists it only to an eligible account), otherwise the plain base
-plan. So renaming or re-creating the offer needs no release — but a trial on only ONE plan means
-the paywall's preselected Yearly shows no trial.
+No base plan or offer id appears in the code. The paywall tells Monthly from Yearly by billing
+period (P1M / P1Y), and `OfferChoice` sells a base plan's free-trial offer whenever Play lists one
+for the account (Play lists it only to an eligible account), otherwise the plain base plan. So
+renaming or re-creating an offer needs no release — but a trial on only ONE plan means the
+paywall's preselected Yearly shows no trial.
 
-The two products created on 23 Sep 2026 (`verbale_pro_1m`, `verbale_pro_12m`) were the wrong
-shape — two subscriptions instead of one with two base plans — and are deactivated. Product ids
-can never be reused, which does not matter: nothing references them.
+A second subscription, `verbale_pro_12m`, was created first on 23 Sep 2026 and is deactivated;
+nothing references it. Product ids can never be reused or renamed, which is why the live product
+is called `verbale_pro_1m` although it holds both plans.
 ```
 
 11.2 In the service-account list, replace step 3 (`3. Put the JSON (or its path) in …`) with:
@@ -1381,7 +1383,7 @@ paragraph) with:
 ```markdown
 ### The free trial is Play's
 
-Seven days free, then the plan's price, set as the `free-trial-7d` offer on each base plan (see
+Seven days free, then the plan's price, set as a free-trial offer on each base plan (see
 above). Play charges nothing until the trial ends, reminds the buyer, and handles cancellation;
 Google reports a trialling subscription as `SUBSCRIPTION_STATE_ACTIVE`, so the server mints an
 ordinary licence whose expiry is the trial's end (plus the payment grace while it is still set
@@ -1397,7 +1399,9 @@ minutes, not days — or a seeded account (`server/deploy/seed-test-account.sh`)
 
 11.4 In the `## Still to do before filing` list, replace
 `- [ ] Create the \`verbale_pro\` subscription with base plans \`monthly\` and \`annual\` at the prices above` with
-`- [ ] Create the \`verbale_pro\` subscription: base plans \`monthly\` and \`annual\` at the prices above, and the \`free-trial-7d\` offer on each`.
+`- [x] The \`verbale_pro_1m\` subscription: base plans \`verbale-pro-1m\` and \`verbale-pro-12m\` at the prices above, a one-week free-trial offer on each (created 23 Sep 2026)`.
+Also `git grep -n "verbale_pro\b\|\`monthly\`\|\`annual\`" docs/play-console.md` and bring any
+remaining mention of the product or base plan ids in that file into line with the table.
 
 Commit: `docs(play-console): one subscription, Play's free trial, and the service account that works`.
 
