@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   AppState,
   NativeEventEmitter,
   NativeModules,
@@ -34,7 +35,10 @@ import {
   recordModeOf,
   type RecordMode,
 } from './recordMode';
-import { entitlement, startTrial } from '../billing/trial';
+import { entitlement } from '../billing/trial';
+import { buyWithPlay, playAvailable, playPlans } from '../billing/subscription';
+import { trialLength, trialPlan, trialTerms } from '../billing/trialTerms';
+import type { PlayPlan } from '../native/NativeBilling';
 import { radius, s, sv, useTheme, type Colors } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Record'>;
@@ -94,6 +98,23 @@ export default function RecordScreen({ navigation }: Props) {
   // limit without interrupting the recording. Native enforces it; this is only what is shown.
   const [capMs, setCapMs] = useState(FREE_CAP_MS);
   const [lifting, setLifting] = useState(false);
+  // The plan the cap card can sell in place — monthly first, the smaller commitment for a decision
+  // made mid-meeting. Null when this install cannot buy through Play or the account has had its
+  // trial. RecordingService re-asks for the entitlement when the limit is reached, so a purchase
+  // here lifts the cap on the recording already running.
+  const [trialOffer, setTrialOffer] = useState<PlayPlan | null>(null);
+  useEffect(() => {
+    let alive = true;
+    playAvailable()
+      .then(can => (can ? playPlans() : []))
+      .then(pl => {
+        if (alive) setTrialOffer(trialPlan(pl, 'P1M'));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
   // Phase 5: meeting or dictation. Read once with the consent flag; written back on every change.
   const [mode, setMode] = useState<RecordMode>('meeting');
   const levelRef = useRef(0);
@@ -418,10 +439,10 @@ export default function RecordScreen({ navigation }: Props) {
               : 'Listening — tap to finish'}
           </Txt>
 
-          {/* The offer arrives with three minutes left, not at the limit. Somebody who finds out
-              their meeting is ending as it ends has already lost it; three minutes is enough to
-              read this, decide, and carry on without breaking stride. Starting the trial lifts the
-              cap for the recording ALREADY RUNNING — it does not restart it. */}
+          {/* The offer arrives with three minutes left, not at the limit: enough to read this,
+              decide, and carry on without breaking stride. A purchase here lifts the cap for the
+              recording ALREADY RUNNING — RecordingService asks for the entitlement again when the
+              limit is reached, rather than trusting the cap it started with. */}
           {isRecording && capPhase(elapsed, capMs) === 'warning' ? (
             <Raised edge={colors.line} fill={colors.card} rad={radius.lg} depth={4}>
               <View style={st.capNote}>
@@ -429,27 +450,33 @@ export default function RecordScreen({ navigation }: Props) {
                   {countdown(elapsed, capMs)} left on Free
                 </Txt>
                 <Txt variant="chip" color={colors.inkDim}>
-                  This recording will stop at 15 minutes and be transcribed in full. Start the free
-                  trial to keep going — no account, no card.
+                  {trialOffer
+                    ? `This recording will stop at 15 minutes and be transcribed in full. Pro has no limit. ${trialTerms(trialOffer)}`
+                    : 'This recording will stop at 15 minutes and be transcribed in full.'}
                 </Txt>
-                <SoftButton
-                  icon="check"
-                  label={lifting ? 'One moment…' : 'Keep recording'}
-                  disabled={lifting}
-                  onPress={async () => {
-                    setLifting(true);
-                    try {
-                      await startTrial();
-                      const e = await entitlement();
-                      setCapMs(capMsFor(Boolean(e?.paid)));
-                    } catch {
-                      // Leaving the cap in place is the safe failure: the recording still stops
-                      // cleanly and is still kept.
-                    } finally {
-                      setLifting(false);
-                    }
-                  }}
-                />
+                {trialOffer ? (
+                  <SoftButton
+                    icon="check"
+                    label={lifting ? 'One moment…' : `Keep recording — ${trialLength(trialOffer)} free`}
+                    disabled={lifting}
+                    onPress={async () => {
+                      setLifting(true);
+                      try {
+                        const result = await buyWithPlay(trialOffer.basePlanId);
+                        if (result.paid) {
+                          const e = await entitlement();
+                          setCapMs(capMsFor(Boolean(e?.paid)));
+                        }
+                      } catch (err: any) {
+                        // The recording is untouched either way: it still stops cleanly at the
+                        // limit and is kept. Only the purchase failed, so say why.
+                        Alert.alert('Could not start the trial', String(err?.message ?? err));
+                      } finally {
+                        setLifting(false);
+                      }
+                    }}
+                  />
+                ) : null}
               </View>
             </Raised>
           ) : null}

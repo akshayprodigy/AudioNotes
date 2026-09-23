@@ -13,7 +13,8 @@ import { downloadLabel, downloadPct } from './downloadLabel';
 import { runnable, sizeMb, spaceFits, spaceReason, writerBlockedReason, type DeviceFit } from './deviceFit';
 import { db } from '../db/queries';
 import SignInForm from '../billing/SignInForm';
-import { TRIAL_DAYS, startTrial } from '../billing/trial';
+import { playAvailable, playPlans } from '../billing/subscription';
+import { trialLength, trialPlan } from '../billing/trialTerms';
 import { crashReportingAvailable, setCrashConsent } from '../telemetry/crash';
 import { radius, s, sv, useTheme, type Colors } from '../theme';
 
@@ -119,6 +120,38 @@ export default function OnboardingScreen({ navigation }: Props) {
   // Off until tapped. Consent that starts switched on is not consent, and this one is about
   // network traffic leaving a device whose entire selling point is that none does.
   const [crashOptIn, setCrashOptIn] = useState(false);
+  // Whether Pro can be bought on this install, and Play's trial length if this account has one.
+  const [proOffer, setProOffer] = useState<{ canBuy: boolean; free: string | null }>({
+    canBuy: false,
+    free: null,
+  });
+  useEffect(() => {
+    playAvailable()
+      .then(async can => {
+        if (!can) return;
+        const pl = await playPlans();
+        const t = trialPlan(pl, 'P1Y');
+        setProOffer({ canBuy: pl.length > 0, free: t ? trialLength(t) : null });
+      })
+      .catch(() => {});
+  }, []);
+
+  // Back from the Pro screen: a purchase made there is read here and setup carries on as Pro —
+  // the Download button then fetches the writer with everything else.
+  useEffect(
+    () =>
+      navigation.addListener('focus', () => {
+        Licence.status()
+          .then(e => {
+            if (!e.paid) return;
+            setPaid(true);
+            setTier('pro');
+            setWantWriter(true);
+          })
+          .catch(() => {});
+      }),
+    [navigation],
+  );
 
   useEffect(() => {
     Licence.status()
@@ -163,7 +196,7 @@ export default function OnboardingScreen({ navigation }: Props) {
   // with every model present offered "Download the AI (114 MB)" — a number that was wrong in the
   // direction that makes the app look worse, and which used to be true because download() really
   // did fetch them all again. That is fixed natively; this is the half the user reads.
-  /** Entitled to the paid models, either already or by the trial just started. */
+  /** Entitled to the paid models: already, or by a purchase just made on the Pro screen. */
   const proChosen = paid || tier === 'pro';
 
   const chosen = proChosen
@@ -183,25 +216,11 @@ export default function OnboardingScreen({ navigation }: Props) {
       : null;
 
   /**
-   * Taking Pro at setup starts the TRIAL, not a purchase.
-   *
-   * Asking for a card before the app has transcribed a single meeting is the weakest possible ask,
-   * and the trial is the only honest answer to "is it any good on MY meetings" — the only question
-   * that matters for this product. Buying outright stays on the Pro screen and in Settings.
-   *
-   * A trial that fails to start drops to free rather than dead-ending setup. A first run that
-   * cannot proceed because a billing helper threw is a far worse outcome than a missing trial.
+   * Taking Pro at setup opens the Pro screen, where Play's free trial is offered with its terms —
+   * the terms belong where the purchase is made. Coming back paid is picked up by the focus
+   * listener above; coming back without buying leaves the choice where it was.
    */
-  const choosePro = async () => {
-    try {
-      await startTrial();
-      setTier('pro');
-      setWantWriter(true);
-    } catch {
-      setTier('free');
-      setWantWriter(false);
-    }
-  };
+  const choosePro = () => navigation.navigate('Paywall', { from: 'onboarding' });
 
   const finish = async () => {
     await db.setSetting('onboarded', '1');
@@ -409,9 +428,15 @@ export default function OnboardingScreen({ navigation }: Props) {
             disabled={essentials.length === 0}
             full
           />
-          <View style={st.tierGap}>
-            <SoftButton label={`Try Pro free for ${TRIAL_DAYS} days`} icon="ai" onPress={choosePro} />
-          </View>
+          {proOffer.canBuy ? (
+            <View style={st.tierGap}>
+              <SoftButton
+                label={proOffer.free ? `Try Pro free for ${proOffer.free}` : 'Get Pro'}
+                icon="ai"
+                onPress={choosePro}
+              />
+            </View>
+          ) : null}
           <Txt variant="chip" color={colors.inkFaint} style={[st.centerText, st.note]}>
             {writerBlocked
               ? `Free records, transcribes and pulls out the decisions and actions — no account, for as long as you use it. Pro transcribes with a larger model and searches by meaning, and downloads ${proMb} MB more. ${writerBlocked}`
