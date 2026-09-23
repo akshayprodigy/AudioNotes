@@ -8,8 +8,8 @@ Tracking `docs/superpowers/specs/2026-09-23-play-trial-and-billing-execution.md`
 - [x] 1. `OfferChoice` — which offer sells a base plan (pure, JVM-tested)
 - [x] 2. `BillingModule` uses `OfferChoice`
 - [x] 3. The in-app trial grants nothing in a release build
-- [ ] 4. Pro bought mid-recording lifts the cap on the recording already running
-- [ ] 5. Server: no grace on top of a cancelled subscription's token
+- [x] 4. Pro bought mid-recording lifts the cap on the recording already running
+- [x] 5. Server: no grace on top of a cancelled subscription's token
 - [ ] 6. `PlayPlan` gains the trial; the pure trial helpers (Session B)
 - [ ] 7. Remove the in-app trial from `trial.ts` (Session B)
 - [ ] 8. The paywall sells Play's trial (Session B)
@@ -28,8 +28,15 @@ Tracking `docs/superpowers/specs/2026-09-23-play-trial-and-billing-execution.md`
   trial is chosen…* and *a paid introductory offer is chosen…*. Restored.
 - Step 1, M2: `OfferChoice.describe`'s `<` changed to `<=` — killed by *a trial plan is priced…*
   and *a plain base plan…*. Restored.
+- Step 5, M3: `entitlement.py`'s new `grace` line hardcoded back to `PAYMENT_GRACE_SECONDS` —
+  killed by *test_a_cancelled_subscription_mints_no_grace_past_its_end*. Restored.
 
 ## Notes for the next session
 
 - Session A (Steps 0–5) is native + server only, no device. Session B (Steps 6–12) is
   TypeScript/screens/docs/gate/report, no device. Session D is the founder's by-hand run.
+- Session A complete (23 Sep 2026): all six steps (0–5) committed, `git status` clean, all
+  three mutants (M1–M3) killed and restored. Kotlin unit tests and the full server pytest suite
+  (195 passed) are green as of the last Step 5 commit.
+- No deviations from the sheet: every anchor, line range and exact code block matched what the
+  sheet named, so nothing needed recording under *Decisions*.
