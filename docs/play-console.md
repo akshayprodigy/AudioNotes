@@ -139,9 +139,10 @@ who already subscribed — managing an existing Play subscription, not acquiring
 | | |
 |---|---|
 | Type | Subscription |
-| Product ID | `verbale_pro` — must match `playSubscriptionId` in `android/gradle.properties` exactly |
-| Base plan `monthly` | ₹299 / month in India, $4.99 / month elsewhere |
-| Base plan `annual` | ₹2,499 / year in India, $39.99 / year elsewhere |
+| Product ID | `verbale_pro_1m` (name "Verbale Pro") — must match `playSubscriptionId` in `android/gradle.properties` exactly. It carries BOTH plans; "1m" is history, Play ids are permanent |
+| Base plan `verbale-pro-1m` | Monthly, auto-renewing. ₹299 in India, $4.99 in the United States |
+| Base plan `verbale-pro-12m` | Yearly, auto-renewing. ₹2,499 in India, $39.99 in the United States |
+| Offers `starter-offer-001` (monthly), `starter-annual-offer-001` (yearly) | Free trial, 1 week. Eligibility: *New customer acquisition → Never had any subscription* — one trial per Google account, across both plans |
 | Other markets | Let Play convert from USD unless a market needs a hand-set figure |
 
 Prices are final (founder, 13 September 2026). The app hard-codes none of them: the paywall reads
@@ -149,6 +150,16 @@ whatever Play reports for the two base plans, chooses annual by default, and dra
 from twelve times the monthly price — so a price changed in the Console changes in the app with no
 release. **The paywall shows no price until the product exists**, which is why no device has ever
 seen one.
+
+No base plan or offer id appears in the code. The paywall tells Monthly from Yearly by billing
+period (P1M / P1Y), and `OfferChoice` sells a base plan's free-trial offer whenever Play lists one
+for the account (Play lists it only to an eligible account), otherwise the plain base plan. So
+renaming or re-creating an offer needs no release — but a trial on only ONE plan means the
+paywall's preselected Yearly shows no trial.
+
+A second subscription, `verbale_pro_12m`, was created first on 23 Sep 2026 and is deactivated;
+nothing references it. Product ids can never be reused or renamed, which is why the live product
+is called `verbale_pro_1m` although it holds both plans.
 
 A mismatch between the id in the Console and the id in the build surfaces on the customer's phone
 as "this item is not available", with nothing in the build to suggest why — so `BillingModule` says
@@ -173,8 +184,14 @@ exists, before any tester buys anything:
 2. Play Console › Users and permissions: invite that service account with **Manage orders and
    subscriptions** — account deletion cancels the subscription at Google first and refuses to
    delete if it cannot, so view-only is not enough.
-3. Put the JSON (or its path) in `/opt/verbale/.env`, restart the container, and check that the
-   probe below no longer says 503.
+3. Put the key on the VPS **inline**, in `/opt/verbale/.env`, as ONE line in single quotes (a
+   path does not work: the container mounts only its database volume, and `deploy.sh` rsyncs
+   `/opt/verbale` with `--delete`, which would erase a key file kept there):
+   `python3 -c 'import json,sys;print(json.dumps(json.load(open(sys.argv[1]))))' key.json`
+   → paste as `PLAY_SERVICE_ACCOUNT_JSON='<that line>'`. Then
+   `cd /opt/verbale && docker compose up -d` — **not** `restart`, which keeps the old
+   environment. Check the probe below no longer says 503. A new service account can take up to
+   a day before Google honours its Play Console permissions; a 401 in that window is expected.
 
 ```bash
 curl -s -X POST https://verbale.innocorelabs.com/api/billing/play/link \
@@ -191,11 +208,20 @@ a bad connection by someone who never reopens the app.
 One subscription covers up to **3 devices** (`DEVICE_LIMIT` in `server/app/store.py`; the terms
 page reads the same constant).
 
-### The free trial needs nothing from the Console
+### The free trial is Play's
 
-Seven days or three written summaries, whichever ends first, kept in the app's own settings on a
-clock that cannot go backwards. It is not a Play introductory offer, so nothing about it is
-configured in the Console and it works before the product exists.
+Seven days free, then the plan's price, set as a free-trial offer on each base plan (see
+above). Play charges nothing until the trial ends, reminds the buyer, and handles cancellation;
+Google reports a trialling subscription as `SUBSCRIPTION_STATE_ACTIVE`, so the server mints an
+ordinary licence whose expiry is the trial's end (plus the payment grace while it is still set
+to renew — none once cancelled). The paywall states the terms under the button, as Play's
+subscription policy asks.
+
+The in-app "7 days or 3 summaries, no card" trial was removed on 23 Sep 2026. Its native half,
+`Trial.kt`, survives as a DEBUG-only entitlement lever for the device tests; a release build
+never reads it. **Testing Pro on a release build therefore needs a licence tester** (Play Console
+→ Settings → License testing) on a build installed from a Play testing track — test trials last
+minutes, not days — or a seeded account (`server/deploy/seed-test-account.sh`).
 
 ---
 
@@ -346,7 +372,7 @@ Done and no longer listed: the upload keystore (`AUDIONOTES_STORE_FILE`, every r
 
 - [ ] Create the app in Play Console and **enrol in Play App Signing at creation** — it cannot be
       added cleanly to an existing unmanaged app
-- [ ] Create the `verbale_pro` subscription with base plans `monthly` and `annual` at the prices above
+- [x] The `verbale_pro_1m` subscription: base plans `verbale-pro-1m` and `verbale-pro-12m` at the prices above, a one-week free-trial offer on each (created 23 Sep 2026)
 - [ ] Google Cloud service account with the Android Publisher API, invited to Play Console with
       **Manage orders and subscriptions**, its JSON in `/opt/verbale/.env` — then run the probe
       above and see the 503 gone. **Nothing can be bought until this is done**
