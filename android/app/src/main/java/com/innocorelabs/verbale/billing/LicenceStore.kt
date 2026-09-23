@@ -134,8 +134,13 @@ object LicenceStore {
    * The one question the pipeline asks. Keeping the trial inside this call rather than at each
    * caller is what stops a new paid feature shipping with a gate that has never heard of the
    * trial, which is exactly how the trial came to grant nothing at all.
+   *
+   * Since 23 Sep 2026 the trial customers get is Play's free-trial offer, which arrives as an
+   * ordinary paid licence. The in-app trial below is a DEBUG-only lever: the device tests write
+   * its three settings keys to get Pro without a purchase. A release build never reads it.
    */
-  fun entitled(ctx: Context): Boolean = current(ctx).isPaid || Trial.isActive(ctx)
+  fun entitled(ctx: Context): Boolean =
+    current(ctx).isPaid || (BuildConfig.DEBUG && Trial.isActive(ctx))
 
   private fun advanceClock(db: AudioDb): Long {
     val floor = db.getSetting(KEY_FLOOR)?.toLongOrNull() ?: 0L

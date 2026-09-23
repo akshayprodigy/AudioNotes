@@ -15,6 +15,12 @@ import kotlin.math.min
  * is processed to finished minutes with no React alive. A trial that only JS understood would
  * grant a person nothing at all, and would never count what it had granted.
  *
+ * **Retired as a product, 23 Sep 2026.** Customers now get Play's seven-day free trial, which the
+ * licence server turns into an ordinary paid licence. Nothing in the app starts this trial any
+ * more, and LicenceStore.entitled consults it only in a DEBUG build — where the device tests
+ * (NativePipelineTest, PeopleDbTest, ThreadsDbTest, VerificationTrialTest) write its keys to get
+ * Pro without a purchase.
+ *
  * The two sides share the settings rows rather than a rule engine: JS starts the trial and decides
  * what the screens say, this decides whether the model may run and counts what it wrote. Both read
  * the same three keys, so neither can drift into a different answer about whether the trial is
