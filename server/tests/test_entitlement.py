@@ -76,6 +76,15 @@ def test_a_token_never_outlives_the_paid_period_plus_grace(store, signing_key):
     assert _exp(issued) == issued.expires_at
 
 
+def test_a_cancelled_subscription_mints_no_grace_past_its_end(store, signing_key):
+    """A Play trial cancelled on day two ends with the trial, not three days after it."""
+    account = _entitled_account(store, period_end=NOW + 5 * DAY, status="cancelled")
+    issued = issue(store, signing_key, account.id, "dev_1", NOW)
+    assert issued is not None
+    assert issued.expires_at == NOW + 5 * DAY
+    assert _exp(issued) == issued.expires_at
+
+
 def test_a_long_subscription_still_only_mints_a_fortnight(store, signing_key):
     issued = issue(store, signing_key, _entitled_account(store).id, "dev_1", NOW)
     assert issued is not None

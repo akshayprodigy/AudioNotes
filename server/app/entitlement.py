@@ -70,7 +70,11 @@ def issue(
     if not store.touch_device(account_id, device_id):
         return None
 
-    ceiling = sub.current_period_end + PAYMENT_GRACE_SECONDS
+    # The grace is for a payment that may still go through. A cancellation has none coming --
+    # is_entitled already refuses it grace -- so its token ends with the period, and a Play trial
+    # cancelled on day two ends with the trial.
+    grace = PAYMENT_GRACE_SECONDS if sub.status in ("active", "past_due") else 0
+    ceiling = sub.current_period_end + grace
     ttl = min(DEFAULT_TTL_SECONDS, max(0, ceiling - now))
     if ttl <= 0:
         return None
