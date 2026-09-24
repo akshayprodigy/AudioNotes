@@ -40,9 +40,8 @@ import VoicesSection from './settings/VoicesSection';
 import Backup from '../native/NativeBackup';
 import Licence, { type LicenceStatus } from '../native/NativeLicence';
 import {
-  buyWithPlay,
+  PLAY_MANAGE_URL,
   playAvailable,
-  playPrice,
   restorePlayPurchase,
   signOut,
 } from '../billing/subscription';
@@ -132,7 +131,6 @@ export default function SettingsScreen({ navigation }: Props) {
   // Play Billing simply does not work — there the web account is the only route, which is also why
   // the email sign-in never goes away entirely.
   const [playCan, setPlayCan] = React.useState(false);
-  const [playCost, setPlayCost] = React.useState<string | null>(null);
   const [playBusy, setPlayBusy] = React.useState(false);
   // Secondary on purpose. Somebody on a Play install should be buying through Play; this is for
   // the person who already subscribed on the web or, later, on a desktop.
@@ -160,13 +158,9 @@ export default function SettingsScreen({ navigation }: Props) {
     refreshLicence();
   }, [refreshLicence]);
 
-  // What Play can do here, asked once. Both calls are cheap and both fail closed: a device with
-  // no Play Store answers false and the UI falls back to the web account.
+  // Whether Play can sell here. Fails closed: no Play Store answers false.
   React.useEffect(() => {
-    playAvailable().then(async can => {
-      setPlayCan(can);
-      if (can) setPlayCost(await playPrice());
-    });
+    playAvailable().then(setPlayCan).catch(() => {});
   }, []);
 
   // Runs on open, and is what makes a reinstall or a new phone work: Play remembers the purchase,
@@ -177,23 +171,6 @@ export default function SettingsScreen({ navigation }: Props) {
         if (r.paid) refreshLicence();
       })
       .catch(() => {});
-  }, [refreshLicence]);
-
-  const onBuy = React.useCallback(async () => {
-    setPlayBusy(true);
-    try {
-      const result = await buyWithPlay();
-      if (result.paid) {
-        await refreshLicence();
-        Alert.alert('You are on Pro', 'The written summary and minutes are on. Enjoy.');
-      }
-      // Not paid means the buyer backed out, or a payment method still authorising. Neither
-      // deserves a dialog — the first is a decision, the second resolves itself.
-    } catch (e: any) {
-      Alert.alert('Could not complete the purchase', String(e?.message ?? e));
-    } finally {
-      setPlayBusy(false);
-    }
   }, [refreshLicence]);
 
   const onRestorePurchase = React.useCallback(async () => {
@@ -217,7 +194,7 @@ export default function SettingsScreen({ navigation }: Props) {
   // Play's own subscription screen. Managing or cancelling an existing Play subscription is what
   // this link is for; it is not a route to buy one, which is what store policy cares about.
   const onManage = React.useCallback(() => {
-    Linking.openURL('https://play.google.com/store/account/subscriptions').catch(() => {});
+    Linking.openURL(PLAY_MANAGE_URL).catch(() => {});
   }, []);
 
   const onSignOut = React.useCallback(async () => {
@@ -354,11 +331,14 @@ export default function SettingsScreen({ navigation }: Props) {
     countEmpties();
     const offFocus = navigation.addListener('focus', () => {
       countEmpties();
+      // Back from the Pro screen: a purchase made there shows here at once.
+      refreshLicence();
+      entitlement().then(e => setVoicesPaid(e.paid)).catch(() => {});
     });
     return () => {
       offFocus();
     };
-  }, [navigation, countEmpties, readRetention]);
+  }, [navigation, countEmpties, readRetention, refreshLicence]);
 
   /**
    * Bulk-delete the mis-taps. Sequential rather than Promise.all: each one cancels native work
@@ -661,15 +641,8 @@ export default function SettingsScreen({ navigation }: Props) {
                 <>
                   <Button
                     icon="check"
-                    label={
-                      playBusy
-                        ? 'One moment…'
-                        : playCost
-                          ? `Subscribe — ${playCost}`
-                          : 'Subscribe'
-                    }
-                    onPress={onBuy}
-                    disabled={playBusy}
+                    label="See Pro plans"
+                    onPress={() => navigation.navigate('Paywall')}
                     full
                   />
                   <View style={st.backupRow}>
@@ -680,6 +653,9 @@ export default function SettingsScreen({ navigation }: Props) {
                         onPress={onRestorePurchase}
                         disabled={playBusy}
                       />
+                    </View>
+                    <View style={st.flex}>
+                      <SoftButton icon="settings" label="Manage in Google Play" onPress={onManage} />
                     </View>
                   </View>
                   {/* Secondary, and phrased as a statement of fact rather than an invitation.
