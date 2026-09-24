@@ -9,7 +9,7 @@ Against `docs/superpowers/specs/2026-09-24-phase-a-buying-and-pro-state-executio
 - [x] 3. `syncEntitlement` — Pro matches Play on every launch and return
 - [x] 4. The app runs it on launch and on every return
 - [x] 5. Settings: Subscribe opens the Pro screen; Manage for everyone; fresh on focus
-- [ ] 6. The Pro screen: purchase outcomes said honestly, and Restore
+- [x] 6. The Pro screen: purchase outcomes said honestly, and Restore
 - [ ] 7. The record screen's trial button says the same
 - [ ] 8. Lapsed: "Check again" and "Manage in Google Play"; the sentence stops over-claiming
 - [ ] 9. The Library notices Pro the moment you come back
@@ -49,12 +49,17 @@ Against `docs/superpowers/specs/2026-09-24-phase-a-buying-and-pro-state-executio
 - M2: `src/billing/subscription.ts` `redeem` — changed `status >= 500` to `status > 999`. Exactly
   *a server or Google failure (5xx)…* failed (1 of 15). Restored; all 15 green.
 - M3 did NOT kill its named test, code restored as-specified anyway (see Decisions).
+- M4: `src/screens/PaywallScreen.tsx` `onBuy` — deleted the `if (notice) { … return; }` block.
+  Exactly *a payment the server has not confirmed says "Payment received", not failed* failed (1 of
+  7). Restored; all 7 green.
 
 Step 4: `npx tsc --noEmit` clean; full `npx jest --silent` — 65 suites, 624 tests, all passed.
 Step 5: `npx tsc --noEmit` clean. No mutant named for this step (no test suite covers Settings'
 purchase button).
+Step 6: `npx jest src/billing/__tests__/purchaseNotice.test.ts src/screens/__tests__/PaywallScreen.test.tsx`
+— 10 passed; `npx tsc --noEmit` clean.
 
 ## Notes for the next session
 
-Session A1 (Steps 1–4) complete and committed. Session A2 Step 5 complete and committed,
-`git status` clean. Continue at Step 6.
+Session A1 (Steps 1–4) complete and committed. Session A2 Steps 5–6 complete and committed,
+`git status` clean. Continue at Step 7.
