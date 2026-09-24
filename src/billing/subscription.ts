@@ -317,3 +317,39 @@ export async function restorePlayPurchase(): Promise<PlayResult> {
   if (!purchaseToken) return { paid: false };
   return redeem(base, purchaseToken);
 }
+
+/** Where a Play subscriber manages, pauses, fixes payment for or cancels their subscription. */
+export const PLAY_MANAGE_URL = 'https://play.google.com/store/account/subscriptions';
+
+let syncing: Promise<void> | null = null;
+
+/**
+ * Make this install's Pro match what the buyer actually has. Run on every launch and every return
+ * to the foreground; never throws, never interrupts.
+ *
+ * Two jobs. Renew the licence when it is near expiry or lapsed (refreshIfNeeded). And when this
+ * install has no Pro, ask Play whether the Google account owns a subscription — which is what
+ * picks up a purchase made while the server was unreachable, a slow payment that has since gone
+ * through, or a reinstall. For a free user Play answers from its local cache with nothing, so no
+ * request leaves the phone.
+ *
+ * One at a time: the app returning from Play's own purchase sheet fires a foreground event while
+ * the purchase is being redeemed, and two redemptions of one token would race.
+ */
+export function syncEntitlement(): Promise<void> {
+  if (syncing) return syncing;
+  syncing = (async () => {
+    try {
+      await refreshIfNeeded();
+      const status = await Licence.status().catch(() => null);
+      if (status?.paid) return;
+      if (!(await playAvailable())) return;
+      await restorePlayPurchase().catch(() => undefined);
+    } catch {
+      // Never interrupts: the next launch or return tries again.
+    } finally {
+      syncing = null;
+    }
+  })();
+  return syncing;
+}

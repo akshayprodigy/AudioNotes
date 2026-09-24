@@ -5,7 +5,13 @@
  * what happens when the buyer changes their mind, when the payment is still authorising, and when
  * the purchase succeeds but the server cannot be told about it.
  */
-import { buyWithPlay, playAvailable, playPrice, restorePlayPurchase } from '../subscription';
+import {
+  buyWithPlay,
+  playAvailable,
+  playPrice,
+  restorePlayPurchase,
+  syncEntitlement,
+} from '../subscription';
 
 // The stubs jest.setup.js registered with TurboModuleRegistry. Reached through the escape hatch it
 // exposes, rather than NativeModules, because the specs use TurboModuleRegistry.getEnforcing and
@@ -140,5 +146,37 @@ describe('capability checks fail closed', () => {
   it('reports no price when Play returns nothing useful', async () => {
     Billing.price.mockResolvedValue(null);
     await expect(playPrice()).resolves.toBeNull();
+  });
+});
+
+describe('keeping Pro in step with Play', () => {
+  it('asks Play nothing when this install already has Pro', async () => {
+    Licence.status.mockResolvedValue({ state: 'active', paid: true, expiresAt: 0 });
+    await syncEntitlement();
+    expect(Billing.restore).not.toHaveBeenCalled();
+  });
+
+  it('picks up a purchase the app never heard back about', async () => {
+    Licence.status.mockResolvedValue({ state: 'none', paid: false, expiresAt: 0 });
+    Billing.available.mockResolvedValue(true);
+    Billing.restore.mockResolvedValue('token-abc');
+    (global.fetch as jest.Mock).mockReturnValue(
+      ok({ token: 'licence-xyz', refreshKey: 'refresh-1', plan: 'pro' }),
+    );
+    await syncEntitlement();
+    expect(Licence.store).toHaveBeenCalledWith('licence-xyz', 'refresh-1');
+  });
+
+  it('does nothing on an install that cannot use Play', async () => {
+    Licence.status.mockResolvedValue({ state: 'none', paid: false, expiresAt: 0 });
+    Billing.available.mockResolvedValue(false);
+    await syncEntitlement();
+    expect(Billing.restore).not.toHaveBeenCalled();
+  });
+
+  it('never throws', async () => {
+    Licence.status.mockRejectedValue(new Error('native gone'));
+    Billing.available.mockRejectedValue(new Error('no Play'));
+    await expect(syncEntitlement()).resolves.toBeUndefined();
   });
 });
