@@ -58,6 +58,8 @@ class RecordingService : Service(), CaptureListener {
     private const val CHANNEL_ID = "audionotes.recording.v2"
     private const val LEGACY_CHANNEL_ID = "audionotes.recording"
     private const val NOTIF_ID = 42
+    /** "Stopped at the Free limit" — separate from NOTIF_ID, which goes when the service does. 43/44 are ProcessingService's. */
+    private const val CAP_NOTICE_ID = 45
     private const val TAG = "RecordingService"
 
     /** Twelve seconds of 16 kHz mono PCM16 — long enough to hold the clip and some room after. */
@@ -622,6 +624,7 @@ class RecordingService : Service(), CaptureListener {
       }
       Log.i(TAG, "capture finished for $id: ${bytes}B (${durationMs}ms), reason=$endReason")
     }
+    if (endReason == END_CAP_REACHED) postCapReachedNotice()
     // Release CaptureController.stop() only now — the PCM is flushed and the row is updated,
     // so it is safe for the pipeline to read the file.
     //
@@ -704,6 +707,34 @@ class RecordingService : Service(), CaptureListener {
    */
   @Volatile private var foregrounded = false
   private val mainHandler = Handler(Looper.getMainLooper())
+
+  /**
+   * A free recording just stopped at its limit — very likely with the screen off or in PiP, where
+   * nothing else said so. Plain and silent; tapping opens the app. Read before onCaptureEnded
+   * clears the limit, which is why onDestroy calls it first.
+   */
+  private fun postCapReachedNotice() {
+    val minutes = (CaptureController.capMs / 60_000L).toInt()
+    val open = PendingIntent.getActivity(
+      this, 5,
+      Intent(this, com.innocorelabs.verbale.MainActivity::class.java)
+        .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK),
+      PendingIntent.FLAG_IMMUTABLE,
+    )
+    val n = NotificationCompat.Builder(this, CHANNEL_ID)
+      .setContentTitle(getString(R.string.notif_cap_reached_title, minutes))
+      .setContentText(getString(R.string.notif_cap_reached_body))
+      .setSmallIcon(R.drawable.ic_notification_rec)
+      .setSilent(true)
+      .setAutoCancel(true)
+      .setContentIntent(open)
+      .build()
+    try {
+      NotificationManagerCompat.from(this).notify(CAP_NOTICE_ID, n)
+    } catch (_: Exception) {
+      // POST_NOTIFICATIONS denied. The recording is kept and processed either way.
+    }
+  }
 
   private fun refreshNotification() {
     if (!foregrounded) return
