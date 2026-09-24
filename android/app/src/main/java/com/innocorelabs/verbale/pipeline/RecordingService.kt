@@ -787,11 +787,17 @@ class RecordingService : Service(), CaptureListener {
       else -> getString(R.string.notif_title_recording)
     }
     val warning = CaptureController.warning
+    // The free limit, from three minutes out: the body says so and the chronometer counts DOWN.
+    val capMs = CaptureController.capMs
+    val capLeftMs = CapClock.remainingMs(CaptureController.capturedMs, capMs)
+    val capCounting = CaptureController.isRecording && !paused && !silenced &&
+      CapClock.counting(CapClock.phase(CaptureController.capturedMs, capMs))
     val markMs = CaptureController.lastMarkMs
     val markFresh = markMs >= 0 && CaptureController.capturedMs - markMs < MARK_CAPTION_MS
     val body = when {
       silenced -> getString(R.string.notif_body_silenced)
       paused -> getString(R.string.notif_body_paused)
+      capCounting -> getString(R.string.notif_cap_warning, (capMs / 60_000L).toInt())
       markFresh -> getString(R.string.notif_body_marked, stamp(markMs))
       warning != null -> when (warning.kind) {
         CaptureWarnings.Kind.STORAGE -> getString(R.string.notif_warn_storage, warning.minutesLeft)
@@ -823,6 +829,12 @@ class RecordingService : Service(), CaptureListener {
         if (silenced) body
         else getString(R.string.notif_body_paused_at, clockText(CaptureController.elapsedMs())),
       )
+    } else if (capCounting) {
+      // Counts DOWN to the free limit, drawn by the system, so nothing is re-posted each second.
+      b.setWhen(System.currentTimeMillis() + capLeftMs)
+      b.setUsesChronometer(true)
+      b.setChronometerCountDown(true)
+      b.setShowWhen(true)
     } else {
       // Wall-clock instant at which this meeting's CAPTURED time would have started had it never
       // been paused; the system counts up from there.
