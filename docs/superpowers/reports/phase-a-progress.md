@@ -10,7 +10,7 @@ Against `docs/superpowers/specs/2026-09-24-phase-a-buying-and-pro-state-executio
 - [x] 4. The app runs it on launch and on every return
 - [x] 5. Settings: Subscribe opens the Pro screen; Manage for everyone; fresh on focus
 - [x] 6. The Pro screen: purchase outcomes said honestly, and Restore
-- [ ] 7. The record screen's trial button says the same
+- [x] 7. The record screen's trial button says the same
 - [ ] 8. Lapsed: "Check again" and "Manage in Google Play"; the sentence stops over-claiming
 - [ ] 9. The Library notices Pro the moment you come back
 - [ ] 10. Gate, release build, report
@@ -58,8 +58,10 @@ Step 5: `npx tsc --noEmit` clean. No mutant named for this step (no test suite c
 purchase button).
 Step 6: `npx jest src/billing/__tests__/purchaseNotice.test.ts src/screens/__tests__/PaywallScreen.test.tsx`
 — 10 passed; `npx tsc --noEmit` clean.
+Step 7: `npx tsc --noEmit` clean. No mutant named for this step (no test suite covers RecordScreen's
+trial button).
 
 ## Notes for the next session
 
-Session A1 (Steps 1–4) complete and committed. Session A2 Steps 5–6 complete and committed,
-`git status` clean. Continue at Step 7.
+Session A1 (Steps 1–4) complete and committed. Session A2 Steps 5–7 complete and committed,
+`git status` clean. Continue at Step 8.
