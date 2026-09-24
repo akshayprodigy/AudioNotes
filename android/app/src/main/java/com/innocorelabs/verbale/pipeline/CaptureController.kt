@@ -98,6 +98,13 @@ object CaptureController {
   /** Bytes written so far ÷ 32: the capture clock, pause-adjusted, the one the transcript uses. */
   @Volatile var capturedMs: Long = 0L
 
+  /**
+   * The free tier's length limit for the recording in progress, in ms of captured audio; 0 means
+   * none. RecordingService sets it at start and clears it when a purchase lifts it; the PiP window
+   * and the notification read it. One copy, so every surface agrees on whether there is a limit.
+   */
+  @Volatile var capMs: Long = 0L
+
   // ---- Capture warnings (CaptureWarnings has the rules; this has the state) ---------------------
 
   /** The warning in force, or null. Read by the notification and pushed to the record screen. */
@@ -352,6 +359,7 @@ object CaptureController {
     pausedAtMs = 0L
     level = 0f
     capturedMs = 0L
+    capMs = 0L
     lastMarkMs = -1L
     clearWarnings()
     silenced = false
