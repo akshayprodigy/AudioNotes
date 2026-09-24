@@ -847,7 +847,8 @@ Commit: `fix(library): buying Pro unlocks Search, Actions and Threads straight a
 3. `cd android && ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a 2>&1 | grep -E "BUILD|FAILED|error:" | tail -5`
    → `BUILD SUCCESSFUL`.
 4. `git grep -n "buyWithPlay()" -- src` → no output. `git diff --stat c6caccf..HEAD` names only
-   the files in §1 plus `src/billing/purchaseNotice.ts`, its test, the progress file and the report.
+   the files in §1 plus `src/billing/purchaseNotice.ts`, its test, the progress file, the report,
+   and this sheet and `docs/superpowers/plans/2026-09-24-tier-1-fixes.md` (committed before the session).
 5. Write the report (§8), delete the progress file, commit:
    `docs(report): Phase A — buying and Pro state — built, by-hand steps`.
 
