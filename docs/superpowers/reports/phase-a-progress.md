@@ -12,7 +12,7 @@ Against `docs/superpowers/specs/2026-09-24-phase-a-buying-and-pro-state-executio
 - [x] 6. The Pro screen: purchase outcomes said honestly, and Restore
 - [x] 7. The record screen's trial button says the same
 - [x] 8. Lapsed: "Check again" and "Manage in Google Play"; the sentence stops over-claiming
-- [ ] 9. The Library notices Pro the moment you come back
+- [x] 9. The Library notices Pro the moment you come back
 - [ ] 10. Gate, release build, report
 
 ## Decisions
@@ -55,6 +55,9 @@ Against `docs/superpowers/specs/2026-09-24-phase-a-buying-and-pro-state-executio
 - M5: `src/screens/meeting/SummaryTab.tsx` — changed
   `{!prose && reason === 'expired' ? lapsedActions : null}` to `{null}`. Exactly *offers Check again
   and Manage, and Check again asks Play again* failed (1 of 25). Restored; all 25 green.
+- M6: `src/screens/LibraryScreen.tsx` `onFocus` — deleted the
+  `entitlement().then(e => setPaid(e.paid)).catch(() => {});` line. Exactly *buying Pro on the Pro
+  screen is noticed when the library is focused again* failed (1 of 17). Restored; all 17 green.
 
 Step 4: `npx tsc --noEmit` clean; full `npx jest --silent` — 65 suites, 624 tests, all passed.
 Step 5: `npx tsc --noEmit` clean. No mutant named for this step (no test suite covers Settings'
@@ -65,8 +68,14 @@ Step 7: `npx tsc --noEmit` clean. No mutant named for this step (no test suite c
 trial button).
 Step 8: `npx jest src/screens/meeting --silent` — 25 passed; `npx tsc --noEmit` clean;
 `cd android && ./gradlew :app:testDebugUnitTest` — BUILD SUCCESSFUL.
+Step 9: `npx jest src/screens/__tests__/LibraryScreen.test.tsx --silent` — 17 passed; `npx tsc
+--noEmit` clean. This suite needs `--forceExit`: it leaves an open handle after all tests finish
+("Jest did not exit one second after the test run has completed") and otherwise hangs for minutes
+before the process is killed. Reproduces on the pre-Step-9 code too (confirmed by an accidental
+stale run against the unmodified file), so it predates this session and is not Step 9's file list —
+not investigated. Worth a look before Step 10's gate run, which does not pass `--forceExit`.
 
 ## Notes for the next session
 
-Session A1 (Steps 1–4) complete and committed. Session A2 Steps 5–8 complete and committed,
-`git status` clean. Continue at Step 9.
+Session A1 (Steps 1–4) complete and committed. Session A2 Steps 5–9 complete and committed,
+`git status` clean. Continue at Step 10.
