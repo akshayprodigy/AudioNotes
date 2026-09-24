@@ -263,12 +263,13 @@ def test_the_endpoint_needs_both_fields(client, google):
     assert client.post("/api/billing/play/link", json={"purchaseToken": "t"}).status_code == 400
 
 
-def test_the_device_limit_applies_to_play_purchases_too(client, store, google):
+def test_a_play_purchase_still_links_past_the_device_limit(client, store, google):
     google["answers"]["t"] = purchase()
     for i in range(DEVICE_LIMIT):
         client.post("/api/billing/play/link", json={"purchaseToken": "t", "deviceId": f"d{i}"})
     r = client.post("/api/billing/play/link", json={"purchaseToken": "t", "deviceId": "one-more"})
-    assert r.status_code == 409
+    assert r.status_code == 200
+    assert r.json()["token"]
 
 
 def test_an_unconfigured_server_says_so_rather_than_granting(store, monkeypatch):

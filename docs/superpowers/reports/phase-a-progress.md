@@ -4,7 +4,7 @@ Against `docs/superpowers/specs/2026-09-24-phase-a-buying-and-pro-state-executio
 
 ## Steps
 
-- [ ] 1. Server: at the device limit, the least recently seen device makes room
+- [x] 1. Server: at the device limit, the least recently seen device makes room
 - [ ] 2. `redeem` says what actually happened
 - [ ] 3. `syncEntitlement` — Pro matches Play on every launch and return
 - [ ] 4. The app runs it on launch and on every return
@@ -17,6 +17,15 @@ Against `docs/superpowers/specs/2026-09-24-phase-a-buying-and-pro-state-executio
 
 ## Decisions
 
+- Step 1: `tests/test_play.py::test_the_device_limit_applies_to_play_purchases_too` also asserted
+  the old 409-refusal (not named in §1's file list). Renamed to
+  `test_a_play_purchase_still_links_past_the_device_limit` and updated to expect 200 + a token, per
+  the sheet's "if another test asserted the old refusal, update only its expectation" rule.
+
 ## Mutants
+
+- M1: `server/app/store.py` `touch_device` — put `return False` back as the first line inside
+  `if count >= DEVICE_LIMIT:`. All three named tests failed, plus the test_play.py one above (same
+  rule, not anticipated by the sheet). Restored; full suite green (195 passed).
 
 ## Notes for the next session

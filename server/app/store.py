@@ -412,9 +412,10 @@ class Store:
         """
         Register a device, or refresh one already known.
 
-        Returns False when the account is at its limit and this is a new device. A device already on
-        the list always succeeds, so reinstalling the app or refreshing a token can never be the
-        thing that locks someone out of their own subscription.
+        Always succeeds. At the limit, the device seen least recently makes room, and its refresh
+        key goes with its row. The device id lives in the app's own storage, so a reinstall or
+        "clear data" arrives as a new device; refusing it locked paying customers out after a
+        couple of reinstalls. The limit still bounds how many installs are live at once.
         """
         now = int(time.time())
         with self._lock:
@@ -433,7 +434,15 @@ class Store:
                 "SELECT COUNT(*) AS n FROM devices WHERE account_id=?", (account_id,)
             ).fetchone()["n"]
             if count >= DEVICE_LIMIT:
-                return False
+                stalest = self._db.execute(
+                    "SELECT device_id FROM devices WHERE account_id=? "
+                    "ORDER BY last_seen ASC, first_seen ASC LIMIT 1",
+                    (account_id,),
+                ).fetchone()
+                self._db.execute(
+                    "DELETE FROM devices WHERE account_id=? AND device_id=?",
+                    (account_id, stalest["device_id"]),
+                )
             self._db.execute(
                 "INSERT INTO devices(account_id,device_id,first_seen,last_seen) VALUES(?,?,?,?)",
                 (account_id, device_id, now, now),

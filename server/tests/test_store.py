@@ -55,13 +55,18 @@ def test_a_new_account_reads_as_free_with_no_subscription_row(store):
     assert (sub.plan, sub.status, sub.current_period_end) == ("free", "none", 0)
 
 
-def test_devices_stop_at_the_limit_but_known_ones_always_re_register(store):
+def test_at_the_limit_the_least_recently_seen_device_makes_room(store, monkeypatch):
+    """A reinstall is a new device id. Refusing it locked paying customers out for good."""
     account = store.create_account("a@example.com", "password123")
-    for i in range(DEVICE_LIMIT):
-        assert store.touch_device(account.id, f"dev_{i}")
-    assert not store.touch_device(account.id, "dev_extra")
-    assert store.touch_device(account.id, "dev_0")
-    assert len(store.devices(account.id)) == DEVICE_LIMIT
+    clock = iter([100, 200, 300, 400, 500])
+    monkeypatch.setattr("app.store.time.time", lambda: next(clock))
+    for d in ("phone", "tablet", "old-install"):
+        assert store.touch_device(account.id, d)          # seen at 100, 200, 300
+    assert store.touch_device(account.id, "phone")        # 400: the phone is fresh again
+    assert store.touch_device(account.id, "reinstall")    # 500: the tablet (200) is the stalest
+    ids = {d.device_id for d in store.devices(account.id)}
+    assert ids == {"phone", "old-install", "reinstall"}
+    assert len(ids) == DEVICE_LIMIT
 
 
 def test_forgetting_a_device_frees_the_slot(store):

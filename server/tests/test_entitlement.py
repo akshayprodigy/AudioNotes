@@ -96,11 +96,12 @@ def test_the_expiry_in_the_token_matches_the_one_reported_to_the_app(store, sign
     assert _exp(issued) == issued.expires_at
 
 
-def test_a_device_over_the_limit_gets_no_token(store, signing_key):
+def test_a_fourth_device_still_gets_a_token(store, signing_key):
+    """A reinstall looks like a new device; it must never be the thing that locks someone out."""
     account = _entitled_account(store)
     for i in range(DEVICE_LIMIT):
         assert issue(store, signing_key, account.id, f"dev_{i}", NOW) is not None
-    assert issue(store, signing_key, account.id, "one_too_many", NOW) is None
+    assert issue(store, signing_key, account.id, "one_more", NOW) is not None
 
 
 def test_a_known_device_keeps_working_at_the_limit(store, signing_key):

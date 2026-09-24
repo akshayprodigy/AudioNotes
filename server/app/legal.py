@@ -143,8 +143,8 @@ def _terms() -> str:
 <h2>The subscription</h2>
 <ul>
   <li>Bought in the app and billed monthly through Google Play until cancelled.</li>
-  <li>One subscription covers up to {DEVICE_LIMIT} devices. You can change which devices from your
-      account page.</li>
+  <li>One subscription covers up to {DEVICE_LIMIT} devices at a time. Using it on another one
+      signs out the device used least recently.</li>
   <li>Cancel any time in Google Play, under Subscriptions. Deleting your account here cancels it
       too. Access continues to the end of the period you have already paid for; we do not cut it
       short.</li>

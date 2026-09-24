@@ -70,15 +70,15 @@ def test_a_wrong_password_is_rejected(client, store):
     assert r.status_code == 401
 
 
-def test_the_fourth_device_is_told_what_to_do_about_it(client, store):
+def test_a_fourth_device_signs_in(client, store):
     make_paid(store)
     for i in range(DEVICE_LIMIT):
         client.post("/api/account/signin", json={"email": "a@example.com",
                                                  "password": "password123", "deviceId": f"d{i}"})
     r = client.post("/api/account/signin", json={"email": "a@example.com",
                                                  "password": "password123", "deviceId": "d_extra"})
-    assert r.status_code == 409
-    assert "account page" in r.json()["error"]
+    assert r.status_code == 200
+    assert r.json()["token"]
 
 
 # ---- refresh ----
