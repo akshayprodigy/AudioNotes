@@ -140,8 +140,8 @@ class RecordingService : Service(), CaptureListener {
   /** True while the system has muted our capture (phone call, or another app took the mic). */
   @Volatile private var silenced = false
 
-  /** Free-tier length limit in ms, 0 when uncapped. Read from the intent, so a restart keeps it. */
-  @Volatile private var capMs = 0L
+  /** The free limit's phase at the last check; the notification is re-posted when it changes. */
+  @Volatile private var capPhase = CapClock.Phase.UNCAPPED
 
   /**
    * Transcribes while we record, so the wait after "stop" is roughly halved. It only ever READS
@@ -239,11 +239,12 @@ class RecordingService : Service(), CaptureListener {
       StartRoute.CAPTURE -> {
         meetingId = id
         audioPath = path
-        capMs = intent?.getLongExtra(EXTRA_CAP_MS, 0L) ?: 0L
         // Rehydrate the shared state BEFORE the notification is built, or a service restarted by
         // START_REDELIVER_INTENT runs the microphone while CaptureController still reads "idle" —
         // which is what made Stop a no-op and let a second session open over this same file.
         CaptureController.adopt(applicationContext, id!!, System.currentTimeMillis(), path!!)
+        CaptureController.capMs = intent?.getLongExtra(EXTRA_CAP_MS, 0L) ?: 0L
+        capPhase = CapClock.Phase.UNCAPPED
         startInForeground()
         acquireWakeLock()
         if (!recording) startCapture(path)
@@ -431,23 +432,32 @@ class RecordingService : Service(), CaptureListener {
             // every check fire half as often as its name says.
             ++reads
             // About once a second (buffers are 128 ms): cheap, and a warning a second late is fine.
-            if (reads % WARN_CHECK_EVERY_READS == 0) CaptureController.refreshWarning(filesDir.usableSpace)
-            if (capMs > 0L && reads % DISK_CHECK_EVERY_READS == 0) {
+            if (reads % WARN_CHECK_EVERY_READS == 0) {
+              CaptureController.refreshWarning(filesDir.usableSpace)
+              // The free limit's phase drives the notification's countdown. Re-posted only when the
+              // phase changes: the countdown itself is the system's chronometer, not our re-posts.
+              val phase = CapClock.phase(CaptureController.capturedMs, CaptureController.capMs)
+              if (phase != capPhase) {
+                capPhase = phase
+                refreshNotification()
+              }
+            }
+            val cap = CaptureController.capMs
+            if (cap > 0L && reads % DISK_CHECK_EVERY_READS == 0) {
               val capturedMs = File(path).length() / BYTES_PER_MS
-              if (capturedMs >= capMs) {
-                // The cap was read once, from the start intent. The cap card sells Play's trial
-                // three minutes before this line; a purchase made there must lift the cap for the
-                // recording ALREADY RUNNING, or "Keep recording" is a promise the service breaks.
-                // Asked here, once, rather than every second: it is a database read and a
-                // signature check.
-                if (LicenceStore.entitled(this@RecordingService)) {
-                  Log.i(TAG, "free tier limit reached at ${capturedMs}ms, but now entitled — cap lifted")
-                  capMs = 0L
-                } else {
-                  Log.i(TAG, "free tier limit reached at ${capturedMs}ms — stopping and keeping it")
-                  endReason = END_CAP_REACHED
-                  recording = false
-                }
+              // In the last three minutes, ask whether Pro has been bought — the record screen's
+              // card and the notification both sell it then — and lift the limit for the recording
+              // ALREADY RUNNING, so the countdown stops soon after the purchase rather than at the
+              // limit. About every half a minute (the disk-check cadence), and only in those three
+              // minutes: it is a database read and a signature check. This is the ONE place the
+              // limit is lifted or enforced.
+              if (CapClock.counting(CapClock.phase(capturedMs, cap)) && LicenceStore.entitled(this@RecordingService)) {
+                Log.i(TAG, "entitled at ${capturedMs}ms with ${cap - capturedMs}ms to the free limit — cap lifted")
+                CaptureController.capMs = 0L
+              } else if (capturedMs >= cap) {
+                Log.i(TAG, "free tier limit reached at ${capturedMs}ms — stopping and keeping it")
+                endReason = END_CAP_REACHED
+                recording = false
               }
             }
             if (reads % DISK_CHECK_EVERY_READS == 0 && filesDir.usableSpace < MIN_FREE_BYTES) {
