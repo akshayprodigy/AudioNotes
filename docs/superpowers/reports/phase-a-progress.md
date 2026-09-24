@@ -11,7 +11,7 @@ Against `docs/superpowers/specs/2026-09-24-phase-a-buying-and-pro-state-executio
 - [x] 5. Settings: Subscribe opens the Pro screen; Manage for everyone; fresh on focus
 - [x] 6. The Pro screen: purchase outcomes said honestly, and Restore
 - [x] 7. The record screen's trial button says the same
-- [ ] 8. Lapsed: "Check again" and "Manage in Google Play"; the sentence stops over-claiming
+- [x] 8. Lapsed: "Check again" and "Manage in Google Play"; the sentence stops over-claiming
 - [ ] 9. The Library notices Pro the moment you come back
 - [ ] 10. Gate, release build, report
 
@@ -52,6 +52,9 @@ Against `docs/superpowers/specs/2026-09-24-phase-a-buying-and-pro-state-executio
 - M4: `src/screens/PaywallScreen.tsx` `onBuy` — deleted the `if (notice) { … return; }` block.
   Exactly *a payment the server has not confirmed says "Payment received", not failed* failed (1 of
   7). Restored; all 7 green.
+- M5: `src/screens/meeting/SummaryTab.tsx` — changed
+  `{!prose && reason === 'expired' ? lapsedActions : null}` to `{null}`. Exactly *offers Check again
+  and Manage, and Check again asks Play again* failed (1 of 25). Restored; all 25 green.
 
 Step 4: `npx tsc --noEmit` clean; full `npx jest --silent` — 65 suites, 624 tests, all passed.
 Step 5: `npx tsc --noEmit` clean. No mutant named for this step (no test suite covers Settings'
@@ -60,8 +63,10 @@ Step 6: `npx jest src/billing/__tests__/purchaseNotice.test.ts src/screens/__tes
 — 10 passed; `npx tsc --noEmit` clean.
 Step 7: `npx tsc --noEmit` clean. No mutant named for this step (no test suite covers RecordScreen's
 trial button).
+Step 8: `npx jest src/screens/meeting --silent` — 25 passed; `npx tsc --noEmit` clean;
+`cd android && ./gradlew :app:testDebugUnitTest` — BUILD SUCCESSFUL.
 
 ## Notes for the next session
 
-Session A1 (Steps 1–4) complete and committed. Session A2 Steps 5–7 complete and committed,
-`git status` clean. Continue at Step 8.
+Session A1 (Steps 1–4) complete and committed. Session A2 Steps 5–8 complete and committed,
+`git status` clean. Continue at Step 9.
