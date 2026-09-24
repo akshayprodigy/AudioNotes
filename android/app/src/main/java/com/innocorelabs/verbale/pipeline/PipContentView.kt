@@ -39,6 +39,9 @@ class PipContentView(context: Context) : View(context) {
   private val cInkDim = Color.parseColor("#8A90A6")
   private val cMuteEdge = Color.parseColor("#7C84A6")
   private val cBlush = Color.parseColor("#FFC9CE")
+  // The free limit's warning colours: amber for the last three minutes, the danger edge for the
+  // last one. Both dark enough to read on cCanvas at PiP size.
+  private val cAmber = Color.parseColor("#B86E00")
 
   private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
   private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -90,7 +93,7 @@ class PipContentView(context: Context) : View(context) {
 
     drawMic(canvas, startX + mascotSize + gap + micR, rowCy, micR, level, active, paused, t)
 
-    drawClock(canvas, w * 0.5f, h * 0.85f, h, paused)
+    drawClock(canvas, w * 0.5f, h * 0.85f, w, h, paused, t)
 
     // Animate only while capturing, and throttled to ~20fps rather than every vsync frame:
     // continuously invalidating hammered the compositor and could keep the PiP surface "busy"
@@ -193,19 +196,35 @@ class PipContentView(context: Context) : View(context) {
     canvas.restore()
   }
 
-  private fun drawClock(canvas: Canvas, cx: Float, cy: Float, h: Float, paused: Boolean) {
+  private fun drawClock(canvas: Canvas, cx: Float, cy: Float, w: Float, h: Float, paused: Boolean, t: Float) {
     val ms = CaptureController.elapsedMs()
-    val sec = (ms / 1000).coerceAtLeast(0)
-    val label = "%02d:%02d".format(sec / 60, sec % 60)
-    text.color = cInk
+    val capMs = CaptureController.capMs
+    val phase = CapClock.phase(ms, capMs)
+    val label = CapClock.pipLabel(ms, capMs)
+    text.color = when (phase) {
+      CapClock.Phase.WARNING -> cAmber
+      CapClock.Phase.FINAL -> cDangerEdge
+      else -> cInk
+    }
     text.textSize = h * 0.16f
-    val tw = text.measureText(label)
     val dotR = h * 0.028f
     val gap = h * 0.035f
+    // "2:48 left on Free" is wider than "04:12"; shrink to fit rather than clip in a small window.
+    val maxW = w * 0.9f
+    var tw = text.measureText(label)
+    if (dotR * 2f + gap + tw > maxW) {
+      text.textSize *= maxW / (dotR * 2f + gap + tw)
+      tw = text.measureText(label)
+    }
     val totalW = dotR * 2f + gap + tw
     val left = cx - totalW / 2f
     fill.color = if (paused) cInkFaint else cDanger
+    // The last minute: the dot pulses, so the window reads as urgent even at a glance.
+    if (phase == CapClock.Phase.FINAL && !paused) {
+      fill.alpha = (255 * (0.35 + 0.65 * Math.abs(Math.sin(t * 4.0)))).toInt()
+    }
     canvas.drawCircle(left + dotR, cy, dotR, fill)
+    fill.alpha = 255
     val fm = text.fontMetrics
     canvas.drawText(label, left + dotR * 2f + gap, cy - (fm.ascent + fm.descent) / 2f, text)
   }
