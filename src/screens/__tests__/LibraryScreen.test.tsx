@@ -143,6 +143,20 @@ describe('the thread door and the Pro-gated worklist (Phase 3)', () => {
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Actions' }, { deep: false })).toHaveLength(1);
     await act(async () => tree.unmount());
   });
+
+  test('buying Pro on the Pro screen is noticed when the library is focused again', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: false });
+    const tree = await focusTheLibrary();
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Actions (Pro)' }, { deep: false })).toHaveLength(1);
+
+    (entitlement as jest.Mock).mockResolvedValue({ paid: true });
+    const onFocus = (nav as any).addListener.mock.calls.find((c: any[]) => c[0] === 'focus')[1];
+    await act(async () => {
+      onFocus();
+    });
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Actions' }, { deep: false })).toHaveLength(1);
+    await act(async () => tree.unmount());
+  });
 });
 
 test('focusing the library sweeps the item migration', async () => {

@@ -289,6 +289,9 @@ export default function LibraryScreen({ navigation }: Props) {
         .then(backfillSearch)
         .catch(() => {});
       db.archivedCount().then(setArchived).catch(() => {});
+      // Pro is re-read on every focus, not only when the finished count moves: coming back from
+      // the Pro screen after buying must unlock Search, Actions and Threads at once.
+      entitlement().then(e => setPaid(e.paid)).catch(() => {});
       countActions();
       PipelineController.processPending().then(refresh).catch(() => {});
     };
