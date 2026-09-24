@@ -14,6 +14,21 @@ import { hostOf, record } from '../privacy/ledger';
 /** Refresh once a token is inside this much of its expiry. */
 const RENEW_WINDOW_SECONDS = 5 * 24 * 60 * 60;
 
+/**
+ * An error carrying the licence server's HTTP status, which decides what the buyer is told. A
+ * plain property rather than an Error subclass: a transpiled subclass of Error can fail
+ * `instanceof`, and a network failure (no status at all) must stay distinguishable.
+ */
+function withStatus(e: Error, status: number): Error & { status: number } {
+  return Object.assign(e, { status });
+}
+
+/** The HTTP status on an error from `post`, or null for a network failure. */
+function statusOf(e: unknown): number | null {
+  const s = (e as { status?: unknown } | null)?.status;
+  return typeof s === 'number' ? s : null;
+}
+
 async function post<T>(base: string, path: string, body: unknown): Promise<T> {
   const url = `${base.replace(/\/+$/, '')}${path}`;
   const payload = JSON.stringify(body);
@@ -38,11 +53,14 @@ async function post<T>(base: string, path: string, body: unknown): Promise<T> {
   } catch {
     // A proxy error page or a captive portal, not our server. Say something a person can act on
     // rather than surfacing a JSON parse error.
-    throw new Error(`The licence server sent something unexpected (HTTP ${res.status}).`);
+    throw withStatus(new Error(`The licence server sent something unexpected (HTTP ${res.status}).`), res.status);
   }
   if (!res.ok) {
     const message = (parsed as { error?: string })?.error;
-    throw new Error(message ?? `The licence server refused the request (HTTP ${res.status}).`);
+    throw withStatus(
+      new Error(message ?? `The licence server refused the request (HTTP ${res.status}).`),
+      res.status,
+    );
   }
   return parsed as T;
 }
@@ -130,14 +148,20 @@ export async function refreshIfNeeded(now = Date.now() / 1000): Promise<LicenceS
 // is a proof.
 
 export interface PlayResult {
-  /** False when the buyer backed out, or when payment is still authorising. Not an error. */
+  /** False when the buyer backed out, or when there is nothing paid to show for it yet. */
   paid: boolean;
-  /** Set when the purchase succeeded but the server could not be told about it yet. */
+  /**
+   * Play took the payment but the licence server could not be reached, or it or Google failed.
+   * The purchase is acknowledged and will be redeemed on the next launch or return to the app.
+   */
   pendingServer?: boolean;
+  /** The server saw the purchase but it is still authorising (HTTP 402) — a slow payment method. */
+  pendingPayment?: boolean;
 }
 
 /**
- * Send a purchase token to the licence server and store whatever comes back.
+ * Send a purchase token to the licence server and store whatever comes back. See PlayResult for
+ * what each outcome means.
  *
  * On failure it asks Play to acknowledge the purchase locally. That is a fallback, not the plan:
  * the server acknowledges after recording entitlement, which is the ordering that cannot strand a
@@ -156,7 +180,13 @@ async function redeem(base: string, purchaseToken: string): Promise<PlayResult> 
     await Licence.store(res.token ?? '', res.refreshKey);
     return { paid: Boolean(res.token) };
   } catch (e) {
+    const status = statusOf(e);
+    // Still authorising: nothing to acknowledge yet (Play refuses to), and nothing failed.
+    if (status === 402) return { paid: false, pendingPayment: true };
+    // Acknowledged whatever happens next: Google refunds anything unacknowledged in three days.
     await Billing.acknowledgeLocally(purchaseToken).catch(() => false);
+    // Unreachable, or the server or Google failed: the payment stands and is redeemed later.
+    if (status === null || status >= 500) return { paid: false, pendingServer: true };
     throw e;
   }
 }

@@ -5,7 +5,7 @@ Against `docs/superpowers/specs/2026-09-24-phase-a-buying-and-pro-state-executio
 ## Steps
 
 - [x] 1. Server: at the device limit, the least recently seen device makes room
-- [ ] 2. `redeem` says what actually happened
+- [x] 2. `redeem` says what actually happened
 - [ ] 3. `syncEntitlement` — Pro matches Play on every launch and return
 - [ ] 4. The app runs it on launch and on every return
 - [ ] 5. Settings: Subscribe opens the Pro screen; Manage for everyone; fresh on focus
@@ -27,5 +27,7 @@ Against `docs/superpowers/specs/2026-09-24-phase-a-buying-and-pro-state-executio
 - M1: `server/app/store.py` `touch_device` — put `return False` back as the first line inside
   `if count >= DEVICE_LIMIT:`. All three named tests failed, plus the test_play.py one above (same
   rule, not anticipated by the sheet). Restored; full suite green (195 passed).
+- M2: `src/billing/subscription.ts` `redeem` — changed `status >= 500` to `status > 999`. Exactly
+  *a server or Google failure (5xx)…* failed (1 of 15). Restored; all 15 green.
 
 ## Notes for the next session

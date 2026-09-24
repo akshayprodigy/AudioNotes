@@ -17,6 +17,9 @@ const { Billing, Licence } = (global as unknown as {
 const ok = (body: unknown) =>
   Promise.resolve({ ok: true, status: 200, text: async () => JSON.stringify(body) } as Response);
 
+const refuse = (status: number, error: string) =>
+  Promise.resolve({ ok: false, status, text: async () => JSON.stringify({ error }) } as Response);
+
 beforeEach(() => {
   jest.clearAllMocks();
   Licence.baseUrl.mockResolvedValue('https://verbale.example.com');
@@ -50,8 +53,7 @@ describe('buying', () => {
   });
 
   it('does not grant Pro when the server issues no licence', async () => {
-    // A payment still authorising — some UPI mandates settle minutes later. The account exists,
-    // it is simply not paid yet.
+    // 200 with no token: the subscription has lapsed or was cancelled past its end.
     Billing.purchase.mockResolvedValue('token-abc');
     (global.fetch as jest.Mock).mockReturnValue(
       ok({ token: null, refreshKey: 'refresh-1', plan: 'free' }),
@@ -59,14 +61,34 @@ describe('buying', () => {
     await expect(buyWithPlay()).resolves.toEqual({ paid: false });
   });
 
-  it('acknowledges the purchase locally when the server cannot be reached', async () => {
-    // Google refunds anything unacknowledged after three days. Without this, somebody who buys on
-    // a bad connection and never reopens the app loses the subscription they wanted, silently.
+  it('a server it cannot reach is "payment received", not a failure', async () => {
+    // Google refunds anything unacknowledged after three days, so it is acknowledged here; and the
+    // buyer has paid, so the app must not say the purchase failed.
     Billing.purchase.mockResolvedValue('token-abc');
     (global.fetch as jest.Mock).mockRejectedValue(new Error('offline'));
 
-    await expect(buyWithPlay()).rejects.toThrow('offline');
+    await expect(buyWithPlay('annual')).resolves.toEqual({ paid: false, pendingServer: true });
     expect(Billing.acknowledgeLocally).toHaveBeenCalledWith('token-abc');
+  });
+
+  it('a server or Google failure (5xx) is treated the same way', async () => {
+    Billing.purchase.mockResolvedValue('token-abc');
+    (global.fetch as jest.Mock).mockReturnValue(refuse(502, 'Play API 500'));
+    await expect(buyWithPlay('annual')).resolves.toEqual({ paid: false, pendingServer: true });
+    expect(Billing.acknowledgeLocally).toHaveBeenCalledWith('token-abc');
+  });
+
+  it('a payment still authorising says so and is not acknowledged', async () => {
+    Billing.purchase.mockResolvedValue('token-abc');
+    (global.fetch as jest.Mock).mockReturnValue(refuse(402, 'That purchase has not completed yet.'));
+    await expect(buyWithPlay('annual')).resolves.toEqual({ paid: false, pendingPayment: true });
+    expect(Billing.acknowledgeLocally).not.toHaveBeenCalled();
+  });
+
+  it('a refusal the buyer can act on is still an error, with the server\'s words', async () => {
+    Billing.purchase.mockResolvedValue('token-abc');
+    (global.fetch as jest.Mock).mockReturnValue(refuse(400, 'purchaseToken is required'));
+    await expect(buyWithPlay('annual')).rejects.toThrow('purchaseToken is required');
   });
 
   it('does not acknowledge anything when there was no purchase to acknowledge', async () => {
