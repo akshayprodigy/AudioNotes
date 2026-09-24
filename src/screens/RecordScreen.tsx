@@ -38,6 +38,7 @@ import {
 import { entitlement } from '../billing/trial';
 import { buyWithPlay, playAvailable, playPlans } from '../billing/subscription';
 import { trialLength, trialPlan, trialTerms } from '../billing/trialTerms';
+import { purchaseNotice } from '../billing/purchaseNotice';
 import type { PlayPlan } from '../native/NativeBilling';
 import { radius, s, sv, useTheme, type Colors } from '../theme';
 
@@ -463,6 +464,8 @@ export default function RecordScreen({ navigation }: Props) {
                       setLifting(true);
                       try {
                         const result = await buyWithPlay(trialOffer.basePlanId);
+                        const notice = purchaseNotice(result);
+                        if (notice) Alert.alert(notice.title, notice.body);
                         if (result.paid) {
                           const e = await entitlement();
                           setCapMs(capMsFor(Boolean(e?.paid)));
