@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Icon, { type IconName } from '../../components/Icon';
 import { IconButton, Raised, Sheet, Slide, SoftButton, Txt, type SheetAction } from '../../components/ui';
 import { ProvenanceButton } from './ItemProvenance';
@@ -11,7 +11,7 @@ import Llm from '../../native/NativeLlm';
 import ModelManager from '../../native/NativeModelManager';
 import Licence from '../../native/NativeLicence';
 import { entitlement } from '../../billing/trial';
-import { playAvailable, playPlans } from '../../billing/subscription';
+import { PLAY_MANAGE_URL, playAvailable, playPlans, syncEntitlement } from '../../billing/subscription';
 import { trialLength, trialPlan } from '../../billing/trialTerms';
 import { DICTATION_TEMPLATE, TEMPLATE_IDS, templateHint, templateLabel } from './templateLabels';
 import { threadLine } from '../threadData';
@@ -173,6 +173,43 @@ export default function SummaryTab({
     'checking' | 'expired' | 'locked' | 'no-model' | 'weak-device' | 'not-run' | 'too-short'
   >('checking');
   const [lapsedCopy, setLapsedCopy] = React.useState('');
+  // "Pro is off" is often "this phone could not check" — offline for a fortnight, or a refresh
+  // that failed. Check again asks Play and the server now; Manage is where a payment problem or
+  // an account hold is fixed. Bumping `recheck` re-runs the effect below.
+  const [recheck, setRecheck] = React.useState(0);
+  const [checking, setChecking] = React.useState(false);
+  const onCheckAgain = React.useCallback(async () => {
+    setChecking(true);
+    try {
+      await syncEntitlement();
+      const now = await Licence.status().catch(() => null);
+      if (!now?.paid) {
+        Alert.alert(
+          'No active subscription found',
+          'Google Play has no active Verbale subscription for this Google account. If that looks ' +
+            'wrong, open Manage in Google Play.',
+        );
+      }
+    } finally {
+      setChecking(false);
+      setRecheck(n => n + 1);
+    }
+  }, []);
+  const lapsedActions = (
+    <View style={st.cta}>
+      <SoftButton
+        icon="check"
+        label={checking ? 'Checking…' : 'Check again'}
+        onPress={onCheckAgain}
+        disabled={checking}
+      />
+      <SoftButton
+        icon="settings"
+        label="Manage in Google Play"
+        onPress={() => Linking.openURL(PLAY_MANAGE_URL).catch(() => {})}
+      />
+    </View>
+  );
   // The sentence for a phone under the writer's gate, from the catalog rows — the same one
   // onboarding and Settings show, with the memory it needs and has.
   const [weakCopy, setWeakCopy] = React.useState(
@@ -245,7 +282,7 @@ export default function SummaryTab({
     return () => {
       alive = false;
     };
-  }, [prose]);
+  }, [prose, recheck]);
 
   // Classified AND flagged: the queue holds what the model could not settle, so an item with no
   // record — every free-tier item, and a free-tier ambiguous reconciliation — never counts.
@@ -434,6 +471,7 @@ export default function SummaryTab({
                 Settings → Models
               </Txt>
             ) : null}
+            {!prose && reason === 'expired' ? lapsedActions : null}
             {!prose && reason === 'locked' && onUpgrade ? (
               <View style={st.cta}>
                 <SoftButton
@@ -517,9 +555,12 @@ export default function SummaryTab({
           user's own meetings, not a rented view of them. What stops is writing new ones, and
           saying so once here is better than a button that fails silently. */}
       {reason === 'expired' && prose ? (
-        <Txt variant="chipSoft" color={colors.inkDim} style={st.lapsed}>
-          {lapsedCopy}
-        </Txt>
+        <View>
+          <Txt variant="chipSoft" color={colors.inkDim} style={st.lapsed}>
+            {lapsedCopy}
+          </Txt>
+          {lapsedActions}
+        </View>
       ) : null}
 
       {/* Same rule for a spent trial: what was written stays written. Said here rather than left

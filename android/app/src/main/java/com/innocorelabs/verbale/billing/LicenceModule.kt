@@ -31,7 +31,8 @@ class LicenceModule(private val ctx: ReactApplicationContext) :
    * The default states a fact and sells nothing, which is the safe thing to say anywhere.
    */
   private val defaultLapsedCopy =
-    "Your subscription has ended. Your recordings, transcripts and minutes are all still here."
+    "Pro is off on this phone. Your recordings, transcripts and minutes are all still here. " +
+      "Still subscribed? Tap Check again while connected."
 
   /**
    * One call, because every caller wants the same three things: may I use the paid features, why

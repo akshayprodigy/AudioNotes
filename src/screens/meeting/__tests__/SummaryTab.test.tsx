@@ -1,5 +1,6 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
+import { Alert } from 'react-native';
 import SummaryTab from '../SummaryTab';
 import { Sheet } from '../../../components/ui';
 
@@ -28,11 +29,13 @@ jest.mock('../../../billing/subscription', () => ({
   __esModule: true,
   playAvailable: jest.fn().mockResolvedValue(false),
   playPlans: jest.fn().mockResolvedValue([]),
+  syncEntitlement: jest.fn().mockResolvedValue(undefined),
+  PLAY_MANAGE_URL: 'https://play.google.com/store/account/subscriptions',
 }));
 
 import Licence from '../../../native/NativeLicence';
 import { entitlement } from '../../../billing/trial';
-import { playAvailable, playPlans } from '../../../billing/subscription';
+import { playAvailable, playPlans, syncEntitlement } from '../../../billing/subscription';
 import Llm from '../../../native/NativeLlm';
 import ModelManager from '../../../native/NativeModelManager';
 
@@ -399,5 +402,20 @@ describe('the header row at 384 dp (Step 8)', () => {
       node = node.parent;
     }
     expect(node).not.toBeNull();
+  });
+});
+
+describe('a licence that has lapsed on this phone', () => {
+  test('offers Check again and Manage, and Check again asks Play again', async () => {
+    (Licence.status as jest.Mock).mockResolvedValue({
+      state: 'expired', paid: false, expiresAt: 1, lapsedCopy: 'Pro is off on this phone.',
+    });
+    jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const tree = await renderTab({ minutes: [] });
+    expect(tree.root.findAllByProps({ label: 'Manage in Google Play' }, { deep: false })).toHaveLength(1);
+    await act(async () => {
+      tree.root.findByProps({ label: 'Check again' }).props.onPress();
+    });
+    expect(syncEntitlement).toHaveBeenCalled();
   });
 });
