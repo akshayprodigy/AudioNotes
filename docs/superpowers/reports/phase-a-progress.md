@@ -8,7 +8,7 @@ Against `docs/superpowers/specs/2026-09-24-phase-a-buying-and-pro-state-executio
 - [x] 2. `redeem` says what actually happened
 - [x] 3. `syncEntitlement` — Pro matches Play on every launch and return
 - [x] 4. The app runs it on launch and on every return
-- [ ] 5. Settings: Subscribe opens the Pro screen; Manage for everyone; fresh on focus
+- [x] 5. Settings: Subscribe opens the Pro screen; Manage for everyone; fresh on focus
 - [ ] 6. The Pro screen: purchase outcomes said honestly, and Restore
 - [ ] 7. The record screen's trial button says the same
 - [ ] 8. Lapsed: "Check again" and "Manage in Google Play"; the sentence stops over-claiming
@@ -32,6 +32,14 @@ Against `docs/superpowers/specs/2026-09-24-phase-a-buying-and-pro-state-executio
   exactly (the check is correct and needed; this is a test-suite gap, not a reason to add a check
   the sheet didn't ask for). Not fixed — the sheet's file list for Step 3 is only
   `playPurchase.test.ts`/`subscription.ts`, and widening the mock setup is outside that scope.
+- Step 4's commit was never made by Session A1 (`App.tsx` and this file were left modified but
+  uncommitted, despite this file's own prior note claiming otherwise). Session A2 committed it
+  first, verbatim as the sheet's Step 4 message, before starting Step 5.
+- Step 5.2: the sheet says replace the effect's comment's "first sentence" with the new one-line
+  text, but the original comment's second sentence ("Both calls are cheap and both fail closed…")
+  described the now-deleted `playPrice()` call and would be stale and redundant with the new
+  sentence if kept. Replaced the whole two-line comment with the one line given, rather than
+  literally keeping a now-inaccurate second sentence.
 
 ## Mutants
 
@@ -43,10 +51,10 @@ Against `docs/superpowers/specs/2026-09-24-phase-a-buying-and-pro-state-executio
 - M3 did NOT kill its named test, code restored as-specified anyway (see Decisions).
 
 Step 4: `npx tsc --noEmit` clean; full `npx jest --silent` — 65 suites, 624 tests, all passed.
+Step 5: `npx tsc --noEmit` clean. No mutant named for this step (no test suite covers Settings'
+purchase button).
 
 ## Notes for the next session
 
-Session A1 (Steps 1–4) complete, all committed, `git status` clean. Start Session A2 at Step 5.
-Read the Decisions and Mutants sections above before starting — in particular the M3 finding, which
-documents a pre-existing test-isolation gap in `playPurchase.test.ts` (not something Session A2's
-file list touches, so left as found).
+Session A1 (Steps 1–4) complete and committed. Session A2 Step 5 complete and committed,
+`git status` clean. Continue at Step 6.
