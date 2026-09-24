@@ -152,7 +152,7 @@ def enableProguardInReleaseBuilds = true
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
 // See the versioning note in defaultConfig below. Change THIS line for a release, nothing else.
-def appVersionName = "1.0.1"
+def appVersionName = "1.0.2"
 def versionParts = appVersionName.tokenize('.').collect { it.toInteger() }
 if (versionParts.size() != 3) {
     throw new GradleException("appVersionName must be MAJOR.MINOR.PATCH, got '${appVersionName}'")
