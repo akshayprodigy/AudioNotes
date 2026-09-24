@@ -25,8 +25,10 @@ import {
   playPlans,
   playPrice,
   referencePrice,
+  restorePlayPurchase,
 } from '../billing/subscription';
 import { trialLength, trialTerms } from '../billing/trialTerms';
+import { purchaseNotice } from '../billing/purchaseNotice';
 import type { PlayPlan } from '../native/NativeBilling';
 import { radius, s, sv, useTheme, type Colors } from '../theme';
 
@@ -145,6 +147,7 @@ export default function PaywallScreen({ navigation, route }: Props) {
   const [priceAsked, setPriceAsked] = useState(false);
   const [busy, setBusy] = useState<'buy' | null>(null);
   const [showSignIn, setShowSignIn] = useState(false);
+  const [restoring, setRestoring] = useState(false);
 
   // The writer model, which is what a trial actually needs on disk. A trial that grants an
   // entitlement to run a model the phone does not have is a trial of nothing.
@@ -262,6 +265,12 @@ export default function PaywallScreen({ navigation, route }: Props) {
     try {
       const plan = plans.find(p => p.basePlanId === chosenPlan) ?? null;
       const result = await buyWithPlay(chosenPlan);
+      // Paid but not yet confirmed, or still authorising: said as what it is, never as a failure.
+      const notice = purchaseNotice(result);
+      if (notice) {
+        Alert.alert(notice.title, notice.body);
+        return;
+      }
       if (result.paid) {
         await load();
         // From first run: straight back to setup, whose Download button fetches the writer along
@@ -287,6 +296,26 @@ export default function PaywallScreen({ navigation, route }: Props) {
       setBusy(null);
     }
   }, [chosenPlan, plans, load, fetchWriter, navigation, route.params]);
+
+  const onRestore = useCallback(async () => {
+    setRestoring(true);
+    try {
+      const result = await restorePlayPurchase();
+      const notice = purchaseNotice(result);
+      if (notice) {
+        Alert.alert(notice.title, notice.body);
+      } else if (result.paid) {
+        await load();
+        Alert.alert('Subscription restored', 'Pro is back on this phone.');
+      } else {
+        Alert.alert('Nothing to restore', 'This Google account has no active Verbale subscription.');
+      }
+    } catch (e: any) {
+      Alert.alert('Could not restore', String(e?.message ?? e));
+    } finally {
+      setRestoring(false);
+    }
+  }, [load]);
 
   const bought = Boolean(ent?.licence?.paid);
   const chosen = plans.find(p => p.basePlanId === chosenPlan) ?? null;
@@ -469,6 +498,15 @@ export default function PaywallScreen({ navigation, route }: Props) {
                 </Txt>
               )}
 
+              {playCan && !bought ? (
+                <SoftButton
+                  icon="download"
+                  label={restoring ? 'Checking…' : 'Restore purchase'}
+                  onPress={onRestore}
+                  disabled={busy !== null || restoring}
+                />
+              ) : null}
+
               {/*
                 The way in for somebody who already paid — on the website, or on a phone they no
                 longer have. Until this existed, the one screen in the app that explains Pro gave
@@ -485,7 +523,7 @@ export default function PaywallScreen({ navigation, route }: Props) {
                   ) : (
                     <SoftButton
                       icon="lock"
-                      label="Already subscribed? Sign in"
+                      label="Subscribed on the web? Sign in"
                       onPress={() => setShowSignIn(true)}
                     />
                   )}

@@ -3,7 +3,7 @@ import renderer, { act } from 'react-test-renderer';
 import { Alert } from 'react-native';
 import PaywallScreen from '../PaywallScreen';
 import { entitlement } from '../../billing/trial';
-import { buyWithPlay, playAvailable, playPlans } from '../../billing/subscription';
+import { buyWithPlay, playAvailable, playPlans, restorePlayPurchase } from '../../billing/subscription';
 import type { PlayPlan } from '../../native/NativeBilling';
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -20,6 +20,7 @@ jest.mock('../../billing/subscription', () => ({
   playPlans: jest.fn().mockResolvedValue([]),
   playPrice: jest.fn().mockResolvedValue(null),
   buyWithPlay: jest.fn(),
+  restorePlayPurchase: jest.fn(),
   referencePrice: jest.fn().mockReturnValue(null),
 }));
 jest.mock('../../native/NativeModelManager', () => ({
@@ -120,5 +121,28 @@ describe('PaywallScreen sells Play\'s free trial', () => {
     });
     expect(nav.goBack).toHaveBeenCalled();
     expect(alert).not.toHaveBeenCalled();
+  });
+
+  it('a payment the server has not confirmed says "Payment received", not failed', async () => {
+    sellsPlans([monthlyTrial, annualTrial]);
+    (buyWithPlay as jest.Mock).mockResolvedValue({ paid: false, pendingServer: true });
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const tree = await render();
+    await act(async () => {
+      tree.root.findByProps({ label: 'Try it free for 7 days' }).props.onPress();
+    });
+    expect(alert.mock.calls[0][0]).toBe('Payment received');
+  });
+
+  it('offers Restore to somebody who already subscribed', async () => {
+    sellsPlans([monthlyTrial, annualTrial]);
+    (restorePlayPurchase as jest.Mock).mockResolvedValue({ paid: true });
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const tree = await render();
+    await act(async () => {
+      tree.root.findByProps({ label: 'Restore purchase' }).props.onPress();
+    });
+    expect(restorePlayPurchase).toHaveBeenCalled();
+    expect(alert.mock.calls[0][0]).toBe('Subscription restored');
   });
 });
