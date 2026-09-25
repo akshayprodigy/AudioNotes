@@ -41,7 +41,9 @@ object ResumePlan {
     // NARRATE is deliberately NOT appended on this path. There is no transcript to narrate, so the
     // stage could never complete, and handing the caller a stage it cannot finish would leave the
     // meeting being swept forever instead of being marked terminal.
-    if (!s.hasSegments && s.status != "captured") return emptyList()
+    // 'failed' is a crash, not a verdict: with no segments it starts again from VAD.
+    // 'failed' is a crash, not a verdict: with no segments it starts again from VAD.
+    if (!s.hasSegments && s.status != "captured" && s.status != "failed") return emptyList()
 
     val stages = mutableListOf<Stage>()
     if (!s.hasSegments) stages += Stage.VAD

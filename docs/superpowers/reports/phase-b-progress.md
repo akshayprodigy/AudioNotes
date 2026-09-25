@@ -5,7 +5,7 @@ Against `1a23715`. Execution sheet: `docs/superpowers/specs/2026-09-25-phase-b-n
 ## Steps
 
 - [x] Step 1. Four columns, the `failed` status, and the sweep that retries it
-- [ ] Step 2. A crash is `failed`, with a reason, and runs again from where it stopped
+- [x] Step 2. A crash is `failed`, with a reason, and runs again from where it stopped
 - [ ] Step 3. Every ending is stored, processed and explained
 - [ ] Step 4. The announcement's outcome: stored, and warned about for two minutes
 - [ ] Step 4b. (B7) A clip that was FOUND is kept out of ASR, heard or not
@@ -24,6 +24,10 @@ Against `1a23715`. Execution sheet: `docs/superpowers/specs/2026-09-25-phase-b-n
 
 - M1: `PENDING_MEETINGS_SQL` `fail_count < 3` → `fail_count < 99` — *a meeting that failed three
   times is left for a person to retry* failed. Restored.
+- M2: `ResumePlan.kt` deleted ` && s.status != "failed"` — *aCrashBeforeVadIsRunAgainFromTheStart*
+  failed. Restored.
+- M3: `FailureReason.of` deleted the `e is OutOfMemoryError ->` branch — *outOfMemoryIsSaidAsMemory*
+  failed. Restored.
 
 ## Notes for the next session
 

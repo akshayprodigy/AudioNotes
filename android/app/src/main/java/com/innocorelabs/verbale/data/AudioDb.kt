@@ -688,6 +688,14 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     db.execSQL("UPDATE meetings SET status=? WHERE id=?", arrayOf<Any?>(status, id))
   }
 
+  /** A processing run crashed: its own status (not 'error', which is "no speech"), the reason, one more strike. */
+  fun markFailed(id: String, reason: String) {
+    db.execSQL(
+      "UPDATE meetings SET status='failed', fail_reason=?, fail_count=fail_count+1 WHERE id=?",
+      arrayOf<Any?>(reason, id),
+    )
+  }
+
   /**
    * Overwrite the meeting title. Mirrors db.setTitle() in src/db/queries.ts. Caller guards WHICH
    * titles may be overwritten (e.g. only auto-generated placeholders, never a user-edited one).

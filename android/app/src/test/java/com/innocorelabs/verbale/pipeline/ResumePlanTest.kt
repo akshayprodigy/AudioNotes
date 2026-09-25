@@ -96,6 +96,16 @@ class ResumePlanTest {
     assertEquals(emptyList<Stage>(), plan("vad", false, false, false))
   }
 
+  /** A crash before VAD saved anything must start from VAD, not be read as "no speech". */
+  @Test fun aCrashBeforeVadIsRunAgainFromTheStart() =
+    assertEquals(
+      listOf(Stage.VAD, Stage.ASR, Stage.DIARIZE, Stage.NARRATE),
+      plan("failed", seg = false, utt = false, spk = false),
+    )
+
+  @Test fun aCrashAfterTheTranscriptResumesWhereItStopped() =
+    assertEquals(listOf(Stage.DIARIZE, Stage.NARRATE), plan("failed", seg = true, utt = true, spk = false))
+
   @Test fun narrationIsAlwaysLast() {
     // The prose is written from the finished transcript, so it can only be the final stage. Any
     // plan that contains it must end with it.
