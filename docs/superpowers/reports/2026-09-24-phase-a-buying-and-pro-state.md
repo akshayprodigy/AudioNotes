@@ -212,3 +212,38 @@ b353b27 feat(billing): syncEntitlement — Pro checked against Play on launch an
 9c2edd5 docs(spec): Phase A file-set check names the two planning docs
 8e6ec1b docs(plan): Tier 1 fixes to-do list, and the Phase A execution sheet
 ```
+
+---
+
+## Review (Opus, 25 Sep)
+
+**Faithful to the sheet.** Every step's code matches the sheet; the server eviction does take the
+evicted device's refresh key with it (`refresh_hash` lives on the `devices` row), so the limit still
+bounds live installs. The builder's decisions (the renamed `test_play.py` test, committing A1's
+dangling Step 4, the Step 5.2 comment, restoring the Reconciler mutants, not guessing at an
+unreproduced open handle, `GATE_STAGES` not `STAGES`) were all right. The `STAGES=` spelling and the
+over-broad `buyWithPlay()` grep were sheet defects.
+
+**Two sheet defects fixed in review** (`210da43`):
+- `syncEntitlement`'s "one at a time" guard kept two syncs apart but not a sync and a purchase:
+  returning from Play's sheet fires `active` while `buyWithPlay` is still redeeming, so the same
+  token was redeemed twice — each redemption issues a new refresh key, and the phone could keep the
+  older one (a lapse ~14 days later, self-healing on the next sync). Now `buyWithPlay` holds a
+  `purchasing` count and `syncEntitlement` does not restore while it is non-zero. New test *stays
+  out of the way while a purchase is being redeemed*; its mutant (delete the guard) killed.
+- M3's gap closed: the test now makes Play available, so only the paid check stops the restore —
+  deleting `if (status?.paid) return;` now fails it.
+- "Check again" said *Google Play has no active Verbale subscription* even when the phone was merely
+  offline — the over-claim Step 8 existed to remove. Now: *Verbale could not find an active
+  subscription for this Google account. If you are offline, try again once connected; if you did
+  pay, open Manage in Google Play.* (Title unchanged, so §7 step 6 still reads true.)
+
+After the fix: jest billing + screens 359/359, tsc clean, gate
+(`GATE_STAGES="types js scans mutations kotlin cpp"`) all clear in 92 s, pytest 195 passed.
+
+**Accepted as-is:** with eviction, a Play buyer can in effect use any number of phones by restoring
+on each (every restore evicts the stalest) — the limit caps *simultaneous* installs, which is the
+decision taken in planning. Tell me if you want it stricter.
+
+**Still owed:** the server deploy (founder's yes) and the §7 by-hand run on an internal-testing
+build with the version bumped past 1.0.2 (10002).
