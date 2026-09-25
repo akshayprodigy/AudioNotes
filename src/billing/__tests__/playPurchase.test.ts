@@ -9,6 +9,7 @@ import {
   buyWithPlay,
   playAvailable,
   playPrice,
+  refreshIfNeeded,
   restorePlayPurchase,
   syncEntitlement,
 } from '../subscription';
@@ -200,5 +201,50 @@ describe('keeping Pro in step with Play', () => {
     Licence.status.mockRejectedValue(new Error('native gone'));
     Billing.available.mockRejectedValue(new Error('no Play'));
     await expect(syncEntitlement()).resolves.toBeUndefined();
+  });
+});
+
+describe('renewing the licence', () => {
+  const NOW = 1_800_000_000;
+  // Inside the renew window, so refreshIfNeeded actually asks the server.
+  const nearExpiry = { state: 'active', paid: true, expiresAt: NOW + 2 * 24 * 60 * 60 };
+
+  beforeEach(() => {
+    Licence.status.mockResolvedValue(nearExpiry);
+    Licence.refreshKey.mockResolvedValue('refresh-1');
+  });
+  // The key would otherwise leak into later files' syncEntitlement calls through the shared stub.
+  afterEach(() => {
+    Licence.refreshKey.mockResolvedValue(null);
+  });
+
+  it('forgets a token the server no longer backs, and keeps the refresh key', async () => {
+    (global.fetch as jest.Mock).mockReturnValue(ok({ token: null, plan: 'free', expiresAt: 0 }));
+    await refreshIfNeeded(NOW);
+    expect(Licence.store).toHaveBeenCalledWith('', null);
+    // clear() would also wipe the refresh key, and a web resubscription could not be picked up.
+    expect(Licence.clear).not.toHaveBeenCalled();
+  });
+
+  it('stores a renewed token', async () => {
+    (global.fetch as jest.Mock).mockReturnValue(
+      ok({ token: 'licence-new', plan: 'pro', expiresAt: NOW + 14 * 24 * 60 * 60 }),
+    );
+    await refreshIfNeeded(NOW);
+    expect(Licence.store).toHaveBeenCalledWith('licence-new', null);
+  });
+
+  it('keeps the token when the server cannot be reached', async () => {
+    (global.fetch as jest.Mock).mockRejectedValue(new TypeError('Network request failed'));
+    await expect(refreshIfNeeded(NOW)).resolves.toBeNull();
+    expect(Licence.store).not.toHaveBeenCalled();
+    expect(Licence.clear).not.toHaveBeenCalled();
+  });
+
+  it('keeps the token when the server fails', async () => {
+    (global.fetch as jest.Mock).mockReturnValue(refuse(503, 'down'));
+    await expect(refreshIfNeeded(NOW)).resolves.toBeNull();
+    expect(Licence.store).not.toHaveBeenCalled();
+    expect(Licence.clear).not.toHaveBeenCalled();
   });
 });

@@ -107,7 +107,8 @@ export async function signOut(): Promise<void> {
  * Opportunistic on purpose: it never blocks anything, and a failure is silent. Losing the network
  * for a fortnight is what the token's remaining life is FOR, so a refresh that cannot happen is
  * not a condition worth interrupting anyone about — it only matters if it keeps failing until the
- * token runs out, and at that point the Summary tab says so.
+ * token runs out, and at that point the Summary tab says so. A server that answers "not entitled"
+ * is different: that is news, and the token is dropped at once.
  */
 export async function refreshIfNeeded(now = Date.now() / 1000): Promise<LicenceStatus | null> {
   try {
@@ -132,7 +133,14 @@ export async function refreshIfNeeded(now = Date.now() / 1000): Promise<LicenceS
       '/api/licence/refresh',
       { deviceId, refreshKey: key },
     );
-    if (!res.token) return null;
+    if (!res.token) {
+      // The server answered and said no: the subscription has ended. Forget the token now rather
+      // than riding out the payment grace it was minted with. The refresh key stays, so a
+      // renewal on the web is still picked up by the next refresh without a password. Only an
+      // answer does this. A failure to get one lands in the catch below and keeps the token.
+      await Licence.store('', null);
+      return await Licence.status();
+    }
     await Licence.store(res.token, null);
     return await Licence.status();
   } catch {
