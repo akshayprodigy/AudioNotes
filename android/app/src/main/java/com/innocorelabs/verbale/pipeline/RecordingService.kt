@@ -382,7 +382,10 @@ class RecordingService : Service(), CaptureListener {
                 // Logged every run, pass or fail: the thresholds were set from six recordings on
                 // one phone, and this line is how the next phone tells us they were wrong.
                 Log.i(TAG, "announcement check: $verdict")
-                if (verdict.found) announcedLagMs = verdict.lagFrames * 10L
+                announcedLagMs = AnnouncementSpan.lagToExclude(verdict)
+                // Written now, heard or not: the stamp below is heard-only, the exclusion is not.
+                val lag = announcedLagMs
+                if (lag != null) meetingId?.let { db.setAnnouncedLag(it, lag) }
                 AnnouncementPlayer.verified(playback, verdict.heard)
               }
             }

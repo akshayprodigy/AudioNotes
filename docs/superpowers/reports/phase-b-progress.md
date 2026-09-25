@@ -8,7 +8,7 @@ Against `1a23715`. Execution sheet: `docs/superpowers/specs/2026-09-25-phase-b-n
 - [x] Step 2. A crash is `failed`, with a reason, and runs again from where it stopped
 - [x] Step 3. Every ending is stored, processed and explained
 - [x] Step 4. The announcement's outcome: stored, and warned about for two minutes
-- [ ] Step 4b. (B7) A clip that was FOUND is kept out of ASR, heard or not
+- [x] Step 4b. (B7) A clip that was FOUND is kept out of ASR, heard or not
 - [ ] Step 5. Session B1 gate
 - [ ] Step 6. Three pure pieces of copy: endings, the announcement line, what an empty meeting is
 - [ ] Step 7. The Meeting screen: never "no speech" unless it is; failed says why; Write it again keeps the summary
@@ -32,7 +32,11 @@ Against `1a23715`. Execution sheet: `docs/superpowers/specs/2026-09-25-phase-b-n
   *nothingCapturedIsNothingToProcess* failed. Restored.
 - M5: `unannouncedShowing` `<` → `<=` — *the unheard warning shows for two minutes…* failed.
   Restored.
+- M12: `AnnouncementSpan.lagToExclude` `verdict.found` → `verdict.heard` — *a clip found but too
+  quiet to count as heard is still kept out of ASR* failed. Restored.
 
 ## Notes for the next session
 
-(none yet)
+- **Not unit-testable, proved on the phone instead (Step 4b / B7):** that the lag reaches the row
+  for a quiet clip. The re-run of the A07 pass (fix plan item 6) checks it: media volume 2, record,
+  and the transcript must not open with "recorded by Verbali".

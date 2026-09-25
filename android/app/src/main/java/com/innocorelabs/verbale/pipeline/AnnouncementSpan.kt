@@ -22,6 +22,15 @@ object AnnouncementSpan {
   /** Room on either side of the located clip. The verifier's lag is exact to 10 ms; echo is not. */
   const val MARGIN_MS = 500L
 
+  /**
+   * Where the clip starts in the capture, in ms, for keeping ASR off it — or null to keep
+   * nothing out. Keyed on FOUND, not heard: "heard" asks whether the clip is loud enough to be
+   * evidence the room was told, and a clip too quiet for that is still loud enough for whisper
+   * to transcribe (the A07, 25 Sep: found, not heard, and the meeting was titled with it).
+   */
+  fun lagToExclude(verdict: AnnouncementVerifier.Verdict): Long? =
+    if (verdict.found) verdict.lagFrames * 10L else null
+
   /** Below this a trimmed remainder is the edge of the margin, not a word. */
   private const val MIN_REMAINDER_MS = 250L
 

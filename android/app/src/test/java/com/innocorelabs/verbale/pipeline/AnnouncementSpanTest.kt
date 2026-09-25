@@ -1,6 +1,8 @@
 package com.innocorelabs.verbale.pipeline
 
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
@@ -77,5 +79,25 @@ class AnnouncementSpanTest {
   fun `no announcement means no change`() {
     val spans = longArrayOf(300, 5_000, 9_000, 27_000)
     assertArrayEquals(spans, AnnouncementSpan.exclude(spans, -1, -1, margin))
+  }
+
+  private fun verdict(heard: Boolean, found: Boolean, lagFrames: Int) =
+    AnnouncementVerifier.Verdict(heard, found, peakOverBackground = 9.79f, loudnessRatio = 1.2f, lagFrames = lagFrames)
+
+  @Test
+  fun `a clip found but too quiet to count as heard is still kept out of ASR`() {
+    // The A07, 25 Sep: heard=false found=true. Whisper transcribed the clip and titled the meeting with it.
+    assertEquals(350L, AnnouncementSpan.lagToExclude(verdict(heard = false, found = true, lagFrames = 35)))
+  }
+
+  @Test
+  fun `a heard clip is kept out too`() {
+    assertEquals(350L, AnnouncementSpan.lagToExclude(verdict(heard = true, found = true, lagFrames = 35)))
+  }
+
+  @Test
+  fun `a clip that was not found leaves the speech alone`() {
+    // Not found means nothing matched: cutting the opening seconds there would cut real speech.
+    assertNull(AnnouncementSpan.lagToExclude(verdict(heard = false, found = false, lagFrames = 35)))
   }
 }

@@ -569,14 +569,24 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
 
   /**
    * Stamp the moment the room was told, and where in the audio the clip sits. Only ever called
-   * for Outcome.PLAYED. [lagMs] is the verifier's location of the clip; null when playback was
-   * confirmed but the check could not run (a meeting stopped before its opening seconds were in).
+   * for Outcome.PLAYED; a clip found but not heard gets its lag from [setAnnouncedLag] instead.
+   * [lagMs] is the verifier's location of the clip; null when playback was confirmed but the
+   * check could not run (a meeting stopped before its opening seconds were in).
    */
   fun markAnnounced(id: String, atMs: Long, lagMs: Long? = null) {
     db.execSQL(
       "UPDATE meetings SET announced_at=?, announced_lag_ms=? WHERE id=?",
       arrayOf<Any?>(atMs, lagMs, id),
     )
+  }
+
+  /**
+   * Where the clip sits, written whenever the verifier FOUND it, heard or not, so ASR can keep
+   * off it. [markAnnounced] writes the same lag again for a heard clip; `announced_at` stays
+   * the heard-only stamp.
+   */
+  fun setAnnouncedLag(id: String, lagMs: Long) {
+    db.execSQL("UPDATE meetings SET announced_lag_ms=? WHERE id=?", arrayOf<Any?>(lagMs, id))
   }
 
   /** Every new recording's announcement outcome, heard or not — the meeting's "announced" line. */
