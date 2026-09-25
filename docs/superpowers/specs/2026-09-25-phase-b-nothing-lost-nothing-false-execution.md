@@ -53,7 +53,7 @@ names copy, a rule, a status or a column, it is the decided answer. The plan and
   with no summary yet do not ask.
 - Merging speakers uses the existing `confirmDestructive` (`src/components/confirm.ts`).
 
-**Two sessions.** Session B1 = Steps 1–5 (data, crash status, endings, announcement — native and
+**Two sessions.** Session B1 = Steps 1–5 plus 4b (data, crash status, endings, announcement, the clip kept out of ASR — native and
 queries). Session B2 = Steps 6–10 (screens, gate, report). No device in either.
 
 ---
@@ -77,7 +77,7 @@ queries). Session B2 = Steps 6–10 (screens, gate, report). No device in either
   form given in Steps 5 and 10.
 - **Indent like the surrounding file**: two spaces in TS and Kotlin.
 - **Progress file.** First action of Session B1: create
-  `docs/superpowers/reports/phase-b-progress.md` with Steps 1–10 as checkboxes and headings
+  `docs/superpowers/reports/phase-b-progress.md` with Steps 1, 2, 3, 4, 4b, 5–10 as checkboxes and headings
   *Decisions*, *Mutants*, *Notes for the next session*. Update and commit it with every step.
   Session B2 reads it first.
 - **Hand-over at 150 steps**: finish the step you are on, commit, update the progress file, stop.
@@ -740,12 +740,107 @@ minutes…* fails. Restore.
 
 Commit: `feat(record): an announcement nobody heard is stored on the meeting and warned about`.
 
+#### Step 4b. (B7, added 25 Sep) A clip that was FOUND is kept out of ASR, heard or not
+
+*Found on the A07 (defect 3 of `reports/2026-09-25-a07-play-build-feature-pass.md`): verdict
+`heard=false found=true peak/bg=9.79 loudness=1.20`. `announced_lag_ms` is written only inside
+`markAnnounced`, which runs only for a HEARD clip, so nothing kept the clip out of whisper. The
+transcript opened "recorded by Verbali. The recording stays on this phone." and the meeting was
+titled "Recorded by Verbali". **Rule: exclusion keys on `found`; the `announced_at` stamp keys on
+`heard`.** The stamp and `markAnnounced` do not change.*
+
+Files (add to your reading, beyond §1): `K/pipeline/AnnouncementSpan.kt` 20–35,
+`T/pipeline/AnnouncementSpanTest.kt` 1–30, `K/pipeline/AnnouncementVerifier.kt` 150–161 (read
+only: the `Verdict` class; the file stays on the must-not-change list),
+`K/pipeline/RecordingService.kt` 370–380 (`grep -n "verdict.found" K/pipeline/RecordingService.kt`).
+
+**Tests first.** Append to `T/pipeline/AnnouncementSpanTest.kt`, inside the class:
+
+```kotlin
+  private fun verdict(heard: Boolean, found: Boolean, lagFrames: Int) =
+    AnnouncementVerifier.Verdict(heard, found, peakOverBackground = 9.79f, loudnessRatio = 1.2f, lagFrames = lagFrames)
+
+  @Test
+  fun `a clip found but too quiet to count as heard is still kept out of ASR`() {
+    // The A07, 25 Sep: heard=false found=true. Whisper transcribed the clip and titled the meeting with it.
+    assertEquals(350L, AnnouncementSpan.lagToExclude(verdict(heard = false, found = true, lagFrames = 35)))
+  }
+
+  @Test
+  fun `a heard clip is kept out too`() {
+    assertEquals(350L, AnnouncementSpan.lagToExclude(verdict(heard = true, found = true, lagFrames = 35)))
+  }
+
+  @Test
+  fun `a clip that was not found leaves the speech alone`() {
+    // Not found means nothing matched: cutting the opening seconds there would cut real speech.
+    assertNull(AnnouncementSpan.lagToExclude(verdict(heard = false, found = false, lagFrames = 35)))
+  }
+```
+
+Add `import org.junit.Assert.assertEquals` and `import org.junit.Assert.assertNull` beside the
+existing `assertArrayEquals` import. Run
+`cd android && ./gradlew :app:testDebugUnitTest --tests '*AnnouncementSpanTest*' 2>&1 | grep -E "BUILD|FAILED|error:" | tail -5`
+→ compile failure (`lagToExclude` does not exist). That is the failing test.
+
+**Code.**
+
+1. `K/pipeline/AnnouncementSpan.kt`, directly after `const val MARGIN_MS = 500L` add:
+   ```kotlin
+
+     /**
+      * Where the clip starts in the capture, in ms, for keeping ASR off it — or null to keep
+      * nothing out. Keyed on FOUND, not heard: "heard" asks whether the clip is loud enough to be
+      * evidence the room was told, and a clip too quiet for that is still loud enough for whisper
+      * to transcribe (the A07, 25 Sep: found, not heard, and the meeting was titled with it).
+      */
+     fun lagToExclude(verdict: AnnouncementVerifier.Verdict): Long? =
+       if (verdict.found) verdict.lagFrames * 10L else null
+   ```
+2. `K/data/AudioDb.kt`, directly after `fun markAnnounced(...)` (and before the
+   `setAnnounceOutcome` you added in Step 4) add:
+   ```kotlin
+     /**
+      * Where the clip sits, written whenever the verifier FOUND it, heard or not, so ASR can keep
+      * off it. [markAnnounced] writes the same lag again for a heard clip; `announced_at` stays
+      * the heard-only stamp.
+      */
+     fun setAnnouncedLag(id: String, lagMs: Long) {
+       db.execSQL("UPDATE meetings SET announced_lag_ms=? WHERE id=?", arrayOf<Any?>(lagMs, id))
+     }
+   ```
+   Also correct the `markAnnounced` doc comment's second sentence: `Only ever called for
+   Outcome.PLAYED.` becomes `Only ever called for Outcome.PLAYED; a clip found but not heard gets
+   its lag from [setAnnouncedLag] instead.`
+3. `K/pipeline/RecordingService.kt`, replace the line
+   `                if (verdict.found) announcedLagMs = verdict.lagFrames * 10L`
+   with:
+   ```kotlin
+                   announcedLagMs = AnnouncementSpan.lagToExclude(verdict)
+                   // Written now, heard or not: the stamp below is heard-only, the exclusion is not.
+                   val lag = announcedLagMs
+                   if (lag != null) meetingId?.let { db.setAnnouncedLag(it, lag) }
+   ```
+   Nothing else in the announce thread changes; the `markAnnounced` call stays exactly as it is.
+4. Re-run the test command → `BUILD SUCCESSFUL`; then
+   `cd android && ./gradlew :app:compileDebugKotlin 2>&1 | grep -E "BUILD|error:" | tail -5` → `BUILD SUCCESSFUL`.
+
+**Mutant M12:** in `lagToExclude` change `verdict.found` to `verdict.heard` → *a clip found but
+too quiet to count as heard is still kept out of ASR* fails. Restore.
+
+**Not unit-testable, proved on the phone instead:** that the lag reaches the row for a quiet clip.
+The re-run of the A07 pass (fix plan item 6) checks it: media volume 2, record, and the transcript
+must not open with "recorded by Verbali". Say so in the progress file under *Notes for the next
+session*.
+
+Commit: `fix(record): a consent clip found but not heard is kept out of the transcript`.
+
 #### Step 5. Session B1 gate
 
 1. `GATE_STAGES="types js scans mutations kotlin cpp" scripts/gate.sh 2>&1 | grep -E "==>|ok |FAILED|gate:" | tail -20`
    → every stage `ok`. Force Kotlin:
    `cd android && ./gradlew :app:testDebugUnitTest --rerun-tasks 2>&1 | grep -E "BUILD|FAILED" | tail -3`.
-2. Update the progress file (Steps 1–5 ticked, mutants M1–M5), commit
+2. Update the progress file (Steps 1–5 and 4b ticked, mutants M1–M5 and M12), commit
    `docs(progress): Phase B session B1 done`. Stop. Session B2 starts from here.
 
 ### Session B2 — screens, gate, report
@@ -1368,7 +1463,9 @@ Commit: `fix(library,record,speakers): a crash reads DIDN'T FINISH; an ending is
 2. `cd android && ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a 2>&1 | grep -E "BUILD|FAILED|error:" | tail -5`
    → `BUILD SUCCESSFUL`.
 3. `git grep -n "clearNarration" -- src/screens` → nothing. `git grep -n "notif_cap_reached" -- android` → nothing.
-   `git diff --stat 1a23715..HEAD` names only the files in §1, the new files
+   `git diff --stat $(git log -1 --format=%h -- docs/superpowers/specs/2026-09-25-phase-b-nothing-lost-nothing-false-execution.md)..HEAD`
+   (the sheet's own last commit, so earlier hotfixes are not counted) names only the files in §1,
+   Step 4b's `AnnouncementSpan.kt` and `AnnouncementSpanTest.kt`, the new files
    (`FailureReason.kt`, `FailureReasonTest.kt`, `EndNotice.kt`, `EndNoticeTest.kt`,
    `src/db/__tests__/pendingMeetings.test.ts`, `src/screens/meeting/meetingNotes.ts` and its test),
    `src/screens/meeting/SummaryTab.tsx`'s test, the progress file, the report, and this sheet.
@@ -1402,7 +1499,7 @@ Commit: `fix(library,record,speakers): a crash reads DIDN'T FINISH; an ending is
 | gate (Steps 5 and 10) | every stage `ok` |
 | `assembleRelease` (Step 10) | `BUILD SUCCESSFUL` |
 
-Mutants M1–M11, each killed by its named test and restored.
+Mutants M1–M12, each killed by its named test and restored.
 
 ## 6. Acceptance criteria
 
@@ -1462,7 +1559,7 @@ one):
 Session B1:
 
 > Read `docs/superpowers/specs/2026-09-25-phase-b-nothing-lost-nothing-false-execution.md` and
-> execute Session B1 exactly as written: Steps 1–5, under its token rules. Stop after committing
+> execute Session B1 exactly as written: Steps 1–5 including Step 4b, under its token rules. Stop after committing
 > Step 5 and the progress file, when a stop condition is met, or at 150 steps. Do not push.
 
 Session B2:
