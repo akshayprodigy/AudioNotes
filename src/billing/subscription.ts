@@ -290,16 +290,24 @@ function formatLike(sample: string | null, micros: number): string | null {
   return `${prefix}${body}${suffix}`;
 }
 
+/** Purchases between Play's sheet opening and their redemption finishing; syncEntitlement waits. */
+let purchasing = 0;
+
 /** Buy through Play, then exchange the purchase for a licence. */
 export async function buyWithPlay(basePlanId: string | null = null): Promise<PlayResult> {
-  const base = await Licence.baseUrl();
-  if (!base) throw new Error('This build has no licence server configured.');
+  purchasing++;
+  try {
+    const base = await Licence.baseUrl();
+    if (!base) throw new Error('This build has no licence server configured.');
 
-  const purchaseToken = await Billing.purchase(basePlanId);
-  // Null covers two different things that need the same handling: the buyer changed their mind,
-  // and a payment method still authorising. Neither is a failure worth an error dialog.
-  if (!purchaseToken) return { paid: false };
-  return redeem(base, purchaseToken);
+    const purchaseToken = await Billing.purchase(basePlanId);
+    // Null covers two different things that need the same handling: the buyer changed their mind,
+    // and a payment method still authorising. Neither is a failure worth an error dialog.
+    if (!purchaseToken) return { paid: false };
+    return await redeem(base, purchaseToken);
+  } finally {
+    purchasing--;
+  }
 }
 
 /**
@@ -333,8 +341,9 @@ let syncing: Promise<void> | null = null;
  * through, or a reinstall. For a free user Play answers from its local cache with nothing, so no
  * request leaves the phone.
  *
- * One at a time: the app returning from Play's own purchase sheet fires a foreground event while
- * the purchase is being redeemed, and two redemptions of one token would race.
+ * One at a time, and never alongside a purchase: the app returning from Play's own purchase sheet
+ * fires a foreground event while buyWithPlay is still redeeming the token, and a second redemption
+ * would issue a second refresh key that races the first one to the phone's storage.
  */
 export function syncEntitlement(): Promise<void> {
   if (syncing) return syncing;
@@ -343,6 +352,7 @@ export function syncEntitlement(): Promise<void> {
       await refreshIfNeeded();
       const status = await Licence.status().catch(() => null);
       if (status?.paid) return;
+      if (purchasing > 0) return;
       if (!(await playAvailable())) return;
       await restorePlayPurchase().catch(() => undefined);
     } catch {

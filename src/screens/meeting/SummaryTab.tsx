@@ -186,8 +186,8 @@ export default function SummaryTab({
       if (!now?.paid) {
         Alert.alert(
           'No active subscription found',
-          'Google Play has no active Verbale subscription for this Google account. If that looks ' +
-            'wrong, open Manage in Google Play.',
+          'Verbale could not find an active subscription for this Google account. If you are ' +
+            'offline, try again once connected; if you did pay, open Manage in Google Play.',
         );
       }
     } finally {

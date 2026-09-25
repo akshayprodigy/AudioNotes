@@ -152,8 +152,30 @@ describe('capability checks fail closed', () => {
 describe('keeping Pro in step with Play', () => {
   it('asks Play nothing when this install already has Pro', async () => {
     Licence.status.mockResolvedValue({ state: 'active', paid: true, expiresAt: 0 });
+    // Play is available, so only the paid check can be what stops the restore.
+    Billing.available.mockResolvedValue(true);
+    Billing.restore.mockResolvedValue('token-abc');
     await syncEntitlement();
     expect(Billing.restore).not.toHaveBeenCalled();
+  });
+
+  it('stays out of the way while a purchase is being redeemed', async () => {
+    // Coming back from Play's purchase sheet makes the app active while buyWithPlay still holds
+    // the token; a second redemption would issue a second refresh key and race the first.
+    let finishSheet: (token: string | null) => void = () => {};
+    Billing.purchase.mockReturnValue(new Promise(r => (finishSheet = r)));
+    Licence.status.mockResolvedValue({ state: 'none', paid: false, expiresAt: 0 });
+    Billing.available.mockResolvedValue(true);
+    Billing.restore.mockResolvedValue('token-abc');
+
+    const buying = buyWithPlay('monthly');
+    await syncEntitlement();
+    expect(Billing.restore).not.toHaveBeenCalled();
+
+    finishSheet(null);
+    await buying;
+    await syncEntitlement();
+    expect(Billing.restore).toHaveBeenCalledTimes(1);
   });
 
   it('picks up a purchase the app never heard back about', async () => {
