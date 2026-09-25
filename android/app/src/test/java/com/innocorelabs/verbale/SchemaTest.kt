@@ -262,7 +262,7 @@ class SchemaTest {
    * is also inlined into the CREATE TABLE for fresh installs. Comparing either half alone would
    * assert a table that exists on no device.
    */
-  @Test fun meetingsHasTheSameTwentyTwoColumnsAsTheJavaScriptMirror() {
+  @Test fun meetingsHasTheSameTwentySixColumnsAsTheJavaScriptMirror() {
     val expected = listOf(
       "id", "title", "created_at", "duration_ms", "language", "status", "tier_used",
       "audio_path", "audio_retained", "archived_at", "summary_line", "title_edited_at",
@@ -273,6 +273,10 @@ class SchemaTest {
       "template",
       "template_source",
       "mode",
+      "end_reason",
+      "fail_reason",
+      "fail_count",
+      "announce_outcome",
     )
     val actual = (
       columnsOf(ddlFor("meetings")) +

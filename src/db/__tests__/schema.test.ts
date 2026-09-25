@@ -103,6 +103,7 @@ describe('schema.ts evidence tables (executed in real SQLite)', () => {
           'audio_path', 'audio_retained', 'archived_at', 'summary_line', 'title_edited_at',
           'transcribe_forced_at', 'forced_from_language', 'announced_at', 'announced_lag_ms', 'diar_skipped_reason',
           'items_migrated_at', 'embedded_at', 'template', 'template_source', 'mode',
+          'end_reason', 'fail_reason', 'fail_count', 'announce_outcome',
         ].sort(),
       );
     });

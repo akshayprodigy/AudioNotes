@@ -24,6 +24,16 @@ async function run<T>(sql: string, params: unknown[] = []): Promise<T[]> {
   return JSON.parse(raw) as T[];
 }
 
+/** Unfinished meetings for the sweep, and crashed ones until they have failed three times. */
+export const PENDING_MEETINGS_SQL =
+  "SELECT id FROM meetings WHERE status IN ('captured','vad','asr','diarized') " +
+  "OR (status = 'failed' AND fail_count < 3) ORDER BY created_at";
+
+/** Recordings that yielded no transcript. 'error' only: a crash is not an empty recording. */
+export const EMPTY_MEETINGS_SQL =
+  "SELECT id FROM meetings WHERE status = 'error' AND archived_at IS NULL " +
+  'AND id NOT IN (SELECT DISTINCT meeting_id FROM utterances)';
+
 export type MeetingSort = 'recent' | 'oldest' | 'longest' | 'title';
 
 /**
@@ -106,7 +116,7 @@ export const db = {
       'SELECT id, title, created_at AS createdAt, duration_ms AS durationMs, language, ' +
         'status, tier_used AS tierUsed, audio_retained AS audioRetained, summary_line AS summaryLine, ' +
         'transcribe_forced_at AS transcribeForcedAt, forced_from_language AS forcedFromLanguage, ' +
-        'diar_skipped_reason AS diarSkippedReason, mode ' +
+        'diar_skipped_reason AS diarSkippedReason, mode, fail_reason AS failReason ' +
         'FROM meetings WHERE archived_at IS NULL' +
         (tag ? ' AND EXISTS(SELECT 1 FROM tags t WHERE t.meeting_id = meetings.id AND t.name = ?)' : '') +
         ` ORDER BY ${MEETING_ORDER[sort] ?? MEETING_ORDER.recent}`,
@@ -134,11 +144,7 @@ export const db = {
    * Meetings that captured audio but yielded no transcript — the 3-second mis-taps that
    * accumulate faster than anything else in the library.
    */
-  emptyMeetings: () =>
-    run<{ id: string }>(
-      "SELECT id FROM meetings WHERE status = 'error' AND archived_at IS NULL " +
-        'AND id NOT IN (SELECT DISTINCT meeting_id FROM utterances)',
-    ),
+  emptyMeetings: () => run<{ id: string }>(EMPTY_MEETINGS_SQL),
 
   /**
    * Remove a meeting and everything derived from it.
@@ -161,7 +167,8 @@ export const db = {
       'SELECT id, title, created_at AS createdAt, duration_ms AS durationMs, language, ' +
         'status, tier_used AS tierUsed, audio_retained AS audioRetained, summary_line AS summaryLine, ' +
         'transcribe_forced_at AS transcribeForcedAt, forced_from_language AS forcedFromLanguage, ' +
-        'diar_skipped_reason AS diarSkippedReason, template, template_source AS templateSource, mode ' +
+        'diar_skipped_reason AS diarSkippedReason, template, template_source AS templateSource, mode, ' +
+        'end_reason AS endReason, fail_reason AS failReason, announce_outcome AS announceOutcome ' +
         'FROM meetings WHERE id = ?',
       [id],
     ).then(r => r[0]),
@@ -435,11 +442,7 @@ export const db = {
    * A meeting genuinely in progress right now is also in one of these states, so the caller
    * must skip whatever it already has in flight (see PipelineController.processPending).
    */
-  pendingMeetings: () =>
-    run<{ id: string }>(
-      "SELECT id FROM meetings WHERE status IN ('captured','vad','asr','diarized') " +
-        'ORDER BY created_at',
-    ),
+  pendingMeetings: () => run<{ id: string }>(PENDING_MEETINGS_SQL),
 
   // Simple key/value settings (onboarding flag, prefs).
   getSetting: (key: string) =>

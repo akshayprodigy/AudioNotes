@@ -15,7 +15,10 @@ export type MeetingStatus =
   // one still in flight — the library showed a live TRANSCRIBING badge and the meeting screen span
   // on "Writing your notes..." with nothing running behind it.
   | 'unsupported_language'
-  | 'error';
+  // No speech: the recording was heard and held nothing to transcribe. Never a crash.
+  | 'error'
+  // Processing crashed. The reason is on the meeting (failReason); the sweep retries it.
+  | 'failed';
 
 export type PipelineStage = 'vad' | 'asr' | 'diarize' | 'minutes' | 'align' | 'structure';
 
@@ -64,6 +67,12 @@ export interface Meeting {
   templateSource?: string | null;
   /** 'dictation' for a meeting recorded in dictation mode; null for an ordinary meeting. */
   mode?: 'dictation' | null;
+  /** 'stopped' for every Stop, else why the recording service ended it. Null before Phase B. */
+  endReason?: string | null;
+  /** Set with status 'failed': what went wrong, in words a person can act on. */
+  failReason?: string | null;
+  /** AnnouncementPlayer's outcome, lowercased: played | disabled | silenced | not_heard | no_clip | failed. */
+  announceOutcome?: string | null;
 }
 
 export interface VocabularyRule {

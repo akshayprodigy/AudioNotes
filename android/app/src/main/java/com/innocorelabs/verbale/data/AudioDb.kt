@@ -3213,6 +3213,17 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       Triple("speakers", "suggested_person", "TEXT"),
       // Phase 5: 'dictation' for a meeting recorded in dictation mode; NULL is an ordinary meeting.
       Triple("meetings", "mode", "TEXT"),
+      // Phase B: how the recording ended — 'stopped' for every Stop, else the reason the service
+      // ended it (cap_reached, mic_lost, disk_full, write_failed, mic_unavailable). NULL on meetings
+      // recorded before it existed.
+      Triple("meetings", "end_reason", "TEXT"),
+      // Phase B: status 'failed' is a crash, not silence. This is the sentence the person sees, and
+      // fail_count is how many runs crashed — the sweep stops retrying at 3.
+      Triple("meetings", "fail_reason", "TEXT"),
+      Triple("meetings", "fail_count", "INTEGER NOT NULL DEFAULT 0"),
+      // Phase B: AnnouncementPlayer.Outcome, lowercased, for every new recording — so a meeting can
+      // say "not announced" and why, which announced_at (set only when heard) cannot.
+      Triple("meetings", "announce_outcome", "TEXT"),
       // Phase 5: the recogniser's own wording, kept only when a rule or spoken punctuation changed
       // `text`. NULL means `text` is what was recognised.
       Triple("utterances", "text_raw", "TEXT"),

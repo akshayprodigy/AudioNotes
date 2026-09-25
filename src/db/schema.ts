@@ -56,7 +56,11 @@ export const SCHEMA = [
      -- the suggester must never overwrite) — NULL alongside template before either has happened.
      template_source TEXT,
      -- Phase 5: 'dictation' for a meeting recorded in dictation mode; NULL is an ordinary meeting.
-     mode TEXT
+     mode TEXT,
+     end_reason TEXT,              -- 'stopped' or why the service ended it (cap_reached, mic_lost…)
+     fail_reason TEXT,             -- status 'failed': the sentence the person sees
+     fail_count INTEGER NOT NULL DEFAULT 0, -- runs that crashed; the sweep stops at 3
+     announce_outcome TEXT         -- AnnouncementPlayer.Outcome, lowercased
    );`,
   `CREATE TABLE IF NOT EXISTS utterances (
      id TEXT PRIMARY KEY,
