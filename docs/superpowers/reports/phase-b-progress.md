@@ -9,7 +9,7 @@ Against `1a23715`. Execution sheet: `docs/superpowers/specs/2026-09-25-phase-b-n
 - [x] Step 3. Every ending is stored, processed and explained
 - [x] Step 4. The announcement's outcome: stored, and warned about for two minutes
 - [x] Step 4b. (B7) A clip that was FOUND is kept out of ASR, heard or not
-- [ ] Step 5. Session B1 gate
+- [x] Step 5. Session B1 gate
 - [ ] Step 6. Three pure pieces of copy: endings, the announcement line, what an empty meeting is
 - [ ] Step 7. The Meeting screen: never "no speech" unless it is; failed says why; Write it again keeps the summary
 - [ ] Step 8. SummaryTab: Pro type change over an existing summary asks first
@@ -18,7 +18,9 @@ Against `1a23715`. Execution sheet: `docs/superpowers/specs/2026-09-25-phase-b-n
 
 ## Decisions
 
-(none yet)
+- Session B1 gate: `GATE_STAGES="types js scans mutations kotlin cpp" scripts/gate.sh` — all six
+  stages `ok` (285s total). Kotlin force-rerun (`--rerun-tasks`) also `BUILD SUCCESSFUL`. No
+  device stage, per the rules.
 
 ## Mutants
 
