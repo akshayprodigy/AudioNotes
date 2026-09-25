@@ -109,6 +109,15 @@ object CaptureController {
 
   /** The warning in force, or null. Read by the notification and pushed to the record screen. */
   @Volatile var warning: CaptureWarnings.Warning? = null
+
+  /** Capture-clock ms when the announcement was found not heard; -1 otherwise. */
+  @Volatile var unannouncedAtMs: Long = -1L
+
+  /** From the announce thread, once the verdict is in. Switched off is a choice, not a warning. */
+  fun noteAnnouncement(outcome: AnnouncementPlayer.Outcome) {
+    if (!outcome.wasHeard() && outcome != AnnouncementPlayer.Outcome.DISABLED) unannouncedAtMs = capturedMs
+  }
+
   private val rms = RmsRing(60_000)
   private val clip = ClipWindow(2_000)
   @Volatile private var speechMsIn60s = 0L
@@ -142,6 +151,7 @@ object CaptureController {
       loud = loud,
       faint = faint,
       storageWarnAtMinutes = STORAGE_WARN_MINUTES,
+      unannounced = CaptureWarnings.unannouncedShowing(unannouncedAtMs, capturedMs),
     )
     val before = warning
     if (next?.kind != before?.kind) {
@@ -163,6 +173,7 @@ object CaptureController {
 
   private fun clearWarnings() {
     warning = null
+    unannouncedAtMs = -1L
     speechMsIn60s = 0L
     meanRmsInSpeech = 0.0
   }

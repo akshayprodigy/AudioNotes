@@ -22,7 +22,7 @@ object CaptureWarnings {
   /** Faint needs this much speech in the last minute before it is a judgement rather than a guess. */
   const val FAINT_MIN_SPEECH_MS = 10_000L
 
-  enum class Kind { STORAGE, LOUD, FAINT }
+  enum class Kind { STORAGE, UNANNOUNCED, LOUD, FAINT }
 
   data class Warning(val kind: Kind, val minutesLeft: Long)
 
@@ -71,12 +71,30 @@ object CaptureWarnings {
   fun minutesLeft(freeBytes: Long): Long = freeBytes / (RecordingService.BYTES_PER_MS.toLong() * 60_000L)
 
   /** One warning at a time: storage, then loud, then faint. Null when none applies. */
-  fun pick(storageMinutesLeft: Long, loud: Boolean, faint: Boolean, storageWarnAtMinutes: Long): Warning? = when {
+  fun pick(
+    storageMinutesLeft: Long,
+    loud: Boolean,
+    faint: Boolean,
+    storageWarnAtMinutes: Long,
+    unannounced: Boolean = false,
+  ): Warning? = when {
     storageMinutesLeft < storageWarnAtMinutes -> Warning(Kind.STORAGE, storageMinutesLeft)
+    unannounced -> Warning(Kind.UNANNOUNCED, storageMinutesLeft)
     loud -> Warning(Kind.LOUD, storageMinutesLeft)
     faint -> Warning(Kind.FAINT, storageMinutesLeft)
     else -> null
   }
+
+  /**
+   * How long "the announcement was not heard" holds the warning slot, in ms of capture. Long
+   * enough to be seen and acted on; after it, loud and faint get their turn again. The meeting
+   * keeps the permanent record (announce_outcome).
+   */
+  const val UNANNOUNCED_SHOW_MS = 120_000L
+
+  /** [notHeardAtMs] is -1 when the announcement was heard, is switched off, or is not decided yet. */
+  fun unannouncedShowing(notHeardAtMs: Long, nowMs: Long): Boolean =
+    notHeardAtMs >= 0L && nowMs - notHeardAtMs < UNANNOUNCED_SHOW_MS
 }
 
 /**

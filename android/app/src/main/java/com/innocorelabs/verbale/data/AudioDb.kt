@@ -579,6 +579,11 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     )
   }
 
+  /** Every new recording's announcement outcome, heard or not — the meeting's "announced" line. */
+  fun setAnnounceOutcome(id: String, outcome: String) {
+    db.execSQL("UPDATE meetings SET announce_outcome=? WHERE id=?", arrayOf<Any?>(outcome, id))
+  }
+
   /** Where the clip starts in the capture, in ms, or null when it was not located. */
   fun announcedLagMs(id: String): Long? {
     db.rawQuery("SELECT announced_lag_ms FROM meetings WHERE id=?", arrayOf(id)).use { c ->

@@ -71,4 +71,22 @@ class CaptureWarningsTest {
     clip.add(atMs = 2_500, fraction = 0.0)    // the hot buffer is older than two seconds now
     assertFalse(clip.mean() > CaptureWarnings.CLIP_FRACTION)
   }
+
+  @Test fun `an unheard announcement outranks loud and faint but not storage`() {
+    assertEquals(
+      CaptureWarnings.Kind.UNANNOUNCED,
+      CaptureWarnings.pick(30L, loud = true, faint = true, storageWarnAtMinutes = 5L, unannounced = true)?.kind,
+    )
+    assertEquals(
+      CaptureWarnings.Kind.STORAGE,
+      CaptureWarnings.pick(4L, loud = false, faint = false, storageWarnAtMinutes = 5L, unannounced = true)?.kind,
+    )
+  }
+
+  @Test fun `the unheard warning shows for two minutes of capture, then gives way`() {
+    assertFalse(CaptureWarnings.unannouncedShowing(notHeardAtMs = -1L, nowMs = 0L))
+    assertTrue(CaptureWarnings.unannouncedShowing(notHeardAtMs = 10_000L, nowMs = 10_000L))
+    assertTrue(CaptureWarnings.unannouncedShowing(notHeardAtMs = 10_000L, nowMs = 129_999L))
+    assertFalse(CaptureWarnings.unannouncedShowing(notHeardAtMs = 10_000L, nowMs = 130_000L))
+  }
 }

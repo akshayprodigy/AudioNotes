@@ -387,6 +387,9 @@ class RecordingService : Service(), CaptureListener {
               }
             }
 
+            meetingId?.let { db.setAnnounceOutcome(it, outcome.name.lowercase()) }
+            CaptureController.noteAnnouncement(outcome)
+
             if (outcome.wasHeard()) {
               // The lag travels with the stamp so ASR can keep the clip out of its windows.
               meetingId?.let { db.markAnnounced(it, System.currentTimeMillis(), announcedLagMs) }
@@ -861,6 +864,7 @@ class RecordingService : Service(), CaptureListener {
         CaptureWarnings.Kind.STORAGE -> getString(R.string.notif_warn_storage, warning.minutesLeft)
         CaptureWarnings.Kind.LOUD -> getString(R.string.notif_warn_loud)
         CaptureWarnings.Kind.FAINT -> getString(R.string.notif_warn_faint)
+        CaptureWarnings.Kind.UNANNOUNCED -> getString(R.string.notif_warn_unannounced)
       }
       else -> getString(R.string.notif_body_recording)
     }

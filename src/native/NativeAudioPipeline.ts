@@ -75,7 +75,7 @@ export interface Spec extends TurboModule {
   // PiP window and the notification make; all three land in CaptureController.mark.
   mark(): Promise<number | null>;
   // Events (DeviceEventEmitter): onCaptureLevel {level}, onCaptureState, onCaptureMark {atMs},
-  // onCaptureWarning {kind: 'loud'|'faint'|'storage'|null, minutesLeft}.
+  // onCaptureWarning {kind: 'storage'|'unannounced'|'loud'|'faint'|null, minutesLeft}.
   // Processing: onStageProgress {meetingId, stage, chunk, total}, onStageComplete, onError,
   // onProcessingPause {meetingId, reason: 'heat'|'battery'|null}.
 
