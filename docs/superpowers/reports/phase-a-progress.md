@@ -75,6 +75,31 @@ before the process is killed. Reproduces on the pre-Step-9 code too (confirmed b
 stale run against the unmodified file), so it predates this session and is not Step 9's file list —
 not investigated. Worth a look before Step 10's gate run, which does not pass `--forceExit`.
 
+- Before Step 10: `git status` showed `Reconciler.kt` modified — `CONFIDENT_SIMILARITY` at 0.5
+  instead of 0.6, and `if (old.kind != item.kind) continue` replaced with `if (false) continue`.
+  These are leftover mutants from an interrupted run of `scripts/mutate-reconciler.py` (a gate
+  mutation-testing stage killed mid-run), not real changes, and not part of any step in this sheet.
+  Restored with `git checkout -- android/app/src/main/java/com/innocorelabs/verbale/pipeline/Reconciler.kt`
+  before touching anything else; `git status` was clean afterwards.
+- Step 9's note above says `LibraryScreen.test.tsx` hangs without `--forceExit`. Investigated before
+  Step 10, two attempts, per instruction (test file only, no product-code changes):
+  - Attempt 1: ran `npx jest src/screens/__tests__/LibraryScreen.test.tsx --detectOpenHandles`
+    (repeated 5× total, with and without `--silent`). Every run passed 17/17 and exited cleanly in
+    1–4 s; no "open handle" warning, no "did not exit" message. The hang did not reproduce in
+    isolation.
+  - Attempt 2: ran the full suite exactly as the gate's js stage does (`npx jest --silent`) in case
+    the leak only shows with other files present. It finished in ~8 s with exit code 0 — no hang —
+    but did print one real leak warning: "A worker process has failed to exit gracefully… tests
+    leaking due to improper teardown", with the stack trace (`ReferenceError: … Jest environment …
+    after it has been torn down`, at `@react-native/jest-preset/jest/setup.js:51`) naming
+    `src/screens/__tests__/ActionsScreen.test.tsx`, not `LibraryScreen.test.tsx`.
+  - Conclusion: the specific claim (this file hangs without `--forceExit`) did not reproduce, in
+    isolation or in the full run, on this machine/run. No change made to `LibraryScreen.test.tsx` —
+    there was nothing reproducible in it to fix, and guessing at a fix for an unreproduced symptom
+    risks masking the real leak, which the evidence instead points at a different file
+    (`ActionsScreen.test.tsx`), out of scope for this step. Recorded per the two-attempts rule;
+    continuing to Step 10.
+
 ## Notes for the next session
 
 Session A1 (Steps 1–4) complete and committed. Session A2 Steps 5–9 complete and committed,
