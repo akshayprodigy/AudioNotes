@@ -77,7 +77,15 @@ class RecordTileService : TileService(), CaptureListener {
       // Allowed from the background, and it must not block the UI thread — stop() waits for the
       // capture service to flush the PCM.
       val app = applicationContext
-      Thread { CaptureController.stop(app) }.start()
+      // A Stop like the notification's, so it is queued the same way: tapping a tile lets the
+      // app start the processing service from the background.
+      Thread {
+        val stopped = CaptureController.stop(app)
+        if (stopped != null) {
+          try { ProcessingService.enqueue(app, stopped) }
+          catch (e: Exception) { android.util.Log.w("RecordTileService", "could not queue $stopped", e) }
+        }
+      }.start()
       render() // paints the UNAVAILABLE "Finishing…" state; onCaptureEnded repaints when done
       return
     }

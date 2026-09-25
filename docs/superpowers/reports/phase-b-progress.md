@@ -6,7 +6,7 @@ Against `1a23715`. Execution sheet: `docs/superpowers/specs/2026-09-25-phase-b-n
 
 - [x] Step 1. Four columns, the `failed` status, and the sweep that retries it
 - [x] Step 2. A crash is `failed`, with a reason, and runs again from where it stopped
-- [ ] Step 3. Every ending is stored, processed and explained
+- [x] Step 3. Every ending is stored, processed and explained
 - [ ] Step 4. The announcement's outcome: stored, and warned about for two minutes
 - [ ] Step 4b. (B7) A clip that was FOUND is kept out of ASR, heard or not
 - [ ] Step 5. Session B1 gate
@@ -28,6 +28,8 @@ Against `1a23715`. Execution sheet: `docs/superpowers/specs/2026-09-25-phase-b-n
   failed. Restored.
 - M3: `FailureReason.of` deleted the `e is OutOfMemoryError ->` branch — *outOfMemoryIsSaidAsMemory*
   failed. Restored.
+- M4: `EndNotice.shouldProcess` `capturedBytes > 0L` → `capturedBytes >= 0L` —
+  *nothingCapturedIsNothingToProcess* failed. Restored.
 
 ## Notes for the next session
 

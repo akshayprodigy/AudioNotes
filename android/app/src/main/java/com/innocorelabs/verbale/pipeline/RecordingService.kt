@@ -58,8 +58,8 @@ class RecordingService : Service(), CaptureListener {
     private const val CHANNEL_ID = "audionotes.recording.v2"
     private const val LEGACY_CHANNEL_ID = "audionotes.recording"
     private const val NOTIF_ID = 42
-    /** "Stopped at the Free limit" — separate from NOTIF_ID, which goes when the service does. 43/44 are ProcessingService's. */
-    private const val CAP_NOTICE_ID = 45
+    /** How a recording ended, when the service ended it — separate from NOTIF_ID, which goes when the service does. 43/44 are ProcessingService's. */
+    private const val END_NOTICE_ID = 45
     private const val TAG = "RecordingService"
 
     /** Twelve seconds of 16 kHz mono PCM16 — long enough to hold the clip and some room after. */
@@ -91,7 +91,7 @@ class RecordingService : Service(), CaptureListener {
     private const val DISK_CHECK_EVERY_READS = 256
     private const val WARN_CHECK_EVERY_READS = 8
 
-    /** Why capture ended, surfaced on the meeting so the UI can explain a short recording. */
+    /** Why capture ended. Stored on the meeting as end_reason (EndNotice.stored). */
     const val END_NORMAL = "normal"
     const val END_DISK_FULL = "disk_full"
     const val END_MIC_LOST = "mic_lost"
@@ -104,6 +104,12 @@ class RecordingService : Service(), CaptureListener {
      * recording.
      */
     const val END_CAP_REACHED = "cap_reached"
+
+    /** Anything else thrown in the capture loop — a write that failed. The audio so far is kept. */
+    const val END_WRITE_FAILED = "write_failed"
+
+    /** The recorder could not be opened at all; nothing was captured. */
+    const val END_MIC_UNAVAILABLE = "mic_unavailable"
 
     /** Sent by the notification's buttons. */
     const val ACTION_STOP = "com.innocorelabs.verbale.action.STOP_RECORDING"
@@ -300,11 +306,13 @@ class RecordingService : Service(), CaptureListener {
       AudioRecord(source, SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize)
     } catch (e: Exception) {
       Log.e(TAG, "AudioRecord init failed", e)
+      endReason = END_MIC_UNAVAILABLE
       stopSelf()
       return
     }
     if (record.state != AudioRecord.STATE_INITIALIZED) {
       Log.e(TAG, "AudioRecord not initialized (permission?)")
+      endReason = END_MIC_UNAVAILABLE
       record.release()
       stopSelf()
       return
@@ -470,6 +478,10 @@ class RecordingService : Service(), CaptureListener {
           }
         } catch (e: Exception) {
           Log.e(TAG, "capture loop error", e)
+          // End it: before this the loop died and the service stayed up, showing "Recording"
+          // over a recorder that was no longer writing anything.
+          if (endReason == END_NORMAL) endReason = END_WRITE_FAILED
+          recording = false
         } finally {
           try { record.stop() } catch (_: Exception) {}
           record.release()
@@ -618,13 +630,28 @@ class RecordingService : Service(), CaptureListener {
       val bytes = File(path).length()
       val durationMs = bytes / BYTES_PER_MS
       try {
-        AudioDb.get(applicationContext).markCaptured(id, durationMs, path)
+        val db = AudioDb.get(applicationContext)
+        db.markCaptured(id, durationMs, path)
+        db.setEndReason(id, EndNotice.stored(endReason))
+        // Nothing captured is nothing to process: 'captured' would send an empty file down the pipeline.
+        if (bytes == 0L) db.setStatus(id, "error")
       } catch (e: Exception) {
         Log.e(TAG, "markCaptured failed", e)
       }
       Log.i(TAG, "capture finished for $id: ${bytes}B (${durationMs}ms), reason=$endReason")
+      // A Stop is queued by whoever pressed it. Every other ending is queued here, and Android may
+      // refuse a background start — the notice then says to open the app, whose sweep does it.
+      val processing = EndNotice.shouldProcess(endReason, bytes) && try {
+        ProcessingService.enqueue(applicationContext, id)
+        true
+      } catch (e: Exception) {
+        Log.w(TAG, "could not queue $id after $endReason — the Library sweep will", e)
+        false
+      }
+      // Read before onCaptureEnded clears the limit.
+      val capMinutes = (CaptureController.capMs / 60_000L).toInt()
+      EndNotice.of(endReason, bytes, processing, capMinutes)?.let { postEndNotice(it) }
     }
-    if (endReason == END_CAP_REACHED) postCapReachedNotice()
     // Release CaptureController.stop() only now — the PCM is flushed and the row is updated,
     // so it is safe for the pipeline to read the file.
     //
@@ -635,8 +662,8 @@ class RecordingService : Service(), CaptureListener {
     // the corpse's id rather than opening a new session.
     CaptureController.onCaptureEnded(
       when (endReason) {
-        END_MIC_LOST -> CaptureController.END_MIC_LOST
-        END_DISK_FULL -> CaptureController.END_WRITE_FAILED
+        END_MIC_LOST, END_MIC_UNAVAILABLE -> CaptureController.END_MIC_LOST
+        END_DISK_FULL, END_WRITE_FAILED -> CaptureController.END_WRITE_FAILED
         else -> CaptureController.END_STOPPED
       },
     )
@@ -709,12 +736,11 @@ class RecordingService : Service(), CaptureListener {
   private val mainHandler = Handler(Looper.getMainLooper())
 
   /**
-   * A free recording just stopped at its limit — very likely with the screen off or in PiP, where
-   * nothing else said so. Plain and silent; tapping opens the app. Read before onCaptureEnded
-   * clears the limit, which is why onDestroy calls it first.
+   * How the recording ended, when the service ended it — very likely with the screen off or in
+   * PiP, where nothing else said so. Plain and silent; tapping opens the app, whose Library sweep
+   * processes anything the service could not queue.
    */
-  private fun postCapReachedNotice() {
-    val minutes = (CaptureController.capMs / 60_000L).toInt()
+  private fun postEndNotice(notice: EndNotice.Notice) {
     val open = PendingIntent.getActivity(
       this, 5,
       Intent(this, com.innocorelabs.verbale.MainActivity::class.java)
@@ -722,17 +748,18 @@ class RecordingService : Service(), CaptureListener {
       PendingIntent.FLAG_IMMUTABLE,
     )
     val n = NotificationCompat.Builder(this, CHANNEL_ID)
-      .setContentTitle(getString(R.string.notif_cap_reached_title, minutes))
-      .setContentText(getString(R.string.notif_cap_reached_body))
+      .setContentTitle(notice.title)
+      .setContentText(notice.body)
+      .setStyle(NotificationCompat.BigTextStyle().bigText(notice.body))
       .setSmallIcon(R.drawable.ic_notification_rec)
       .setSilent(true)
       .setAutoCancel(true)
       .setContentIntent(open)
       .build()
     try {
-      NotificationManagerCompat.from(this).notify(CAP_NOTICE_ID, n)
+      NotificationManagerCompat.from(this).notify(END_NOTICE_ID, n)
     } catch (_: Exception) {
-      // POST_NOTIFICATIONS denied. The recording is kept and processed either way.
+      // POST_NOTIFICATIONS denied. The meeting says the same thing when it is opened.
     }
   }
 

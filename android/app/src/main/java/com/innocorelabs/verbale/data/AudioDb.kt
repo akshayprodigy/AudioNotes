@@ -529,6 +529,11 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     )
   }
 
+  /** How the recording ended — see EndNotice.stored. */
+  fun setEndReason(id: String, reason: String) {
+    db.execSQL("UPDATE meetings SET end_reason=? WHERE id=?", arrayOf<Any?>(reason, id))
+  }
+
   /** Track whether the raw PCM still exists, so the UI can offer/hide Reprocess honestly. */
   fun setAudioRetained(id: String, retained: Boolean) {
     db.execSQL(
