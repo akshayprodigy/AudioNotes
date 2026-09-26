@@ -271,11 +271,18 @@ test('choosing a meeting type writes it and remembers it for the meeting\'s tags
     'General', 'Stand-up', 'One-to-one', 'Client call', 'Interview', 'Lecture', 'Site walk',
   ]);
   const clientAction = picker!.props.actions.find((a: { label: string }) => a.label === 'Client call');
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   await act(async () => {
     clientAction.onPress();
   });
+  // The meeting already has a summary, and licence defaults to paid in tests: it asks first.
+  const buttons = alert.mock.calls[0][2] as { text: string; onPress?: () => void }[];
+  await act(async () => {
+    buttons.find(b => b.text === 'Change')!.onPress!();
+  });
   expect(db.setTemplate).toHaveBeenCalledWith('m1', 'client');
   expect(db.rememberTemplateForTags).toHaveBeenCalledWith('m1', 'client');
+  alert.mockRestore();
 });
 
 /**
