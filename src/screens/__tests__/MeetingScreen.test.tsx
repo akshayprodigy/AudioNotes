@@ -2,6 +2,7 @@ import React from 'react';
 import { Alert } from 'react-native';
 import renderer, { act } from 'react-test-renderer';
 import MeetingScreen from '../MeetingScreen';
+import SummaryTab from '../meeting/SummaryTab';
 import { db } from '../../db/queries';
 
 jest.mock('../../db/queries');
@@ -68,6 +69,7 @@ beforeEach(() => {
   (db.addSpeaker as jest.Mock).mockResolvedValue(null);
   (db.setTemplate as jest.Mock).mockResolvedValue(undefined);
   (db.rememberTemplateForTags as jest.Mock).mockResolvedValue(undefined);
+  (db.clearNarration as jest.Mock).mockResolvedValue(undefined);
 });
 
 /** A native event, delivered the way the phone would deliver it (jest.setup.js). */
@@ -670,5 +672,80 @@ describe('a correction offered as a rule', () => {
     expect(db.putEdit).toHaveBeenCalled();
     expect(Alert.alert).not.toHaveBeenCalled();
     expect(db.putVocabulary).not.toHaveBeenCalled();
+  });
+});
+
+const pipeline = () => (global as any).__TEST_NATIVE_MODULES__.AudioPipeline;
+const meetingWith = (over: Record<string, unknown>) => ({
+  id: 'm1', title: 'Standup', createdAt: 1, durationMs: 60_000, status: 'done',
+  tierUsed: 'free', language: 'en', audioPath: null, audioRetained: 1, ...over,
+});
+const pressLabel = async (tree: renderer.ReactTestRenderer, label: string) => {
+  const n = tree.root.findAll(x => x.props.label === label && typeof x.props.onPress === 'function')[0];
+  await act(async () => {
+    n.props.onPress();
+  });
+};
+
+describe('what a meeting with nothing written says', () => {
+  it('a crash says why and offers Try again — never "could not hear any speech"', async () => {
+    (db.getMeeting as jest.Mock).mockResolvedValue(
+      meetingWith({ status: 'failed', failReason: 'The phone ran out of memory while processing.' }),
+    );
+    (db.minutes as jest.Mock).mockResolvedValue([]);
+    const tree = await render();
+    const text = JSON.stringify(tree.toJSON());
+    expect(text).toContain("Didn't finish");
+    expect(text).toContain('ran out of memory');
+    expect(text).not.toContain('could not hear any speech');
+    await pressLabel(tree, 'Try again');
+    expect(pipeline().process).toHaveBeenCalledWith('m1', { model: 'base' });
+  });
+
+  it('a queued meeting is "not transcribed yet", with Process now', async () => {
+    (db.getMeeting as jest.Mock).mockResolvedValue(meetingWith({ status: 'captured' }));
+    (db.minutes as jest.Mock).mockResolvedValue([]);
+    const tree = await render();
+    await act(async () => {
+      emit('onStageComplete', { meetingId: 'm1', outcome: 'done' });
+    });
+    const text = JSON.stringify(tree.toJSON());
+    expect(text).toContain('Not transcribed yet');
+    expect(text).not.toContain('could not hear any speech');
+    await pressLabel(tree, 'Process now');
+    expect(pipeline().process).toHaveBeenCalledWith('m1', { model: 'base' });
+  });
+
+  it('no speech after a lost mic says both', async () => {
+    (db.getMeeting as jest.Mock).mockResolvedValue(meetingWith({ status: 'error', endReason: 'mic_lost' }));
+    (db.minutes as jest.Mock).mockResolvedValue([]);
+    const tree = await render();
+    const text = JSON.stringify(tree.toJSON());
+    expect(text).toContain('could not hear any speech');
+    expect(text).toContain('took the microphone');
+  });
+});
+
+describe('a finished meeting says how it ended and whether it was announced', () => {
+  it('shows the ending and the announcement lines', async () => {
+    (db.getMeeting as jest.Mock).mockResolvedValue(
+      meetingWith({ endReason: 'cap_reached', announceOutcome: 'not_heard' }),
+    );
+    const tree = await render();
+    const text = JSON.stringify(tree.toJSON());
+    expect(text).toContain('Stopped at the Free limit');
+    expect(text).toContain('Not announced: the recording did not pick the announcement up.');
+  });
+});
+
+describe('Write it again', () => {
+  it('keeps the summary and asks native for a forced narration', async () => {
+    const tree = await render();
+    await act(async () => {
+      tree.root.findByType(SummaryTab).props.onWrite();
+    });
+    expect(db.clearNarration).not.toHaveBeenCalled();
+    expect(pipeline().process).toHaveBeenCalledWith('m1', { model: 'base', force: true });
+    expect(JSON.stringify(tree.toJSON())).toContain('A short meeting about the report.');
   });
 });

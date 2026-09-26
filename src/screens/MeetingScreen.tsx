@@ -13,6 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { highlightsFor, type Mark } from './meeting/highlights';
+import { announceLine, endingNote, holdFor } from './meeting/meetingNotes';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { db } from '../db/queries';
 import { countsExcluding } from './threadData';
@@ -92,6 +93,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const [marks, setMarks] = useState<Mark[]>([]);
   const [speechMs, setSpeechMs] = useState(0);
   const [reprocessing, setReprocessing] = useState(false);
+  const [rewriting, setRewriting] = useState(false);
   const [stage, setStage] = useState<string | null>(null);
   /** The running stage's own counts, when it reports them; null after a stage change. */
   const [counts, setCounts] = useState<{ done: number; total: number } | null>(null);
@@ -99,7 +101,6 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const [rates, setRates] = useState<Partial<Record<string, number>>>({});
   /** Why the pipeline is paused for the phone's sake, or null. Seeded for a screen opened mid-pause. */
   const [paused, setPaused] = useState<PauseReason | null>(PipelineController.pausedReason(meetingId) ?? null);
-  const [failure, setFailure] = useState<string | null>(null);
   const [settled, setSettled] = useState(false);
   const [sheet, setSheet] = useState(false);
   // Summary unless the caller asked for somewhere specific. Nothing is REMEMBERED between visits:
@@ -390,7 +391,6 @@ export default function MeetingScreen({ route, navigation }: Props) {
       setPaused(null);
       setStage(null);
       setSettled(true);
-      if (e.outcome === 'error') setFailure(e.message ?? 'Processing failed');
       refresh();
     });
     return () => {
@@ -401,34 +401,39 @@ export default function MeetingScreen({ route, navigation }: Props) {
   }, [meetingId, refresh]);
 
   /**
-   * Run the pipeline again.
-   *
-   * `rewriteProse` clears the LLM rows first. Without it a meeting that already has a summary has
-   * no outstanding stages, so the run returns instantly and the button appears to do nothing —
-   * see db.clearNarration. The Summary tab passes it; the Redo button in the overflow sheet does
-   * not, because Redo is there to recover a run that fell over, not to spend eight minutes of
-   * model time on prose that is already written.
+   * Run any stage that has not finished — Redo, Try again, Process now. Never rewrites prose that
+   * is already written; that is onRewrite.
    */
-  const onReprocess = useCallback(
-    async (rewriteProse = false) => {
-      if (reprocessing) return;
-      setReprocessing(true);
-      setFailure(null);
-      try {
-        if (rewriteProse) {
-          await db.clearNarration(meetingId);
-          await refresh();
-        }
-        await PipelineController.process(meetingId, { model: 'base' });
-        await refresh();
-      } catch (e: any) {
-        Alert.alert('Could not reprocess', String(e?.message ?? e));
-      } finally {
-        setReprocessing(false);
-      }
-    },
-    [meetingId, refresh, reprocessing],
-  );
+  const onReprocess = useCallback(async () => {
+    if (reprocessing) return;
+    setReprocessing(true);
+    try {
+      await PipelineController.process(meetingId, { model: 'base' });
+      await refresh();
+    } catch (e: any) {
+      Alert.alert('Could not reprocess', String(e?.message ?? e));
+    } finally {
+      setReprocessing(false);
+    }
+  }, [meetingId, refresh, reprocessing]);
+
+  /**
+   * "Write it again". Narration re-runs over the summary that is there, which stays on screen and
+   * in the database until the new one replaces it in one transaction. A rewrite that cannot finish
+   * — Pro lapsed, the model gone, the process killed — leaves it exactly as it was.
+   */
+  const onRewrite = useCallback(async () => {
+    if (rewriting || reprocessing) return;
+    setRewriting(true);
+    try {
+      await PipelineController.process(meetingId, { model: 'base', force: true });
+      await refresh();
+    } catch (e: any) {
+      Alert.alert('Could not write it again', String(e?.message ?? e));
+    } finally {
+      setRewriting(false);
+    }
+  }, [meetingId, refresh, rewriting, reprocessing]);
 
   /**
    * Overrule a refusal we may have got wrong.
@@ -839,8 +844,20 @@ export default function MeetingScreen({ route, navigation }: Props) {
   // not hear any speech" — over the note they typed themselves. Before Task 12 that same note was
   // a `minutes` row and the tabs were drawn.
   const nothingWritten = minutes.length === 0 && items.length === 0;
-  const working = !refused && (stage !== null || reprocessing || (!settled && nothingWritten));
-  const empty = !refused && settled && !working && nothingWritten && utterances.length === 0;
+  // A rewrite keeps the summary on screen: its narrate progress must not swap the tabs for the
+  // progress view. Only a meeting still waiting may sit on the progress view before it settles —
+  // a crash or a silent recording is known the moment it is read.
+  const hold = holdFor(meeting);
+  const working =
+    !refused &&
+    ((stage !== null && !rewriting) ||
+      (paused !== null && !rewriting) ||
+      reprocessing ||
+      (!settled && nothingWritten && hold === 'waiting'));
+  const empty =
+    !refused && !working && nothingWritten && utterances.length === 0 && (settled || hold !== 'waiting');
+  const endNote = endingNote(meeting?.endReason, meeting?.durationMs ?? 0);
+  const announce = announceLine(meeting?.announceOutcome);
 
   /**
    * Per-meeting actions, in the overflow sheet.
@@ -1131,15 +1148,6 @@ export default function MeetingScreen({ route, navigation }: Props) {
         </View>
       ) : null}
 
-      {failure ? (
-        <View style={st.failCard}>
-          <Icon name="alert" size={s(18)} color={colors.danger} strokeWidth={2.4} />
-          <Txt variant="bodyStrong" color={colors.danger} style={st.flex}>
-            {failure}
-          </Txt>
-        </View>
-      ) : null}
-
       {refused ? (
         <View style={st.emptyWrap}>
           <Mascot mood="asleep" size={sv(130)} />
@@ -1169,16 +1177,81 @@ export default function MeetingScreen({ route, navigation }: Props) {
       ) : empty ? (
         <View style={st.emptyWrap}>
           <Mascot mood="asleep" size={sv(130)} />
-          <Txt variant="display" style={st.emptyTitle}>
-            Nothing to show
-          </Txt>
-          <Txt variant="body" color={colors.inkSoft} style={st.emptyBody}>
-            Pip could not hear any speech in this recording. If the mic was covered or the room was
-            very quiet, try again a little closer.
-          </Txt>
+          {hold === 'failed' ? (
+            <>
+              <Txt variant="display" style={st.emptyTitle}>
+                Didn't finish
+              </Txt>
+              <Txt variant="body" color={colors.inkSoft} style={st.emptyBody}>
+                {meeting?.failReason ?? 'Processing stopped unexpectedly. The recording is safe.'}
+              </Txt>
+              <Button label="Try again" onPress={() => onReprocess()} style={st.emptyAction} />
+            </>
+          ) : hold === 'waiting' ? (
+            <>
+              <Txt variant="display" style={st.emptyTitle}>
+                Not transcribed yet
+              </Txt>
+              <Txt variant="body" color={colors.inkSoft} style={st.emptyBody}>
+                It is processed on its own when the phone is free and the speech model is on the
+                phone. You can also start it now.
+              </Txt>
+              <Button label="Process now" onPress={() => onReprocess()} style={st.emptyAction} />
+            </>
+          ) : hold === 'no-audio' ? (
+            <>
+              <Txt variant="display" style={st.emptyTitle}>
+                Nothing was recorded
+              </Txt>
+              <Txt variant="body" color={colors.inkSoft} style={st.emptyBody}>
+                {endNote ?? 'The recording is empty.'}
+              </Txt>
+            </>
+          ) : (
+            <>
+              <Txt variant="display" style={st.emptyTitle}>
+                Nothing to show
+              </Txt>
+              <Txt variant="body" color={colors.inkSoft} style={st.emptyBody}>
+                Pip could not hear any speech in this recording. If the mic was covered or the room was
+                very quiet, try again a little closer.
+              </Txt>
+              {endNote ? (
+                <Txt variant="sub" color={colors.inkDim} style={st.emptyBody}>
+                  {endNote}
+                </Txt>
+              ) : null}
+            </>
+          )}
         </View>
       ) : (
         <>
+          {/* A run that crashed after writing something: the tabs show what exists, this says the rest. */}
+          {meeting?.status === 'failed' ? (
+            <View>
+              <View style={st.failCard}>
+                <Icon name="alert" size={s(18)} color={colors.danger} strokeWidth={2.4} />
+                <Txt variant="bodyStrong" color={colors.danger} style={st.flex}>
+                  {meeting.failReason ?? 'Processing stopped unexpectedly. The recording is safe.'}
+                </Txt>
+              </View>
+              <SoftButton icon="refresh" label="Try again" onPress={() => onReprocess()} />
+            </View>
+          ) : null}
+          {endNote ? (
+            <View style={st.forcedBanner}>
+              <Txt variant="sub" color={colors.inkSoft}>
+                {endNote}
+              </Txt>
+            </View>
+          ) : null}
+          {announce ? (
+            <View style={st.forcedBanner}>
+              <Txt variant="sub" color={announce.warn ? colors.warning : colors.inkDim}>
+                {announce.text}
+              </Txt>
+            </View>
+          ) : null}
           {/* Not dismissible: its whole purpose is to outlive the moment of the decision. The
               person who forced it knew; the person reading it three weeks later did not. */}
           {meeting?.transcribeForcedAt ? (
@@ -1215,7 +1288,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 onReview={() => navigation.navigate('Review', { meetingId })}
                 canPlay={player.available}
                 onRemoveMark={onRemoveMark}
-                onWrite={() => onReprocess(true)}
+                onWrite={onRewrite}
                 template={meeting?.template}
                 onChangeTemplate={onChangeTemplate}
                 onOpenTab={setTab}
@@ -1232,7 +1305,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 }
                 onRevert={kind => onRevertEdit(kind, DOC_KEY)}
                 onUpgrade={openPaywall}
-                writing={reprocessing}
+                writing={reprocessing || rewriting}
                 threads={threads}
                  onOpenThread={tag => navigation.navigate('Thread', { tag })}
                  voiceSuggestions={voiceSuggestions}
