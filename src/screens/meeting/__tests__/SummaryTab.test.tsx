@@ -139,32 +139,47 @@ describe('the meeting-type chip', () => {
     expect(actions.every(a => Boolean(a.hint))).toBe(true);
   });
 
-  test('choosing a type calls onChangeTemplate with its id', async () => {
+  test('on Pro, a type change over a summary asks first, then saves the type before writing', async () => {
     (entitlement as jest.Mock).mockResolvedValue({ paid: true });
-    const onChangeTemplate = jest.fn();
-    const tree = await renderTab({ onChangeTemplate });
-    const sheet = tree.root.findByType(Sheet);
-    const client = (sheet.props.actions as any[]).find(a => a.label === 'Client call');
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const onChangeTemplate = jest.fn().mockResolvedValue(undefined);
+    const onWrite = jest.fn();
+    const tree = await renderTab({ onChangeTemplate, onWrite });
+    const client = (tree.root.findByType(Sheet).props.actions as any[]).find(a => a.label === 'Client call');
     await act(async () => {
       client.onPress();
+    });
+    expect(alert.mock.calls[0][0]).toBe('Change to Client call?');
+    expect(onChangeTemplate).not.toHaveBeenCalled();
+    expect(onWrite).not.toHaveBeenCalled();
+    const buttons = alert.mock.calls[0][2] as { text: string; onPress?: () => void }[];
+    await act(async () => {
+      buttons.find(b => b.text === 'Change')!.onPress!();
     });
     expect(onChangeTemplate).toHaveBeenCalledWith('client');
+    expect(onWrite).toHaveBeenCalled();
+    expect(onChangeTemplate.mock.invocationCallOrder[0]).toBeLessThan(onWrite.mock.invocationCallOrder[0]);
   });
 
-  test('on Pro, choosing a type also triggers "Write it again"', async () => {
+  test('Cancel changes nothing', async () => {
     (entitlement as jest.Mock).mockResolvedValue({ paid: true });
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const onChangeTemplate = jest.fn();
     const onWrite = jest.fn();
-    const tree = await renderTab({ onWrite });
-    const sheet = tree.root.findByType(Sheet);
-    const client = (sheet.props.actions as any[]).find(a => a.label === 'Client call');
+    const tree = await renderTab({ onChangeTemplate, onWrite });
+    const client = (tree.root.findByType(Sheet).props.actions as any[]).find(a => a.label === 'Client call');
     await act(async () => {
       client.onPress();
     });
-    expect(onWrite).toHaveBeenCalled();
+    const buttons = alert.mock.calls[0][2] as { text: string; style?: string }[];
+    expect(buttons.find(b => b.text === 'Cancel')?.style).toBe('cancel');
+    expect(onChangeTemplate).not.toHaveBeenCalled();
+    expect(onWrite).not.toHaveBeenCalled();
   });
 
   test('on free, choosing a type relabels only — no rewrite', async () => {
     (entitlement as jest.Mock).mockResolvedValue({ paid: false });
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     const onChangeTemplate = jest.fn();
     const onWrite = jest.fn();
     const tree = await renderTab({ onChangeTemplate, onWrite });
@@ -175,6 +190,7 @@ describe('the meeting-type chip', () => {
     });
     expect(onChangeTemplate).toHaveBeenCalledWith('client');
     expect(onWrite).not.toHaveBeenCalled();
+    expect(alert).not.toHaveBeenCalled();
   });
 });
 

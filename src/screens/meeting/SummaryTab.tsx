@@ -113,7 +113,7 @@ export default function SummaryTab({
    * rather than by taking a second "is this Pro" prop — the licence check already lives here,
    * for the "Write it again" button beneath.
    */
-  onChangeTemplate?: (id: string) => void;
+  onChangeTemplate?: (id: string) => void | Promise<void>;
   /**
    * Up to three of this meeting's tags with another meeting in their thread (Phase 3), counted
    * EXCLUDING this meeting's own rows — MeetingScreen resolves this by calling db.thread per tag.
@@ -294,11 +294,28 @@ export default function SummaryTab({
     label: templateLabel(id),
     hint: templateHint(id),
     onPress: () => {
-      onChangeTemplate?.(id);
-      // Free relabels only — the narrative itself needs Pro to be rewritten. Gated on
-      // `paid`, not on `id` or on whether prose already exists: a paid meeting with no
-      // prose yet should still start narrating in the newly chosen shape.
-      if (paid) onWrite();
+      // Free relabels only — the narrative itself needs Pro to be rewritten.
+      if (!paid) {
+        onChangeTemplate?.(id);
+        return;
+      }
+      // Saved BEFORE the rewrite starts: the narrator reads the type from the meeting row.
+      const change = async () => {
+        await onChangeTemplate?.(id);
+        onWrite();
+      };
+      if (!prose) {
+        change();
+        return;
+      }
+      Alert.alert(
+        `Change to ${templateLabel(id)}?`,
+        'The summary is written again in this shape. The current one stays until the new one is ready.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Change', onPress: () => { change(); } },
+        ],
+      );
     },
   }));
 
