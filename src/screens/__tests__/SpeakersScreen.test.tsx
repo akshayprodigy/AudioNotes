@@ -45,6 +45,7 @@ beforeEach(() => {
   (db.renameSpeaker as jest.Mock).mockResolvedValue(undefined);
   (db.rememberVoice as jest.Mock).mockResolvedValue({ remembered: true });
   (db.answerSuggestion as jest.Mock).mockResolvedValue({ name: 'Priya' });
+  (db.mergeSpeakers as jest.Mock).mockResolvedValue(undefined);
   (entitlement as jest.Mock).mockResolvedValue({ paid: true });
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 });
@@ -145,4 +146,18 @@ test('no card on free', async () => {
   await act(async () => { input.props.onEndEditing({ nativeEvent: { text: 'Priya' } }); });
   expect(Alert.alert).not.toHaveBeenCalled();
   expect(db.rememberVoice).toHaveBeenCalledWith('s2', 'Priya');
+});
+
+test('merging names both speakers and asks first', async () => {
+  const tree = await render();
+  await act(async () => {
+    tree.root.findByProps({ accessibilityLabel: 'Merge Speaker 2 into the kept speaker' }).props.onPress();
+  });
+  const call = (Alert.alert as jest.Mock).mock.calls[0];
+  expect(call[0]).toBe('Merge Speaker 2 into Speaker 1?');
+  expect(db.mergeSpeakers).not.toHaveBeenCalled();
+  await act(async () => {
+    call[2].find((b: { text: string }) => b.text === 'Merge').onPress();
+  });
+  expect(db.mergeSpeakers).toHaveBeenCalledWith('m1', 's1', 's2');
 });

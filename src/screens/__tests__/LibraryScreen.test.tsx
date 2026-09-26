@@ -318,3 +318,19 @@ describe("the action tracker's front door", () => {
     await act(async () => tree.unmount());
   });
 });
+
+test('a crashed meeting reads DIDN\'T FINISH with its reason, not NO SPEECH', async () => {
+  (db.listMeetings as jest.Mock).mockResolvedValue([
+    {
+      id: 'f1', title: 'Crashed', createdAt: Date.now(), durationMs: 600_000, status: 'failed',
+      tierUsed: 'free', audioRetained: 1, language: 'en',
+      failReason: 'The phone ran out of memory while processing.',
+    },
+  ]);
+  const tree = await focusTheLibrary();
+  const text = JSON.stringify(tree.toJSON());
+  expect(text).toContain("DIDN'T FINISH");
+  expect(text).toContain('ran out of memory');
+  expect(text).not.toContain('NO SPEECH');
+  await act(async () => tree.unmount());
+});

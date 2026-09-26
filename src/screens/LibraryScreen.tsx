@@ -45,6 +45,9 @@ function statusOf(status: string, c: Colors) {
       return { label: 'READY', color: c.success, soft: c.successSoft, live: false };
     case 'error':
       return { label: 'NO SPEECH', color: c.warning, soft: c.warningSoft, live: false };
+    // A crash, which used to wear NO SPEECH. Not live: nothing is running until it is retried.
+    case 'failed':
+      return { label: "DIDN'T FINISH", color: c.danger, soft: c.dangerSoft, live: false };
     case 'recording':
       return { label: 'RECORDING', color: c.danger, soft: c.dangerSoft, live: true };
     case 'captured':
@@ -81,6 +84,8 @@ function subtitleOf(m: Meeting): string | null {
       return 'Writing down the words…';
     case 'diarized':
       return 'Telling the voices apart…';
+    case 'failed':
+      return m.failReason ?? 'Processing stopped. Open it to try again.';
     case 'unsupported_language':
       // Composed, never stored: see unsupportedLanguageShort. This row must say why it is not
       // READY, and the refusal explanation must not survive into a meeting that later transcribes.

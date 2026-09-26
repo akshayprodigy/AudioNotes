@@ -11,6 +11,7 @@ import { Button, IconButton, Pop, Raised, SoftButton, Txt } from '../components/
 import type { Speaker } from '../pipeline/types';
 import { font, radius, s, sv, tilt, useTheme, type Colors } from '../theme';
 import { entitlement } from '../billing/trial';
+import { confirmDestructive } from '../components/confirm';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Speakers'>;
 
@@ -84,10 +85,20 @@ export default function SpeakersScreen({ route, navigation }: Props) {
     load();
   }, [load]);
 
-  const merge = async (dropId: string) => {
-    if (!target || target === dropId) return;
-    await db.mergeSpeakers(meetingId, target, dropId);
-    load();
+  // One tap used to merge, and the dropped speaker's row is deleted — so name both and ask.
+  const merge = (dropId: string) => {
+    const keep = speakers.find(x => x.id === target);
+    const drop = speakers.find(x => x.id === dropId);
+    if (!keep || !drop || keep.id === drop.id) return;
+    confirmDestructive({
+      title: `Merge ${drop.displayName} into ${keep.displayName}?`,
+      message: `Everything ${drop.displayName} said will be marked as ${keep.displayName}. This cannot be undone.`,
+      confirmLabel: 'Merge',
+      onConfirm: async () => {
+        await db.mergeSpeakers(meetingId, keep.id, drop.id);
+        load();
+      },
+    });
   };
 
   const regenerate = async () => {

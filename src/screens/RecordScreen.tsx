@@ -20,6 +20,7 @@ import { PipelineController } from '../pipeline/PipelineController';
 import { db } from '../db/queries';
 import AudioPipeline from '../native/NativeAudioPipeline';
 import { provenanceLabel } from './meeting/ItemProvenance';
+import { endingNote } from './meeting/meetingNotes';
 import MicVisualizer from '../components/MicVisualizer';
 import LiveWaveform from '../components/LiveWaveform';
 import Mascot from '../components/Mascot';
@@ -68,13 +69,15 @@ const PROMISES: { icon: IconName; label: string; tone: 'primaryDeep' | 'success'
   { icon: 'list', label: 'You delete', tone: 'warning' },
 ];
 
-/** The three sentences the record screen may show, matching the notification's (strings.xml). */
+/** The sentences the record screen may show, matching the notification's (strings.xml). */
 export function warningText(w: { kind: string; minutesLeft: number }): string {
   switch (w.kind) {
     case 'storage':
       return `About ${w.minutesLeft} minutes of storage left.`;
     case 'loud':
       return 'Too loud — move the phone a little further from the speakers.';
+    case 'unannounced':
+      return 'The announcement was not heard — tell the room you are recording.';
     default:
       return 'Voices are faint — move the phone closer to the people talking.';
   }
@@ -189,16 +192,55 @@ export default function RecordScreen({ navigation }: Props) {
       .catch(() => {});
   }, [flashMark]);
 
+  // Set while this screen's own Stop is in flight: that ending is the person's own, and the
+  // Meeting screen it opens says the rest.
+  const stoppingRef = useRef(false);
+
+  // The recording ended while this screen was open and nobody here pressed Stop: the free limit,
+  // a lost mic, a full disk. Say why, make sure it is processing, and offer the meeting.
+  const explainEnding = useCallback(
+    async (meetingId: string) => {
+      const m = await db.getMeeting(meetingId).catch(() => undefined);
+      const note = endingNote(m?.endReason, m?.durationMs ?? 0);
+      if (!m || !note) return;
+      if (m.durationMs > 0) PipelineController.process(meetingId, { model: 'base' }).catch(() => {});
+      Alert.alert(
+        'Recording stopped',
+        note,
+        m.durationMs > 0
+          ? [
+              {
+                text: 'Open the meeting',
+                onPress: () =>
+                  navigation.reset({
+                    index: 1,
+                    routes: [{ name: 'Library' }, { name: 'Meeting', params: { meetingId } }],
+                  }),
+              },
+            ]
+          : [{ text: 'OK' }],
+      );
+    },
+    [navigation],
+  );
+
   // Native owns capture state: a meeting can be started from the floating bubble and can outlive
   // the JS context, so re-read on mount and on every resume.
   //
   // `onCaptureState` covers the case resume cannot: this screen is already open and visible when
-  // Stop is pressed on the notification or Pause on the bubble. Without it the screen kept
-  // counting a meeting that had already ended.
+  // the recording ends somewhere else — Stop on the notification, the free limit, a lost mic.
   useEffect(() => {
     sync();
     const emitter = new NativeEventEmitter(NativeModules.AudioPipeline);
-    const state = emitter.addListener('onCaptureState', () => sync());
+    const state = emitter.addListener('onCaptureState', () => {
+      const before = useRecordingStore.getState();
+      const ended = before.isRecording ? before.sessionId : null;
+      sync().then(() => {
+        if (ended && !stoppingRef.current && !useRecordingStore.getState().isRecording) {
+          explainEnding(ended);
+        }
+      });
+    });
     const sub = AppState.addEventListener('change', a => {
       if (a === 'active') sync();
     });
@@ -206,7 +248,7 @@ export default function RecordScreen({ navigation }: Props) {
       state.remove();
       sub.remove();
     };
-  }, [sync]);
+  }, [sync, explainEnding]);
 
   useEffect(() => {
     let alive = true;
@@ -235,7 +277,10 @@ export default function RecordScreen({ navigation }: Props) {
     setBusy(true);
     try {
       if (isRecording) {
-        const meetingId = await stop();
+        stoppingRef.current = true;
+        const meetingId = await stop().finally(() => {
+          stoppingRef.current = false;
+        });
         if (meetingId) {
           PipelineController.process(meetingId, { model: 'base' }).catch(() => {});
           // Navigate on the NEXT frame, not inside this handler.
