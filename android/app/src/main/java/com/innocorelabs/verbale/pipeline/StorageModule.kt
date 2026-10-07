@@ -36,6 +36,25 @@ class StorageModule(private val ctx: ReactApplicationContext) :
     }
   }
 
+  /**
+   * Several writes as one transaction (see the spec). `statementsJson` is `[{"sql": …, "params": […]}]`.
+   * A failure anywhere rolls back every statement and rejects, so a caller never sees half a change.
+   */
+  @ReactMethod
+  fun transaction(statementsJson: String, promise: Promise) {
+    try {
+      val arr = JSONArray(statementsJson)
+      val statements = List(arr.length()) { i ->
+        val o = arr.getJSONObject(i)
+        o.getString("sql") to parseArgs(o.getJSONArray("params").toString())
+      }
+      AudioDb.get(ctx).runTransaction(statements)
+      promise.resolve(null)
+    } catch (e: Exception) {
+      promise.reject("db_transaction", e)
+    }
+  }
+
   @ReactMethod
   fun reindex(meetingId: String, promise: Promise) {
     try {

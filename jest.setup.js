@@ -33,6 +33,7 @@ const mockNativeModules = {
     open: jest.fn(async () => {}),
     // The typed db layer in src/db parses this, so return a valid empty result set.
     query: jest.fn(async () => '[]'),
+    transaction: jest.fn(async () => {}),
     search: jest.fn(async () => '[]'),
     // A safe default: a screen that forgets to mock this sees the paywall, not data.
     thread: jest.fn(async () => '{"refusal":"NOT_PRO"}'),

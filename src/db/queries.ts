@@ -509,14 +509,38 @@ export const db = {
   deleteVocabulary: (id: string) => Storage.deleteVocabulary(id),
   applyVocabulary: (meetingId: string) => Storage.applyVocabulary(meetingId),
 
-  // Merge one speaker into another across all utterances, then drop the merged speaker row.
+  /**
+   * Merge one speaker into another across all utterances, then drop the merged speaker row.
+   *
+   * ONE TRANSACTION (Storage.transaction → AudioDb.runTransaction): a failure part-way used to
+   * leave lines pointing at a speaker row about to be deleted. And RECORDED, as `setLineSpeaker`
+   * records a hand assignment: a 'speaker' edit per moved line, which is what lets re-diarization
+   * (AudioDb.assignSpeakers, SpeakerRepair) keep the merge — `keepId` counts as protected because
+   * it is the target of a speaker edit. The edits are written FIRST, while the lines still say
+   * `dropId`, and any earlier hand assignment to `dropId` is repointed at `keepId`: SpeakerRepair
+   * discards an edit whose speaker row no longer exists.
+   */
   mergeSpeakers: async (meetingId: string, keepId: string, dropId: string) => {
-    await run('UPDATE utterances SET speaker_id = ? WHERE meeting_id = ? AND speaker_id = ?', [
-      keepId,
-      meetingId,
-      dropId,
-    ]);
-    await run('DELETE FROM speakers WHERE id = ?', [dropId]);
+    const now = Date.now();
+    const statements = [
+      {
+        sql:
+          'INSERT OR REPLACE INTO edits(meeting_id, target_kind, target_key, content, edited_at) ' +
+          "SELECT meeting_id, 'speaker', id, ?, ? FROM utterances WHERE meeting_id = ? AND speaker_id = ?",
+        params: [keepId, now, meetingId, dropId],
+      },
+      {
+        sql:
+          "UPDATE edits SET content = ?, edited_at = ? WHERE meeting_id = ? AND target_kind = 'speaker' AND content = ?",
+        params: [keepId, now, meetingId, dropId],
+      },
+      {
+        sql: 'UPDATE utterances SET speaker_id = ? WHERE meeting_id = ? AND speaker_id = ?',
+        params: [keepId, meetingId, dropId],
+      },
+      { sql: 'DELETE FROM speakers WHERE id = ?', params: [dropId] },
+    ];
+    await Storage.transaction(JSON.stringify(statements));
   },
 
   /**

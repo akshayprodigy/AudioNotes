@@ -7,6 +7,7 @@ import com.innocorelabs.verbale.billing.LicenceStore
 import com.innocorelabs.verbale.pipeline.DecisionLinks
 import com.innocorelabs.verbale.pipeline.DraftMinute
 import com.innocorelabs.verbale.pipeline.EmbedRuntime
+import com.innocorelabs.verbale.pipeline.ItemOwner
 import com.innocorelabs.verbale.pipeline.Minutes
 import com.innocorelabs.verbale.pipeline.Retriever
 import com.innocorelabs.verbale.pipeline.PeopleMatch
@@ -55,6 +56,20 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       }
     }
     return out.toString()
+  }
+
+  /**
+   * Run [statements] (SQL with bound arguments) as ONE transaction: every one is applied, or an
+   * exception rolls them all back. Writes only; the JS caller is `db.mergeSpeakers`.
+   */
+  fun runTransaction(statements: List<Pair<String, Array<String?>>>) {
+    db.beginTransaction()
+    try {
+      for ((sql, args) in statements) db.execSQL(sql, args)
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
   }
 
   /**
@@ -241,16 +256,12 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    */
   fun indexItems(meetingId: String) {
     indexDelete(meetingId, "item")
-    db.rawQuery(
-      "SELECT id, CASE WHEN gen_version=? THEN 0 ELSE anchor_start_ms END, text FROM items " +
-        "WHERE meeting_id=? AND review<>'rejected' ORDER BY anchor_start_ms",
-      arrayOf(Gen.USER, meetingId),
-    ).use { c ->
-      while (c.moveToNext()) {
-        indexInsert(meetingId, "item", c.getString(0), c.getLong(1), c.getString(2))
-      }
-    }
+    for (it in itemsForIndex(meetingId)) indexInsert(meetingId, "item", it.id, it.startMs, it.text)
   }
+
+  /** The meeting's speakers by id, for resolving an item's owner to the name they have NOW. */
+  private fun speakerNames(meetingId: String): Map<String, String?> =
+    speakers(meetingId).associate { it.id to it.displayName }
 
   /**
    * Minute content is stored as JSON — sometimes a bare string, sometimes an object or array.
@@ -395,11 +406,20 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
   /** Items as the embedder wants them: the same rows and the same moment rule as indexItems. */
   fun itemsForIndex(meetingId: String): List<IndexItem> {
     val out = ArrayList<IndexItem>()
+    // The owner is resolved from the speaker row, so a rename is what search finds and what the
+    // embedder reads; the stored text keeps the name it was extracted under (F14).
+    val names = speakerNames(meetingId)
     db.rawQuery(
-      "SELECT id, CASE WHEN gen_version=? THEN 0 ELSE anchor_start_ms END, text FROM items " +
+      "SELECT id, CASE WHEN gen_version=? THEN 0 ELSE anchor_start_ms END, text, owner_json FROM items " +
         "WHERE meeting_id=? AND review<>'rejected' ORDER BY anchor_start_ms",
       arrayOf(Gen.USER, meetingId),
-    ).use { c -> while (c.moveToNext()) out.add(IndexItem(c.getString(0), c.getLong(1), c.getString(2))) }
+    ).use { c ->
+      while (c.moveToNext()) {
+        val text = c.getString(2)
+        val owner = if (c.isNull(3)) null else c.getString(3)
+        out.add(IndexItem(c.getString(0), c.getLong(1), ItemOwner.resolve(text, owner, names)))
+      }
+    }
     return out
   }
 
@@ -1379,12 +1399,19 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     val itemType: String?,
     val status: String?,
     val dateNorm: Long?,
+    /** items.owner_json, and the name the speaker it points at carries NOW (F14); null when none. */
+    val ownerJson: String?,
+    val ownerName: String?,
+    /** Where it was said, or null for a row a person typed (no moment — F17). */
+    val anchorStartMs: Long?,
   )
 
   private fun threadItems(tag: String, kind: String, order: String): List<ThreadItem> {
     val out = ArrayList<ThreadItem>()
+    val namesByMeeting = HashMap<String, Map<String, String?>>()
     db.rawQuery(
-      "SELECT i.id, i.meeting_id, m.title, m.created_at, i.text, i.item_type, i.status, i.date_norm " +
+      "SELECT i.id, i.meeting_id, m.title, m.created_at, i.text, i.item_type, i.status, i.date_norm, " +
+        "i.owner_json, i.gen_version, i.anchor_start_ms " +
         "FROM items i JOIN meetings m ON m.id = i.meeting_id JOIN tags t ON t.meeting_id = m.id " +
         "LEFT JOIN item_done d ON d.meeting_id = i.meeting_id AND d.item_id = i.id " +
         "WHERE t.name = ? AND m.archived_at IS NULL AND i.kind = ? AND i.review <> '${Review.REJECTED}' " +
@@ -1393,12 +1420,19 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       arrayOf(tag, kind),
     ).use { c ->
       while (c.moveToNext()) {
+        val ownerJson = if (c.isNull(8)) null else c.getString(8)
+        val meetingId = c.getString(1)
+        val ownerName = ItemOwner.speakerId(ownerJson)?.let { id ->
+          namesByMeeting.getOrPut(meetingId) { speakerNames(meetingId) }[id]?.trim()?.takeIf { it.isNotEmpty() }
+        }
         out.add(
           ThreadItem(
-            c.getString(0), c.getString(1), c.getString(2), c.getLong(3), c.getString(4),
+            c.getString(0), meetingId, c.getString(2), c.getLong(3), c.getString(4),
             if (c.isNull(5)) null else c.getString(5),
             if (c.isNull(6)) null else c.getString(6),
             if (c.isNull(7)) null else c.getLong(7),
+            ownerJson, ownerName,
+            if (c.getString(9) == Gen.USER) null else c.getLong(10),
           ),
         )
       }
@@ -1445,7 +1479,9 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
           .put("itemId", r.itemId).put("meetingId", r.meetingId).put("meetingTitle", r.meetingTitle)
           .put("meetingAt", r.meetingAt).put("content", r.content)
           .put("itemType", r.itemType ?: JSONObject.NULL).put("status", r.status ?: JSONObject.NULL)
-          .put("dateNorm", r.dateNorm ?: JSONObject.NULL),
+          .put("dateNorm", r.dateNorm ?: JSONObject.NULL)
+          .put("ownerJson", r.ownerJson ?: JSONObject.NULL).put("ownerName", r.ownerName ?: JSONObject.NULL)
+          .put("anchorStartMs", r.anchorStartMs ?: JSONObject.NULL),
       )
     }
 
@@ -1473,6 +1509,8 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
           .put("itemId", r.itemId).put("meetingId", r.meetingId).put("meetingTitle", r.meetingTitle)
           .put("meetingAt", r.meetingAt).put("content", r.content)
           .put("itemType", r.itemType ?: JSONObject.NULL).put("status", r.status ?: JSONObject.NULL)
+          .put("ownerJson", r.ownerJson ?: JSONObject.NULL).put("ownerName", r.ownerName ?: JSONObject.NULL)
+          .put("anchorStartMs", r.anchorStartMs ?: JSONObject.NULL)
           .put("changes", changes ?: JSONObject.NULL),
       )
     }
@@ -1832,9 +1870,15 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     val sources: List<StoredSource>,
     val createdAt: Long,
     val touched: Boolean,
-    /** The classifier's five columns, as one — null until the Pro classifier has read the item. */
+    /**
+     * The typed record's five columns, as one — null until the Pro classifier has read the item
+     * or the rule pass has recorded who owns it (owner_json alone, see [classified]).
+     */
     val record: Classified? = null,
-  )
+  ) {
+    /** The Pro classifier has read this item. An owner-only record from the rule pass is not that. */
+    val classified: Boolean get() = record?.itemType != null
+  }
 
   /**
    * The typed record (evidence Phase B): item_type, status, owner_json, date_said, date_norm.
@@ -1925,8 +1969,11 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
               ticked ||                                   // ticked, by the item's id
               tickedByText.contains(ItemKey.of(text)) ||  // ticked before Task 8 migrated it
               edited,                                     // rewritten by hand
-            record = if (c.isNull(10)) null else Classified(
-              c.getString(10), if (c.isNull(11)) null else c.getString(11),
+            // A record exists when the classifier read the item (item_type) OR the rule pass
+            // recorded the speaker who owns it (owner_json alone, F14). The first is what the
+            // classifier and the review queue mean by "classified" — see [StoredItem.classified].
+            record = if (c.isNull(10) && c.isNull(12)) null else Classified(
+              if (c.isNull(10)) null else c.getString(10), if (c.isNull(11)) null else c.getString(11),
               if (c.isNull(12)) null else c.getString(12), if (c.isNull(13)) null else c.getString(13),
               if (c.isNull(14)) null else c.getLong(14),
             ),
@@ -1984,6 +2031,75 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     // The words did not change, so no vector did either; nothing to unstamp here.
   }
 
+  /**
+   * For a fresh row of a meeting: the owner_json that points at the speaker of the line the item
+   * came from, or null. Only an extracted action (never a hand-typed row, never a retained one
+   * from disk) can name a speaker, and only when its owner token is that speaker's own name.
+   */
+  private fun ruleOwnerResolver(meetingId: String): (Reconciler.Row) -> String? {
+    val utts = utterances(meetingId)
+    val names = speakerNames(meetingId)
+    return fun(r: Reconciler.Row): String? {
+      if (r.genVersion != null || r.item.kind != "action") return null
+      val src = r.item.sources.firstOrNull() ?: return null
+      val u = utts.firstOrNull { it.id == src.utteranceId }
+        ?: utts.firstOrNull { it.startMs <= src.startMs && src.startMs <= it.endMs }
+        ?: return null
+      return ItemOwner.ruleSpeakerJson(r.item.text, u.speakerId, u.speakerId?.let { names[it] })
+    }
+  }
+
+  /**
+   * Record, on items that predate F14, which speaker owns them — by the same test the extractor's
+   * first-person branch passes, while the name in the text still matches the speaker row.
+   *
+   * Runs immediately BEFORE a speaker is renamed: afterwards the old name is gone and so is the
+   * only evidence. Idempotent; never touches a row that already has an owner_json, a hand-typed
+   * row, or a rejected one.
+   */
+  fun adoptRuleOwners(meetingId: String): Int {
+    val names = speakerNames(meetingId)
+    val utts = utterances(meetingId)
+    var n = 0
+    for (item in items(meetingId)) {
+      if (item.kind != "action" || item.genVersion == Gen.USER || item.record != null) continue
+      val src = item.sources.firstOrNull() ?: continue
+      val u = utts.firstOrNull { it.id == src.utteranceId }
+        ?: utts.firstOrNull { it.startMs <= src.startMs && src.startMs <= it.endMs }
+        ?: continue
+      val json = ItemOwner.ruleSpeakerJson(item.text, u.speakerId, u.speakerId?.let { names[it] }) ?: continue
+      db.execSQL("UPDATE items SET owner_json=? WHERE id=? AND owner_json IS NULL", arrayOf<Any?>(json, item.id))
+      n++
+    }
+    return n
+  }
+
+  /** The meeting a speaker belongs to, or null. */
+  private fun meetingOfSpeaker(speakerId: String): String? =
+    db.rawQuery("SELECT meeting_id FROM speakers WHERE id=?", arrayOf(speakerId)).use { c ->
+      if (c.moveToFirst()) c.getString(0) else null
+    }
+
+  /**
+   * Rename a speaker, and carry the new name to everything that shows it.
+   *
+   * One transaction: [adoptRuleOwners] first (the old name is the evidence), the UPDATE, then
+   * [reindexMeeting], so a search for the new name finds the action and a search for the old one
+   * does not. The stored item text is untouched; every reader resolves the owner from the row.
+   */
+  fun renameSpeaker(speakerId: String, name: String) {
+    val meetingId = meetingOfSpeaker(speakerId)
+    db.beginTransaction()
+    try {
+      if (meetingId != null) adoptRuleOwners(meetingId)
+      db.execSQL("UPDATE speakers SET display_name=? WHERE id=?", arrayOf<Any?>(name, speakerId))
+      if (meetingId != null) reindexMeeting(meetingId)
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
+  }
+
   fun replaceItems(meetingId: String, genVersion: String, incoming: List<Minutes.Item>) {
     db.beginTransaction()
     try {
@@ -1993,7 +2109,11 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       db.execSQL("DELETE FROM items WHERE meeting_id=?", arrayOf<Any?>(meetingId))
 
       val now = System.currentTimeMillis()
+      // The speaker each fresh rule item's first-person owner IS, recorded while the names still
+      // agree with the text just extracted (F14). Rows that already carry a record keep it.
+      val ownerOf = ruleOwnerResolver(meetingId)
       for (r in plan.rows) {
+        val record = r.record ?: ownerOf(r)?.let { Classified(null, null, it, null, null) }
         // All 14 columns, named. The classifier's five are carried from the plan's row (null on a
         // fresh row) — Phase A left a warning here that a reprocess dropped them silently, and
         // this is where that stopped.
@@ -2010,7 +2130,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
             r.genVersion ?: genVersion,
             r.item.anchorStartMs, r.item.anchorEndMs,
             r.createdAt ?: now,
-            r.record?.itemType, r.record?.status, r.record?.ownerJson, r.record?.dateSaid, r.record?.dateNorm,
+            record?.itemType, record?.status, record?.ownerJson, record?.dateSaid, record?.dateNorm,
           ),
         )
         r.item.sources.forEachIndexed { i, s ->
@@ -2865,10 +2985,13 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     val now = System.currentTimeMillis()
     db.beginTransaction()
     try {
+      // Naming a speaker from a remembered voice is a rename like any other (F14).
+      meetingOfSpeaker(speakerId)?.let { adoptRuleOwners(it) }
       db.execSQL(
         "UPDATE speakers SET display_name=?, suggested_person=NULL WHERE id=?",
         arrayOf<Any?>(person.first, speakerId),
       )
+      meetingOfSpeaker(speakerId)?.let { reindexMeeting(it) }
       if (speakerVoice != null) {
         val oldVoice = VecCodec.decode(person.second)
         val newVoice = VecCodec.decode(speakerVoice)

@@ -6,6 +6,11 @@ export interface Spec extends TurboModule {
   open(): Promise<void>;
   // Typed query layer lives in src/db; this is the raw escape hatch.
   query(sql: string, params: string): Promise<string>; // params + result are JSON strings
+  // Several writes as ONE transaction: all of them or none. `statements` is a JSON array of
+  // {sql, params} (params a JSON array), run in order; any failure rolls the lot back and rejects.
+  // Writes only — there is no result set. For a change that must not be seen half done
+  // (db.mergeSpeakers); a single statement needs no transaction and uses `query`.
+  transaction(statements: string): Promise<void>;
   // Ranked full-text search across transcripts, minutes, titles and summaries (FTS5).
   // Returns a JSON array of SearchHit; see src/pipeline/types.ts.
   search(term: string): Promise<string>;
