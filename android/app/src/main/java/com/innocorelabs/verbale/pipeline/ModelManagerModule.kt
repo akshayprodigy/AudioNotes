@@ -61,10 +61,22 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
           // screens used to offer the writer to every phone and let the Summary tab break the
           // news after a 1.1 GB download; now the row carries the answer before the button.
           .put("unsupportedReason", DeviceFit.unsupportedReason(ctx, spec) ?: JSONObject.NULL)
-          .put("sizeBytes", spec.sizeBytes),
+          .put("sizeBytes", spec.sizeBytes)
+          // What is already on disk for this model: finished parts plus the partial file an
+          // interrupted download left, which download() resumes into with a Range request. It is
+          // how a screen can say "60% of 114 MB downloaded" about a download that is not running,
+          // and why "Resume" is a true label rather than a hopeful one.
+          .put("heldBytes", spec.parts.sumOf { p -> heldBytes(dir, p.filename, p.sizeBytes) }),
       )
     }
     promise.resolve(arr.toString())
+  }
+
+  /** Bytes of one part on disk: the whole file when complete, else whatever its .part holds. */
+  private fun heldBytes(dir: File, filename: String, sizeBytes: Long): Long {
+    val done = File(dir, filename)
+    if (done.exists() && done.length() == sizeBytes) return sizeBytes
+    return File(dir, "$filename.part").let { if (it.exists()) it.length().coerceIn(0L, sizeBytes) else 0L }
   }
 
   /**
