@@ -733,6 +733,30 @@ describe('what a meeting with nothing written says', () => {
   });
 });
 
+describe('a retry before the pipeline reports a stage', () => {
+  it('says Resuming… with no time or percentage, then prices the stage it is on', async () => {
+    (db.getMeeting as jest.Mock).mockResolvedValue(
+      meetingWith({ status: 'failed', failReason: 'The phone ran out of memory while processing.', durationMs: 5_400_000 }),
+    );
+    (db.minutes as jest.Mock).mockResolvedValue([]);
+    const tree = await render();
+    // The run stays in flight, so the screen is in its reprocessing state.
+    pipeline().process.mockReturnValueOnce(new Promise(() => {}));
+    await pressLabel(tree, 'Try again');
+    let text = JSON.stringify(tree.toJSON());
+    expect(text).toContain('Resuming…');
+    expect(text).not.toContain('min left');
+    expect(text).not.toMatch(/"%"/);
+
+    await act(async () => {
+      emit('onStageProgress', { meetingId: 'm1', stage: 'minutes', chunk: 0, total: 0 });
+    });
+    text = JSON.stringify(tree.toJSON());
+    expect(text).not.toContain('Resuming…');
+    expect(text).toContain('min left');
+  });
+});
+
 describe('a finished meeting says how it ended and whether it was announced', () => {
   it('shows the ending and the announcement lines', async () => {
     (db.getMeeting as jest.Mock).mockResolvedValue(

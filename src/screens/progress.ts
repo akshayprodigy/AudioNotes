@@ -80,12 +80,23 @@ export interface ProgressInput {
    * narrator steps). undefined when the stage has only said it started.
    */
   fraction?: number;
+  /**
+   * A Redo, Try again or Process now is in flight (`reprocessing`). Until the run reports its
+   * first stage there is nothing to price: the persisted status says where the LAST run stopped,
+   * and ResumePlan may skip every stage before it, so summing from there (a `failed` meeting reads
+   * as 'vad') promises the whole pipeline — about 131 minutes for 90 of audio. A live stage event
+   * ends this; it has no effect once one has arrived.
+   */
+  resuming?: boolean;
 }
 
 export interface Progress {
+  /** The running stage's position in STAGES, or -1 while only resuming (none is known to run). */
   index: number;
   pct: number;
   etaSec: number;
+  /** True while a retry has said nothing yet: show "Resuming…", no ETA, no percentage. */
+  resuming: boolean;
 }
 
 /** A stage's rate on this phone, or the shipped one. */
@@ -105,7 +116,8 @@ const RUNNING_GUESS = 0.4;
  * than assuming the first stage. Assuming was the bug: for a 90-minute meeting the next event was
  * half an hour away, so the screen claimed the first stage for half an hour.
  */
-export function progressFor({ liveStage, status, audioSec, rates, fraction }: ProgressInput): Progress {
+export function progressFor({ liveStage, status, audioSec, rates, fraction, resuming }: ProgressInput): Progress {
+  if (resuming && liveStage === null) return { index: -1, pct: 0, etaSec: 0, resuming: true };
   const key = liveStage ?? stageFromStatus(status);
   const found = STAGES.findIndex(x => x.key === key);
   const index = found < 0 ? 0 : found;
@@ -122,5 +134,5 @@ export function progressFor({ liveStage, status, audioSec, rates, fraction }: Pr
   const remainingRate = STAGES.slice(index).reduce((a, x) => a + rate(x), 0) - runningRate * through;
   const etaSec = audioSec > 0 ? Math.max(1, Math.round(remainingRate * audioSec)) : 0;
 
-  return { index, pct, etaSec };
+  return { index, pct, etaSec, resuming: false };
 }

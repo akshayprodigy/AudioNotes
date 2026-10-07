@@ -970,12 +970,14 @@ export default function MeetingScreen({ route, navigation }: Props) {
     // is the common case — so the persisted status decides, rather than assuming the first stage.
     // Assuming was the bug: a 90-minute meeting showed stage one for 78 minutes because the next
     // event was half an hour away. See src/screens/progress.ts.
-    const { index: idx, pct, etaSec: eta } = progressFor({
+    const { index: idx, pct, etaSec: eta, resuming } = progressFor({
       liveStage: stage,
       status: meeting?.status,
       audioSec: (meeting?.durationMs ?? 0) / 1000,
       rates,
       fraction: counts ? counts.done / counts.total : undefined,
+      // A retry that has not reported a stage yet has no honest ETA (F21).
+      resuming: reprocessing,
     });
 
     return (
@@ -1009,7 +1011,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
             </Txt>
             <View style={st.pctPill}>
               <Txt variant="metaBlack" color={colors.primary}>
-                {pct}%{paused ? '' : etaLabel(eta)}
+                {resuming ? 'Resuming…' : [pct, '%', paused ? '' : etaLabel(eta)]}
               </Txt>
             </View>
           </View>

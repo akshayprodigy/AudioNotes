@@ -125,3 +125,34 @@ describe('progress inside the running stage', () => {
     ).toBeLessThanOrEqual(99);
   });
 });
+
+/**
+ * F21 (N02): a Redo or Try again used to price the WHOLE pipeline until the first stage event,
+ * because a `failed` or finished meeting reads as stage 'vad' and `progressFor` sums every stage
+ * from there — about 131 minutes for 90 minutes of audio, when ResumePlan resumes much later. There
+ * is no honest number until the run says which stage it is on, so there is none.
+ */
+describe('a retry before its first stage event', () => {
+  it('is resuming: no ETA, no percentage, no stage marked as running', () => {
+    const p = progressFor({ liveStage: null, status: 'failed', audioSec: NINETY_MIN, resuming: true });
+    expect(p.resuming).toBe(true);
+    expect(p.etaSec).toBe(0);
+    expect(p.pct).toBe(0);
+    expect(p.index).toBe(-1);
+  });
+
+  it('prices the same retry from the whole pipeline when it is NOT flagged as resuming', () => {
+    // The over-large number this guards against: it is what the flag exists to hide.
+    const p = progressFor({ liveStage: null, status: 'failed', audioSec: NINETY_MIN });
+    expect(p.resuming).toBe(false);
+    expect(p.etaSec).toBeGreaterThan(100 * 60);
+  });
+
+  it('goes back to the normal arithmetic once a stage event has arrived', () => {
+    const p = progressFor({ liveStage: 'minutes', status: 'failed', audioSec: NINETY_MIN, resuming: true });
+    expect(p.resuming).toBe(false);
+    expect(STAGES[p.index].key).toBe('minutes');
+    expect(p.etaSec).toBeGreaterThan(0);
+    expect(p.etaSec).toBeLessThan(40 * 60);
+  });
+});
