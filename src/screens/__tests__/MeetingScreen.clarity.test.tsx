@@ -74,8 +74,109 @@ describe('the words on the tabs', () => {
   it('opens the Minutes tab for the old key and for the new spelling', async () => {
     for (const tab of ['mom', 'minutes']) {
       const tree = await open({ tab });
-      expect(allText(tree)).toContain('MINUTES');
+      // The Minutes tab's own furniture, not the Summary tab's.
+      expect(allText(tree)).toContain('Written minutes');
       await act(async () => tree.unmount());
     }
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Item 2 — lead with the takeaway, then decisions and next steps
+// ---------------------------------------------------------------------------------------------
+
+const item = (over: Record<string, unknown>) => ({
+  id: 'i1', meetingId: 'm1', kind: 'decision', text: 'We agreed to go with the agency quote of $4,500.',
+  review: 'suggested', genVersion: 'rules@1', itemType: null, status: null, ownerJson: null,
+  dateSaid: null, dateNorm: null, anchorStartMs: 5_000, anchorEndMs: 9_000,
+  sources: [{ startMs: 5_000, endMs: 9_000, charStart: 0, charEnd: 10, utteranceId: 'u1' }], ...over,
+});
+const FIXTURE = [
+  item({}),
+  item({ id: 'i2', kind: 'action', text: 'I will send the signed quote — Priya (due Wednesday)', anchorStartMs: 20_000 }),
+  item({ id: 'i3', kind: 'action', text: 'The review still needs to be booked — Unassigned', anchorStartMs: 30_000 }),
+  item({ id: 'i4', kind: 'action', text: 'I will share the checklist — Sam', anchorStartMs: 40_000 }),
+  item({ id: 'i5', kind: 'question', text: 'Do we need captions on it?', anchorStartMs: 50_000 }),
+];
+const texts = (t: renderer.ReactTestRenderer) =>
+  t.root.findAll(n => String(n.type) === 'Text').map(n => [n.props.children].flat().join(''));
+const headers = (t: renderer.ReactTestRenderer) =>
+  t.root
+    .findAll(n => String(n.type) === 'Text' && n.props.accessibilityRole === 'header')
+    .map(n => [n.props.children].flat().join(''));
+
+describe('the Minutes tab leads with the takeaway', () => {
+  beforeEach(() => {
+    (db.items as jest.Mock).mockResolvedValue(FIXTURE);
+    (db.minutes as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('opens with one takeaway, then Decisions, Next steps and Questions, in that order', async () => {
+    const tree = await open({ tab: 'mom' });
+    expect(headers(tree).slice(0, 4)).toEqual([
+      'Decided: We agreed to go with the agency quote of $4,500.',
+      'Decisions · 1',
+      'Next steps · 3',
+      'Questions · 1',
+    ]);
+    await act(async () => tree.unmount());
+  });
+
+  it('never leads with a count of what the app found', async () => {
+    const tree = await open({ tab: 'mom' });
+    expect(texts(tree).filter(x => /\d+ (action items?|decisions?|open questions?)\b/.test(x))).toEqual([]);
+    await act(async () => tree.unmount());
+  });
+
+  it('leads with the writer headline when the writer wrote one', async () => {
+    (db.minutes as jest.Mock).mockResolvedValue([
+      { id: 'h', meetingId: 'm1', kind: 'headline', content: 'The launch video is going ahead.', source: 'llm' },
+    ]);
+    const tree = await open({ tab: 'mom' });
+    expect(headers(tree)[0]).toBe('The launch video is going ahead.');
+    await act(async () => tree.unmount());
+  });
+
+  it('says "No owner yet" for an action nobody owns, names the owner and the due date where known, and nothing for a missing date', async () => {
+    const tree = await open({ tab: 'mom' });
+    const all = texts(tree);
+    expect(all).toContain('Priya · due Wednesday');
+    expect(all).toContain('No owner yet');
+    expect(all).toContain('Sam');
+    // A decision has no owner to be missing.
+    expect(all.filter(x => x === 'No owner yet')).toHaveLength(1);
+    // No due date was given for Sam's action, so the line carries no "due".
+    expect(all.filter(x => /due/.test(x))).toEqual(['Priya · due Wednesday']);
+    await act(async () => tree.unmount());
+  });
+
+  it('shows which next steps are done, in words', async () => {
+    (db.doneItems as jest.Mock).mockResolvedValue(new Set(['i4']));
+    const tree = await open({ tab: 'mom' });
+    expect(texts(tree).filter(x => x === 'Done')).toHaveLength(1);
+    await act(async () => tree.unmount());
+  });
+
+  it('keeps the source-audio link on every cited item', async () => {
+    const tree = await open({ tab: 'mom' });
+    const links = tree.root.findAll(
+      n => typeof n.type === 'string' && /^Show this in the transcript at/.test(String(n.props.accessibilityLabel ?? '')),
+    );
+    expect(links.length).toBe(5);
+    await act(async () => tree.unmount());
+  });
+});
+
+describe('the Summary tab shows what is in each count', () => {
+  it('puts the first decision beside its count', async () => {
+    (db.items as jest.Mock).mockResolvedValue(FIXTURE);
+    (db.minutes as jest.Mock).mockResolvedValue([]);
+    const tree = await open({ tab: 'summary' });
+    const all = texts(tree);
+    expect(all).toContain('Decisions · 1');
+    expect(all).toContain('We agreed to go with the agency quote of $4,500.');
+    expect(all).toContain('Next steps · 3');
+    expect(all).toContain('I will send the signed quote');
+    await act(async () => tree.unmount());
   });
 });

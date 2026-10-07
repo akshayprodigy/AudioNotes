@@ -24,11 +24,13 @@ import {
   EditedTag,
   Prose,
   ToolButton,
+  editTargetOf,
   editedText,
   isEdited,
   toItemRows,
   type EditMap,
 } from './shared';
+import { previewOf } from './takeaway';
 import { STALE_SUMMARY_COPY } from './correctionNotices';
 
 /**
@@ -192,9 +194,21 @@ export default function SummaryTab({
   // a meeting whose migration has not run — so counting its output makes this agree with the MOM
   // and Actions tabs by construction rather than by two tables happening to say the same thing.
   const rows = React.useMemo(() => toItemRows(items, minutes), [items, minutes]);
-  const actions = rows.filter(r => r.kind === 'action').length;
-  const decisions = rows.filter(r => r.kind === 'decision').length;
-  const questions = rows.filter(r => r.kind === 'question').length;
+  const actionRows = rows.filter(r => r.kind === 'action');
+  const decisionRows = rows.filter(r => r.kind === 'decision');
+  const questionRows = rows.filter(r => r.kind === 'question');
+  const actions = actionRows.length;
+  const decisions = decisionRows.length;
+  const questions = questionRows.length;
+  // The first of each, as one short line beside its count — "3 decisions" says something is there
+  // and the line says what. Under the person's own correction where there is one.
+  const previewFor = (list: typeof rows) =>
+    previewOf(
+      list.slice(0, 1).map(r => {
+        const t = editTargetOf(r);
+        return editedText(ed, t.kind, t.key, r.text) ?? r.text;
+      }),
+    );
 
   // Why there is no summary decides what we can honestly offer. A lapsed subscription is a
   // sentence, not a fix we can offer from here; a missing model is a Settings trip; a capable
@@ -574,26 +588,32 @@ export default function SummaryTab({
         <View style={st.glance}>
           <Glance
             icon="check"
-            n={actions}
-            label={actions === 1 ? 'action' : 'actions'}
-            color={colors.warning}
-            soft={colors.warningSoft}
-            onPress={() => onOpenTab('actions')}
-            c={colors}
-          />
-          <Glance
-            icon="check"
             n={decisions}
+            title="Decisions"
             label={decisions === 1 ? 'decision' : 'decisions'}
+            preview={previewFor(decisionRows)}
             color={colors.primary}
             soft={colors.primarySoft}
             onPress={() => onOpenTab('mom')}
             c={colors}
           />
           <Glance
+            icon="check"
+            n={actions}
+            title="Next steps"
+            label={actions === 1 ? 'action' : 'actions'}
+            preview={previewFor(actionRows)}
+            color={colors.warning}
+            soft={colors.warningSoft}
+            onPress={() => onOpenTab('actions')}
+            c={colors}
+          />
+          <Glance
             icon="help"
             n={questions}
+            title="Open questions"
             label="open"
+            preview={previewFor(questionRows)}
             color={colors.success}
             soft={colors.successSoft}
             onPress={() => onOpenTab('actions')}
@@ -661,7 +681,9 @@ export default function SummaryTab({
 function Glance({
   icon,
   n,
+  title,
   label,
+  preview,
   color,
   soft,
   onPress,
@@ -669,7 +691,12 @@ function Glance({
 }: {
   icon: IconName;
   n: number;
+  /** The row's heading: "Decisions", "Next steps", "Open questions". */
+  title: string;
+  /** What a screen reader calls the count: "3 decisions". */
   label: string;
+  /** The first item, one line. Empty when there is none. */
+  preview: string;
   color: string;
   soft: string;
   onPress: () => void;
@@ -678,23 +705,24 @@ function Glance({
   const st = React.useMemo(() => makeStyles(c), [c]);
   return (
     <Pressable
-      style={st.glanceFlex}
+      style={st.glanceRow}
       accessibilityRole="button"
-      accessibilityLabel={`${n} ${label}`}
+      accessibilityLabel={preview ? `${n} ${label}: ${preview}` : `${n} ${label}`}
       onPress={onPress}>
-      <Raised edge={c.line} fill={c.card} rad={radius.xl} depth={4}>
-        <View style={st.glanceCard}>
-          <View style={[st.glanceIcon, { backgroundColor: soft }]}>
-            <Icon name={icon} size={s(14)} color={color} strokeWidth={2.8} />
-          </View>
-          <Txt variant="statNumSm" color={c.ink}>
-            {n}
+      <View style={[st.glanceIcon, { backgroundColor: soft }]}>
+        <Icon name={icon} size={s(14)} color={color} strokeWidth={2.8} />
+      </View>
+      <View style={st.glanceText}>
+        <Txt variant="bodyBlack" color={c.ink}>
+          {`${title} · ${n}`}
+        </Txt>
+        {preview ? (
+          <Txt variant="chipSoft" color={c.inkSoft} numberOfLines={1}>
+            {preview}
           </Txt>
-          <Txt variant="chipSoft" color={c.inkDim}>
-            {label}
-          </Txt>
-        </View>
-      </Raised>
+        ) : null}
+      </View>
+      <Icon name="chevronRight" size={s(16)} color={c.inkFaint} strokeWidth={2.6} />
     </Pressable>
   );
 }
@@ -725,16 +753,15 @@ function makeStyles(_c: Colors) {
     note: { opacity: 0.85 },
     lapsed: { textAlign: 'center', paddingHorizontal: s(12) },
     threads: { gap: s(6), marginBottom: s(2) },
-    glance: { flexDirection: 'row', gap: s(10) },
-    glanceFlex: { flex: 1 },
-    glanceCard: { paddingVertical: s(12), alignItems: 'center', gap: s(4) },
+    glance: { gap: s(4) },
+    glanceRow: { flexDirection: 'row', alignItems: 'center', gap: s(12), paddingVertical: s(10), minHeight: s(48) },
+    glanceText: { flex: 1, flexShrink: 1 },
     glanceIcon: {
-      width: s(26),
-      height: s(26),
+      width: s(28),
+      height: s(28),
       borderRadius: s(9),
       alignItems: 'center',
       justifyContent: 'center',
-      marginBottom: s(2),
     },
   });
 }

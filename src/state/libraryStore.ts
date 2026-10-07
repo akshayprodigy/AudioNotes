@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { db, type MeetingSort } from '../db/queries';
+import { cardPreviews, withPreviews } from '../db/cardPreviews';
 import type { Meeting } from '../pipeline/types';
 
 /**
@@ -121,7 +122,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       // A tag whose last meeting was just deleted stops existing. Dropping the filter is the only
       // way back: the list would otherwise be empty with no way to see it was being filtered.
       if (tag && !tags.some(t => t.name === tag)) tag = null;
-      const meetings = await db.listMeetings(sort, tag);
+      const listed = await db.listMeetings(sort, tag);
+      // A finished meeting the writer gave no headline (Free, or a phone that cannot run it) still
+      // says something on its card: its first decision, else its first next step.
+      const previews = await cardPreviews().catch(() => new Map());
+      const meetings = withPreviews(listed, previews);
       set({ meetings, tags, tag, sort, loading: false });
     } catch {
       set({ loading: false });

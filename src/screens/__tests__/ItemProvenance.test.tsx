@@ -784,7 +784,8 @@ describe('the Summary tab’s counters', () => {
   const glances = (tree: renderer.ReactTestRenderer): string[] =>
     tree.root
       .findAllByProps({ accessibilityRole: 'button' }, { deep: false })
-      .map(b => String(b.props.accessibilityLabel))
+      // "3 decisions: We agreed…" — the count, then the first item beside it (Workstream D).
+      .map(b => String(b.props.accessibilityLabel).split(':')[0])
       .filter(l => /^\d+ (actions?|decisions?|open)$/.test(l));
 
   /**
@@ -804,7 +805,7 @@ describe('the Summary tab’s counters', () => {
 
     const tree = await render({ tab: 'summary' });
 
-    expect(glances(tree)).toEqual(['3 actions', '0 decisions', '0 open']);
+    expect(glances(tree)).toEqual(['0 decisions', '3 actions', '0 open']);
     await act(async () => tree.unmount());
   });
 
@@ -818,7 +819,7 @@ describe('the Summary tab’s counters', () => {
 
     const tree = await render({ tab: 'summary' });
 
-    expect(glances(tree)).toEqual(['1 action', '1 decision', '0 open']);
+    expect(glances(tree)).toEqual(['1 decision', '1 action', '0 open']);
     await act(async () => tree.unmount());
   });
 
@@ -920,7 +921,7 @@ describe('the Summary tab’s counters', () => {
 
     const tree = await render({ tab: 'summary' });
 
-    expect(glances(tree)).toEqual(['1 action', '0 decisions', '0 open']);
+    expect(glances(tree)).toEqual(['0 decisions', '1 action', '0 open']);
     await act(async () => tree.unmount());
   });
 
@@ -939,7 +940,7 @@ describe('the Summary tab’s counters', () => {
 
     const tree = await render({ tab: 'summary' });
 
-    expect(glances(tree)).toEqual(['1 action', '1 decision', '0 open']);
+    expect(glances(tree)).toEqual(['1 decision', '1 action', '0 open']);
     await act(async () => tree.unmount());
   });
 });

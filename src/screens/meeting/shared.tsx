@@ -4,6 +4,7 @@ import Icon, { type IconName } from '../../components/Icon';
 import { Raised, Txt } from '../../components/ui';
 import { radius, s, type Colors } from '../../theme';
 import { MINUTE_SOURCE_USER, USER_GEN } from '../../pipeline/types';
+import Heading from './Heading';
 import { labelsFor, type Labels, type RecordSummary } from './recordLabels';
 import type { Edit, EditTarget, Item, ItemKind, Minute } from '../../pipeline/types';
 
@@ -617,11 +618,14 @@ export function DocItem({
   onRemove,
   provenance,
   labels,
+  done,
 }: {
   kind: string;
   colors: Colors;
   /** The text to show — the user's correction where there is one. */
   content: string;
+  /** An action that has been ticked off. Said in words and an icon, never by colour alone. */
+  done?: boolean;
   edited?: boolean;
   /** This row was typed by the user rather than pulled out of the transcript. */
   mine?: boolean;
@@ -636,6 +640,7 @@ export function DocItem({
   const st = React.useMemo(() => makeStyles(colors), [colors]);
   const meta = kindMeta(kind, colors);
   const { text, owner, due } = splitAction(content);
+  const isAction = kind === 'action';
   const lab = labels ?? {};
   const wears = Boolean(lab.type || lab.status || lab.day);
   const body = (
@@ -643,12 +648,22 @@ export function DocItem({
       <View style={[st.rule, { backgroundColor: meta.color }]} />
       <View style={st.flex}>
         <Txt variant="prose">{sentenceCase(text)}</Txt>
-        {owner || due || provenance || wears ? (
+        {owner || due || provenance || wears || isAction || done ? (
           <View style={st.metaRow}>
-            {owner || due ? (
-              <Txt variant="chipSoft" color={colors.inkDim}>
-                {[owner, due].filter(Boolean).join(' · ')}
+            {/* An action nobody has taken says so, quietly; it is not an error and it is not
+                invented. A due date nobody gave says nothing at all. */}
+            {owner || due || isAction ? (
+              <Txt variant="chipSoft" color={owner ? colors.inkSoft : colors.inkDim} style={st.shrink}>
+                {[owner ?? (isAction ? NO_OWNER_YET : null), due].filter(Boolean).join(' · ')}
               </Txt>
+            ) : null}
+            {done ? (
+              <View style={st.doneMark}>
+                <Icon name="check" size={s(12)} color={colors.success} strokeWidth={3} />
+                <Txt variant="chipSoft" color={colors.success}>
+                  Done
+                </Txt>
+              </View>
             ) : null}
             <RecordChips labels={lab} colors={colors} />
             {provenance}
@@ -677,6 +692,50 @@ export function DocItem({
       }}>
       {body}
     </Pressable>
+  );
+}
+
+/** What an action with no owner says. Quiet, and the truth: the extractor could not tell. */
+export const NO_OWNER_YET = 'No owner yet';
+
+/**
+ * A section's title with its count, and — where the items are not on screen — the first one.
+ *
+ * "Decisions · 3" and, beneath it, what the first decision says: a count alone tells a person that
+ * something is there, and the first line tells them whether it is worth opening. A heading for a
+ * screen reader.
+ */
+export function SectionTitle({
+  label,
+  count,
+  preview,
+  right,
+  colors,
+  style,
+}: {
+  label: string;
+  count?: number;
+  /** One line of the first item. Omit where the items themselves are drawn right below. */
+  preview?: string;
+  right?: React.ReactNode;
+  colors: Colors;
+  style?: object;
+}) {
+  const st = React.useMemo(() => makeStyles(colors), [colors]);
+  return (
+    <View style={style}>
+      <View style={st.head}>
+        <Heading variant="bodyBlack" style={st.shrink}>
+          {count !== undefined ? `${label} · ${count}` : label}
+        </Heading>
+        {right ?? null}
+      </View>
+      {preview ? (
+        <Txt variant="chipSoft" color={colors.inkSoft} numberOfLines={1}>
+          {preview}
+        </Txt>
+      ) : null}
+    </View>
   );
 }
 
@@ -783,7 +842,9 @@ function makeStyles(_c: Colors) {
       gap: s(10),
       marginTop: s(4),
     },
-    head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: s(10) },
+    shrink: { flexShrink: 1 },
+    doneMark: { flexDirection: 'row', alignItems: 'center', gap: s(4) },
     empty: { padding: s(22), alignItems: 'center', gap: s(8) },
     emptyText: { textAlign: 'center' },
     editedRow: { flexDirection: 'row', alignItems: 'center', gap: s(12), marginTop: s(6) },

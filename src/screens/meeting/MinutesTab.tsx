@@ -1,6 +1,9 @@
 import React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Raised, SoftButton, Txt } from '../../components/ui';
+import { db } from '../../db/queries';
+import Heading from './Heading';
+import { takeawayOf } from './takeaway';
 import { radius, s, useTheme, type Colors } from '../../theme';
 import type { Item, Minute, MinuteKind, Speaker } from '../../pipeline/types';
 import {
@@ -8,7 +11,7 @@ import {
   DocItem,
   EditedTag,
   Prose,
-  SectionHead,
+  SectionTitle,
   ToolButton,
   editTargetOf,
   editedText,
@@ -22,7 +25,12 @@ import { namesOf, resolveOwnerText } from '../../pipeline/itemOwner';
 import { labelsFor } from './recordLabels';
 
 /**
- * MOM — the document you would send someone.
+ * Minutes — the document you would send someone.
+ *
+ * It opens with ONE takeaway and then what a reader came for, in the order they will act on it:
+ * the decisions, the next steps (each with who owns it, when, and whether it is done), the open
+ * questions. The written prose, where the model wrote some, follows; a meeting that has none is
+ * not made to look like it is missing something.
  *
  * Read-only by design. The Actions tab is where items get worked; a document that doubles as a
  * checklist reads as neither, which is the whole reason these are two tabs and not one.
@@ -37,6 +45,7 @@ import { labelsFor } from './recordLabels';
  * which task removes each.
  */
 export default function MinutesTab({
+  meetingId,
   items,
   minutes,
   onExport,
@@ -52,6 +61,8 @@ export default function MinutesTab({
   canPlay,
   speakers,
 }: {
+  /** Which meeting's ticks to read, so a next step shows whether it is done. */
+  meetingId?: string;
   items: Item[];
   minutes: Minute[];
   /** The meeting's speakers, so an owner shows the name they have NOW (F14). */
@@ -92,6 +103,38 @@ export default function MinutesTab({
   const names = React.useMemo(() => namesOf(speakers ?? []), [speakers]);
   const decisions = rows.filter(r => r.kind === 'decision');
   const actions = rows.filter(r => r.kind === 'action');
+  const questions = rows.filter(r => r.kind === 'question');
+
+  // Ticks, read the way the Actions tab reads them: by item id where the row has one, by the hash
+  // of its stored text where it has none. Read once per opening; this tab does not write them.
+  const [doneIds, setDoneIds] = React.useState<Set<string>>(new Set());
+  const [doneTexts, setDoneTexts] = React.useState<Set<string>>(new Set());
+  React.useEffect(() => {
+    if (!meetingId) return;
+    let alive = true;
+    Promise.all([db.doneItems(meetingId), db.doneActions(meetingId)])
+      .then(([ids, texts]) => {
+        if (!alive) return;
+        setDoneIds(ids);
+        setDoneTexts(texts);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [meetingId]);
+  const isDone = (r: ItemRow) => (r.itemId ? doneIds.has(r.itemId) : doneTexts.has(r.textKey));
+
+  /** What a row says now: its correction, with the owner under the name its speaker has today. */
+  const shown = (r: ItemRow) => {
+    const t = editTargetOf(r);
+    return resolveOwnerText(editedText(ed, t.kind, t.key, r.text) ?? r.text, r.ownerJson, names);
+  };
+  const takeaway = takeawayOf({
+    minutes,
+    decisions: decisions.map(shown),
+    actions: actions.map(shown),
+  });
 
   /** One item, with the user's correction over it and their own rows marked as theirs. */
   const item = (r: ItemRow) => {
@@ -104,7 +147,8 @@ export default function MinutesTab({
       key={r.key}
       kind={r.kind}
       colors={colors}
-      content={resolveOwnerText(editedText(ed, t.kind, t.key, r.text) ?? r.text, r.ownerJson, names)}
+      content={shown(r)}
+      done={r.kind === 'action' && isDone(r)}
       edited={isEdited(ed, t.kind, t.key)}
       mine={r.mine}
       labels={labelsFor(r.record)}
@@ -131,10 +175,70 @@ export default function MinutesTab({
 
   return (
     <ScrollView contentContainerStyle={st.pad} showsVerticalScrollIndicator={false}>
+      {/* The one thing to take away, before any section. Nothing when there is nothing to say —
+          never a tally of what the app extracted. */}
+      {takeaway ? (
+        <Heading variant="cardTitle" style={st.takeaway}>
+          {takeaway}
+        </Heading>
+      ) : null}
+
+      {decisions.length === 0 && onAdd ? (
+        <ToolButton
+          icon="plus"
+          label="Add a decision"
+          hint="Add a decision the app did not pick up"
+          colors={colors}
+          onPress={() => onAdd('decision')}
+        />
+      ) : null}
+
+      {decisions.length > 0 ? (
+        <Raised edge={colors.line} fill={colors.card} rad={radius.card24} depth={5}>
+          <View style={st.doc}>
+            <SectionTitle
+              label="Decisions"
+              count={decisions.length}
+              colors={colors}
+              right={
+                onAdd ? (
+                  <ToolButton
+                    icon="plus"
+                    label="Add"
+                    hint="Add a decision the app did not pick up"
+                    colors={colors}
+                    onPress={() => onAdd('decision')}
+                  />
+                ) : undefined
+              }
+            />
+            <View style={st.list}>{decisions.map(item)}</View>
+          </View>
+        </Raised>
+      ) : null}
+
+      {actions.length > 0 ? (
+        <Raised edge={colors.line} fill={colors.card} rad={radius.card24} depth={5}>
+          <View style={st.doc}>
+            <SectionTitle label="Next steps" count={actions.length} colors={colors} />
+            <View style={st.list}>{actions.map(item)}</View>
+          </View>
+        </Raised>
+      ) : null}
+
+      {questions.length > 0 ? (
+        <Raised edge={colors.line} fill={colors.card} rad={radius.card24} depth={5}>
+          <View style={st.doc}>
+            <SectionTitle label="Questions" count={questions.length} colors={colors} />
+            <View style={st.list}>{questions.map(item)}</View>
+          </View>
+        </Raised>
+      ) : null}
+
       <Raised edge={colors.line} fill={colors.card} rad={radius.card24} depth={5}>
         <View style={st.doc}>
-          <SectionHead
-            label="MINUTES"
+          <SectionTitle
+            label="Written minutes"
             colors={colors}
             right={
               <View style={st.tools}>
@@ -174,56 +278,13 @@ export default function MinutesTab({
                 No written minutes for this meeting
               </Txt>
               <Txt variant="body" color={colors.inkSoft}>
-                The decisions and actions below were pulled out of the transcript by rule. Writing
+                The decisions and next steps above were pulled out of the transcript by rule. Writing
                 them up in plain English needs the language model.
               </Txt>
             </>
           )}
         </View>
       </Raised>
-
-      {decisions.length === 0 && onAdd ? (
-        <ToolButton
-          icon="plus"
-          label="Add a decision"
-          hint="Add a decision the app did not pick up"
-          colors={colors}
-          onPress={() => onAdd('decision')}
-        />
-      ) : null}
-
-      {decisions.length > 0 ? (
-        <Raised edge={colors.line} fill={colors.card} rad={radius.card24} depth={5}>
-          <View style={st.doc}>
-            <SectionHead
-              label="DECISIONS"
-              count={decisions.length}
-              colors={colors}
-              right={
-                onAdd ? (
-                  <ToolButton
-                    icon="plus"
-                    label="Add"
-                    hint="Add a decision the app did not pick up"
-                    colors={colors}
-                    onPress={() => onAdd('decision')}
-                  />
-                ) : undefined
-              }
-            />
-            <View style={st.list}>{decisions.map(item)}</View>
-          </View>
-        </Raised>
-      ) : null}
-
-      {actions.length > 0 ? (
-        <Raised edge={colors.line} fill={colors.card} rad={radius.card24} depth={5}>
-          <View style={st.doc}>
-            <SectionHead label="ACTION ITEMS" count={actions.length} colors={colors} />
-            <View style={st.list}>{actions.map(item)}</View>
-          </View>
-        </Raised>
-      ) : null}
 
       <SoftButton icon="share" label="Export minutes" onPress={onExport} />
     </ScrollView>
@@ -237,6 +298,7 @@ function makeStyles(_c: Colors) {
     // twenty-nine separately raised, separately tilted cards read as a pile.
     doc: { padding: s(18), gap: s(14) },
     list: { gap: s(14) },
+    takeaway: { paddingHorizontal: s(4) },
     tools: { flexDirection: 'row', gap: s(14) },
   });
 }

@@ -1346,6 +1346,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
                />
             ) : tab === 'mom' ? (
               <MinutesTab
+                meetingId={meetingId}
                 items={items}
                 minutes={minutes}
                 onExport={onExport}
