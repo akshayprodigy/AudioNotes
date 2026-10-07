@@ -1,20 +1,21 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { NativeEventEmitter, NativeModules, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import ModelManager from '../native/NativeModelManager';
-import AudioPipeline from '../native/NativeAudioPipeline';
 import Licence from '../native/NativeLicence';
 import Icon, { type IconName } from '../components/Icon';
 import Mascot from '../components/Mascot';
 import { Button, Pop, ProgressBar, Raised, SoftButton, Switch, Txt } from '../components/ui';
 import { downloadLabel, downloadPct } from './downloadLabel';
+import { runDownloads, useDownloadStore } from '../setup/essentialDownload';
+import { SAMPLE_ID } from '../sample/sampleId';
+import { seedSample } from '../sample/seedSample';
+import FirstRecordingNote from '../setup/FirstRecordingNote';
 import { runnable, sizeMb, spaceFits, spaceReason, writerBlockedReason, type DeviceFit } from './deviceFit';
 import { db } from '../db/queries';
 import SignInForm from '../billing/SignInForm';
-import { playAvailable, playPlans } from '../billing/subscription';
-import { trialLength, trialPlan } from '../billing/trialTerms';
 import { crashReportingAvailable, setCrashConsent } from '../telemetry/crash';
 import { radius, s, sv, useTheme, type Colors } from '../theme';
 
@@ -75,22 +76,18 @@ export default function OnboardingScreen({ navigation }: Props) {
   const st = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const [status, setStatus] = useState<'intro' | 'downloading' | 'done' | 'failed'>('intro');
-  // Bytes rather than a percentage: the first-run download is 114 MB and the writer, if it is
-  // switched on, adds 1.1 GB. See downloadLabel for why the megabytes carry the reassurance.
-  const [bytes, setBytes] = useState({ downloaded: 0, total: 0 });
-  const [step, setStep] = useState(0);
-  const [current, setCurrent] = useState('');
+  // The download itself lives in src/setup/essentialDownload, outside this screen: the Library's
+  // readiness card and the Record screen read the same run, so leaving this screen mid-download
+  // (or skipping, or the process dying) leaves something the rest of the app can see and resume.
+  // What this screen shows of it is the megabytes rather than a percentage, because the first-run
+  // download is 114 MB and the writer, if it is switched on, adds 1.1 GB. See downloadLabel.
+  const run = useDownloadStore();
+  const bytes = run.live ?? { downloaded: 0, total: 0 };
   const [essentials, setEssentials] = useState<Essential[]>([]);
   /**
-   * What this run is actually downloading, frozen at the moment the button was pressed.
-   *
-   * The progress line used to read "6 of 5": it counted `essentials` while the loop walked
-   * `chosen`, which is `essentials` PLUS the writer model when a subscriber leaves that switch
-   * on. Two lists describing one download will always drift, so there is now one — the loop and
-   * the counter read the same array, and it cannot change underneath them if the licence check
-   * or the catalog resolves late.
+   * Writer-kind and larger-transcriber models are NOT in the first screen's plan. They are what
+   * Pro adds, and they appear under "More options" for a phone that can run them or a subscriber.
    */
-  const [plan, setPlan] = useState<Essential[]>([]);
   const [writer, setWriter] = useState<Essential[]>([]);
   // The rest of what a subscription pays for — today that is whisper-small alone. Separate from
   // `writer` because the switch belongs to the writer: the Pro screen sells the larger
@@ -102,42 +99,25 @@ export default function OnboardingScreen({ navigation }: Props) {
   // `llm`-kind model, runs anywhere and stays in the plan.
   const writerBlocked = writerBlockedReason(writer);
   // The phone itself: whether the engines can run on its processor at all, and the disk that is
-  // free. null until native answers; the buttons wait for it rather than offer a download that
+  // free. null until native answers; the button waits for it rather than offer a download that
   // would be refused on the tap.
   const [fit, setFit] = useState<DeviceFit | null>(null);
   // Whether the writer model may be fetched at all. ModelManager.download refuses it without a
   // subscription — that refusal is the enforcement — so offering the switch to someone who has
   // not subscribed would be offering a button that cannot work.
   //
-  // On a first run this is always false, which makes the opening download 114 MB instead of
-  // 1.2 GB. That is a better first impression than the one it replaces, not a worse one.
+  // On a first run this is false, which makes the opening download 114 MB instead of 1.2 GB.
   const [paid, setPaid] = useState(false);
   const [wantWriter, setWantWriter] = useState(false);
-  // Which tier was picked at setup. null means they have not been asked yet, which is the state
-  // the intro sits in until they choose.
-  const [tier, setTier] = useState<'free' | 'pro' | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [showSignIn, setShowSignIn] = useState(false);
+  const [sampleFailed, setSampleFailed] = useState(false);
   // Off until tapped. Consent that starts switched on is not consent, and this one is about
   // network traffic leaving a device whose entire selling point is that none does.
   const [crashOptIn, setCrashOptIn] = useState(false);
-  // Whether Pro can be bought on this install, and Play's trial length if this account has one.
-  const [proOffer, setProOffer] = useState<{ canBuy: boolean; free: string | null }>({
-    canBuy: false,
-    free: null,
-  });
-  useEffect(() => {
-    playAvailable()
-      .then(async can => {
-        if (!can) return;
-        const pl = await playPlans();
-        const t = trialPlan(pl, 'P1Y');
-        setProOffer({ canBuy: pl.length > 0, free: t ? trialLength(t) : null });
-      })
-      .catch(() => {});
-  }, []);
 
   // Back from the Pro screen: a purchase made there is read here and setup carries on as Pro —
-  // the Download button then fetches the writer with everything else.
+  // the primary button then fetches the writer with everything else.
   useEffect(
     () =>
       navigation.addListener('focus', () => {
@@ -145,7 +125,6 @@ export default function OnboardingScreen({ navigation }: Props) {
           .then(e => {
             if (!e.paid) return;
             setPaid(true);
-            setTier('pro');
             setWantWriter(true);
           })
           .catch(() => {});
@@ -169,62 +148,66 @@ export default function OnboardingScreen({ navigation }: Props) {
         setEssentials(all.filter(m => m.required));
         setWriter(all.filter(m => !m.required && m.kind === 'llm'));
         // Read from needsSubscription — the catalog's own rule — rather than testing `kind`
-        // again here. This screen used to select the paid models with `kind === 'llm'` alone,
-        // which is a second copy of a rule the catalog already owns, and it had drifted: the
-        // Pro screen advertises "The larger transcriber" and neither path that starts a trial
-        // ever downloaded it. whisper-small was reachable only by finding it in Settings.
+        // again here: a second copy of a rule the catalog already owns is how the Pro screen came
+        // to advertise a transcriber no path ever downloaded.
         setProExtras(all.filter(m => !m.required && m.needsSubscription && m.kind !== 'llm'));
       })
       .catch(() => {});
-    ModelManager.deviceFit()
+    Promise.resolve()
+      .then(() => ModelManager.deviceFit())
       .then(r => setFit(JSON.parse(r)))
       .catch(() => setFit({ cpuReason: null, freeBytes: Number.MAX_SAFE_INTEGER }));
   }, []);
 
-  useEffect(() => {
-    const emitter = new NativeEventEmitter(NativeModules.ModelManager);
-    const sub = emitter.addListener('onModelProgress', (e: { total: number; downloaded: number }) => {
-      if (e.total > 0) setBytes({ downloaded: e.downloaded, total: e.total });
-    });
-    return () => sub.remove();
-  }, []);
-
-  // What the button will actually cost, including the writer when it is switched on. Saying
-  // "112 MB" and then downloading 1.2 GB is the kind of surprise that gets an app uninstalled.
-  //
-  // Anything already on disk costs nothing, and must not be counted. Coming back to this screen
-  // with every model present offered "Download the AI (114 MB)" — a number that was wrong in the
-  // direction that makes the app look worse, and which used to be true because download() really
-  // did fetch them all again. That is fixed natively; this is the half the user reads.
   /** Entitled to the paid models: already, or by a purchase just made on the Pro screen. */
-  const proChosen = paid || tier === 'pro';
+  const proChosen = paid;
 
+  // What the button will actually cost. Anything already on disk costs nothing and is not counted:
+  // offering "Download (114 MB)" for what is already here is wrong in the direction that makes
+  // the app look worse.
   const chosen = proChosen
     ? runnable([...essentials, ...proExtras, ...(wantWriter ? writer : [])])
     : essentials;
   const pending = chosen.filter(m => !m.installed);
   const totalMb = sizeMb(pending);
   const writerMb = sizeMb(runnable(writer));
-  /** What taking Pro adds over free on THIS phone, which is more than the writer on its own. */
-  const proMb = sizeMb(runnable([...proExtras, ...writer]));
-  // The disk sentence for THIS plan, or null. Said in place of the Download button, because a
-  // button that fails on the tap with the same sentence is a worse version of the sentence.
+  // Everything this plan would fetch is already here (a return visit, or setup finished in
+  // another session): there is nothing to set up, only to start.
+  const alreadySetUp = chosen.length > 0 && pending.length === 0;
+  // The disk sentence for THIS plan, or null. Said in place of the button, because a button that
+  // fails on the tap with the same sentence is a worse version of the sentence.
   const pendingBytes = pending.reduce((a, m) => a + m.sizeBytes, 0);
   const spaceShort =
     fit !== null && pendingBytes > 0 && !spaceFits(pendingBytes, fit.freeBytes)
       ? spaceReason(proChosen ? 'the Pro models' : 'the speech models', pendingBytes, fit.freeBytes)
       : null;
+  // More options is for what is relevant: a phone that can run the writer, or a subscriber.
+  const hasMore = (writer.length > 0 && !writerBlocked) || proChosen;
 
-  /**
-   * Taking Pro at setup opens the Pro screen, where Play's free trial is offered with its terms —
-   * the terms belong where the purchase is made. Coming back paid is picked up by the focus
-   * listener above; coming back without buying leaves the choice where it was.
-   */
-  const choosePro = () => navigation.navigate('Paywall', { from: 'onboarding' });
+  /** The Pro screen, where Play's free trial is offered with its terms. Not a step of setup. */
+  const openPro = () => navigation.navigate('Paywall', { from: 'onboarding' });
 
-  const finish = async () => {
+  /** The sample is a meeting already on the phone: opening it downloads nothing. */
+  const openSample = () => {
+    setSampleFailed(false);
+    seedSample()
+      .then(() => navigation.navigate('Meeting', { meetingId: SAMPLE_ID }))
+      .catch(() => setSampleFailed(true));
+  };
+
+  /** Leave setup for the Library, models or not: the readiness card there is the way back. */
+  const skip = async () => {
     await db.setSetting('onboarded', '1');
     navigation.replace('Library');
+  };
+
+  /**
+   * Setup finished: the recorder, with the Library underneath it so Back lands somewhere. The
+   * Library used to be where this ended, and a new user had then to find the record button.
+   */
+  const startRecording = async () => {
+    await db.setSetting('onboarded', '1');
+    navigation.reset({ index: 1, routes: [{ name: 'Library' }, { name: 'Record' }] });
   };
 
   /**
@@ -233,33 +216,15 @@ export default function OnboardingScreen({ navigation }: Props) {
    * that could record but never transcribe, and nothing anywhere saying why.
    */
   const downloadAll = async () => {
-    // Captured into a local as well as into state: the loop must not read a render-time value
-    // that a re-render could change under it, and setPlan's result is not visible in this pass.
-    const queue = chosen;
-    setPlan(queue);
     setStatus('downloading');
-    AudioPipeline.requestBatteryExemption().catch(() => {});
-    for (let i = 0; i < queue.length; i++) {
-      setStep(i);
-      setCurrent(queue[i].purpose);
-      setBytes({ downloaded: 0, total: 0 });
-      try {
-        await ModelManager.download(queue[i].id);
-      } catch {
-        // Only a REQUIRED model can fail the setup. Losing the writer means minutes pulled out by
-        // rule instead of written as prose — a smaller app, not a broken one — and it can be
-        // fetched later from Settings. Failing the whole first run over it would be a lie about
-        // how badly things went.
-        if (queue[i].required) {
-          setStatus('failed');
-          return;
-        }
-      }
+    const ok = await runDownloads(chosen.filter(m => !m.installed));
+    if (!ok) {
+      setStatus('failed');
+      return;
     }
-    // Mark setup finished HERE, not only in finish(). The flag used to be written solely when the
-    // user tapped "Start recording" on the last screen, so anyone who got their models and then
-    // backgrounded the app came back to onboarding — offering to download what they already had.
-    // Reaching this line is what "onboarded" means; the last screen is a greeting, not a step.
+    // Mark setup finished HERE, not only when the person taps the last button. The flag used to
+    // be written only on that tap, so anyone who got their models and then backgrounded the app
+    // came back to onboarding — offering to download what they already had.
     await db.setSetting('onboarded', '1').catch(() => {});
     setStatus('done');
   };
@@ -278,9 +243,9 @@ export default function OnboardingScreen({ navigation }: Props) {
         </Txt>
         <View style={st.progress}>
           <View style={st.progressHead}>
-            <Txt variant="bodyStrong">{current}</Txt>
+            <Txt variant="bodyStrong">{run.current}</Txt>
             <Txt variant="chip" color={colors.inkFaint}>
-              {step + 1} of {plan.length}
+              {run.step + 1} of {run.of}
             </Txt>
           </View>
           <ProgressBar
@@ -304,14 +269,17 @@ export default function OnboardingScreen({ navigation }: Props) {
           That download stopped
         </Txt>
         <Txt variant="body" color={colors.inkSoft} style={[st.sub, st.failBody]}>
-          “{current}” could not be fetched. Check your connection and try again — anything already
-          downloaded is kept, so it picks up where it left off.
+          “{run.failedPurpose}” could not be fetched. Check your connection and try again — anything
+          already downloaded is kept, so it picks up where it left off.
         </Txt>
         <View style={st.failCta}>
           <Button label="Try again" icon="refresh" onPress={downloadAll} full />
           <View style={st.skipRow}>
-            <SoftButton label="Continue without it" onPress={finish} />
+            <SoftButton label="Continue without it" onPress={skip} />
           </View>
+          <Txt variant="chip" color={colors.inkFaint} style={st.centerText}>
+            You can finish this later: the Library shows how far it got and a button to resume.
+          </Txt>
         </View>
       </View>
     );
@@ -330,6 +298,11 @@ export default function OnboardingScreen({ navigation }: Props) {
           <Txt variant="body" color={colors.inkSoft} style={[st.centerText, st.sub]}>
             Pip is ready to sit in on your next meeting.
           </Txt>
+          {/* Before the first real recording: the language and the Free allowance, once, in the
+              words every other surface uses. Not a plan decision, a fact. */}
+          <View style={st.doneCard}>
+            <FirstRecordingNote paid={paid} />
+          </View>
           {/* Asked here rather than only in Settings, because a diagnostics switch nobody finds
               produces no diagnostics — and the reason to have it is a native crash on a phone we
               will never hold. Asked once, off until tapped, and changeable later in Settings.
@@ -359,7 +332,7 @@ export default function OnboardingScreen({ navigation }: Props) {
             </Raised>
           ) : null}
           <View style={st.cta}>
-            <Button label="Start recording" icon="mic" onPress={finish} full />
+            <Button label="Start recording" icon="mic" onPress={startRecording} full />
           </View>
         </Pop>
       </View>
@@ -382,23 +355,34 @@ export default function OnboardingScreen({ navigation }: Props) {
 
   return (
     // A ScrollView, not a View. This screen is the tallest in the app and on a 6" phone its
-    // content is ~50dp taller than the viewport. In a plain View the only give was `list`'s
-    // `flex: 1` — which in React Native also means `flexShrink: 1` — so Yoga squeezed the page
-    // to fit by collapsing the hero title to zero height and pushing the third bullet out of
-    // the shrunken list box, where the footer's opaque card painted over it. Both were silent.
+    // content is taller than the viewport. In a plain View the only give was `list`'s `flex: 1` —
+    // which in React Native also means `flexShrink: 1` — so Yoga squeezed the page to fit by
+    // collapsing the hero title to zero height. Both were silent.
     <ScrollView
       style={st.root}
       contentContainerStyle={[st.scrollBody, pad]}
       showsVerticalScrollIndicator={false}>
+      {/* The Pro entry: always reachable, never a step. It opens the existing Pro screen. */}
+      <View style={st.topRow}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="See Verbale Pro"
+          onPress={openPro}
+          style={st.proLink}>
+          <Icon name="ai" size={s(16)} color={colors.primaryDeep} strokeWidth={2.4} />
+          <Txt variant="chip" color={colors.primaryDeep}>
+            Pro
+          </Txt>
+        </Pressable>
+      </View>
+
       <View style={st.hero}>
         <Pop>
           <Mascot mood="idle" size={sv(132)} />
         </Pop>
         {/* alignSelf: stretch, not the hero's default centring. Centred, this block shrinks to
             fit and the subtitle gets measured at one width and laid out at a narrower one, so it
-            wrapped to two lines inside a box only one line tall — "note-taker" was clipped away
-            with no ellipsis to hint at it. Both lines are textAlign: 'center' already, so taking
-            the full column changes nothing visually. Same reason doneWrap stretches. */}
+            wrapped to two lines inside a box only one line tall. */}
         <Pop index={1} style={st.heroText}>
           <Txt variant="screenTitle" style={st.centerText}>
             Verbale
@@ -410,44 +394,50 @@ export default function OnboardingScreen({ navigation }: Props) {
       </View>
 
       {/*
-          The tier choice sits under the hero and ABOVE the bullets, because it has to be on the
-          first screen without scrolling.
-
-          It read better below them — learn what the app does, then choose — but on a Pixel 7 Pro
-          that put "Try Pro free for 7 days" roughly 70px past the bottom edge. The only visible
-          option was "Start free", so the choice this step exists to offer was invisible on one of
-          the taller phones on the market, and worse on anything smaller. The bullets still sell
-          the app; they now do it underneath the choice.
+          ONE primary action, and it is the whole decision: set up, with the size in the label.
+          There is no plan to choose here. The sample below shows what the app produces without
+          downloading anything, and the Pro link above is where the paid half is explained.
       */}
-      {tier === null ? (
-        <Pop index={2} style={st.tierChoice}>
+      <Pop index={2} style={st.tierChoice}>
+        {spaceShort && !alreadySetUp ? (
+          <Txt variant="chip" color={colors.warning} style={[st.centerText, st.note]}>
+            {spaceShort}
+          </Txt>
+        ) : (
           <Button
-            label="Start free"
-            icon="download"
-            onPress={() => setTier('free')}
-            disabled={essentials.length === 0}
+            label={
+              alreadySetUp
+                ? 'Start recording'
+                : totalMb > 0
+                  ? `Set up private recording — ${totalMb} MB`
+                  : 'Set up private recording'
+            }
+            icon={alreadySetUp ? 'mic' : 'download'}
+            onPress={alreadySetUp ? startRecording : downloadAll}
+            disabled={chosen.length === 0 || fit === null}
             full
           />
-          {proOffer.canBuy ? (
-            <View style={st.tierGap}>
-              <SoftButton
-                label={proOffer.free ? `Try Pro free for ${proOffer.free}` : 'Get Pro'}
-                icon="ai"
-                onPress={choosePro}
-              />
-            </View>
-          ) : null}
+        )}
+        {alreadySetUp ? null : (
           <Txt variant="chip" color={colors.inkFaint} style={[st.centerText, st.note]}>
-            {writerBlocked
-              ? `Free records, transcribes and pulls out the decisions and actions — no account, for as long as you use it. Pro transcribes with a larger model and searches by meaning, and downloads ${proMb} MB more. ${writerBlocked}`
-              : `Free records, transcribes and pulls out the decisions and actions — no account, for as long as you use it. Pro writes the minutes as prose, transcribes with a larger model, and downloads ${proMb} MB more.`}
+            {totalMb > 0 ? `${totalMb} MB, downloaded once. ` : ''}The speech models are not bundled in
+            the app. After that your recordings, transcripts and minutes are all made on this phone —
+            none of it is ever uploaded.
           </Txt>
-        </Pop>
-      ) : null}
+        )}
+        <View style={st.tierGap}>
+          <SoftButton label="See a sample meeting first" icon="play" onPress={openSample} />
+        </View>
+        {sampleFailed ? (
+          <Txt variant="chip" color={colors.warning} style={[st.centerText, st.note]}>
+            The sample could not be opened. Setting up still works.
+          </Txt>
+        ) : null}
+      </Pop>
 
       <View style={st.list}>
         {BULLETS.map((b, i) => (
-          <Pop key={b.title} index={i + 2}>
+          <Pop key={b.title} index={i + 3}>
             <Raised edge={colors.line} fill={colors.card} rad={radius.card} depth={6}>
               <View style={st.bullet}>
                 <View style={[st.bulletIcon, { backgroundColor: colors[`${b.tone}Soft`] }]}>
@@ -465,112 +455,85 @@ export default function OnboardingScreen({ navigation }: Props) {
         ))}
       </View>
 
-      <Pop index={5} style={st.footer}>
-        {writer.length > 0 ? (
-          <Raised edge={colors.line} fill={colors.card} rad={radius.card} depth={5}>
-            <View style={st.bullet}>
-              <View style={[st.bulletIcon, { backgroundColor: writerBlocked ? colors.warningSoft : colors.primarySoft }]}>
-                <Icon name="edit" size={s(20)} color={writerBlocked ? colors.warning : colors.primary} strokeWidth={2.4} />
-              </View>
-              <View style={st.flex}>
-                <Txt variant="cardTitleSm">Write the minutes in plain English</Txt>
-                <Txt variant="chip" color={colors.inkSoft} style={st.bulletBody}>
-                  {writerBlocked
-                    ? `${writerBlocked} The minutes here are pulled out by rule, and everything else in Pro works on this phone.`
-                    : proChosen
-                      ? `Adds ${writerMb} MB. Without it you still get minutes, pulled out by rule rather than written as prose.`
-                      : `Part of the subscription — a ${writerMb} MB model that runs on your phone. You still get minutes without it, pulled out by rule rather than written as prose.`}
-                </Txt>
-              </View>
-              {/* No switch when there is nothing to switch on. A control that reports a
-                  subscription error on tap is worse than an honest sentence.
-                  No switch either when the phone cannot run the model — the sentence is the whole card. */}
-              {proChosen && !writerBlocked ? <Switch on={wantWriter} onToggle={() => setWantWriter(v => !v)} /> : null}
-            </View>
-          </Raised>
+      <Pop index={6} style={st.footer}>
+        {hasMore ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: moreOpen }}
+            accessibilityLabel={moreOpen ? 'Hide more options' : 'More options'}
+            onPress={() => setMoreOpen(v => !v)}
+            style={st.moreRow}>
+            <Txt variant="chip" color={colors.primaryDeep}>
+              {moreOpen ? 'Fewer options' : 'More options'}
+            </Txt>
+            <Icon name={moreOpen ? 'chevronUp' : 'chevronDown'} size={s(16)} color={colors.primaryDeep} strokeWidth={2.4} />
+          </Pressable>
         ) : null}
-        {/* The rest of the paid set, once Pro is taken. Without this the button reads
-            "Download (1421 MB)" while the only card above it accounts for 1117 of them, and the
-            missing 190 has no explanation anywhere on the screen — the same surprise the total
-            above is calculated to avoid. No switch: this one is not optional within Pro. */}
-        {proChosen
-          ? proExtras.map(m => (
-              <Raised
-                key={m.id}
-                edge={colors.line}
-                fill={colors.card}
-                rad={radius.card}
-                depth={5}>
+        {moreOpen && hasMore ? (
+          <>
+            {writer.length > 0 ? (
+              <Raised edge={colors.line} fill={colors.card} rad={radius.card} depth={5}>
                 <View style={st.bullet}>
-                  <View style={[st.bulletIcon, { backgroundColor: colors.primarySoft }]}>
-                    <Icon name="mic" size={s(20)} color={colors.primary} strokeWidth={2.4} />
+                  <View style={[st.bulletIcon, { backgroundColor: writerBlocked ? colors.warningSoft : colors.primarySoft }]}>
+                    <Icon name="edit" size={s(20)} color={writerBlocked ? colors.warning : colors.primary} strokeWidth={2.4} />
                   </View>
                   <View style={st.flex}>
-                    <Txt variant="cardTitleSm">{m.purpose}</Txt>
+                    <Txt variant="cardTitleSm">Write the minutes in plain English</Txt>
                     <Txt variant="chip" color={colors.inkSoft} style={st.bulletBody}>
-                      Adds {Math.round(m.sizeBytes / 1e6)} MB.
+                      {writerBlocked
+                        ? `${writerBlocked} The minutes here are pulled out by rule, and everything else in Pro works on this phone.`
+                        : proChosen
+                          ? `Adds ${writerMb} MB. Without it you still get minutes, pulled out by rule rather than written as prose.`
+                          : `Part of Pro — a ${writerMb} MB model that runs on your phone. You still get minutes without it, pulled out by rule rather than written as prose.`}
                     </Txt>
                   </View>
+                  {/* No switch when there is nothing to switch on, or when the phone cannot run
+                      the model: an honest sentence beats a control that reports an error. */}
+                  {proChosen && !writerBlocked ? <Switch on={wantWriter} onToggle={() => setWantWriter(v => !v)} /> : null}
                 </View>
               </Raised>
-            ))
-          : null}
-        {/*
-            The choice itself is above the bullets; what stays down here is the way back in for
-            somebody who has already paid — on the website, or on a previous phone. It belongs
-            below the fold in a way the choice does not: it is the rare case, and putting it
-            beside the two tier buttons would read as a third option for a new install.
-        */}
-        {tier === null ? (
-          <View style={st.tierGap}>
-            {showSignIn ? (
-              <SignInForm
-                onSignedIn={res => {
-                  if (res.paid) {
-                    setTier('pro');
-                    setWantWriter(true);
-                  }
-                }}
-              />
-            ) : (
-              <SoftButton
-                label="Already subscribed? Sign in"
-                icon="lock"
-                onPress={() => setShowSignIn(true)}
-              />
-            )}
-          </View>
-        ) : spaceShort ? (
-          <Txt variant="chip" color={colors.warning} style={[st.centerText, st.note]}>
-            {spaceShort}
-          </Txt>
-        ) : (
-          <Button
-            label={totalMb > 0 ? `Download (${totalMb} MB)` : 'Download'}
-            icon="download"
-            onPress={downloadAll}
-            disabled={chosen.length === 0 || fit === null}
-            full
-          />
-        )}
-        {/* Said plainly, before the tap. The models are not in the app — shipping them would put
-            it well past a gigabyte on the store — so this download is what makes the app work at
-            all.
-
-            It used to say this was "the only time the app touches the network" and that everything
-            worked "offline, forever". Neither survived the subscription: a paid install checks its
-            licence every week or so. That check carries an account id and a device id and nothing
-            else — no recording, no transcript, no title, not even a count — so the sentence that
-            actually matters is still true and is the one left standing. Overclaiming the rest
-            would trade a privacy promise for a line of copy, and this app has nothing else to
-            sell. */}
-        <Txt variant="chip" color={colors.inkFaint} style={[st.centerText, st.note]}>
-          The speech models are not bundled in the app, so they download once. After that your
-          recordings, transcripts and minutes are all made on this phone — none of it is ever
-          uploaded.
-        </Txt>
+            ) : null}
+            {/* The rest of the paid set, once Pro is taken. Without this the button reads a total
+                the cards above do not add up to. No switch: this one is not optional within Pro. */}
+            {proChosen
+              ? proExtras.map(m => (
+                  <Raised key={m.id} edge={colors.line} fill={colors.card} rad={radius.card} depth={5}>
+                    <View style={st.bullet}>
+                      <View style={[st.bulletIcon, { backgroundColor: colors.primarySoft }]}>
+                        <Icon name="mic" size={s(20)} color={colors.primary} strokeWidth={2.4} />
+                      </View>
+                      <View style={st.flex}>
+                        <Txt variant="cardTitleSm">{m.purpose}</Txt>
+                        <Txt variant="chip" color={colors.inkSoft} style={st.bulletBody}>
+                          Adds {Math.round(m.sizeBytes / 1e6)} MB.
+                        </Txt>
+                      </View>
+                    </View>
+                  </Raised>
+                ))
+              : null}
+            {/* The way back in for somebody who has already paid — on the website, or on a
+                previous phone. */}
+            {!proChosen ? (
+              <View style={st.tierGap}>
+                {showSignIn ? (
+                  <SignInForm
+                    onSignedIn={res => {
+                      if (res.paid) {
+                        setPaid(true);
+                        setWantWriter(true);
+                      }
+                    }}
+                  />
+                ) : (
+                  <SoftButton label="Already subscribed? Sign in" icon="lock" onPress={() => setShowSignIn(true)} />
+                )}
+              </View>
+            ) : null}
+          </>
+        ) : null}
         <View style={st.skipRow}>
-          <SoftButton label="Later, from Settings" onPress={finish} />
+          <SoftButton label="Later, from Settings" onPress={skip} />
         </View>
       </Pop>
     </ScrollView>
@@ -603,6 +566,23 @@ function makeStyles(c: Colors) {
     tierGap: { marginTop: s(10) },
     tierChoice: { marginTop: s(18) },
     skipRow: { flexDirection: 'row' },
+    topRow: { flexDirection: 'row', justifyContent: 'flex-end' },
+    // 44 dp tall: the one door to the paid half, small but not hard to hit.
+    proLink: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: s(6),
+      minHeight: s(44),
+      paddingHorizontal: s(12),
+    },
+    moreRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: s(6),
+      minHeight: s(44),
+    },
+    doneCard: { marginTop: s(18), marginBottom: s(10) },
     mt: { marginTop: s(22) },
     sub: { marginTop: s(6), textAlign: 'center' },
     progress: { alignSelf: 'stretch', marginTop: s(30), gap: s(8) },

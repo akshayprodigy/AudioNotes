@@ -40,6 +40,10 @@ import { entitlement } from '../billing/trial';
 import { refreshAllowance, useAllowance } from '../billing/allowance';
 import { finishImportFirst } from '../billing/allowanceCopy';
 import { AllowanceExhausted, AllowanceLine, isExhausted } from './AllowanceNote';
+import ReadinessCard from '../setup/ReadinessCard';
+import FirstRecordingNote from '../setup/FirstRecordingNote';
+import { useSetupReadiness } from '../setup/useReadiness';
+import { withoutSample } from '../sample/sampleId';
 import { buyWithPlay, playAvailable, playPlans } from '../billing/subscription';
 import { trialLength, trialPlan, trialTerms } from '../billing/trialTerms';
 import { purchaseNotice } from '../billing/purchaseNotice';
@@ -109,6 +113,24 @@ export default function RecordScreen({ navigation }: Props) {
   // is kept (not only the ledger) so the card appears the instant the tap is refused, before the
   // ledger read comes back.
   const allowance = useAllowance();
+  // First-run setup, and whether this is still before the first real recording. The sample does
+  // not count as one: it is not from the microphone.
+  const setup = useSetupReadiness();
+  const [firstTime, setFirstTime] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const all = await db.listMeetings('recent');
+        if (alive) setFirstTime(withoutSample(all ?? []).length === 0);
+      } catch {
+        // No card is better than a wrong one.
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [refusedOn, setRefusedOn] = useState<string | null>(null);
   useEffect(() => {
     // A purchase, or a new month, ends the refusal.
@@ -543,6 +565,8 @@ export default function RecordScreen({ navigation }: Props) {
             style={st.variable}
             contentContainerStyle={st.variableContent}
             showsVerticalScrollIndicator={false}>
+            {!isRecording ? <ReadinessCard setup={setup} flush /> : null}
+            {!isRecording && firstTime ? <FirstRecordingNote paid={allowance ? allowance.paid : null} /> : null}
             {!isRecording && endedCard ? (
               <Raised edge={colors.line} fill={colors.card} rad={radius.lg} depth={4}>
                 <View style={st.capNote}>

@@ -1,6 +1,8 @@
 import {
   exhaustedCopy,
+  englishOnly,
   explainer,
+  firstRecordingNote,
   formatReset,
   freeHeadline,
   importErrorCopy,
@@ -115,5 +117,17 @@ describe('meaningSearchOffer', () => {
   it('offers Pro for search by meaning, and does not promise what Free lacks is keyword search', () => {
     expect(meaningSearchOffer).toBe('Pro also searches by meaning, so a question finds the answer even when the words differ.');
     expect(meaningSearchOffer).not.toMatch(/Search every word/);
+  });
+});
+
+describe('the note before the first recording', () => {
+  it('says English and the Free allowance together, in the spec words, on Free', () => {
+    expect(englishOnly).toBe('Verbale works in English.');
+    expect(firstRecordingNote(false)).toBe('Verbale works in English. Free: 5 meetings each month · up to 1 hour each.');
+  });
+
+  it('says only the language to Pro, and while native has not answered', () => {
+    expect(firstRecordingNote(true)).toBe('Verbale works in English.');
+    expect(firstRecordingNote(null)).toBe('Verbale works in English.');
   });
 });

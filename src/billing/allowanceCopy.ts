@@ -29,6 +29,19 @@ export function formatReset(resetsOn: string): string {
 /** The standing description of the Free tier. */
 export const freeHeadline = 'Free: 5 meetings each month · up to 1 hour each.';
 
+/** The language statement, said wherever the app first asks somebody to record. Launch is English only. */
+export const englishOnly = 'Verbale works in English.';
+
+/**
+ * The one short card before the first real recording: the language, then the Free allowance.
+ * Pro (`paid` true) gets the language alone, because Pro never sees allowance copy. `null` means
+ * native has not answered yet, and says the language alone rather than state a limit that may not
+ * apply.
+ */
+export function firstRecordingNote(paid: boolean | null): string {
+  return paid === false ? `${englishOnly} ${freeHeadline}` : englishOnly;
+}
+
 /** One line of explanation, wherever the headline appears with room to spare (GAP-12). */
 export const explainer = 'Imports and dictations count as meetings.';
 

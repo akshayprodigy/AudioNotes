@@ -19,7 +19,7 @@ import type { Setup } from './useReadiness';
  * says why), and a download the disk cannot hold says so in the same sentence the onboarding and
  * Settings screens use, in place of the button.
  */
-export default function ReadinessCard({ setup }: { setup: Setup }) {
+export default function ReadinessCard({ setup, flush }: { setup: Setup; flush?: boolean }) {
   const { colors } = useTheme();
   const st = useMemo(() => makeStyles(colors), [colors]);
   const { state, fit } = setup;
@@ -35,7 +35,7 @@ export default function ReadinessCard({ setup }: { setup: Setup }) {
   const tone = failed ? colors.warning : colors.primary;
 
   return (
-    <View style={st.wrap} accessibilityLabel={copy.title}>
+    <View style={[st.wrap, flush && st.flush]} accessibilityLabel={copy.title}>
       <Raised edge={colors.line} fill={colors.card} rad={radius.card} depth={5}>
         <View style={st.body}>
           <View style={st.head}>
@@ -77,6 +77,8 @@ export default function ReadinessCard({ setup }: { setup: Setup }) {
 function makeStyles(_c: Colors) {
   return StyleSheet.create({
     wrap: { marginHorizontal: s(20), marginTop: s(12) },
+    // Where the screen already has its own side padding (Record).
+    flush: { marginHorizontal: 0, marginTop: 0, alignSelf: 'stretch' },
     body: { padding: s(14), gap: s(10) },
     head: { flexDirection: 'row', alignItems: 'center', gap: s(10) },
     flex: { flex: 1 },
