@@ -2,6 +2,7 @@ package com.innocorelabs.verbale.data
 
 import android.content.Context
 import android.util.Log
+import com.innocorelabs.verbale.billing.AllowancePolicy
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -63,10 +64,12 @@ object BackupManager {
     // "marks" (the Highlights, sub-project 2A) was missing until 16 Sep — the same regression
     // shape as item_done: a mark a person made survived nothing. "asks" (sub-project 5) is a
     // person's questions and the meeting's answers, carried for the same reason the summary is.
+    // "allowance" (the Free ledger) travels so a restore cannot hand back slots a person spent; it
+    // merges by id instead of replacing — see [restoreSql].
     // "search_vec" is deliberately NOT here: 8 MB of vectors that the restoring phone re-embeds
     // itself — reindexImported resets embedded_at, and the sweep's backfill does the rest.
     "meetings", "segments", "utterances", "speakers", "minutes", "items", "item_sources",
-    "item_done", "action_done", "marks", "asks", "edits", "tags", "settings", "people", "vocabulary",
+    "item_done", "action_done", "marks", "asks", "edits", "tags", "settings", "allowance", "people", "vocabulary",
   )
 
   /**
@@ -84,7 +87,33 @@ object BackupManager {
 
    class BackupError(message: String) : Exception(message)
 
-   /** The backup table list, for a unit test that must not open an encrypted database. */
+  /**
+   * The statement that copies one table's shared columns from the attached backup.
+   *
+   * Everything REPLACES, except the Free ledger: there a row this phone already has — possibly
+   * further along, COMMITTED where the backup still says RESERVED — must not be overwritten by an
+   * older state, and a backup must never turn a spent slot back into a free one. So the ledger is an
+   * upsert on the id that keeps whichever state uses MORE allowance (COMMITTED > RESERVED >
+   * REFUNDED, AllowancePolicy.priority) and leaves the stored period alone. `WHERE true` is the
+   * documented way to stop SQLite reading `ON` as a join clause after `INSERT ... SELECT`; the
+   * upsert needs SQLite 3.24 and the bundled SQLCipher 4.6.1 is 3.46.
+   */
+  @JvmStatic
+  fun restoreSql(table: String, columns: String): String {
+    if (table != "allowance") return "INSERT OR REPLACE INTO main.$table($columns) SELECT $columns FROM bak.$table"
+    return "INSERT INTO main.allowance($columns) SELECT $columns FROM bak.allowance WHERE true " +
+      "ON CONFLICT(id) DO UPDATE SET state = CASE WHEN ${statePriority("excluded.state")} > " +
+      "${statePriority("allowance.state")} THEN excluded.state ELSE allowance.state END"
+  }
+
+  /** SQL for AllowancePolicy.priority over [column], built from the policy so the two cannot drift. */
+  @JvmStatic
+  fun statePriority(column: String): String =
+    "(CASE $column " +
+      AllowancePolicy.State.values().joinToString(" ") { "WHEN '${it.name}' THEN ${AllowancePolicy.priority(it)}" } +
+      " ELSE 0 END)"
+
+  /** The backup table list, for a unit test that must not open an encrypted database. */
    @JvmStatic
    fun tablesForTest(): List<String> = TABLES.toList()
 
@@ -178,7 +207,7 @@ object BackupManager {
           val cols = db.columnsOf("bak", table).intersect(db.columnsOf("main", table).toSet())
           if (cols.isEmpty()) throw BackupError("no shared columns for $table")
           val list = cols.joinToString(",")
-          db.exec("INSERT OR REPLACE INTO main.$table($list) SELECT $list FROM bak.$table")
+          db.exec(restoreSql(table, list))
         }
         if (moved.isFailure) {
           // One table failing — a backup written before a column existed — should not throw away

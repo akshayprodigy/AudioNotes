@@ -20,3 +20,10 @@ Branch `dev/october-plan`. Never pushed. Plan: `docs/superpowers/plans/2026-10-0
 - `sweepAllowance` treats `done`, `error`, `unsupported_language` as a finished run; `failed` (a crash) is not final and never refunds.
 - Tests: `ResumePlanTest` (2 new), `SchemaTest` (1), `schema.test.ts` (1). Mutants killed: vadDone without the `recording` guard (x2), `pastVad` ignoring `failed`, native DDL with a foreign key, TS DDL with a foreign key.
 - The SQL itself (transaction, `INSERT OR IGNORE`, the queries) cannot run on the JVM: device-verified later.
+
+## Task 4 — backup carries the ledger, priority merge (R4)
+- Bundled SQLCipher 4.6.1 reports SQLite 3.46.1 (strings in the arm64 `.so`), so `ON CONFLICT ... DO UPDATE` is available; no two-step fallback needed.
+- `BackupManager.restoreSql(table, columns)`: everything keeps `INSERT OR REPLACE`; `allowance` is an upsert on `id` setting `state` only when the incoming state ranks strictly higher; the CASE priorities are built from `AllowancePolicy.priority` (`statePriority`). `allowance` sits between `settings` and `people` in `TABLES` so the existing "vocabulary last, people before it" test still holds.
+- New `data/BackupManagerTest` (4): travels in a backup; other tables still REPLACE; ledger SQL shape (upsert, no REPLACE, period untouched, incoming wins only if higher); SQL priorities equal the policy's.
+- Mutants killed: table check bypassed; CASE branches swapped; others' verb changed to IGNORE; `allowance` dropped from TABLES; priorities flattened to 1; `allowance` moved out of TABLES (`SchemaTest`/Backup test).
+- Device-verified later: the SQL itself (the JVM cannot run SQLCipher).
