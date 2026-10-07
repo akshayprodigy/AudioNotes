@@ -389,7 +389,36 @@ export interface ActionRow {
    * makes that reader's `null` check a compile error rather than a judgement call.
    */
   anchorStartMs: number | null;
+  /**
+   * `items.date_norm`: the due phrase pinned to a local midnight (as UTC midnight), or null when
+   * nothing was said or it honestly could not be pinned ("before Wednesday"). The follow-up home
+   * counts an action as due only from THIS, never from the words. Optional so older fixtures hold.
+   */
+  dateNorm?: number | null;
   done: boolean;
+}
+
+/** A decision lifted out of its meeting, for the follow-up home's "decisions still open". */
+export interface DecisionRow {
+  meetingId: string;
+  meetingTitle: string;
+  createdAt: number;
+  id: string;
+  content: string;
+  /** `items.status`: open | qualified | contradicted | withdrawn, or null until the classifier read it. */
+  status: string | null;
+  itemType: string | null;
+  /** Null for a decision a person typed: it has no moment to open. */
+  anchorStartMs: number | null;
+}
+
+/** One item waiting in a meeting's review queue (`review = 'needs_review'`, classified). */
+export interface ReviewItemRow {
+  meetingId: string;
+  meetingTitle: string;
+  createdAt: number;
+  id: string;
+  content: string;
 }
 
 /** One of a thread's meetings (Phase 3). Newest first; only `archived_at IS NULL` meetings. */

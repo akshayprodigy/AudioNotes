@@ -5,6 +5,7 @@ import Llm from '../native/NativeLlm';
 import { NO_ANCHOR, USER_GEN } from '../pipeline/types';
 import type {
   ActionRow,
+  DecisionRow,
   Edit,
   EditTarget,
   Item,
@@ -13,6 +14,7 @@ import type {
   Meeting,
   Minute,
   MinuteKind,
+  ReviewItemRow,
   SearchHit,
   Speaker,
   ThreadResult,
@@ -959,6 +961,9 @@ export const db = {
     run<Omit<ActionRow, 'done'>>(
       'SELECT i.id AS id, i.meeting_id AS meetingId, mt.title AS meetingTitle, ' +
         'mt.created_at AS createdAt, i.text AS content, i.owner_json AS ownerJson, ' +
+        // The follow-up home's "due or overdue" reads this and nothing else: the evidence layer's
+        // normalised day, or NULL when the phrase could not honestly be pinned to one.
+        'i.date_norm AS dateNorm, ' +
         // The same derivation db.items makes, for the same reason: a hand-typed action has no
         // moment, and `ActionRow.anchorStartMs` is what the "take me to where this was said"
         // gesture will read. Handing it the sentinel would send somebody 285,000 years into a
@@ -979,6 +984,36 @@ export const db = {
         // — an import, a restore, two taps — would interleave DETERMINISTICALLY without it, not
         // rarely, because every meeting's anchors start near 0. Identical output whenever
         // created_at is distinct, which is every other case.
+        'ORDER BY mt.created_at DESC, i.meeting_id, i.anchor_start_ms, i.rowid',
+    ),
+
+  /**
+   * Every decision in the library that has not been rejected, newest meeting first, for the
+   * follow-up home. Which statuses count as "still open" is decided in followUpData.ts, in one
+   * place with a test; this only fetches. Archived meetings are excluded for the same reason
+   * allActions excludes them.
+   */
+  allDecisions: () =>
+    run<DecisionRow>(
+      'SELECT i.id AS id, i.meeting_id AS meetingId, mt.title AS meetingTitle, ' +
+        'mt.created_at AS createdAt, i.text AS content, i.status AS status, i.item_type AS itemType, ' +
+        `CASE WHEN i.gen_version = '${USER_GEN}' THEN NULL ELSE i.anchor_start_ms END AS anchorStartMs ` +
+        'FROM items i JOIN meetings mt ON mt.id = i.meeting_id ' +
+        "WHERE i.kind = 'decision' AND i.review <> 'rejected' AND mt.archived_at IS NULL " +
+        'ORDER BY mt.created_at DESC, i.meeting_id, i.anchor_start_ms, i.rowid',
+    ),
+
+  /**
+   * The items sitting in a review queue, across meetings. The predicate is the one ReviewScreen
+   * and the Summary tab already use (`needs_review` and read by the classifier, `item_type` set),
+   * so this count and the queue it opens cannot disagree.
+   */
+  reviewItems: () =>
+    run<ReviewItemRow>(
+      'SELECT i.id AS id, i.meeting_id AS meetingId, mt.title AS meetingTitle, ' +
+        'mt.created_at AS createdAt, i.text AS content ' +
+        'FROM items i JOIN meetings mt ON mt.id = i.meeting_id ' +
+        "WHERE i.review = 'needs_review' AND i.item_type IS NOT NULL AND mt.archived_at IS NULL " +
         'ORDER BY mt.created_at DESC, i.meeting_id, i.anchor_start_ms, i.rowid',
     ),
 

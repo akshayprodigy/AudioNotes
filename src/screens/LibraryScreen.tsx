@@ -7,6 +7,8 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useLibraryStore } from '../state/libraryStore';
 import type { MeetingSort } from '../db/queries';
 import { loadActions, tally } from './actionsData';
+import { emptyFollowUp, loadFollowUp, type FollowUp } from './followUpData';
+import FollowUpCard, { followUpVisible } from './FollowUpCard';
 import { useImport } from './useImport';
 import { refreshAllowance, useAllowance } from '../billing/allowance';
 import { AllowanceLine } from './AllowanceNote';
@@ -239,6 +241,8 @@ export default function LibraryScreen({ navigation }: Props) {
   const [sheetFor, setSheetFor] = useState<Meeting | null>(null);
   const [archived, setArchived] = useState(0);
   const [work, setWork] = useState({ total: 0, open: 0, meetings: 0 });
+  /** The follow-up card's three lists (Pro). Drawn only when `paid`; read for everyone, shown to Pro. */
+  const [follow, setFollow] = useState<FollowUp>(emptyFollowUp);
   /** Meetings the pipeline has paused for the phone's sake; their badge reads PAUSED. */
   const [pausedIds, setPausedIds] = useState<Set<string>>(new Set());
   useEffect(
@@ -277,7 +281,12 @@ export default function LibraryScreen({ navigation }: Props) {
 
   const countActions = useCallback(() => {
     loadActions()
-      .then(rows => setWork(tally(rows.filter(r => !isSampleId(r.meetingId)))))
+      .then(rows => {
+        const own = rows.filter(r => !isSampleId(r.meetingId));
+        setWork(tally(own));
+        // The same rows, read once: the follow-up lists must agree with the open-actions count.
+        return loadFollowUp(Date.now(), own).then(setFollow);
+      })
       .catch(() => {});
   }, []);
 
@@ -786,32 +795,22 @@ export default function LibraryScreen({ navigation }: Props) {
           </Pop>
         ) : null}
 
-        {/* The tracker's front door. Hidden when nothing is open — "0 open actions" is a nag —
-            and hidden outright on free, where the worklist itself is Pro (the "Actions (Pro)"
-            header button is the nudge). */}
-        {paid && work.open > 0 ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Open actions"
-            onPress={() => navigation.navigate('Actions')}
-            style={st.actionsWrap}>
-            <Raised edge={colors.line} fill={colors.card} rad={radius.card} depth={6}>
-              <View style={st.actionsCard}>
-                <View style={[st.actionsIcon, { backgroundColor: colors.primarySoft }]}>
-                  <Icon name="list" size={s(20)} color={colors.primary} strokeWidth={2.4} />
-                </View>
-                <View style={st.flex}>
-                  <Txt variant="bodyBlack">
-                    {work.open} open action{work.open === 1 ? '' : 's'}
-                  </Txt>
-                  <Txt variant="chipSoft" color={colors.inkSoft}>
-                    across {work.meetings} meeting{work.meetings === 1 ? '' : 's'}
-                  </Txt>
-                </View>
-                <Icon name="chevronRight" size={s(18)} color={colors.inkFaint} />
-              </View>
-            </Raised>
-          </Pressable>
+        {/* The follow-up card, grown out of the open-actions card. Pro only; Free sees nothing
+            new here (the "Actions (Pro)" header button is its door). */}
+        {paid && followUpVisible(work, follow) ? (
+          <FollowUpCard
+            work={work}
+            follow={follow}
+            onOpenActions={() => navigation.navigate('Actions')}
+            onOpenList={kind => {
+              // One meeting waiting for review is the queue itself; several is a list to choose from.
+              if (kind === 'review' && follow.review.length === 1) {
+                navigation.navigate('Review', { meetingId: follow.review[0].meetingId });
+              } else {
+                navigation.navigate('FollowUp', { kind });
+              }
+            }}
+          />
         ) : null}
 
         {nudge ? (
@@ -998,9 +997,6 @@ function makeStyles(c: Colors) {
     headBtns: { flexDirection: 'row', gap: s(8) },
 
     streakWrap: { marginHorizontal: s(20), marginTop: s(16) },
-    actionsWrap: { marginHorizontal: s(20), marginTop: s(12) },
-    actionsCard: { flexDirection: 'row', alignItems: 'center', gap: s(12), padding: s(14) },
-    actionsIcon: { width: s(40), height: s(40), borderRadius: radius.ctl, alignItems: 'center', justifyContent: 'center' },
     streak: { flexDirection: 'row', alignItems: 'center', gap: s(14), paddingVertical: s(14), paddingHorizontal: s(16) },
     streakIcon: {
       width: s(46),

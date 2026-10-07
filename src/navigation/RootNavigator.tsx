@@ -17,12 +17,14 @@ import ArchiveScreen from '../screens/ArchiveScreen';
 import NoticesScreen from '../screens/NoticesScreen';
 import VocabularyScreen from '../screens/VocabularyScreen';
 import ActionsScreen from '../screens/ActionsScreen';
+import FollowUpScreen from '../screens/FollowUpScreen';
 import PaywallScreen from '../screens/PaywallScreen';
 import ConsentCardScreen from '../screens/ConsentCardScreen';
 import PrivacyScreen from '../screens/PrivacyScreen';
 import ReviewScreen from '../screens/ReviewScreen';
 import AskScreen from '../screens/AskScreen';
 import ThreadScreen from '../screens/ThreadScreen';
+import SharePreviewScreen from '../share/SharePreviewScreen';
 
 export type RootStackParamList = {
   Onboarding: undefined;
@@ -59,9 +61,13 @@ export type RootStackParamList = {
   Vocabulary: undefined;
   /** The card held up to the room. No params: it says the same thing for every meeting. */
   ConsentCard: undefined;
+  /** What is about to be shared, as it will be sent, with the format picker and the Share button. */
+  Share: { meetingId: string };
   /** What actually left the phone. No params: it is the whole ledger or nothing. */
   Privacy: undefined;
   Actions: undefined;
+  /** The follow-up home's filtered lists (Pro): due actions, open decisions, notes to review. */
+  FollowUp: { kind: 'due' | 'decisions' | 'review' };
   /** `meetingId` is the meeting that prompted the sell, so the screen can name it. */
   Paywall: { meetingId?: string; from?: 'onboarding' } | undefined;
 };
@@ -187,9 +193,11 @@ export default function RootNavigator() {
             options={{ headerShown: false }}
           />
           <Stack.Screen name="Actions" component={ActionsScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="FollowUp" component={FollowUpScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Review" component={ReviewScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Ask" component={AskScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Thread" component={ThreadScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Share" component={SharePreviewScreen} options={{ headerShown: false }} />
           <Stack.Screen
             name="Paywall"
             component={PaywallScreen}
