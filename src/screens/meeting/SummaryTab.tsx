@@ -23,6 +23,7 @@ import {
   DOC_KEY,
   EditedTag,
   Prose,
+  QuietAction,
   ToolButton,
   editTargetOf,
   editedText,
@@ -641,13 +642,27 @@ export default function SummaryTab({
           {STALE_SUMMARY_COPY}
         </Txt>
       ) : null}
+      {/* "Write it again" is a quiet text action under the content, not a button beside it: the
+          summary is what this tab is for, and a full-width raised control under every summary
+          made the repeat the loudest thing on the screen. "Write the summary", where there is no
+          summary yet, IS the point of the card and stays a button. */}
       {(prose || reason === 'not-run') && reason !== 'expired' && reason !== 'locked' ? (
-        <SoftButton
-          icon="refresh"
-          label={writing ? 'Working…' : prose ? 'Write it again' : 'Write the summary'}
-          onPress={onWrite}
-          disabled={writing}
-        />
+        prose ? (
+          <QuietAction
+            label={writing ? 'Working…' : 'Write it again'}
+            hint="Writes the summary again from the transcript. The current one stays until the new one is ready."
+            onPress={onWrite}
+            disabled={writing}
+            colors={colors}
+          />
+        ) : (
+          <SoftButton
+            icon="refresh"
+            label={writing ? 'Working…' : 'Write the summary'}
+            onPress={onWrite}
+            disabled={writing}
+          />
+        )
       ) : null}
 
       {/* A lapsed subscriber keeps every summary already written — they are notes about the

@@ -695,6 +695,9 @@ export function DocItem({
   );
 }
 
+/** The smallest touch target, in dp. Raw, not scaled: a small screen must not shrink it below 44. */
+export const MIN_TOUCH = 44;
+
 /** What an action with no owner says. Quiet, and the truth: the extractor could not tell. */
 export const NO_OWNER_YET = 'No owner yet';
 
@@ -810,6 +813,41 @@ export function ToolButton({
   );
 }
 
+/**
+ * A text action that is not the point of the screen: a line of underlined words with a 44 dp
+ * touch target, centred under the content it acts on. For things a person may want and should
+ * not trip over — "Write it again" under a summary, where the summary is the content.
+ */
+export function QuietAction({
+  label,
+  onPress,
+  colors,
+  disabled,
+  hint,
+}: {
+  label: string;
+  onPress: () => void;
+  colors: Colors;
+  disabled?: boolean;
+  hint?: string;
+}) {
+  const st = React.useMemo(() => makeStyles(colors), [colors]);
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={hint}
+      accessibilityState={{ disabled: !!disabled }}
+      style={({ pressed }) => [st.quiet, { opacity: pressed || disabled ? 0.55 : 1 }]}>
+      <Txt variant="chip" color={colors.inkSoft} style={st.quietText}>
+        {label}
+      </Txt>
+    </Pressable>
+  );
+}
+
 /** A card with nothing in it yet, said plainly rather than left blank. */
 export function Empty({ text, colors }: { text: string; colors: Colors }) {
   const st = React.useMemo(() => makeStyles(colors), [colors]);
@@ -844,6 +882,8 @@ function makeStyles(_c: Colors) {
     },
     head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: s(10) },
     shrink: { flexShrink: 1 },
+    quiet: { minHeight: MIN_TOUCH, alignItems: 'center', justifyContent: 'center', paddingHorizontal: s(12) },
+    quietText: { textDecorationLine: 'underline' },
     doneMark: { flexDirection: 'row', alignItems: 'center', gap: s(4) },
     empty: { padding: s(22), alignItems: 'center', gap: s(8) },
     emptyText: { textAlign: 'center' },
