@@ -67,6 +67,14 @@ describe('shouldAutoRetitle', () => {
     expect(shouldAutoRetitle('Mon 30 Aug meeting · 14:05', null)).toBe(true);
   });
 
+  it('also takes the title a dictation is given, so it is named from its opening words too', () => {
+    // DefaultTitle.of writes "Afternoon dictation · …" for a dictation (F22b); a guard
+    // that only knew " meeting · " would leave every dictation on its placeholder.
+    expect(shouldAutoRetitle('Afternoon dictation · Wed 7 Oct, 14:05', null)).toBe(true);
+    expect(shouldAutoRetitle('Afternoon dictation · Wed 7 Oct, 14:05', 1756500000000)).toBe(false);
+    expect(shouldAutoRetitle('Dictation', null)).toBe(false);
+  });
+
   it('leaves an ordinary title alone', () => {
     expect(shouldAutoRetitle('Pricing call with Acme', null)).toBe(false);
   });

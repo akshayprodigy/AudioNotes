@@ -524,9 +524,7 @@ class ProcessingEngine(
     try {
       val db = AudioDb.get(ctx)
       val current = db.getTitle(meetingId) ?: ""
-      // JS: const isGenerated = current === 'Meeting' || / meeting · /.test(current);
-      val isGenerated = current == "Meeting" || RETITLE_PLACEHOLDER.containsMatchIn(current)
-      if (!isGenerated) return
+      if (!isGeneratedTitle(current)) return
 
       // JS: utterances.map(u => u.text.trim()).filter(Boolean).join(' ').replace(/\s+/g,' ').trim()
       val opening = utts.map { it.text.trim() }
@@ -643,9 +641,14 @@ class ProcessingEngine(
       db.setTemplate(meetingId, suggested, AudioDb.TemplateSource.SUGGESTED)
     }
 
-    // Mirrors the JS-generated-title guard in PipelineController.retitleFromTranscript exactly:
-    // / meeting · /.test(current) — a space, "meeting", a middle-dot, a space.
-    private val RETITLE_PLACEHOLDER = Regex(""" meeting · """)
+    // Mirrors the JS-generated-title guard in PipelineController.shouldAutoRetitle exactly:
+    // / (meeting|dictation) · /.test(current) — a space, the noun, a middle-dot, a space.
+    // DefaultTitle.of writes "meeting" or, for a dictation, "dictation".
+    private val RETITLE_PLACEHOLDER = Regex(""" (meeting|dictation) · """)
+
+    /** Whether [current] is a title the app wrote itself, and so may be replaced from the transcript. */
+    fun isGeneratedTitle(current: String): Boolean =
+      current == "Meeting" || RETITLE_PLACEHOLDER.containsMatchIn(current)
     private val WHITESPACE_RUN = Regex("""\s+""")
     private val TRAILING_PARTIAL_WORD = Regex("""\s+\S*$""")
 

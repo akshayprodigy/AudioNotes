@@ -429,7 +429,7 @@ object CaptureController {
       val dir = File(context.filesDir, "meetings/$meetingId").apply { mkdirs() }
       val audioPath = File(dir, "audio.pcm").absolutePath
 
-      db.insertMeeting(meetingId, defaultTitle(createdAt), createdAt, tier, audioPath)
+      db.insertMeeting(meetingId, defaultTitle(createdAt, mode), createdAt, tier, audioPath)
 
       if (mode == "dictation") db.setMode(meetingId, "dictation")
 
@@ -508,16 +508,6 @@ object CaptureController {
    * distinguishes them; once a transcript exists the pipeline replaces this with the first line of
    * what was said (see PipelineController.buildMinutes).
    */
-  fun defaultTitle(createdAt: Long): String {
-    val cal = java.util.Calendar.getInstance().apply { timeInMillis = createdAt }
-    val part = when (cal.get(java.util.Calendar.HOUR_OF_DAY)) {
-      in 5..11 -> "Morning"
-      in 12..16 -> "Afternoon"
-      in 17..20 -> "Evening"
-      else -> "Late"
-    }
-    val stamp = java.text.SimpleDateFormat("EEE d MMM, HH:mm", java.util.Locale.getDefault())
-      .format(java.util.Date(createdAt))
-    return "$part meeting · $stamp"
-  }
+  fun defaultTitle(createdAt: Long, mode: String? = null): String =
+    DefaultTitle.of(createdAt, mode, TimeZone.getDefault(), java.util.Locale.getDefault())
 }

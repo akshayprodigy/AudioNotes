@@ -64,7 +64,8 @@ export function shouldAutoRetitle(
   titleEditedAt: number | null | undefined,
 ): boolean {
   if (titleEditedAt != null && titleEditedAt > 0) return false;
-  return current === 'Meeting' || / meeting · /.test(current);
+  // " dictation · " is what DefaultTitle.of writes for a dictation.
+  return current === 'Meeting' || / (meeting|dictation) · /.test(current);
 }
 
 /**
