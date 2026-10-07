@@ -78,3 +78,33 @@ describe('loadActions', () => {
     expect(rows[0].done).toBe(false);
   });
 });
+
+describe('the sample meeting is not the person\u2019s work', () => {
+  beforeEach(() => {
+    (db.doneItemIds as jest.Mock).mockResolvedValue(new Set<string>());
+  });
+
+  it('keeps the sample\u2019s actions out of the worklist', async () => {
+    (db.allActions as jest.Mock).mockResolvedValue([
+      row({ meetingId: 'sample-meeting-v1', id: 's1', content: 'I will send the signed quote — Priya (due Wednesday)' }),
+      row({ id: 'real-1' }),
+    ]);
+    const rows = await loadActions();
+    expect(rows.map(r => r.id)).toEqual(['real-1']);
+  });
+
+  it('and out of the counts the Library card and the worklist header state', async () => {
+    (db.allActions as jest.Mock).mockResolvedValue([
+      row({ meetingId: 'sample-meeting-v1', id: 's1' }),
+      row({ meetingId: 'sample-meeting-v1', id: 's2' }),
+      row({ id: 'real-1' }),
+    ]);
+    const { tally } = require('../actionsData');
+    expect(tally(await loadActions())).toEqual({ total: 1, open: 1, meetings: 1 });
+  });
+
+  it('does not drop a real meeting whose id merely contains the word', async () => {
+    (db.allActions as jest.Mock).mockResolvedValue([row({ meetingId: 'a-sample-of-things', id: 'x' })]);
+    expect((await loadActions()).map(r => r.id)).toEqual(['x']);
+  });
+});

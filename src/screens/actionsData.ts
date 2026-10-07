@@ -1,6 +1,7 @@
 import { db } from '../db/queries';
 import type { ActionRow } from '../pipeline/types';
 import { ownerSpeakerId, resolveOwnerText } from '../pipeline/itemOwner';
+import { isSampleId } from '../sample/sampleId';
 
 /**
  * Loading the cross-meeting worklist.
@@ -46,8 +47,12 @@ export async function loadActions(): Promise<ActionRow[]> {
       .catch(() => new Map<string, string>()),
   ]);
   const names = speakerNames ?? new Map<string, string>();
+  // The bundled sample is not the person's work. Its four invented actions must not appear in the
+  // worklist, in "Across N meetings", or in the Library's open-actions card (every one of which
+  // reads this list). The sample is still searchable and still has its own Actions tab.
+  const own = rows.filter(r => !isSampleId(r.meetingId));
   // The separator matches db.doneItemIds exactly: a NUL, which cannot occur in either half.
-  return rows.map(r => {
+  return own.map(r => {
     const id = ownerSpeakerId(r.ownerJson);
     const name = id ? names.get(`${r.meetingId}\u0000${id}`) : undefined;
     // The owner is the speaker's name NOW, not the one baked into the text at extraction (F14).

@@ -170,3 +170,18 @@ test('an item row with no moment opens the Actions tab as before', async () => {
   expect(nav.navigate).toHaveBeenCalledWith('Meeting', { meetingId: 'm1', tab: 'actions' });
   await act(async () => tree.unmount());
 });
+
+/** Workstream D cleanup: the bundled sample's invented actions are not anybody's to-do list. */
+test('the Pro worklist does not list the sample meeting\u2019s actions', async () => {
+  (db.allActions as jest.Mock).mockResolvedValue([
+    { ...action, meetingId: 'sample-meeting-v1', meetingTitle: 'Weekly check-in (sample)', id: 's1', content: 'Priya sends the signed quote' },
+    action,
+  ]);
+  const tree = await render();
+  const all = tree.root.findAll(n => String(n.type) === 'Text').map(n => [n.props.children].flat().join('')).join('\n');
+  expect(all).not.toContain('Weekly check-in (sample)');
+  expect(all).not.toContain('signed quote');
+  expect(all).toContain('Send the report');
+  expect(checkboxes(tree)).toHaveLength(1);
+  await act(async () => tree.unmount());
+});
