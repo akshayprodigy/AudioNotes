@@ -13,6 +13,10 @@ import { AllowanceLine } from './AllowanceNote';
 import { PipelineController } from '../pipeline/PipelineController';
 import { db } from '../db/queries';
 import ProNudgeCard from './ProNudgeCard';
+import ReadinessCard from '../setup/ReadinessCard';
+import { useSetupReadiness } from '../setup/useReadiness';
+import { SAMPLE_ID, isSampleId, withoutSample } from '../sample/sampleId';
+import { deleteSample, seedSample } from '../sample/seedSample';
 import {
   entitlement,
   noteNudgeShown,
@@ -222,6 +226,13 @@ export default function LibraryScreen({ navigation }: Props) {
   const st = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { meetings, refresh, sort, setSort, tag, tags, setTag } = useLibraryStore();
+  // The sample is a meeting in the list but not one the person recorded, so every figure about how
+  // much they have recorded (the header, the streak, the Pro nudge) is taken over their own.
+  const own = useMemo(() => withoutSample(meetings), [meetings]);
+  const hasSample = own.length !== meetings.length;
+  // First-run setup: "Finish setup - 60% of 114 MB downloaded" until the essential models are here.
+  const setup = useSetupReadiness();
+  const reloadSetup = setup.reload;
   const [sorting, setSorting] = useState(false);
   const backfillSearch = useLibraryStore(st2 => st2.backfillSearch);
   const backfillItems = useLibraryStore(st2 => st2.backfillItems);
@@ -266,7 +277,7 @@ export default function LibraryScreen({ navigation }: Props) {
 
   const countActions = useCallback(() => {
     loadActions()
-      .then(rows => setWork(tally(rows)))
+      .then(rows => setWork(tally(rows.filter(r => !isSampleId(r.meetingId)))))
       .catch(() => {});
   }, []);
 
@@ -305,11 +316,13 @@ export default function LibraryScreen({ navigation }: Props) {
       entitlement().then(e => setPaid(e.paid)).catch(() => {});
       refreshAllowance();
       countActions();
+      // The disk may have changed while this screen was away (a download finished or died).
+      reloadSetup();
       PipelineController.processPending().then(refresh).catch(() => {});
     };
     onFocus();
     return navigation.addListener('focus', onFocus);
-  }, [navigation, refresh, backfillSearch, backfillItems, countActions]);
+  }, [navigation, refresh, backfillSearch, backfillItems, countActions, reloadSetup]);
 
   const reload = () => {
     refresh();
@@ -330,6 +343,27 @@ export default function LibraryScreen({ navigation }: Props) {
           label: 'Still recording',
           hint: 'Finish this meeting before archiving or deleting it.',
           onPress: () => {},
+        },
+      ];
+    }
+    if (isSampleId(m.id)) {
+      // Deleting it is always allowed and cheap: "See the sample again" brings it back. Archiving
+      // is left out, because a hidden sample is just a delete with an extra step.
+      return [
+        {
+          icon: 'trash',
+          label: 'Delete sample',
+          hint: 'Removes the sample meeting and its audio. You can bring it back from the Library.',
+          destructive: true,
+          onPress: () =>
+            confirmDestructive({
+              title: 'Delete the sample?',
+              message: 'The sample meeting and its audio are removed from this phone. You can bring it back from the Library.',
+              confirmLabel: 'Delete sample',
+              onConfirm: () => {
+                deleteSample().catch(() => {}).then(reload);
+              },
+            }),
         },
       ];
     }
@@ -372,7 +406,7 @@ export default function LibraryScreen({ navigation }: Props) {
    * A meeting still processing has shown its owner nothing, so it is not evidence that they are
    * getting value out of the app and must not count towards asking them to pay for more of it.
    */
-  const completed = useMemo(() => meetings.filter(m => m.status === 'done').length, [meetings]);
+  const completed = useMemo(() => own.filter(m => m.status === 'done').length, [own]);
 
   useEffect(() => {
     let alive = true;
@@ -396,10 +430,10 @@ export default function LibraryScreen({ navigation }: Props) {
     };
   }, [completed]);
 
-  const streak = useMemo(() => captureStreak(meetings), [meetings]);
+  const streak = useMemo(() => captureStreak(own), [own]);
   const totalMin = useMemo(
-    () => Math.round(meetings.reduce((a, m) => a + (m.durationMs || 0), 0) / 60000),
-    [meetings],
+    () => Math.round(own.reduce((a, m) => a + (m.durationMs || 0), 0) / 60000),
+    [own],
   );
 
   const open = (id: string) => navigation.navigate('Meeting', { meetingId: id });
@@ -436,6 +470,7 @@ export default function LibraryScreen({ navigation }: Props) {
               ) : (
                 <Badge label={status.label} color={status.color} soft={status.soft} />
               )}
+              {isSampleId(m.id) ? <Badge label="SAMPLE" color={colors.primaryDeep} soft={colors.primarySoft} /> : null}
               <View style={st.flex} />
               <Txt variant="chipSoft" color={colors.inkFaint}>
                 {[m.mode === 'dictation' ? 'Dictation' : null, when(m.createdAt), dur(m.durationMs)].filter(Boolean).join(' · ')}
@@ -506,7 +541,10 @@ export default function LibraryScreen({ navigation }: Props) {
           onPress={() => open(m.id)}
           onLongPress={() => setSheetFor(m)}>
           <View style={st.smallPad}>
-            <Badge label={status.label} color={status.color} soft={status.soft} small />
+            <View style={st.badges}>
+              <Badge label={status.label} color={status.color} soft={status.soft} small />
+              {isSampleId(m.id) ? <Badge label="SAMPLE" color={colors.primaryDeep} soft={colors.primarySoft} small /> : null}
+            </View>
             <Txt variant="cardTitleSm" style={st.smallTitle} numberOfLines={2}>
               {m.title || 'Untitled meeting'}
             </Txt>
@@ -643,9 +681,9 @@ export default function LibraryScreen({ navigation }: Props) {
           <View style={st.flex}>
             <Txt variant="screenTitle">Meetings</Txt>
             <Txt variant="sub" color={colors.inkDim} style={st.sub}>
-              {meetings.length === 0
+              {own.length === 0
                 ? 'Nothing recorded yet'
-                : `${meetings.length} saved${totalMin > 0 ? ` · ${totalMin} min captured` : ''}`}
+                : `${own.length} saved${totalMin > 0 ? ` · ${totalMin} min captured` : ''}`}
             </Txt>
             <AllowanceLine status={allowance} />
           </View>
@@ -672,6 +710,8 @@ export default function LibraryScreen({ navigation }: Props) {
             <IconButton icon="sliders" label="Settings" onPress={() => navigation.navigate('Settings')} />
           </View>
         </View>
+
+        <ReadinessCard setup={setup} />
 
         {/* Only once there is something to sort or filter. On a library of three meetings this
             row is furniture in front of the content. */}
@@ -788,8 +828,9 @@ export default function LibraryScreen({ navigation }: Props) {
           />
         ) : null}
 
-        {meetings.length === 0 ? (
-          <Pop style={[st.empty, st.emptyGrow]}>
+        {/* "Empty" means nothing the person recorded: the sample alone does not fill the library. */}
+        {own.length === 0 ? (
+          <Pop style={[st.empty, meetings.length === 0 && st.emptyGrow]}>
             <Mascot mood="asleep" size={s(150)} />
             <Txt variant="display" style={st.emptyTitle}>
               No meetings yet
@@ -799,16 +840,39 @@ export default function LibraryScreen({ navigation }: Props) {
               Everything stays on your phone.
             </Txt>
           </Pop>
-        ) : (
-          groups.map((g, gi) => (
-            <View key={g.label}>
-              <Txt variant="overline" color={colors.inkFaint} style={st.dayLabel}>
-                {g.label}
-              </Txt>
-              <View style={st.cards}>{layout(g.items, gi * 3)}</View>
-            </View>
-          ))
-        )}
+        ) : null}
+        {meetings.length > 0
+          ? groups.map((g, gi) => (
+              <View key={g.label}>
+                <Txt variant="overline" color={colors.inkFaint} style={st.dayLabel}>
+                  {g.label}
+                </Txt>
+                <View style={st.cards}>{layout(g.items, gi * 3)}</View>
+              </View>
+            ))
+          : null}
+
+        {/* Always there to be found again. Quiet: it is a way back to something deleted, not a
+            call to action. */}
+        {!hasSample ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="See the sample again"
+            onPress={() => {
+              seedSample()
+                .then(() => {
+                  refresh();
+                  navigation.navigate('Meeting', { meetingId: SAMPLE_ID });
+                })
+                .catch(() => {});
+            }}
+            style={st.sampleRow}>
+            <Icon name="play" size={s(16)} color={colors.primaryDeep} strokeWidth={2.4} />
+            <Txt variant="chip" color={colors.primaryDeep}>
+              See the sample again
+            </Txt>
+          </Pressable>
+        ) : null}
 
         {/* Only once something is in it. An always-visible "Archived (0)" is a permanent
             reminder of a feature most people will never use. */}
@@ -978,6 +1042,7 @@ function makeStyles(c: Colors) {
     },
 
     smallPad: { padding: s(16) },
+    badges: { flexDirection: 'row', flexWrap: 'wrap', gap: s(6) },
     smallTitle: { marginTop: s(10) },
     smallMeta: { marginTop: s(10) },
 
@@ -992,6 +1057,15 @@ function makeStyles(c: Colors) {
     emptyBody: { textAlign: 'center', marginTop: s(8) },
 
     archiveRow: { marginHorizontal: s(20), marginTop: s(24) },
+    sampleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: s(8),
+      minHeight: s(48),
+      marginTop: s(16),
+      marginHorizontal: s(20),
+    },
     archiveInner: { flexDirection: 'row', alignItems: 'center', gap: s(12), padding: s(14) },
     archiveIcon: {
       width: s(34),
