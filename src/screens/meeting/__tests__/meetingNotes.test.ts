@@ -1,4 +1,4 @@
-import { announceLine, endingNote, holdFor } from '../meetingNotes';
+import { announceLine, endingAckKey, endingCardNote, endingNote, holdFor } from '../meetingNotes';
 
 describe('endingNote', () => {
   it('says nothing for a Stop, or for a meeting from before endings were kept', () => {
@@ -47,5 +47,38 @@ describe('holdFor — what a meeting with nothing written is', () => {
   it('no speech needs audio; no audio is its own thing', () => {
     expect(holdFor(m('error'))).toBe('no-speech');
     expect(holdFor(m('error', 0))).toBe('no-audio');
+  });
+});
+
+describe('endingCardNote', () => {
+  const NOW = Date.UTC(2026, 9, 7, 12);
+  const DAY = 24 * 60 * 60 * 1000;
+  const m = (over: object = {}) => ({ createdAt: NOW - DAY, durationMs: 60_000, endReason: 'mic_lost', ...over });
+  const o = (over: object = {}) => ({ acknowledged: false, paid: false, now: NOW, ...over });
+
+  it('is the ending sentence for each reason the app can end a recording for', () => {
+    for (const r of ['cap_reached', 'mic_lost', 'mic_unavailable', 'disk_full', 'write_failed', 'pause_timeout']) {
+      expect(endingCardNote(m({ endReason: r }), o())).toBe(endingNote(r, 60_000));
+      expect(endingCardNote(m({ endReason: r }), o())).not.toBeNull();
+    }
+  });
+  it('says nothing for a Stop, an unknown reason, or no meeting', () => {
+    expect(endingCardNote(m({ endReason: 'stopped' }), o())).toBeNull();
+    expect(endingCardNote(m({ endReason: null }), o())).toBeNull();
+    expect(endingCardNote(null, o())).toBeNull();
+  });
+  it('says nothing once acknowledged', () => {
+    expect(endingCardNote(m(), o({ acknowledged: true }))).toBeNull();
+  });
+  it('says nothing for a meeting older than seven days, and still does at exactly seven', () => {
+    expect(endingCardNote(m({ createdAt: NOW - 7 * DAY - 1 }), o())).toBeNull();
+    expect(endingCardNote(m({ createdAt: NOW - 7 * DAY }), o())).not.toBeNull();
+  });
+  it('says nothing about the Free limit to a phone that is Pro now, but still about every other reason', () => {
+    expect(endingCardNote(m({ endReason: 'cap_reached' }), o({ paid: true }))).toBeNull();
+    expect(endingCardNote(m({ endReason: 'mic_lost' }), o({ paid: true }))).not.toBeNull();
+  });
+  it('keys the acknowledgement by meeting', () => {
+    expect(endingAckKey('abc')).toBe('ending_ack.abc');
   });
 });

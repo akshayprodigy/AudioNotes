@@ -20,6 +20,28 @@ export function endingNote(reason: string | null | undefined, durationMs: number
   return durationMs > 0 ? `${why}. Everything up to that point is kept.` : `${why}, so nothing was recorded.`;
 }
 
+/** How long after a meeting ended its explanation may still be offered on the Record screen. */
+export const ENDING_CARD_DAYS = 7;
+
+/** The settings key that records "the person has seen why this meeting ended early". */
+export const endingAckKey = (meetingId: string) => `ending_ack.${meetingId}`;
+
+/**
+ * The sentence the Record screen shows, once, for the newest meeting when it ended for a reason
+ * other than the person's own Stop. Null when there is nothing to say: a Stop, a meeting recorded
+ * before the reason was kept, one already acknowledged, one older than a week, or the Free-limit
+ * ending on a phone that is Pro now (the limit no longer applies, so the sentence would mislead).
+ */
+export function endingCardNote(
+  m: { createdAt: number; durationMs: number; endReason?: string | null } | null | undefined,
+  opts: { acknowledged: boolean; paid: boolean; now: number },
+): string | null {
+  if (!m || opts.acknowledged) return null;
+  if (opts.now - m.createdAt > ENDING_CARD_DAYS * 24 * 60 * 60 * 1000) return null;
+  if (m.endReason === 'cap_reached' && opts.paid) return null;
+  return endingNote(m.endReason, m.durationMs);
+}
+
 /** AnnouncementPlayer's outcome as one line. Null when the meeting predates the outcome being kept. */
 export function announceLine(outcome: string | null | undefined): { text: string; warn: boolean } | null {
   switch (outcome) {

@@ -20,7 +20,7 @@ import { PipelineController } from '../pipeline/PipelineController';
 import { db } from '../db/queries';
 import AudioPipeline from '../native/NativeAudioPipeline';
 import { provenanceLabel } from './meeting/ItemProvenance';
-import { endingNote } from './meeting/meetingNotes';
+import { endingAckKey, endingCardNote, endingNote } from './meeting/meetingNotes';
 import MicVisualizer from '../components/MicVisualizer';
 import LiveWaveform from '../components/LiveWaveform';
 import Mascot from '../components/Mascot';
@@ -114,6 +114,43 @@ export default function RecordScreen({ navigation }: Props) {
     // A purchase, or a new month, ends the refusal.
     if (allowance && (allowance.paid || allowance.remaining > 0)) setRefusedOn(null);
   }, [allowance]);
+  // F13: the newest meeting ended for a reason that was not the person's own Stop (the Free limit,
+  // a lost mic, a full disk, a forgotten pause) and they have not yet been told why. The live alert
+  // below covers an ending seen happening; this covers the one that happened while the app was
+  // away. Shown once: Open and Dismiss both acknowledge it.
+  const [endedCard, setEndedCard] = useState<{ id: string; note: string; canOpen: boolean } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const latest = (await db.listMeetings('recent'))?.[0];
+        const m = latest ? await db.getMeeting(latest.id) : undefined;
+        if (!m) return;
+        const acknowledged = (await db.getSetting(endingAckKey(m.id))) === '1';
+        const paid = Boolean((await entitlement().catch(() => null))?.paid);
+        const note = endingCardNote(m, { acknowledged, paid, now: Date.now() });
+        if (alive && note) setEndedCard({ id: m.id, note, canOpen: m.durationMs > 0 });
+      } catch {
+        // No card is better than a wrong one.
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const acknowledgeEnding = useCallback((id: string) => {
+    db.setSetting(endingAckKey(id), '1').catch(() => {});
+    setEndedCard(c => (c && c.id === id ? null : c));
+  }, []);
+  const openMeeting = useCallback(
+    (meetingId: string) =>
+      navigation.reset({
+        index: 1,
+        routes: [{ name: 'Library' }, { name: 'Meeting', params: { meetingId } }],
+      }),
+    [navigation],
+  );
+
   // The plan the cap card can sell in place — monthly first, the smaller commitment for a decision
   // made mid-meeting. Null when this install cannot buy through Play or the account has had its
   // trial. RecordingService re-asks for the entitlement when the limit is reached, so a purchase
@@ -216,6 +253,8 @@ export default function RecordScreen({ navigation }: Props) {
       const note = endingNote(m?.endReason, m?.durationMs ?? 0);
       if (!m || !note) return;
       if (m.durationMs > 0) PipelineController.process(meetingId, { model: 'base' }).catch(() => {});
+      // Told by the alert now; the card must not tell them again when the screen next opens.
+      acknowledgeEnding(meetingId);
       Alert.alert(
         'Recording stopped',
         note,
@@ -223,17 +262,13 @@ export default function RecordScreen({ navigation }: Props) {
           ? [
               {
                 text: 'Open the meeting',
-                onPress: () =>
-                  navigation.reset({
-                    index: 1,
-                    routes: [{ name: 'Library' }, { name: 'Meeting', params: { meetingId } }],
-                  }),
+                onPress: () => openMeeting(meetingId),
               },
             ]
           : [{ text: 'OK' }],
       );
     },
-    [navigation],
+    [acknowledgeEnding, openMeeting],
   );
 
   // Native owns capture state: a meeting can be started from the floating bubble and can outlive
@@ -439,6 +474,10 @@ export default function RecordScreen({ navigation }: Props) {
   }
 
   // ---------- Recorder ----------
+  // The offer arrives with five minutes left, not at the limit: enough to read the card, decide, and
+  // carry on without breaking stride. A purchase there lifts the cap for the recording ALREADY
+  // RUNNING — RecordingService asks for the entitlement again when the limit is reached.
+  const capWarning = isRecording && capPhase(elapsed, capMs) === 'warning';
   const pill = !isRecording
     ? { label: '● ON DEVICE', color: colors.success, soft: colors.successSoft }
     : paused
@@ -494,11 +533,104 @@ export default function RecordScreen({ navigation }: Props) {
           ) : null}
         </View>
 
+        {/* The stage is three bands. The variable one (mascot or cap card, the ending card, the
+            allowance) is the ONLY part that scrolls and shrinks; the clock, the hint, the meter and
+            the big Stop/start control below it, and the footer under the stage, are fixed and
+            never inside a scroll view, so no amount of card text or large font can push them off
+            the screen. The cap card REPLACES the mascot in its slot rather than adding height. */}
         <View style={st.stage}>
-          <Mascot
-            mood={isRecording && !paused ? 'listening' : isRecording ? 'thinking' : 'idle'}
-            size={sv(104)}
-          />
+          <ScrollView
+            style={st.variable}
+            contentContainerStyle={st.variableContent}
+            showsVerticalScrollIndicator={false}>
+            {!isRecording && endedCard ? (
+              <Raised edge={colors.line} fill={colors.card} rad={radius.lg} depth={4}>
+                <View style={st.capNote}>
+                  <Txt variant="chip" color={colors.ink}>
+                    {endedCard.note}
+                  </Txt>
+                  {endedCard.canOpen ? (
+                    <Button
+                      label="Open the meeting"
+                      onPress={() => {
+                        acknowledgeEnding(endedCard.id);
+                        openMeeting(endedCard.id);
+                      }}
+                    />
+                  ) : null}
+                  <Pressable
+                    onPress={() => acknowledgeEnding(endedCard.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Dismiss"
+                    hitSlop={8}
+                    style={st.dismiss}>
+                    <Txt variant="chip" color={colors.inkDim}>
+                      Dismiss
+                    </Txt>
+                  </Pressable>
+                </View>
+              </Raised>
+            ) : null}
+
+            <Mascot mood="idle" size={sv(104)} />
+            <Mascot mood="idle" size={sv(104)} />
+            <Mascot mood="idle" size={sv(104)} />
+            {capWarning ? (
+              <Raised edge={colors.line} fill={colors.card} rad={radius.lg} depth={4}>
+                <View style={st.capNote}>
+                  <Txt variant="bodyStrong" color={colors.ink}>
+                    {countdown(elapsed, capMs)} left on Free
+                  </Txt>
+                  <Txt variant="chip" color={colors.inkDim}>
+                    {trialOffer
+                      ? `This recording will stop at 1 hour and be transcribed in full. Pro has no limit. ${trialTerms(trialOffer)}`
+                      : 'This recording will stop at 1 hour and be transcribed in full.'}
+                  </Txt>
+                  {trialOffer ? (
+                    <SoftButton
+                      icon="check"
+                      label={lifting ? 'One moment…' : `Keep recording — ${trialLength(trialOffer)} free`}
+                      disabled={lifting}
+                      onPress={async () => {
+                        setLifting(true);
+                        try {
+                          const result = await buyWithPlay(trialOffer.basePlanId);
+                          const notice = purchaseNotice(result);
+                          if (notice) Alert.alert(notice.title, notice.body);
+                          if (result.paid) {
+                            const e = await entitlement();
+                            setCapMs(capMsFor(Boolean(e?.paid)));
+                          }
+                        } catch (err: any) {
+                          // The recording is untouched either way: it still stops cleanly at the
+                          // limit and is kept. Only the purchase failed, so say why.
+                          Alert.alert('Could not start the trial', String(err?.message ?? err));
+                        } finally {
+                          setLifting(false);
+                        }
+                      }}
+                    />
+                  ) : null}
+                </View>
+              </Raised>
+            ) : (
+              <Mascot
+                mood={isRecording && !paused ? 'listening' : isRecording ? 'thinking' : 'idle'}
+                size={sv(104)}
+              />
+            )}
+
+            {!isRecording ? (
+              refusedOn !== null || isExhausted(allowance) ? (
+                <AllowanceExhausted
+                  resetsOn={refusedOn || allowance?.resetsOn || ''}
+                  onUpgrade={() => navigation.navigate('Paywall')}
+                />
+              ) : (
+                <AllowanceLine status={allowance} />
+              )
+            ) : null}
+          </ScrollView>
 
           <Txt variant="clock" style={st.clock}>
             {fmt(elapsed)}
@@ -510,61 +642,6 @@ export default function RecordScreen({ navigation }: Props) {
               ? 'Paused — tap resume to continue'
               : 'Listening — tap to finish'}
           </Txt>
-
-          {!isRecording ? (
-            refusedOn !== null || isExhausted(allowance) ? (
-              <AllowanceExhausted
-                resetsOn={refusedOn || allowance?.resetsOn || ''}
-                onUpgrade={() => navigation.navigate('Paywall')}
-              />
-            ) : (
-              <AllowanceLine status={allowance} />
-            )
-          ) : null}
-
-          {/* The offer arrives with five minutes left, not at the limit: enough to read this,
-              decide, and carry on without breaking stride. A purchase here lifts the cap for the
-              recording ALREADY RUNNING — RecordingService asks for the entitlement again when the
-              limit is reached, rather than trusting the cap it started with. */}
-          {isRecording && capPhase(elapsed, capMs) === 'warning' ? (
-            <Raised edge={colors.line} fill={colors.card} rad={radius.lg} depth={4}>
-              <View style={st.capNote}>
-                <Txt variant="bodyStrong" color={colors.ink}>
-                  {countdown(elapsed, capMs)} left on Free
-                </Txt>
-                <Txt variant="chip" color={colors.inkDim}>
-                  {trialOffer
-                    ? `This recording will stop at 1 hour and be transcribed in full. Pro has no limit. ${trialTerms(trialOffer)}`
-                    : 'This recording will stop at 1 hour and be transcribed in full.'}
-                </Txt>
-                {trialOffer ? (
-                  <SoftButton
-                    icon="check"
-                    label={lifting ? 'One moment…' : `Keep recording — ${trialLength(trialOffer)} free`}
-                    disabled={lifting}
-                    onPress={async () => {
-                      setLifting(true);
-                      try {
-                        const result = await buyWithPlay(trialOffer.basePlanId);
-                        const notice = purchaseNotice(result);
-                        if (notice) Alert.alert(notice.title, notice.body);
-                        if (result.paid) {
-                          const e = await entitlement();
-                          setCapMs(capMsFor(Boolean(e?.paid)));
-                        }
-                      } catch (err: any) {
-                        // The recording is untouched either way: it still stops cleanly at the
-                        // limit and is kept. Only the purchase failed, so say why.
-                        Alert.alert('Could not start the trial', String(err?.message ?? err));
-                      } finally {
-                        setLifting(false);
-                      }
-                    }}
-                  />
-                ) : null}
-              </View>
-            </Raised>
-          ) : null}
 
           {/* Reserved band, toggled by opacity rather than unmounted: removing it would shift the
               button upward the instant recording starts, right under the user's finger. */}
@@ -636,7 +713,11 @@ function makeStyles(c: Colors) {
     modeDim: { opacity: 0.45 },
     modeTip: { textAlign: 'center', paddingHorizontal: s(8) },
 
-    stage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    stage: { flex: 1, alignItems: 'center' },
+    // The only region that shrinks or scrolls; minHeight 0 lets it give way to the fixed controls.
+    variable: { flexGrow: 1, flexShrink: 1, minHeight: 0, alignSelf: 'stretch' },
+    variableContent: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', gap: s(8) },
+    dismiss: { alignSelf: 'center', paddingVertical: s(6), paddingHorizontal: s(10) },
     clock: { marginTop: sv(14) },
     capNote: { padding: s(14), gap: s(8), alignItems: 'flex-start' },
     hint: { marginTop: s(4) },

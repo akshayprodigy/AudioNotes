@@ -1,6 +1,6 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
-import { Alert, PermissionsAndroid } from 'react-native';
+import { Alert, PermissionsAndroid, ScrollView } from 'react-native';
 import RecordScreen from '../RecordScreen';
 import { db } from '../../db/queries';
 import Licence from '../../native/NativeLicence';
@@ -8,6 +8,8 @@ import AudioPipeline from '../../native/NativeAudioPipeline';
 import { useRecordingStore } from '../../state/recordingStore';
 import { refreshAllowance, useAllowanceStore } from '../../billing/allowance';
 import { exhaustedCopy, remainingCopy } from '../../billing/allowanceCopy';
+import { playAvailable, playPlans } from '../../billing/subscription';
+import Mascot from '../../components/Mascot';
 
 jest.mock('../../db/queries');
 jest.mock('react-native-safe-area-context', () => ({
@@ -140,4 +142,228 @@ test('buying Pro after a refusal takes the card away', async () => {
   });
   expect(texts(tree).some(t => /You've used/.test(t))).toBe(false);
   await act(async () => tree.unmount());
+});
+
+// ---------------------------------------------------------------------------------------------
+// F07 - the stage. The react-test-renderer has no layout engine, so these tests pin the STRUCTURE
+// that makes the layout safe (what is in the scrolling band and what is not); that the controls are
+// actually on screen at 384x853 dp and font scale 2.0 is a device check.
+// ---------------------------------------------------------------------------------------------
+
+const MIN = 60 * 1000;
+const recordingFor = (elapsedMs: number) =>
+  (AudioPipeline.currentSession as jest.Mock).mockResolvedValueOnce({
+    isRecording: true, meetingId: 'live', elapsedMs, silenced: false, paused: false,
+  });
+
+const within = (scroll: renderer.ReactTestInstance, node: renderer.ReactTestInstance) =>
+  scroll.findAll(n => n === node).length > 0;
+const inAnyScroll = (tree: renderer.ReactTestRenderer, node: renderer.ReactTestInstance) =>
+  tree.root.findAllByType(ScrollView).some(sv => within(sv, node));
+const bigControl = (tree: renderer.ReactTestRenderer) =>
+  tree.root.find(n => typeof n.props.onPress === 'function' && n.props.size === 148);
+const labelled = (tree: renderer.ReactTestRenderer, label: string) =>
+  tree.root.find(n => n.props.label === label && typeof n.props.onPress === 'function');
+const mascots = (tree: renderer.ReactTestRenderer) => tree.root.findAllByType(Mascot);
+const cardText = (tree: renderer.ReactTestRenderer) =>
+  tree.root.find(n => Array.isArray(n.props.children) && /left on Free/.test(n.props.children.join('')));
+
+test('while recording normally the mascot is shown and the stop control is not in a scroll view', async () => {
+  recordingFor(5 * 1000);
+  const tree = await render();
+  expect(mascots(tree)).toHaveLength(1);
+  expect(inAnyScroll(tree, bigControl(tree))).toBe(false);
+  expect(inAnyScroll(tree, labelled(tree, 'Pause'))).toBe(false);
+  expect(inAnyScroll(tree, labelled(tree, 'Mark'))).toBe(false);
+  expect(tree.root.findAll(n => Array.isArray(n.props.children) && /left on Free/.test(n.props.children.join(''))))
+    .toHaveLength(0);
+  await act(async () => tree.unmount());
+});
+
+test('in the warning phase the card replaces the mascot, inside the scrolling band, and the controls stay fixed', async () => {
+  recordingFor(56 * MIN);
+  const tree = await render();
+  expect(mascots(tree)).toHaveLength(0);
+  const scrolls = tree.root.findAllByType(ScrollView);
+  expect(scrolls.length).toBeGreaterThan(0);
+  expect(scrolls.some(sv => within(sv, cardText(tree)))).toBe(true);
+  expect(inAnyScroll(tree, bigControl(tree))).toBe(false);
+  expect(inAnyScroll(tree, labelled(tree, 'Pause'))).toBe(false);
+  expect(inAnyScroll(tree, labelled(tree, 'Mark'))).toBe(false);
+  await act(async () => tree.unmount());
+});
+
+test("the warning card's own button stays inside the card, in the scrolling band", async () => {
+  (playAvailable as jest.Mock).mockResolvedValueOnce(true);
+  (playPlans as jest.Mock).mockResolvedValueOnce([
+    { basePlanId: 'monthly', price: '$4.99', priceMicros: 4990000, period: 'P1M', fullPrice: null, trialPeriod: 'P1W', trialCycles: 1 },
+  ]);
+  recordingFor(56 * MIN);
+  const tree = await render();
+  const button = tree.root.find(
+    n => typeof n.props.label === 'string' && n.props.label.startsWith('Keep recording') && typeof n.props.onPress === 'function',
+  );
+  expect(tree.root.findAllByType(ScrollView).some(sv => within(sv, button) && within(sv, cardText(tree)))).toBe(true);
+  await act(async () => tree.unmount());
+});
+
+test('at idle the mascot is shown and the start control is not in a scroll view', async () => {
+  const tree = await render();
+  expect(mascots(tree)).toHaveLength(1);
+  expect(inAnyScroll(tree, bigControl(tree))).toBe(false);
+  await act(async () => tree.unmount());
+});
+
+test('with the allowance spent the card is in the scrolling band and the start control is not', async () => {
+  allowance.mockResolvedValue({ ...FREE, used: 5, remaining: 0 });
+  const tree = await render();
+  const get = labelled(tree, 'Get Pro');
+  expect(tree.root.findAllByType(ScrollView).some(sv => within(sv, get))).toBe(true);
+  expect(inAnyScroll(tree, bigControl(tree))).toBe(false);
+  await act(async () => tree.unmount());
+});
+
+// ---------------------------------------------------------------------------------------------
+// F13 - the explanation of an ending that was not the person's own Stop, kept until acknowledged.
+// ---------------------------------------------------------------------------------------------
+
+const DAY = 24 * 60 * MIN;
+function newestMeeting(over: Record<string, unknown> = {}, acked = false) {
+  const m = { id: 'm1', createdAt: Date.now() - DAY, durationMs: 40 * MIN, endReason: 'mic_lost', ...over };
+  (db.listMeetings as jest.Mock).mockResolvedValue([{ id: m.id }]);
+  (db.getMeeting as jest.Mock).mockResolvedValue(m);
+  (db.getSetting as jest.Mock).mockImplementation(async (k: string) =>
+    k === 'consentAck' ? '1' : k === `ending_ack.${m.id}` && acked ? '1' : null,
+  );
+  return m;
+}
+const MIC_LOST = 'Stopped early: a call or another app took the microphone. Everything up to that point is kept.';
+const hasButton = (tree: renderer.ReactTestRenderer, label: string) =>
+  tree.root.findAll(n => n.props.label === label && typeof n.props.onPress === 'function').length > 0;
+const dismiss = (tree: renderer.ReactTestRenderer) =>
+  tree.root.find(n => n.props.accessibilityLabel === 'Dismiss' && typeof n.props.onPress === 'function');
+
+describe('ending card', () => {
+  beforeEach(() => {
+    (db.listMeetings as jest.Mock).mockResolvedValue([]);
+    (db.getMeeting as jest.Mock).mockResolvedValue(undefined);
+  });
+
+  test('a meeting that ended for a reason other than Stop is explained once, above the mascot', async () => {
+    newestMeeting();
+    const tree = await render();
+    expect(texts(tree)).toContain(MIC_LOST);
+    expect(hasButton(tree, 'Open the meeting')).toBe(true);
+    expect(tree.root.findAllByType(ScrollView).some(sv => within(sv, dismiss(tree)))).toBe(true);
+    await act(async () => tree.unmount());
+  });
+
+  test('every non-Stop reason shows its own sentence', async () => {
+    for (const r of ['cap_reached', 'mic_lost', 'mic_unavailable', 'disk_full', 'write_failed', 'pause_timeout']) {
+      newestMeeting({ endReason: r });
+      const tree = await render();
+      expect(texts(tree).some(t => /Everything up to that point is kept\.$/.test(t))).toBe(true);
+      await act(async () => tree.unmount());
+    }
+  });
+
+  test('Dismiss acknowledges the meeting and takes the card away', async () => {
+    newestMeeting();
+    const tree = await render();
+    await act(async () => dismiss(tree).props.onPress());
+    expect(db.setSetting).toHaveBeenCalledWith('ending_ack.m1', '1');
+    expect(texts(tree)).not.toContain(MIC_LOST);
+    expect(nav.reset).not.toHaveBeenCalled();
+    await act(async () => tree.unmount());
+  });
+
+  test('Open the meeting acknowledges it and opens it', async () => {
+    newestMeeting();
+    const tree = await render();
+    await act(async () => labelled(tree, 'Open the meeting').props.onPress());
+    expect(db.setSetting).toHaveBeenCalledWith('ending_ack.m1', '1');
+    expect(nav.reset).toHaveBeenCalledWith({
+      index: 1,
+      routes: [{ name: 'Library' }, { name: 'Meeting', params: { meetingId: 'm1' } }],
+    });
+    await act(async () => tree.unmount());
+  });
+
+  test('an acknowledged ending does not come back', async () => {
+    newestMeeting({}, true);
+    const tree = await render();
+    expect(texts(tree)).not.toContain(MIC_LOST);
+    await act(async () => tree.unmount());
+  });
+
+  test('a normal Stop shows nothing', async () => {
+    newestMeeting({ endReason: 'stopped' });
+    const tree = await render();
+    expect(hasButton(tree, 'Open the meeting')).toBe(false);
+    expect(texts(tree).some(t => /Everything up to that point|nothing was recorded/.test(t))).toBe(false);
+    await act(async () => tree.unmount());
+  });
+
+  test('a meeting older than a week shows nothing', async () => {
+    newestMeeting({ createdAt: Date.now() - 8 * DAY });
+    const tree = await render();
+    expect(texts(tree)).not.toContain(MIC_LOST);
+    await act(async () => tree.unmount());
+  });
+
+  test('the Free-limit ending is not shown to a phone that is Pro now', async () => {
+    newestMeeting({ endReason: 'cap_reached' });
+    (Licence.status as jest.Mock).mockResolvedValue({
+      plan: 'pro', state: 'active', paid: true, expiresAt: 0, account: null, lapsedCopy: '',
+    });
+    const tree = await render();
+    expect(texts(tree).some(t => /Free limit/.test(t))).toBe(false);
+    await act(async () => tree.unmount());
+  });
+
+  test('an ending where nothing was recorded explains but has nothing to open', async () => {
+    newestMeeting({ endReason: 'mic_unavailable', durationMs: 0 });
+    const tree = await render();
+    expect(texts(tree)).toContain('The microphone could not be opened, so nothing was recorded.');
+    expect(hasButton(tree, 'Open the meeting')).toBe(false);
+    await act(async () => tree.unmount());
+  });
+
+  test('no meetings, or a failing database, shows nothing and does not crash', async () => {
+    (db.listMeetings as jest.Mock).mockRejectedValue(new Error('locked'));
+    const tree = await render();
+    expect(hasButton(tree, 'Open the meeting')).toBe(false);
+    await act(async () => tree.unmount());
+  });
+
+  test('the card is not shown while a recording is running', async () => {
+    newestMeeting();
+    recordingFor(5 * 1000);
+    const tree = await render();
+    expect(texts(tree)).not.toContain(MIC_LOST);
+    await act(async () => tree.unmount());
+  });
+
+  test('the live alert acknowledges the meeting so the card never doubles it', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    newestMeeting({ id: 'live' });
+    (AudioPipeline.currentSession as jest.Mock).mockResolvedValueOnce({
+      isRecording: true, meetingId: 'live', elapsedMs: 5000, silenced: false, paused: false,
+    });
+    const tree = await render();
+    // The recording ends elsewhere (the Free limit, a lost mic): native emits onCaptureState and
+    // the session read now says it is over.
+    (AudioPipeline.currentSession as jest.Mock).mockResolvedValueOnce({
+      isRecording: false, meetingId: null, elapsedMs: 0, silenced: false, paused: false,
+    });
+    await act(async () => {
+      (global as any).__TEST_EMIT__('onCaptureState', {});
+    });
+    await act(async () => {});
+    expect(alert).toHaveBeenCalledWith('Recording stopped', MIC_LOST, expect.anything());
+    expect(db.setSetting).toHaveBeenCalledWith('ending_ack.live', '1');
+    expect(texts(tree)).not.toContain(MIC_LOST);
+    await act(async () => tree.unmount());
+    alert.mockRestore();
+  });
 });
