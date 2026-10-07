@@ -164,6 +164,20 @@ Every issue in the baseline report's backlog is below with an id, the defects it
 | F25 | D12 | Meaning-search relevance floor and stripped "— Unassigned". Measure the score distribution on the bench meetings first. | Test of the floor; before/after on the bench. | M | F23 or a measurement run |
 | F26 | Interruption | Decide whether a call interruption writes a visible gap marker (the code's own comment promises one). If yes, build it. | Decision recorded; test. | S+M | Founder |
 
+#### 4.0a [R3] Build status, end of 7 October 2026
+
+All software items in §4.0 are built on branch `dev/october-plan` (merged to `main`), each with tests and mutation checks, and the full local gate is clear. **Nothing has been run on a phone**, so every behaviour below is "built, not device-verified". Per-item detail: the `docs/superpowers/reports/2026-10-07-*.md` reports; the single list of what to test by hand is `docs/superpowers/reports/2026-10-07-device-test-checklist.md`.
+
+| Items | Status |
+|---|---|
+| F01–F06, F08, F09 (allowance, native cap on every entry point, ledger, imports, copy, display, Free keyword search) | Built. SQL and service wiring device-only. Landing-page copy changed in `server/app/landing.py` — deploy is the founder's. |
+| F07, F13 (Record layout, persisted ending card) | Built; layout needs the 384×853 dp / font-scale-2 device check. |
+| F10, F26 (testability seams; call-interruption sentence) | Built. |
+| F14, F15, F17 (rename on every surface, corrections reach derived items, Ask/Threads at the moment) | Built. Not recoverable: items from speakers renamed before this build. |
+| F16 (extractor), F18–F22, F24 (writer fact check), F25 (search floor 0.60) | Built. F16's three sentences need confirming through the real microphone; F24 and F25 numbers are starting values to re-measure on real meetings. |
+| F11, F12 (device passes), F23 recording/labelling, interviews | **Not done: need people and phones.** F23's tooling is built and tested on synthetic data. |
+| Workstreams C, D, E, F | Built. Not built by design: DOCX, opt-in reminders and digest, store art. Small leftover: "More options" appears only on the first onboarding screen. |
+
 ### A. Reliable capture and trustworthy results — P0
 
 Problem: documented device failures can undermine the core promise even when the feature set is extensive. Several fixes already exist; verify their current behavior before adding duplicate work.

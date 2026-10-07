@@ -120,3 +120,23 @@ How to use it: tick a box when done, and write the date and one line of result n
 ---
 
 *When something here is done, tell Claude and it will update the plan phase that was waiting on it.*
+
+---
+
+## H. New since the October development (7 Oct, evening)
+
+The code is done and gated; **nothing has run on a phone.** The checklist for that is `docs/superpowers/reports/2026-10-07-device-test-checklist.md`.
+
+- [ ] **Work through the device checklist** on a low-memory phone and a newer phone (section C above lists the devices). *This is the next stage.*
+- [ ] **Deploy `server/app/landing.py`** — the Free card, Pro card and FAQs now describe 5 meetings a month, up to 1 hour. The live site still says fifteen minutes until it ships.
+- [ ] **Store art**: re-shoot the recording and summary screenshots (new limit line, "N of 5 free meetings left", Minutes/Transcript labels); replace the "Plain English, the moment it ends." line in `docs/store/tools/aso.py:20`.
+- [ ] **Version and build**: bump the version above 1.0.3 and build the `.aab` once the device pass is clean (not done — a release candidate was only compiled to prove it builds).
+- [ ] **Small product calls the builders flagged** (each has a default already built; say if you want it changed):
+  - The share preview and exports include the **full transcript**. Keep, or make it optional?
+  - "No date given" on an action means no due date is recorded on that item.
+  - **"Write it again"** has no confirm step (it never had one; the old summary stays until the new one is ready). Add one?
+  - The Free-limit ending card is hidden once the phone is Pro; other endings still show.
+  - A dictation under 60 seconds is free (your decision); a meeting under 60 seconds with real words still counts.
+  - Search by meaning uses a relevance floor of 0.60 measured on 4 AMI meetings — a starting value, to be re-checked on real recordings.
+- [ ] **Benchmark**: tooling is built (`eval/README.md`, "Quality benchmark"). Recording, consent and labelling are yours — second labeller still to be named (section A3).
+- [ ] **Interviews**: round 1 on this build with the sample meeting (it now exists in the app, labelled SAMPLE); round 2 after any changes.
