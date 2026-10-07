@@ -231,7 +231,7 @@ describe('toItemRows', () => {
    * `carryUserMinutesOntoItems` runs before the native load, so an unmigrated meeting somebody has
    * typed a decision into arrives here with exactly one item — the typed one — and all of its
    * rule-extracted minutes still in `minutes`. Under "does this meeting have any items at all" the
-   * fallback switches OFF at that moment and the entire MOM disappears, leaving the one line the
+   * fallback switches OFF at that moment and the entire Minutes tab disappears, leaving the one line the
    * person typed. Nothing fails, nothing is deleted, and the tab is empty but for their own note.
    */
   it('still falls back to the minutes for a meeting whose only item is hand-typed', () => {
@@ -438,7 +438,7 @@ beforeEach(() => {
 const byLabel = (tree: renderer.ReactTestRenderer, accessibilityLabel: string) =>
   tree.root.findAllByProps({ accessibilityLabel }, { deep: false });
 
-describe('the MOM tab', () => {
+describe('the Minutes tab', () => {
   it('shows the moment each item was said', async () => {
     const tree = await render({ tab: 'mom' });
     expect(byLabel(tree, 'Show this in the transcript at 1:05').length).toBeGreaterThan(0);
@@ -716,11 +716,11 @@ describe('the Actions tab', () => {
   });
 
   /**
-   * REMOVING A HAND-TYPED ACTION, which is the half the MOM tab's two remove tests cannot reach.
+   * REMOVING A HAND-TYPED ACTION, which is the half the Minutes tab's two remove tests cannot reach.
    *
    * Reverting this tab's gate to the old `r.mine && r.minuteId` left all 342 tests passing while
    * the identical mutation on MinutesTab was killed — both remove tests sat under
-   * `describe('the MOM tab')` and this describe had none. The defect is the one this task's own
+   * `describe('the Minutes tab')` and this describe had none. The defect is the one this task's own
    * comment names: a hand-typed row stopped having a `minuteId` when it became an `items` row, so
    * the gate silently stops drawing the button. An ACTION is the more common case and the one the
    * whole worklist argument is about.
@@ -839,7 +839,7 @@ describe('the Summary tab’s counters', () => {
 
     const tree = await render({ tab: 'summary' });
 
-    expect(byLabel(tree, 'MOM')).toHaveLength(1);
+    expect(byLabel(tree, 'Minutes')).toHaveLength(1);
     expect(JSON.stringify(tree.toJSON())).not.toContain('Writing your notes');
     await act(async () => tree.unmount());
   });
@@ -1026,9 +1026,9 @@ describe('opening an item’s evidence', () => {
     });
     const first = tree.root.findByType(TranscriptTab).props.scrollSeq;
 
-    // Back to the MOM tab and tap the very same row again.
+    // Back to the Minutes tab and tap the very same row again.
     await act(async () => {
-      tree.root.findAllByProps({ accessibilityRole: 'tab', accessibilityLabel: 'MOM' })[0].props
+      tree.root.findAllByProps({ accessibilityRole: 'tab', accessibilityLabel: 'Minutes' })[0].props
         .onPress();
     });
     await act(async () => {

@@ -476,7 +476,7 @@ describe('a paused pipeline', () => {
   });
 });
 
-/** "Who said this" from the Script: the line sheet, the picker, and the writes they end in. */
+/** "Who said this" from the Transcript: the line sheet, the picker, and the writes they end in. */
 describe('who said this', () => {
   const utts = [
     { id: 'u1', meetingId: 'm1', startMs: 0, endMs: 2000, speakerId: 's1', text: 'Hello there.' },
@@ -493,7 +493,7 @@ describe('who said this', () => {
     });
   };
   const openScript = async (tree: renderer.ReactTestRenderer) => {
-    const tab = tree.root.findAllByProps({ accessibilityRole: 'tab', accessibilityLabel: 'Script' })[0];
+    const tab = tree.root.findAllByProps({ accessibilityRole: 'tab', accessibilityLabel: 'Transcript' })[0];
     await act(async () => {
       tab.props.onPress();
     });
@@ -558,7 +558,7 @@ describe('who said this', () => {
     await longPress(tree, 'Second line.');
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Correct the words' }, { deep: false }).length).toBe(1);
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Change who said it' }, { deep: false }).length).toBe(0);
-    // And the Script itself carries no speaker head to tap.
+    // And the Transcript itself carries no speaker head to tap.
     expect(
       tree.root.findAllByProps({ accessibilityLabel: 'Unlabelled — change who said this' }, { deep: false }).length,
     ).toBe(0);
@@ -612,7 +612,7 @@ describe('a correction offered as a rule', () => {
     { id: 'u1', meetingId: 'm1', startMs: 0, endMs: 2000, speakerId: 's1', text: 'we sold it to in over last week' },
   ];
   const openScript = async (tree: renderer.ReactTestRenderer) => {
-    const tab = tree.root.findAllByProps({ accessibilityRole: 'tab', accessibilityLabel: 'Script' })[0];
+    const tab = tree.root.findAllByProps({ accessibilityRole: 'tab', accessibilityLabel: 'Transcript' })[0];
     await act(async () => {
       tab.props.onPress();
     });
@@ -693,7 +693,7 @@ describe('a correction reaching the items (F15)', () => {
     { id: 'u1', meetingId: 'm1', startMs: 0, endMs: 2000, speakerId: 's1', text: 'send it to Meera on Friday' },
   ];
   const correctLine = async (tree: renderer.ReactTestRenderer, to: string) => {
-    const tab = tree.root.findAllByProps({ accessibilityRole: 'tab', accessibilityLabel: 'Script' })[0];
+    const tab = tree.root.findAllByProps({ accessibilityRole: 'tab', accessibilityLabel: 'Transcript' })[0];
     await act(async () => { tab.props.onPress(); });
     const line = tree.root.findAllByProps({ accessibilityLabel: utts[0].text }, { deep: false })[0];
     await act(async () => { line.props.onLongPress(); });

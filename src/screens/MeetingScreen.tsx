@@ -15,6 +15,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { highlightsFor, type Mark } from './meeting/highlights';
 import { announceLine, endingNote, holdFor } from './meeting/meetingNotes';
 import { staleKey, takeDroppedNotice } from './meeting/correctionNotices';
+import { MEETING_TABS, tabKey } from './meeting/meetingTabs';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { db } from '../db/queries';
 import { countsExcluding } from './threadData';
@@ -110,7 +111,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
   // Summary unless the caller asked for somewhere specific. Nothing is REMEMBERED between visits:
   // tapping two meetings in a row and landing on different screens reads as a bug rather than a
   // convenience. A search hit is different — it knows where it is sending you, and why.
-  const [tab, setTab] = useState<string>(initialTab ?? 'summary');
+  const [tab, setTab] = useState<string>(tabKey(initialTab));
 
   /**
    * The moment the transcript has been asked to show, and WHICH ASKING it is.
@@ -657,7 +658,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
   );
 
   /**
-   * Open the prompt on one item — the correction path shared by the MOM and Actions tabs.
+   * Open the prompt on one item — the correction path shared by the Minutes and Actions tabs.
    *
    * Keyed by [editTargetOf] and never by anything computed here: an extracted row is corrected on
    * its `items.id`, a row that has no item on the hash of its STORED text — never on what is
@@ -825,7 +826,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const onExport = () => setExportSheet(true);
   /**
    * Who said these lines. Splitting and merging turns are both this: the scope picks the ids,
-   * setLineSpeaker writes through and records the edit, and the Script regroups on refresh.
+   * setLineSpeaker writes through and records the edit, and the Transcript regroups on refresh.
    */
   const applySpeaker = useCallback(
     async (speakerId: string, scope: Scope) => {
@@ -1124,15 +1125,8 @@ export default function MeetingScreen({ route, navigation }: Props) {
     );
   }
 
-  // Order is what people reach for, in order: what was this about, then the written minutes, then
-  // the record itself, then the worklist. Actions is last because it is the one you go to
-  // deliberately — the other three are what you read.
-  const TABS = [
-    { key: 'summary', label: 'Summary' },
-    { key: 'mom', label: 'MOM' },
-    { key: 'transcript', label: 'Script' },
-    { key: 'actions', label: 'Actions' },
-  ];
+  // The tabs, their order and their words live in meeting/meetingTabs.ts.
+  const TABS = MEETING_TABS;
 
   return (
     <View style={[st.root, { paddingTop: insets.top + s(6) }]}>
