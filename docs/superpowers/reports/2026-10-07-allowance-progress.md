@@ -114,3 +114,24 @@ Branch `dev/october-plan`. Never pushed. Plan: `docs/superpowers/plans/2026-10-0
   - Pro never sees allowance copy; the default jest `Licence.allowance` mock is `paid: true`, so new screen tests are Pro unless they override it.
   - Imports are refused by native while recording (`recording_in_progress`) and starts are refused while an import runs (`import_in_progress`); both have JS copy.
 - Known limits: `ImportGate` refuses a second import rather than queueing it; the check-then-set between a recording start and an import start has a microsecond window (documented in `ImportGate.kt`); an equivalent mutant on `idleHint` survives (`capMs > 1`).
+
+# Session 2b (Record layout F07, ending explanation F13)
+
+## F07 - the Record stage
+- `RecordScreen.tsx` stage re-arranged into a variable band and fixed bands. The variable band is the ONLY `ScrollView` in the recorder branch (`flexGrow 1, flexShrink 1, minHeight 0`, content centred): it holds the Free-limit warning card, which now REPLACES the mascot in the same slot (the mascot is not rendered during the warning), plus the allowance line / exhausted card and the ending card (F13). The clock, the hint, the reserved meter band, the big Stop/start control (`MicVisualizer`, size 148) and the Pause/Mark footer sit outside any scroll view. The card's primary button stays inside the card. No fixed heights were added.
+- Visible change: the allowance line / exhausted card moved from under the hint to the top band (above the clock). Nothing else in idle or recording moved except that the stage is no longer centred as one block.
+- Tests (`src/screens/__tests__/RecordScreen.allowance.test.tsx`, +5): recording normally (mascot yes, Stop/Pause/Mark not inside any ScrollView); warning phase (mascot absent, card inside the scrolling band, controls outside); the card's own "Keep recording" button inside the card and band; idle (mascot, start control outside); exhausted card inside the band, start control outside.
+- Mutants killed (2): Mascot also rendered during the warning (3 tests fail); Stop control moved inside the ScrollView (4 tests fail). The first attempt at the second mutant hit the consent screen's ScrollView and survived; it was redone against the recorder branch.
+- LIMIT: react-test-renderer has no layout engine. These tests pin the structure that makes the layout safe, not that it fits. Device check owed: 384x853 dp phone, the warning phase (record past 55 minutes or use the debug lever), then font scale 2.0, and the same at idle with the exhausted card; look for the clock, the Stop control and the footer staying on screen and the card scrolling. Known risk at very large font: the fixed bands (clock, hint, 70 dp meter band, 148 dp control, footer) are not themselves allowed to shrink.
+
+## F13 - the ending card
+- `meetingNotes.ts`: `endingCardNote(meeting, {acknowledged, paid, now})`, `endingAckKey(id)` = `ending_ack.<id>`, `ENDING_CARD_DAYS` = 7. Reasons come from the existing `ENDED` table (cap_reached, mic_lost, disk_full, write_failed, mic_unavailable, pause_timeout), so the card says exactly what `endingNote` says; a Stop (`stopped`), null and unknown reasons give null.
+- `RecordScreen`: on mount, newest meeting via `db.listMeetings('recent')` then `db.getMeeting` (queries.ts untouched: listMeetings has no end_reason, getMeeting has it); the card shows only when not recording. "Open the meeting" and "Dismiss" both write `ending_ack.<id> = '1'` through `db.setSetting` (same helper as `consentAck`); with nothing recorded (duration 0) the card has no Open button. `explainEnding` (the live alert) now acknowledges the meeting just before it alerts, so the card does not repeat it.
+- Interpretation to confirm: "Pro-only reasons that do not apply" = the Free-limit ending (`cap_reached`) is hidden on a phone that is Pro now. Any other reason shows for Pro too.
+- Tests: `meetingNotes.test.ts` (+6) and `RecordScreen.allowance.test.tsx` (+12 in "ending card": each reason, Dismiss acks and clears, Open acks and navigates, already acknowledged, Stop, older than 7 days, cap_reached on Pro, nothing-recorded has no Open, database failure shows nothing, hidden while recording, live alert acknowledges).
+- Mutants killed (6 of the 6 run on F13): ack removed from the card (3 tests), ack removed from the live alert (1), a normal ending given a note (2), 7-day limit removed (2), acknowledgement ignored (2), paid check on cap_reached removed (2).
+- Device check owed: end a recording with the mic taken by a call, leave the app, reopen Record: the card appears once, Dismiss and Open both stop it returning; the live alert case does not also show the card.
+
+## Session 2b close-out
+- Gate: `npx tsc --noEmit` clean; `npx jest src/screens --silent --forceExit` 36 suites / 378 tests green; `GATE_STAGES="types js scans" scripts/gate.sh` all clear.
+- Device: not run. Everything above marked "device check owed" is unproven on a phone.
