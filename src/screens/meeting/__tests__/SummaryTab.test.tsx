@@ -499,3 +499,27 @@ describe('the summary card before and after a check that did not finish', () => 
     expect(ALL_TEXT(tree)).toContain('Pro writes the meeting up in plain English on this phone');
   });
 });
+
+describe('a summary written before the transcript was corrected (F15)', () => {
+  const texts = (tree: renderer.ReactTestRenderer) =>
+    tree.root.findAll(n => typeof n.props.children === 'string').map(n => n.props.children as string);
+
+  test('says so, above the Write it again that fixes it', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: true });
+    const tree = await renderTab({ stale: true } as any);
+    expect(texts(tree).some(t => t.includes('You corrected the transcript after this summary was written'))).toBe(true);
+    expect(tree.root.findAll(n => n.props.label === 'Write it again').length).toBeGreaterThan(0);
+  });
+
+  test('says nothing when the summary is current', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: true });
+    const tree = await renderTab({ stale: false } as any);
+    expect(texts(tree).some(t => t.includes('You corrected the transcript'))).toBe(false);
+  });
+
+  test('says nothing when there is no written summary to be stale', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: true });
+    const tree = await renderTab({ stale: true, minutes: [] } as any);
+    expect(texts(tree).some(t => t.includes('You corrected the transcript'))).toBe(false);
+  });
+});

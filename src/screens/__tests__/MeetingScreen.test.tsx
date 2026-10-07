@@ -682,6 +682,74 @@ describe('a correction offered as a rule', () => {
   });
 });
 
+/**
+ * F15: a correction is written through natively, and the screen re-reads what the native call
+ * re-derived. What the items, the index and the embeddings then hold is Kotlin (device-only for the
+ * SQL; CorrectionsTest on the JVM for the rules).
+ */
+describe('a correction reaching the items (F15)', () => {
+  const { TextPrompt } = require('../../components/ui');
+  const utts = [
+    { id: 'u1', meetingId: 'm1', startMs: 0, endMs: 2000, speakerId: 's1', text: 'send it to Meera on Friday' },
+  ];
+  const correctLine = async (tree: renderer.ReactTestRenderer, to: string) => {
+    const tab = tree.root.findAllByProps({ accessibilityRole: 'tab', accessibilityLabel: 'Script' })[0];
+    await act(async () => { tab.props.onPress(); });
+    const line = tree.root.findAllByProps({ accessibilityLabel: utts[0].text }, { deep: false })[0];
+    await act(async () => { line.props.onLongPress(); });
+    const row = tree.root.findAllByProps({ accessibilityLabel: 'Correct the words' }, { deep: false })[0];
+    await act(async () => { row.props.onPress(); });
+    const prompt = tree.root.findAllByType(TextPrompt).find((p: any) => p.props.visible)!;
+    await act(async () => prompt.props.onSubmit(to, ''));
+  };
+
+  beforeEach(() => {
+    jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    (db.utterances as jest.Mock).mockResolvedValue(utts);
+  });
+
+  it('re-reads the items when the native call re-derived them', async () => {
+    (db.putEdit as jest.Mock).mockResolvedValue(true);
+    const tree = await render();
+    const before = (db.items as jest.Mock).mock.calls.length;
+    await correctLine(tree, 'send it to Mira on Friday');
+    expect(db.putEdit).toHaveBeenCalledWith('m1', 'utterance', 'u1', 'send it to Mira on Friday');
+    expect((db.items as jest.Mock).mock.calls.length).toBeGreaterThan(before);
+  });
+
+  it('does not re-read the items when nothing was re-derived', async () => {
+    (db.putEdit as jest.Mock).mockResolvedValue(false);
+    const tree = await render();
+    const before = (db.items as jest.Mock).mock.calls.length;
+    await correctLine(tree, 'send it to Mira on Friday');
+    expect((db.items as jest.Mock).mock.calls.length).toBe(before);
+  });
+
+  it('says once that a re-transcription could not re-apply two corrections', async () => {
+    const store = new Map<string, string>([['corrections.dropped.m1', '2']]);
+    (db.getSetting as jest.Mock).mockImplementation(async (k: string) => store.get(k) ?? null);
+    (db.setSetting as jest.Mock).mockImplementation(async (k: string, v: string) => void store.set(k, v));
+    await render();
+    const said = (Alert.alert as jest.Mock).mock.calls.filter(c => c[0] === 'Some corrections were not kept');
+    expect(said).toHaveLength(1);
+    expect(said[0][1]).toContain("2 corrections couldn't be re-applied");
+    // A second open of the same meeting does not say it again.
+    await render();
+    expect((Alert.alert as jest.Mock).mock.calls.filter(c => c[0] === 'Some corrections were not kept')).toHaveLength(1);
+  });
+
+  it('hands the Summary card the stale flag native set', async () => {
+    (db.getSetting as jest.Mock).mockImplementation(async (k: string) => (k === 'narration.stale.m1' ? '1' : null));
+    const tree = await render();
+    expect(tree.root.findByType(SummaryTab).props.stale).toBe(true);
+  });
+
+  it('does not mark a current summary stale', async () => {
+    const tree = await render();
+    expect(tree.root.findByType(SummaryTab).props.stale).toBe(false);
+  });
+});
+
 const pipeline = () => (global as any).__TEST_NATIVE_MODULES__.AudioPipeline;
 const meetingWith = (over: Record<string, unknown>) => ({
   id: 'm1', title: 'Standup', createdAt: 1, durationMs: 60_000, status: 'done',

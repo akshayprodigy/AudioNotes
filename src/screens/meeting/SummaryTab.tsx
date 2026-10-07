@@ -27,6 +27,7 @@ import {
   toItemRows,
   type EditMap,
 } from './shared';
+import { STALE_SUMMARY_COPY } from './correctionNotices';
 
 /**
  * Mirrors Narrator.kt MIN_TRANSCRIPT_CHARS. The narrator's own floor is the one that decides;
@@ -74,6 +75,7 @@ export default function SummaryTab({
    voiceSuggestions,
    onConfirmVoices,
   transcriptChars,
+  stale,
 }: {
   /**
    * Taken for the COUNTERS alone — the prose still comes from `minutes`, which is where it lives.
@@ -131,6 +133,12 @@ export default function SummaryTab({
    * what happened instead of "run it again" — which would refuse again, silently.
    */
   transcriptChars?: number;
+  /**
+   * The transcript was corrected after this summary was written (F15). Native sets the flag when a
+   * correction changes a line of a meeting that has a written summary and clears it when a summary
+   * is written; this tab only says so, above the existing "Write it again" it points at.
+   */
+  stale?: boolean;
  }) {
   const { colors } = useTheme();
   const st = React.useMemo(() => makeStyles(colors), [colors]);
@@ -572,6 +580,11 @@ export default function SummaryTab({
           only recourse when the model has written a poor one is to ask it again — there is
           nothing else on the screen that can change the answer. Withheld when the model is
           missing or the phone cannot run it, where the button would be an empty promise. */}
+      {stale && prose ? (
+        <Txt variant="chipSoft" color={colors.inkDim} style={st.lapsed}>
+          {STALE_SUMMARY_COPY}
+        </Txt>
+      ) : null}
       {(prose || reason === 'not-run') && reason !== 'expired' && reason !== 'locked' ? (
         <SoftButton
           icon="refresh"

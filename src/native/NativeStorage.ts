@@ -46,6 +46,13 @@ export interface Spec extends TurboModule {
   // AudioDb.carryUserMinutesOntoItems runs on every open and can give an item to a meeting the
   // rules have never run over — see AudioDb.hasRuleItems.
   backfillItems(limit: number): Promise<number>;
+  // F15: save / clear a correction of one transcript line. Native writes the `edits` row, writes
+  // the corrected words THROUGH into the line (the recogniser's wording kept in text_raw), rebuilds
+  // the index (the embeddings re-embed on the next sweep) and, when the words changed, re-runs the
+  // rule pass through the Reconciler so items follow the line and ticks / hand edits / hand-typed
+  // items survive. Resolves with whether the items were re-derived now (false is not a failure).
+  saveCorrection(meetingId: string, utteranceId: string, value: string): Promise<boolean>;
+  revertCorrection(meetingId: string, utteranceId: string): Promise<boolean>;
   // Index up to `limit` meetings that have never been indexed; resolves with how many are still
   // outstanding. Driven from the app's sweep so an existing library becomes searchable without a
   // blocking migration at open() — which, on a Quick Settings cold start, runs on the main thread.

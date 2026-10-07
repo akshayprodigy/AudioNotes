@@ -39,6 +39,8 @@ const mockNativeModules = {
     // A safe default: a screen that forgets to mock this sees the paywall, not data.
     thread: jest.fn(async () => '{"refusal":"NOT_PRO"}'),
     reindex: jest.fn(async () => {}),
+    saveCorrection: jest.fn(async () => true),
+    revertCorrection: jest.fn(async () => true),
     // The meeting screen awaits this before its first read; a missing stub is an unhandled
     // rejection inside a component, not a clear error.
     ensureItems: jest.fn(async () => {}),

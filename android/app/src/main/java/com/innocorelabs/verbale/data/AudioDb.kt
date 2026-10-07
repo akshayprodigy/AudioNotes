@@ -947,6 +947,10 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     db.execSQL("INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)", arrayOf<Any?>(key, value))
   }
 
+  fun clearSetting(key: String) {
+    db.execSQL("DELETE FROM settings WHERE key=?", arrayOf<Any?>(key))
+  }
+
   /** The learned realtime rate for a stage, or null when this phone has not run it yet. */
   fun stageRate(stage: String): Double? = getSetting(StageRates.key(stage))?.toDoubleOrNull()
 
@@ -1013,27 +1017,46 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
   private fun isNonSpeech(text: String): Boolean =
     ANNOTATION.replace(text, "").none { it.isLetterOrDigit() }
 
-  /** Replace the transcript for a meeting from a JSON array of {start_ms,end_ms,text}. Returns count. */
+  /**
+   * Replace the transcript for a meeting from a JSON array of {start_ms,end_ms,text}. Returns count.
+   *
+   * A person's transcript corrections survive this (F15). The old lines are about to be deleted and
+   * re-minted with fresh UUIDs, so each correction is snapshotted as (start, end, value) FIRST, from
+   * the old rows, and re-applied to whichever new line overlaps it most — see [Corrections.reapply]
+   * for the rule. A correction that matches no new line is dropped and COUNTED into
+   * [Corrections.droppedKey], which the Meeting screen says once. Speaker edits keep their
+   * old behaviour: dropped with the old ids, repaired (or not) by SpeakerRepair.
+   */
   fun replaceUtterancesJson(meetingId: String, json: String): Int {
     val arr = JSONArray(json)
     var kept = 0
     db.beginTransaction()
     try {
+      val snapshots = correctionSnapshots(meetingId)
       db.execSQL("DELETE FROM utterances WHERE meeting_id=?", arrayOf<Any?>(meetingId))
       indexDelete(meetingId, "utterance")
       unstampEmbedded(meetingId)
+
+      class Fresh(val id: String, val startMs: Long, val endMs: Long, val text: String)
+      val fresh = ArrayList<Fresh>()
       for (i in 0 until arr.length()) {
         val o = arr.getJSONObject(i)
         val text = o.getString("text").trim()
         if (isNonSpeech(text)) continue
-        val uid = UUID.randomUUID().toString()
-        val startMs = o.getLong("start_ms")
+        fresh.add(Fresh(UUID.randomUUID().toString(), o.getLong("start_ms"), o.getLong("end_ms"), text))
+      }
+      val placed = Corrections.reapply(snapshots, fresh.map { Corrections.Span(it.id, it.startMs, it.endMs) })
+      val correctedTo = placed.applied.toMap()
+
+      for (f in fresh) {
+        val value = correctedTo[f.id]
+        val (shown, raw) = if (value != null) Corrections.writeThrough(f.text, null, value) else f.text to null
         db.execSQL(
-          "INSERT INTO utterances(id,meeting_id,start_ms,end_ms,speaker_id,text) VALUES(?,?,?,?,NULL,?)",
-          arrayOf<Any?>(uid, meetingId, startMs, o.getLong("end_ms"), text),
+          "INSERT INTO utterances(id,meeting_id,start_ms,end_ms,speaker_id,text,text_raw) VALUES(?,?,?,?,NULL,?,?)",
+          arrayOf<Any?>(f.id, meetingId, f.startMs, f.endMs, shown, raw),
         )
         // ref_id + start_ms are what let a search hit open the meeting at the moment it was said.
-        indexInsert(meetingId, "utterance", uid, startMs, text)
+        indexInsert(meetingId, "utterance", f.id, f.startMs, shown)
         kept++
       }
       // A re-ASR invalidates every edit pinned to an utterance id: the rows above were just
@@ -1043,6 +1066,16 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
         "DELETE FROM edits WHERE meeting_id=? AND target_kind IN ('utterance','speaker')",
         arrayOf<Any?>(meetingId),
       )
+      // ...and the corrections that found a new line are written again under that line's new id,
+      // so the `edits` row is still the durable record and revert still has something to clear.
+      val now = System.currentTimeMillis()
+      for ((id, value) in placed.applied) {
+        db.execSQL(
+          "INSERT OR REPLACE INTO edits(meeting_id,target_kind,target_key,content,edited_at) VALUES(?,'utterance',?,?,?)",
+          arrayOf<Any?>(meetingId, id, value, now),
+        )
+      }
+      if (placed.dropped > 0) addDroppedCorrections(meetingId, placed.dropped)
       db.setTransactionSuccessful()
     } finally {
       db.endTransaction()
@@ -1051,6 +1084,26 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     // actually stored — returning the raw segment count marks an all-silence recording as ready
     // with an empty transcript instead of "no speech found".
     return kept
+  }
+
+  /** Every utterance correction as it stands now, by the time range of the line it is pinned to. */
+  private fun correctionSnapshots(meetingId: String): List<Corrections.Snapshot> {
+    val out = ArrayList<Corrections.Snapshot>()
+    db.rawQuery(
+      "SELECT u.start_ms, u.end_ms, e.content FROM edits e JOIN utterances u " +
+        "ON u.id = e.target_key AND u.meeting_id = e.meeting_id " +
+        "WHERE e.meeting_id=? AND e.target_kind='utterance'",
+      arrayOf(meetingId),
+    ).use { c ->
+      while (c.moveToNext()) out.add(Corrections.Snapshot(c.getLong(0), c.getLong(1), c.getString(2)))
+    }
+    return out
+  }
+
+  /** Corrections a re-transcription could not place; accumulates until the Meeting screen has said so. */
+  private fun addDroppedCorrections(meetingId: String, n: Int) {
+    val before = getSetting(Corrections.droppedKey(meetingId))?.toIntOrNull() ?: 0
+    putSetting(Corrections.droppedKey(meetingId), (before + n).toString())
   }
 
   /**
@@ -1253,6 +1306,9 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       db.execSQL("DELETE FROM minutes WHERE meeting_id=? AND source=?",
                  arrayOf<Any?>(meetingId, source))
       if (rows.any { it.kind == "summary" }) unstampEmbedded(meetingId)
+      // A summary written now was written from the transcript as it is now: whatever "you
+      // corrected the transcript after this was written" said is no longer true (F15).
+      if (source == "llm" && rows.any { it.kind == "summary" }) clearSetting(Corrections.narrationStaleKey(meetingId))
       for (r in rows) {
         db.execSQL(
           "INSERT INTO minutes(id,meeting_id,kind,content_json,source) VALUES(?,?,?,?,?)",
@@ -1576,6 +1632,171 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     )
     reindexMeeting(meetingId)
   }
+
+  // ---- Transcript corrections (F15) ----------------------------------------------------------
+  //
+  // A correction is WRITTEN THROUGH into utterances.text — the recogniser's wording kept once in
+  // text_raw — so the items, the search index, the embeddings and the narration all read the
+  // corrected words, exactly as they already do for the Pro vocabulary rules. The `edits` row stays
+  // as the durable record (it is what a re-transcription snapshots and what the screen's overlay
+  // and "revert" read). Re-deriving the items from the corrected text is [Rederive]'s job and needs
+  // the native rule pass, which this class does not load.
+
+  private fun utteranceTexts(meetingId: String, utteranceId: String): Pair<String, String?>? =
+    db.rawQuery(
+      "SELECT text, text_raw FROM utterances WHERE id=? AND meeting_id=?",
+      arrayOf(utteranceId, meetingId),
+    ).use { c -> if (c.moveToFirst()) c.getString(0) to c.getString(1) else null }
+
+  private fun hasWrittenSummary(meetingId: String): Boolean =
+    db.rawQuery(
+      "SELECT 1 FROM minutes WHERE meeting_id=? AND source='llm' AND kind='summary' LIMIT 1",
+      arrayOf(meetingId),
+    ).use { it.moveToFirst() }
+
+  /** The Summary card says the summary predates a correction, until it is written again. */
+  private fun markNarrationStale(meetingId: String) {
+    if (Corrections.narrationStale(hasWrittenSummary(meetingId), textChanged = true)) {
+      putSetting(Corrections.narrationStaleKey(meetingId), "1")
+    }
+  }
+
+  fun narrationStale(meetingId: String): Boolean = getSetting(Corrections.narrationStaleKey(meetingId)) == "1"
+
+  /**
+   * Save a correction of one transcript line and write it through. Returns whether the line's
+   * words changed — the caller re-derives only then. A blank value is a revert, not an empty line.
+   */
+  fun saveCorrection(meetingId: String, utteranceId: String, value: String): Boolean {
+    val v = value.trim()
+    if (v.isEmpty()) return revertCorrection(meetingId, utteranceId)
+    var changed = false
+    db.beginTransaction()
+    try {
+      db.execSQL(
+        "INSERT OR REPLACE INTO edits(meeting_id,target_kind,target_key,content,edited_at) VALUES(?,'utterance',?,?,?)",
+        arrayOf<Any?>(meetingId, utteranceId, v, System.currentTimeMillis()),
+      )
+      val row = utteranceTexts(meetingId, utteranceId)
+      if (row != null) {
+        val (text, raw) = Corrections.writeThrough(row.first, row.second, v)
+        changed = text != row.first
+        if (changed) {
+          db.execSQL(
+            "UPDATE utterances SET text=?, text_raw=? WHERE id=? AND meeting_id=?",
+            arrayOf<Any?>(text, raw, utteranceId, meetingId),
+          )
+          markNarrationStale(meetingId)
+        }
+      }
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
+    reindexMeeting(meetingId)
+    return changed
+  }
+
+  /**
+   * Drop a correction and put the line back to what the pipeline left there: the recogniser's
+   * wording with the vocabulary [rules] (empty on Free) applied over it. Returns whether the
+   * line's words changed.
+   */
+  fun revertCorrection(
+    meetingId: String,
+    utteranceId: String,
+    rules: List<Vocabulary.Rule> = emptyList(),
+  ): Boolean {
+    var changed = false
+    db.beginTransaction()
+    try {
+      db.execSQL(
+        "DELETE FROM edits WHERE meeting_id=? AND target_kind='utterance' AND target_key=?",
+        arrayOf<Any?>(meetingId, utteranceId),
+      )
+      val row = utteranceTexts(meetingId, utteranceId)
+      if (row != null) {
+        val (text, raw) = Corrections.revert(row.first, row.second) { Vocabulary.apply(it, rules) }
+        changed = text != row.first
+        if (changed || raw != row.second) {
+          db.execSQL(
+            "UPDATE utterances SET text=?, text_raw=? WHERE id=? AND meeting_id=?",
+            arrayOf<Any?>(text, raw, utteranceId, meetingId),
+          )
+        }
+        if (changed) markNarrationStale(meetingId)
+      }
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
+    reindexMeeting(meetingId)
+    return changed
+  }
+
+  /**
+   * Corrections made before write-through existed live only in `edits`, and the derived pieces
+   * never saw them. Write each one through now; returns how many lines changed. Idempotent: after
+   * it the line and its edit agree, so a second call finds nothing.
+   */
+  fun writeThroughSavedCorrections(meetingId: String): Int {
+    val todo = ArrayList<Pair<String, String>>()
+    db.rawQuery(
+      "SELECT u.id, e.content FROM edits e JOIN utterances u " +
+        "ON u.id = e.target_key AND u.meeting_id = e.meeting_id " +
+        "WHERE e.meeting_id=? AND e.target_kind='utterance' AND u.text <> trim(e.content) AND trim(e.content) <> ''",
+      arrayOf(meetingId),
+    ).use { c -> while (c.moveToNext()) todo.add(c.getString(0) to c.getString(1)) }
+    if (todo.isEmpty()) return 0
+    db.beginTransaction()
+    try {
+      for ((id, value) in todo) {
+        val row = utteranceTexts(meetingId, id) ?: continue
+        val (text, raw) = Corrections.writeThrough(row.first, row.second, value.trim())
+        db.execSQL(
+          "UPDATE utterances SET text=?, text_raw=? WHERE id=? AND meeting_id=?",
+          arrayOf<Any?>(text, raw, id, meetingId),
+        )
+      }
+      markNarrationStale(meetingId)
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
+    reindexMeeting(meetingId)
+    return todo.size
+  }
+
+  fun meetingStatus(meetingId: String): String? =
+    db.rawQuery("SELECT status FROM meetings WHERE id=?", arrayOf(meetingId)).use {
+      if (it.moveToFirst()) it.getString(0) else null
+    }
+
+  /**
+   * The rule pass's output for one meeting, written the way the pipeline writes it: the `rule`
+   * minutes, then the items through the [Reconciler] (so a tick, a hand edit and a hand-typed item
+   * all survive and an item keeps its id), then the index. One transaction, so a kill cannot leave
+   * the minutes from the new words and the items from the old.
+   */
+  fun rederiveWrite(meetingId: String, minutes: List<DraftMinute>, items: List<Minutes.Item>) {
+    db.beginTransaction()
+    try {
+      replaceMinutes(meetingId, "rule", minutes)
+      replaceItems(meetingId, Minutes.RULES_GEN, items)
+      reindexMeeting(meetingId)
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
+  }
+
+  /** A re-derive that could not run yet (a run in flight, the core not loaded): do it at the next open. */
+  fun setRederivePending(meetingId: String, pending: Boolean) {
+    if (pending) putSetting(Corrections.rederivePendingKey(meetingId), "1")
+    else clearSetting(Corrections.rederivePendingKey(meetingId))
+  }
+
+  fun rederivePending(meetingId: String): Boolean = getSetting(Corrections.rederivePendingKey(meetingId)) == "1"
 
   // ---- Audio retention -------------------------------------------------------------------
 

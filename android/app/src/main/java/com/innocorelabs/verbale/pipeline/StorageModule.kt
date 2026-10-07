@@ -134,9 +134,44 @@ class StorageModule(private val ctx: ReactApplicationContext) :
       // this been migrated" from the data rather than a flag, the next open simply tries again.
       NativeBridge.ensureLoaded(ctx)
       db.ensureItems(meetingId)
+      // F15: corrections made before they were written through, and any re-derive that could not
+      // run when it was asked for. After ensureItems so a never-migrated meeting is migrated first.
+      Rederive.catchUp(ctx, db, meetingId)
       promise.resolve(null)
     } catch (e: Throwable) {
       promise.reject("db_ensure_items", e)
+    }
+  }
+
+  /**
+   * Save a correction of one transcript line (F15): the `edits` row, the corrected words written
+   * through into the line, the index rebuilt, and — when the words changed — the items re-derived
+   * through the Reconciler (ticks, hand edits and hand-typed items kept). The embeddings are
+   * unstamped by the index rebuild and re-embed on the next sweep. Resolves with whether the items
+   * were re-derived now; false is not a failure (a run in flight, or a core still loading, leaves a
+   * flag that the next open honours).
+   */
+  @ReactMethod
+  fun saveCorrection(meetingId: String, utteranceId: String, value: String, promise: Promise) {
+    try {
+      val db = AudioDb.get(ctx)
+      val changed = db.saveCorrection(meetingId, utteranceId, value)
+      promise.resolve(changed && Rederive.run(ctx, db, meetingId))
+    } catch (e: Throwable) {
+      promise.reject("db_save_correction", e)
+    }
+  }
+
+  /** The other half: clear the correction, restore the recogniser's wording (vocabulary re-applied on Pro), re-derive. */
+  @ReactMethod
+  fun revertCorrection(meetingId: String, utteranceId: String, promise: Promise) {
+    try {
+      val db = AudioDb.get(ctx)
+      val rules = if (LicenceStore.entitled(ctx)) db.vocabularyRules() else emptyList()
+      val changed = db.revertCorrection(meetingId, utteranceId, rules)
+      promise.resolve(changed && Rederive.run(ctx, db, meetingId))
+    } catch (e: Throwable) {
+      promise.reject("db_revert_correction", e)
     }
   }
 

@@ -737,23 +737,40 @@ export const db = {
    * would untick every item the user had worked through — the one promise the worklist makes.
    * Leaving the original untouched keeps the tick key stable, lets reprocessing overwrite what it
    * owns, and makes "revert" a single delete.
+   *
+   * A TRANSCRIPT LINE is the exception, and it is native (F15): the corrected words are written
+   * THROUGH into the line itself — the recogniser's wording kept once in `text_raw` — because the
+   * items, the search index, the embeddings and the narration all read `utterances.text`, and an
+   * overlay only the transcript screen applies left every one of them on the old words. The `edits`
+   * row is still written (it is the record a re-transcription re-applies and revert clears), and
+   * the items are re-derived through the same reconciler a reprocess uses, so ticks, hand edits and
+   * hand-typed items stay. Resolves true when the items were re-derived now.
    */
-  putEdit: async (meetingId: string, targetKind: EditTarget, targetKey: string, content: string) => {
+  putEdit: async (
+    meetingId: string,
+    targetKind: EditTarget,
+    targetKey: string,
+    content: string,
+  ): Promise<boolean> => {
+    if (targetKind === 'utterance') return Storage.saveCorrection(meetingId, targetKey, content);
     await run(
       'INSERT OR REPLACE INTO edits(meeting_id, target_kind, target_key, content, edited_at) ' +
         'VALUES(?,?,?,?,?)',
       [meetingId, targetKind, targetKey, content, Date.now()],
     );
     await Storage.reindex(meetingId);
+    return false;
   },
 
-  clearEdit: async (meetingId: string, targetKind: EditTarget, targetKey: string) => {
+  clearEdit: async (meetingId: string, targetKind: EditTarget, targetKey: string): Promise<boolean> => {
+    if (targetKind === 'utterance') return Storage.revertCorrection(meetingId, targetKey);
     await run('DELETE FROM edits WHERE meeting_id = ? AND target_kind = ? AND target_key = ?', [
       meetingId,
       targetKind,
       targetKey,
     ]);
     await Storage.reindex(meetingId);
+    return false;
   },
 
   // ---- Hand-written items and prose -----------------------------------------------------------

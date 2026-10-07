@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { highlightsFor, type Mark } from './meeting/highlights';
 import { announceLine, endingNote, holdFor } from './meeting/meetingNotes';
+import { staleKey, takeDroppedNotice } from './meeting/correctionNotices';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { db } from '../db/queries';
 import { countsExcluding } from './threadData';
@@ -125,6 +126,8 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const [tags, setTags] = useState<string[]>([]);
   const [tagging, setTagging] = useState(false);
   const [edits, setEdits] = useState<EditMap>(new Map());
+  // The transcript was corrected after the written summary was made (F15) — native keeps the flag.
+  const [summaryStale, setSummaryStale] = useState(false);
   /** Up to three of this meeting's tags with another meeting in their thread (Phase 3). */
   const [threads, setThreads] = useState<{ tag: string; open: number; decisions: number }[]>([]);
 
@@ -261,7 +264,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
 
   const refresh = useCallback(async () => {
     await migrate();
-    const [mtg, mins, its, utts, segs, spk, eds, tgs, mks, rts] = await Promise.all([
+    const [mtg, mins, its, utts, segs, spk, eds, tgs, mks, rts, stale] = await Promise.all([
       db.getMeeting(meetingId),
       db.minutes(meetingId),
       // After `migrate()`, so a meeting recorded before items existed has been given them. A
@@ -275,7 +278,15 @@ export default function MeetingScreen({ route, navigation }: Props) {
       db.tagsFor(meetingId).catch(() => []),
       db.marks(meetingId).catch(() => []),
       db.stageRates().catch(() => ({})),
+      Promise.resolve(db.getSetting(staleKey(meetingId))).catch(() => null),
     ]);
+    setSummaryStale(stale === '1');
+    // Corrections a re-transcription could not re-apply: said once, then the count is cleared.
+    takeDroppedNotice(db, meetingId)
+      .then(msg => {
+        if (msg) Alert.alert('Some corrections were not kept', `${msg}. The new transcript has no line close enough to put them on.`);
+      })
+      .catch(() => {});
     setMeeting(mtg ?? null);
     setRates(rts);
     setMinutes(mins);
@@ -585,7 +596,9 @@ export default function MeetingScreen({ route, navigation }: Props) {
         // Optimistic, and cheap to be: the row is on screen and the map is the only thing the
         // render reads. A failed write is put right by the refresh in the catch.
         setEdits(prev => new Map(prev).set(editKey(kind, key), value));
-        await db.putEdit(meetingId, kind, key, value);
+        const rederived = await db.putEdit(meetingId, kind, key, value);
+        // The line is now written through and the items were re-derived from it: re-read them.
+        if (kind === 'utterance' && rederived) await refresh();
         // A person who types a different owner has re-assigned it by hand: drop the speaker link
         // so resolving the owner live can never overwrite their words (F14).
         if (kind === 'item' && (await db.reconcileItemOwner(key, value).catch(() => false))) await refresh();
@@ -607,7 +620,8 @@ export default function MeetingScreen({ route, navigation }: Props) {
         return next;
       });
       try {
-        await db.clearEdit(meetingId, kind, key);
+        const rederived = await db.clearEdit(meetingId, kind, key);
+        if (kind === 'utterance' && rederived) await refresh();
       } catch {
         refresh();
       }
@@ -1317,6 +1331,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 onChangeTemplate={onChangeTemplate}
                 onOpenTab={setTab}
                 onCopy={text => copyText(text, 'Summary')}
+                stale={summaryStale}
                 edits={edits}
                 onEdit={(initial, kind) =>
                   setEditing({
