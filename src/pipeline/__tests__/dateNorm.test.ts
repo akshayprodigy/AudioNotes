@@ -16,6 +16,17 @@ describe('DateNorm (TS mirror)', () => {
     expect(golden.cases.length).toBeGreaterThan(10);
   });
 
+  // F16c: "before <day>" is a deadline, not a day. It must stay unresolved so the review queue's
+  // "date could not be pinned to a day" cue applies - a "before" that quietly resolved would show
+  // a guessed day as a fact. Named separately from the table so a regression names itself.
+  it('does not resolve "before ..." to a day, while "by ..." on the same words does', () => {
+    for (const said of ['before Wednesday', 'before tomorrow', 'before next Friday', 'before the 21st']) {
+      expect(resolveDay(said, golden.meetingAt, golden.timeZone)).toBeNull();
+    }
+    expect(resolveDay('by Wednesday', golden.meetingAt, golden.timeZone)).toBe('2026-09-23');
+    expect(resolveDay('by tomorrow', golden.meetingAt, golden.timeZone)).toBe('2026-09-17');
+  });
+
   it.each(golden.cases.map(c => [c.said, c.norm] as const))('"%s" → %s', (said, norm) => {
     expect(resolveDay(said, golden.meetingAt, golden.timeZone)).toBe(norm);
   });

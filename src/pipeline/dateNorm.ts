@@ -14,6 +14,11 @@ const WEEKDAYS: Record<string, number> = {
 const NUMBERS: Record<string, number> = {
   one: 1, a: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
 };
+// "before" is NOT here, on purpose (F16c). "by Friday" is a deadline whose natural reading is the
+// day itself, so it resolves. "before Wednesday" is a deadline that excludes the day it names; any
+// single day we picked (Tuesday? today?) would be a guess shown as a fact. It stays unresolved so
+// the review queue's "date could not be pinned to a day" cue applies and a person decides.
+// DateNorm.kt's set is the same, and the date_norm.json golden holds the two together.
 const DROPPED_LEADS = new Set(['by', 'on', 'for', 'until', 'till']);
 
 /** A calendar day, zone-free: the arithmetic happens here and only the ends touch a zone. */
