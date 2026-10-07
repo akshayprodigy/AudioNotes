@@ -355,6 +355,10 @@ class RecordingService : Service(), CaptureListener {
       val buf = ByteArray(4096)
       // APPEND, not truncate: after a START_REDELIVER_INTENT restart the file already holds
       // everything captured before the kill. Opening without append would silently delete it.
+      // `use` closes the stream, and closing flushes again, so a full disk can throw from the close
+      // as well as from the flush in the finally below. Contained for the same reason (N05): the
+      // catch at the end of this block keeps stopSelf() reachable.
+      try {
       BufferedOutputStream(FileOutputStream(File(path), true), 1 shl 16).use { out ->
         record.startRecording()
         // AFTER startRecording(), deliberately: the clip has to land IN the audio. Announcing
@@ -530,8 +534,14 @@ class RecordingService : Service(), CaptureListener {
         } finally {
           try { record.stop() } catch (_: Exception) {}
           record.release()
-          out.flush()
+          // Contained: this runs before stopSelf() below, and a flush that throws on a full disk
+          // used to skip it (N05). See CaptureEnd.afterFlush.
+          endReason = CaptureEnd.afterFlush(endReason) { out.flush() }
         }
+      }
+      } catch (e: Exception) {
+        Log.e(TAG, "closing the audio file failed", e)
+        endReason = CaptureEnd.reasonAfterFailure(endReason)
       }
       // Disk-full / mic-loss end the loop from inside; the service still has to tear itself down.
       if (endReason != END_NORMAL) stopSelf()
