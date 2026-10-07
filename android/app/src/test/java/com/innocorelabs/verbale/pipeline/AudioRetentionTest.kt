@@ -48,4 +48,11 @@ class AudioRetentionTest {
     assertEquals(AudioRetention.DEFAULT_DAYS, days("3.5", null))
     assertEquals(-1, days("  ", "1"))
   }
+
+  /** The sample meeting's audio is bundled with the app and is never reclaimed; a real meeting's is. */
+  @Test fun theBundledSampleIsNeverSweptButARealMeetingIs() {
+    assertEquals(true, AudioRetention.neverSwept("sample-meeting-v1"))
+    assertEquals(false, AudioRetention.neverSwept("3f2a9c1e-0b7d-4c55-9a52-61d0f4c0a1de"))
+    assertEquals(false, AudioRetention.neverSwept("my-sample-recording"))
+  }
 }

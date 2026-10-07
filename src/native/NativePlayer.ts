@@ -20,6 +20,11 @@ export interface Spec extends TurboModule {
   // arrives from the donor phone describing a path that was never on this device.
   hasAudio(meetingId: string): Promise<boolean>;
 
+  // The bundled sample meeting's audio, decoded into that meeting's own directory (the same
+  // headerless PCM every recording is). Resolves with the file path to store as audio_path. Only a
+  // `sample-` meeting id is accepted. See src/sample/seedSample.ts.
+  installSample(meetingId: string): Promise<{ path: string; durationMs: number }>;
+
   // Load a meeting for playback and report its length. Rejects when the audio is gone, and
   // deliberately rejects while a recording is in progress: capture uses an UNPROCESSED audio
   // source with no echo cancellation, so playing one meeting through the speaker while another

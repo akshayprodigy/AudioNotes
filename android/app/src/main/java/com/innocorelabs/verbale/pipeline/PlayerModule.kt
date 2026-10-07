@@ -13,6 +13,8 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import com.innocorelabs.verbale.R
+import com.innocorelabs.verbale.audio.AudioImport
 import com.innocorelabs.verbale.data.AudioDb
 import java.io.File
 import java.io.RandomAccessFile
@@ -87,6 +89,34 @@ class PlayerModule(private val ctx: ReactApplicationContext) :
         promise.resolve(path != null && File(path).length() > 0L)
       } catch (e: Throwable) {
         promise.reject("player_has_audio", e)
+      }
+    }.start()
+  }
+
+  /**
+   * Put the bundled sample meeting's audio where Player.open will look for it: decoded to the same
+   * headerless 16 kHz mono PCM16 every recording is, in the meeting's own directory. Resolves with
+   * the path, which the caller stores as the meeting's audio_path. Only a `sample-` id is accepted,
+   * so this cannot be pointed at a real meeting's file.
+   */
+  @ReactMethod
+  fun installSample(meetingId: String, promise: Promise) {
+    Thread {
+      try {
+        require(AudioRetention.neverSwept(meetingId) && meetingId.none { it == '/' || it == '.' }) {
+          "not a sample meeting id"
+        }
+        val dir = File(ctx.filesDir, "meetings/$meetingId").apply { mkdirs() }
+        val pcm = File(dir, "audio.pcm")
+        val bytes = AudioImport.decodeBundled(ctx, R.raw.sample_meeting, pcm)
+        promise.resolve(
+          Arguments.createMap().apply {
+            putString("path", pcm.absolutePath)
+            putDouble("durationMs", (bytes / RecordingService.BYTES_PER_MS).toDouble())
+          },
+        )
+      } catch (e: Throwable) {
+        promise.reject("player_install_sample", e)
       }
     }.start()
   }

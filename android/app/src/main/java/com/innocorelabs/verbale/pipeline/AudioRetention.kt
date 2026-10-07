@@ -50,6 +50,16 @@ object AudioRetention {
     return if (keepAudio == "1") -1 else DEFAULT_DAYS
   }
 
+  /**
+   * The bundled sample meeting's id prefix (src/sample/seedSample.ts). Its audio is ours, a couple
+   * of megabytes, and was never recorded on this phone; sweeping it after a week would leave a
+   * sample whose source links go quiet for no reason the person could act on.
+   */
+  const val SAMPLE_PREFIX = "sample-"
+
+  /** Whether the sweep must leave this meeting's audio alone however old it is. */
+  fun neverSwept(meetingId: String): Boolean = meetingId.startsWith(SAMPLE_PREFIX)
+
   fun daysFor(db: AudioDb): Int = resolveDays(db.getSetting(KEY_DAYS), db.getSetting(KEY_LEGACY))
 
   /**
@@ -70,6 +80,7 @@ object AudioRetention {
 
     var swept = 0
     for ((id, path) in db.audioOlderThan(days, excludeId)) {
+      if (neverSwept(id)) continue
       val f = File(path)
       if (f.exists() && !f.delete()) {
         Log.w(TAG, "could not delete audio for $id")

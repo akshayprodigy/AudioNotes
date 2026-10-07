@@ -146,6 +146,26 @@ object AudioImport {
     }
   }
 
+  /**
+   * Decode a raw resource the APK ships (the sample meeting) to the 16 kHz mono PCM16 the player
+   * reads. A decode and nothing else: no allowance slot, no gate, no meeting row, which is how the
+   * sample stays out of every count. Returns the bytes written.
+   *
+   * Copied to a temporary file first because MediaExtractor wants a seekable source and a resource
+   * stream is not one; the copy works whether or not aapt stored the resource compressed.
+   */
+  fun decodeBundled(ctx: Context, resId: Int, out: File): Long {
+    val staging = File(ctx.cacheDir, "bundled-${UUID.randomUUID()}.m4a")
+    try {
+      ctx.resources.openRawResource(resId).use { input ->
+        staging.outputStream().use { input.copyTo(it) }
+      }
+      return decodeTo(ctx, Uri.fromFile(staging), out, paid = true, progress = null)
+    } finally {
+      staging.delete()
+    }
+  }
+
   /** The file's own name, for telling the user what is being worked on. */
   fun displayName(ctx: Context, uri: Uri): String? =
     try {
