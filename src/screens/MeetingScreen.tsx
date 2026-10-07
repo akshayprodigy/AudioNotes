@@ -19,6 +19,8 @@ import { db } from '../db/queries';
 import { countsExcluding } from './threadData';
 import { PipelineController } from '../pipeline/PipelineController';
 import { entitlement, shouldOfferPaywall } from '../billing/trial';
+import SampleBanner from '../sample/SampleBanner';
+import { isSampleId } from '../sample/sampleId';
 import FileExport from '../native/NativeFileExport';
 import Icon from '../components/Icon';
 import Mascot from '../components/Mascot';
@@ -180,6 +182,9 @@ export default function MeetingScreen({ route, navigation }: Props) {
   useEffect(() => {
     if (meeting?.status !== 'done') return;
     if (fromNotification) return;
+    // The sample is not a meeting the person recorded, so it is not "the first meeting that
+    // finished": opening it must not spend the once-ever Pro offer.
+    if (isSampleId(meetingId)) return;
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     shouldOfferPaywall()
@@ -194,7 +199,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
       alive = false;
       if (timer) clearTimeout(timer);
     };
-  }, [meeting?.status, openPaywall, fromNotification]);
+  }, [meeting?.status, openPaywall, fromNotification, meetingId]);
 
   // `atMs` — the moment a search hit matched — only scrolls the transcript to that line; it does
   // NOT move the playhead. Seeking would mean opening the audio device merely to look at a search
@@ -1274,6 +1279,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
               </Txt>
             </View>
           ) : null}
+          <SampleBanner meetingId={meetingId} onDeleted={() => navigation.goBack()} />
           <Segmented items={TABS} value={tab} onChange={setTab} style={st.tabs} />
           {/* Each tab owns its own scroll. Hosting them in one page scroll is what the split was
               for: the transcript can be a virtualised list only if it is the thing scrolling. */}
