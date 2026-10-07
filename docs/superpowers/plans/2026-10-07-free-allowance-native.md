@@ -277,7 +277,11 @@ private class FakeStore : Allowance.Store {
   var atomicDepth = 0
   override fun <T> atomically(block: () -> T): T { atomicDepth++; try { return block() } finally { atomicDepth-- } }
   override fun entries() = rows.values.toList()
-  override fun insert(entry: Entry, reservedAtMs: Long) { check(atomicDepth > 0) { "insert outside a transaction" }; rows[entry.id] = entry }
+  override fun insert(entry: Entry, reservedAtMs: Long) {
+    check(atomicDepth > 0) { "insert outside a transaction" }
+    check(entry.id !in rows) { "duplicate primary key ${entry.id}" }
+    rows[entry.id] = entry
+  }
   override fun setState(id: String, state: State) { rows[id]?.let { rows[id] = it.copy(state = state) } }
 }
 
@@ -306,6 +310,15 @@ class AllowanceTest {
     Allowance.reserve(s, "m1", false, oct, utc)
     Allowance.reserve(s, "m1", false, oct, utc)
     assertEquals(1, s.rows.size)
+  }
+
+  // Added after mutation testing: without the duplicate guard in reserve(), the plain
+  // "same id twice" test still passed (the fake overwrote by key). The guard's real job is this.
+  @Test fun `a duplicate start event for a session that holds the last slot is not refused`() {
+    val s = FakeStore()
+    (1..5).forEach { Allowance.reserve(s, "m$it", false, oct, utc) }
+    assertEquals(Allowance.Reservation.Free("2026-10"), Allowance.reserve(s, "m5", false, oct, utc))
+    assertEquals(5, s.rows.size)
   }
 
   @Test fun `a paid session takes no slot and is never refused`() {
