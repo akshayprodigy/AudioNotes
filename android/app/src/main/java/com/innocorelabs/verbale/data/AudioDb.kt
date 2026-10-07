@@ -829,6 +829,19 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
   }
 
   /**
+   * [settleAllowance] for a processing run's own checkpoints (the end of VAD, the end of the run):
+   * whether processing is "done" is read from the meeting's status rather than assumed, because the
+   * engine reports a run as complete even when ASR has not run (model still downloading) and a
+   * crash leaves 'failed' — neither is a verdict, so neither may refund a short session.
+   */
+  fun settleAllowanceAfterRun(meetingId: String) {
+    val status = db.rawQuery("SELECT status FROM meetings WHERE id=?", arrayOf(meetingId)).use {
+      if (it.moveToFirst()) it.getString(0) else null
+    }
+    settleAllowance(meetingId, processingDone = status != null && ResumePlan.finished(status))
+  }
+
+  /**
    * Settle every slot still RESERVED, for a process that died mid-session. A reservation whose
    * meeting row is gone is refunded; the rest are judged from the file and the transcript. Call it
    * when no capture is running. A run that CRASHED ('failed') is not final, so it is not refunded
@@ -841,7 +854,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
         if (it.moveToFirst()) it.getString(0) else null
       }
       if (row == null) Allowance.refund(store, e.id)
-      else settleAllowance(e.id, processingDone = row == "done" || row == "error" || row == "unsupported_language")
+      else settleAllowance(e.id, processingDone = ResumePlan.finished(row))
     }
   }
 

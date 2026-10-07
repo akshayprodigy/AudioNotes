@@ -12,6 +12,9 @@ describe('endingNote', () => {
     );
     expect(endingNote('cap_reached', 60_000)).toBe('Stopped at the Free limit. Everything up to that point is kept.');
   });
+  it('says a forgotten pause ended the recording and that what was recorded is kept', () => {
+    expect(endingNote('pause_timeout', 60_000)).toBe('Ended after an hour paused. Everything up to that point is kept.');
+  });
   it('says nothing was recorded when nothing was', () => {
     expect(endingNote('mic_unavailable', 0)).toBe('The microphone could not be opened, so nothing was recorded.');
   });

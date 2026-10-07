@@ -266,6 +266,10 @@ object CaptureController {
     return true
   }
 
+  /** How long the CURRENT pause has lasted (0 when not paused) — what PausePolicy judges, not the meeting's total. */
+  fun currentPauseMs(): Long =
+    if (paused && pausedAtMs > 0L) System.currentTimeMillis() - pausedAtMs else 0L
+
   val isRecording: Boolean get() = currentMeetingId != null
 
   /**

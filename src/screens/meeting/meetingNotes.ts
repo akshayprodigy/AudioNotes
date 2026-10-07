@@ -10,6 +10,7 @@ const ENDED: Record<string, string> = {
   disk_full: 'Stopped early: the phone ran out of space',
   write_failed: 'Stopped early: the audio could not be saved',
   mic_unavailable: 'The microphone could not be opened',
+  pause_timeout: 'Ended after an hour paused',
 };
 
 /** Null for a Stop, and for meetings recorded before the reason was kept. */

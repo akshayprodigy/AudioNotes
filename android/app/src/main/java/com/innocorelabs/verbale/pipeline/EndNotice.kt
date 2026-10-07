@@ -15,9 +15,21 @@ object EndNotice {
   fun shouldProcess(reason: String, capturedBytes: Long): Boolean =
     reason != RecordingService.END_NORMAL && capturedBytes > 0L
 
+  private fun nextStep(processing: Boolean) =
+    if (processing) "It is being transcribed now." else "Open Verbale to transcribe it."
+
   /** Null for a Stop. [processing] is whether the queueing went through. */
   fun of(reason: String, capturedBytes: Long, processing: Boolean, capMinutes: Int): Notice? {
     if (reason == RecordingService.END_NORMAL) return null
+    // Before the "nothing captured" branch, which blames the microphone: a pause that timed out
+    // with nothing recorded is not a microphone problem.
+    if (reason == RecordingService.END_PAUSE_TIMEOUT) {
+      return if (capturedBytes <= 0L) {
+        Notice("Recording ended", "Ended after an hour paused. Nothing had been recorded.")
+      } else {
+        Notice("Recording ended", "Ended after an hour paused. Everything recorded was kept. ${nextStep(processing)}")
+      }
+    }
     if (capturedBytes <= 0L) {
       return if (reason == RecordingService.END_DISK_FULL) {
         Notice("Could not start recording", "The phone is out of space. Free some up and try again. Nothing was recorded.")
@@ -25,7 +37,7 @@ object EndNotice {
         Notice("Could not start recording", "The microphone could not be opened — another app may be using it. Nothing was recorded.")
       }
     }
-    val next = if (processing) "It is being transcribed now." else "Open Verbale to transcribe it."
+    val next = nextStep(processing)
     return when (reason) {
       RecordingService.END_CAP_REACHED ->
         Notice("Stopped at the $capMinutes-minute Free limit", "The recording is kept. $next Pro records without a limit.")

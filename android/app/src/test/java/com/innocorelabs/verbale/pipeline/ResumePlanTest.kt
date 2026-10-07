@@ -136,6 +136,14 @@ class ResumePlanTest {
     assertEquals(listOf(Stage.VAD, Stage.ASR, Stage.DIARIZE, Stage.NARRATE), plan("failed", seg = false, utt = false, spk = false))
   }
 
+  /** Only a run that will not be retried may tell the Free slot "not usable". */
+  @Test fun aRunIsFinishedOnlyWhenItWillNotBeRetried() {
+    for (status in listOf("done", "error", "unsupported_language")) assertEquals(status, true, ResumePlan.finished(status))
+    for (status in listOf("recording", "captured", "vad", "asr", "diarized", "failed")) {
+      assertEquals(status, false, ResumePlan.finished(status))
+    }
+  }
+
   @Test fun segmentsMeanVadIsDoneWhateverTheStatus() {
     for (status in listOf("recording", "captured", "failed", "vad", "done")) {
       assertEquals(true, ResumePlan.vadDone(status, hasSegments = true))

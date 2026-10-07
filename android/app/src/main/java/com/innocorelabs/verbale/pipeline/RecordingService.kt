@@ -105,6 +105,13 @@ class RecordingService : Service(), CaptureListener {
      */
     const val END_CAP_REACHED = "cap_reached"
 
+    /**
+     * A pause outlasted PausePolicy.END_AFTER_MS. Like the free limit it is not a failure: the audio
+     * is kept and queued, and what ended is only the forgotten pause that held a slot, a microphone
+     * session and a foreground service.
+     */
+    const val END_PAUSE_TIMEOUT = "pause_timeout"
+
     /** Anything else thrown in the capture loop — a write that failed. The audio so far is kept. */
     const val END_WRITE_FAILED = "write_failed"
 
@@ -150,6 +157,9 @@ class RecordingService : Service(), CaptureListener {
 
   /** The free limit's phase at the last check; the notification is re-posted when it changes. */
   @Volatile private var capPhase = CapClock.Phase.UNCAPPED
+
+  /** The notification has asked about a long pause (PausePolicy.ASK); once per pause, cleared on resume. */
+  @Volatile private var pauseAsked = false
 
   /**
    * Transcribes while we record, so the wait after "stop" is roughly halved. It only ever READS
@@ -458,6 +468,26 @@ class RecordingService : Service(), CaptureListener {
                 refreshNotification()
               }
             }
+            if (reads % WARN_CHECK_EVERY_READS == 0) {
+              if (!CaptureController.paused) {
+                pauseAsked = false
+              } else {
+                // A forgotten pause holds a Free slot, the microphone and this service. Judged on the
+                // CURRENT pause only (PausePolicy): ask once at half an hour, end it at an hour.
+                when (PausePolicy.action(CaptureController.currentPauseMs())) {
+                  PausePolicy.Action.END -> {
+                    Log.i(TAG, "paused for an hour — ending the recording and keeping it")
+                    endReason = END_PAUSE_TIMEOUT
+                    recording = false
+                  }
+                  PausePolicy.Action.ASK -> if (!pauseAsked) {
+                    pauseAsked = true
+                    refreshNotification()
+                  }
+                  PausePolicy.Action.NONE -> Unit
+                }
+              }
+            }
             val cap = CaptureController.capMs
             // Enforced at the one-second cadence, not the half-minute one, so the overrun is about a
             // second (GAP-6). Order matters: this runs before the half-minute entitlement poll below,
@@ -650,6 +680,10 @@ class RecordingService : Service(), CaptureListener {
         db.setEndReason(id, EndNotice.stored(endReason))
         // Nothing captured is nothing to process: 'captured' would send an empty file down the pipeline.
         if (bytes == 0L) db.setStatus(id, "error")
+        // The slot taken at start: handed back at once when nothing was captured or a dictation is
+        // under a minute; otherwise it stays reserved (and counted) until the speech check at the end
+        // of VAD, and then the finished run, say what the session was (ProcessingService).
+        db.settleAllowance(id, processingDone = bytes == 0L)
       } catch (e: Exception) {
         Log.e(TAG, "markCaptured failed", e)
       }
@@ -900,8 +934,11 @@ class RecordingService : Service(), CaptureListener {
       b.setUsesChronometer(false)
       b.setShowWhen(false)
       b.setContentText(
-        if (silenced) body
-        else getString(R.string.notif_body_paused_at, clockText(CaptureController.elapsedMs())),
+        when {
+          silenced -> body
+          pauseAsked -> getString(R.string.notif_body_paused_long, (PausePolicy.ASK_AFTER_MS / 60_000L).toInt())
+          else -> getString(R.string.notif_body_paused_at, clockText(CaptureController.elapsedMs()))
+        },
       )
     } else if (capCounting) {
       // Counts DOWN to the free limit, drawn by the system, so nothing is re-posted each second.

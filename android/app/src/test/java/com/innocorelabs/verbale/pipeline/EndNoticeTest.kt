@@ -42,6 +42,25 @@ class EndNoticeTest {
     assertFalse(refused.body.contains("being transcribed"))
   }
 
+  @Test fun aPauseThatTimedOutIsKeptAndQueuedAndSaysSo() {
+    val r = RecordingService.END_PAUSE_TIMEOUT
+    assertTrue(EndNotice.shouldProcess(r, someAudio))
+    assertEquals(r, EndNotice.stored(r))
+    val n = EndNotice.of(r, someAudio, processing = true, capMinutes = 0)!!
+    assertEquals("Recording ended", n.title)
+    assertTrue(n.body, n.body.startsWith("Ended after an hour paused. Everything recorded was kept."))
+    assertTrue(n.body.contains("It is being transcribed now."))
+    val refused = EndNotice.of(r, someAudio, processing = false, capMinutes = 0)!!
+    assertTrue(refused.body.contains("Open Verbale to transcribe it."))
+  }
+
+  @Test fun aPauseThatTimedOutWithNothingRecordedDoesNotBlameTheMicrophone() {
+    val n = EndNotice.of(RecordingService.END_PAUSE_TIMEOUT, 0L, processing = false, capMinutes = 0)!!
+    assertFalse(n.body.contains("microphone"))
+    assertTrue(n.body.contains("Nothing had been recorded"))
+    assertFalse(EndNotice.shouldProcess(RecordingService.END_PAUSE_TIMEOUT, 0L))
+  }
+
   @Test fun theFreeLimitNoticeNamesTheLimit() =
     assertEquals(
       "Stopped at the 60-minute Free limit",

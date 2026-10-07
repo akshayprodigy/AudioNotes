@@ -46,6 +46,14 @@ object ResumePlan {
     hasSegments || (status != "recording" && pastVad(status))
 
   /**
+   * A processing run has reached an end that will not be retried: the transcript is written, or the
+   * run concluded there was nothing to write. 'failed' is a crash and is retried, so it is NOT here;
+   * nor is anything still waiting on a model. Only a finished run may say "not usable" to the Free
+   * slot (AudioDb.settleAllowance).
+   */
+  fun finished(status: String): Boolean = status == "done" || status == "error" || status == "unsupported_language"
+
+  /**
    * [forceNarrate] re-plans narration for a meeting that already has prose — the Summary tab's
    * "Write it again". It only ever ADDS the stage; it cannot resurrect a meeting with no
    * transcript, because the no-speech branch below returns before it is consulted and a stage that

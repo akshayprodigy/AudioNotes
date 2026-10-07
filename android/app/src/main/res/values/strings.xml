@@ -24,6 +24,7 @@
 
     <string name="notif_body_recording">Everything stays on this device</string>
     <string name="notif_body_paused">Nothing is being captured until you resume</string>
+    <string name="notif_body_paused_long">Paused for %1$d minutes — tap to resume or stop</string>
     <string name="notif_body_paused_at">Paused at %1$s · nothing is being captured</string>
     <string name="notif_body_silenced">Another app is using the mic; nothing is being captured</string>
 

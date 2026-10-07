@@ -72,6 +72,15 @@ class ProcessingService : Service() {
     return START_REDELIVER_INTENT
   }
 
+  /** Never lets the allowance's bookkeeping interrupt processing. */
+  private fun settleSlot(id: String) {
+    try {
+      AudioDb.get(this).settleAllowanceAfterRun(id)
+    } catch (e: Exception) {
+      Log.w(TAG, "could not settle the allowance slot for $id", e)
+    }
+  }
+
   private fun newWakeLock(): PowerManager.WakeLock {
     val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
     return pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "audionotes:processing")
@@ -98,6 +107,10 @@ class ProcessingService : Service() {
           ProcessingEngine(this, id, "base", object : ProcessingEngine.Listener {
             override fun onStage(stage: String, done: Int, total: Int) {
               try { updateNotification(stageLabel(stage)) } catch (_: Exception) {}
+              // The speech check is the cheap stage (about 0.01x real time): once it has run, "no
+              // speech" is known, and an accidental tap gives its slot back within seconds rather than
+              // after a full transcription (addendum R2).
+              if (stage == "vad" && total > 0 && done >= total) settleSlot(id)
               AudioPipelineBridge.emitProgress(id, stage, done, total)
             }
             override fun onPause(reason: ProcessingBudget.PauseReason?) {
@@ -106,6 +119,10 @@ class ProcessingService : Service() {
             }
             override fun onComplete(outcome: String, message: String?) {
               AudioPipelineBridge.emitComplete(id, outcome, message)
+              // A final outcome settles the slot; a cancelled run says nothing, and a crash
+              // ('error', status 'failed') is retried, so settleAllowanceAfterRun reads the status and
+              // leaves a short session RESERVED rather than refunding it.
+              if (outcome != "cancelled") settleSlot(id)
               // ProcessingEngine reports the run outcome as "done" even for terminal-but-empty
               // cases (no-speech -> status 'error'; model still downloading -> status left at
               // 'vad'/'captured') — outcome alone can't tell a finished MOM from those. Re-read

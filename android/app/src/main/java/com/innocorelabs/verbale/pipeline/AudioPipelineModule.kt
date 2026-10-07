@@ -289,6 +289,11 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
       try {
         val n = AudioDb.get(ctx).recoverOrphanedRecordings(CaptureController.currentMeetingId)
         if (n > 0) Log.i("AudioPipeline", "recovered $n meeting(s) stranded in 'recording'")
+        // A reservation abandoned by a dead process settles from the file and transcript now that
+        // the orphans have left 'recording'. Never while a capture is running: its own slot is live.
+        if (!CaptureController.isRecording) {
+          try { AudioDb.get(ctx).sweepAllowance() } catch (e: Exception) { Log.w("AudioPipeline", "allowance sweep failed", e) }
+        }
         promise.resolve(n)
       } catch (e: Exception) {
         promise.reject("recover_failed", e)
