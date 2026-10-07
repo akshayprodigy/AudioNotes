@@ -46,6 +46,8 @@ import {
   signOut,
 } from '../billing/subscription';
 import { entitlement } from '../billing/trial';
+import { refreshAllowance, useAllowance } from '../billing/allowance';
+import { explainer, settingsValue } from '../billing/allowanceCopy';
 import {
   crashConsent,
   crashReportingAvailable,
@@ -125,6 +127,8 @@ export default function SettingsScreen({ navigation }: Props) {
   // Subscription. The app never advertises a price or links to a checkout — it signs in, and
   // buying happens on the web. That separation is deliberate; see the licence server's README.
   const [lic, setLic] = React.useState<LicenceStatus | null>(null);
+  // The month's Free meetings (Pro: "Unlimited with Pro"); empty until native has answered.
+  const allowance = useAllowance();
   const [signedInAs, setSignedInAs] = React.useState<string | null>(null);
 
   // Google Play Billing. `playCan` is false on a side-load or an install from another store, where
@@ -333,6 +337,7 @@ export default function SettingsScreen({ navigation }: Props) {
       countEmpties();
       // Back from the Pro screen: a purchase made there shows here at once.
       refreshLicence();
+      refreshAllowance();
       entitlement().then(e => setVoicesPaid(e.paid)).catch(() => {});
     });
     return () => {
@@ -609,6 +614,21 @@ export default function SettingsScreen({ navigation }: Props) {
           <SectionRule label="SUBSCRIPTION" />
         </View>
         <View style={st.list}>
+          {settingsValue(allowance) ? (
+            <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={5}>
+              <View style={st.rowPad}>
+                <Txt variant="bodyStrong">Free allowance</Txt>
+                <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
+                  {settingsValue(allowance)}
+                </Txt>
+                {allowance?.paid ? null : (
+                  <Txt variant="chip" color={colors.inkFaint} style={st.tiny}>
+                    {explainer}
+                  </Txt>
+                )}
+              </View>
+            </Raised>
+          ) : null}
           <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={5}>
             <View style={st.rowPad}>
               <Txt variant="bodyStrong">

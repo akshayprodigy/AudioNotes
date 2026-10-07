@@ -1,9 +1,13 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
+import { Alert } from 'react-native';
 import LibraryScreen from '../LibraryScreen';
 import { db } from '../../db/queries';
 import { useLibraryStore } from '../../state/libraryStore';
 import { entitlement } from '../../billing/trial';
+import Licence from '../../native/NativeLicence';
+import { useAllowanceStore } from '../../billing/allowance';
+import { exhaustedCopy } from '../../billing/allowanceCopy';
 
 jest.mock('../../db/queries');
 jest.mock('react-native-safe-area-context', () => ({
@@ -333,4 +337,167 @@ test('a crashed meeting reads DIDN\'T FINISH with its reason, not NO SPEECH', as
   expect(text).toContain('ran out of memory');
   expect(text).not.toContain('NO SPEECH');
   await act(async () => tree.unmount());
+});
+
+/**
+ * The Free allowance in the library (F08), and what an import is told. Pro sees none of it, and
+ * an empty allowance never closes a saved meeting: the month's five limit NEW sessions only.
+ */
+describe('the Free allowance', () => {
+  const allowance = Licence.allowance as unknown as jest.Mock;
+  const FREE = { limit: 5, used: 2, remaining: 3, period: '2026-10', resetsOn: '2026-11-01', paid: false };
+  const importer = (global as any).__TEST_NATIVE_MODULES__.Import;
+  const saved = {
+    id: 'm1', title: 'Standup', createdAt: Date.now(), durationMs: 600_000, language: 'en',
+    status: 'done', tierUsed: 'free', audioRetained: 1,
+  };
+  const texts = (tree: renderer.ReactTestRenderer) =>
+    tree.root.findAll(n => typeof n.props.children === 'string').map(n => n.props.children as string);
+
+  beforeEach(() => {
+    useAllowanceStore.setState({ status: null });
+    allowance.mockResolvedValue(FREE);
+    importer.pick.mockReset();
+    importer.pick.mockResolvedValue(null);
+  });
+
+  test('the header says what is left and when it resets', async () => {
+    const tree = await focusTheLibrary();
+    expect(texts(tree)).toContain('3 of 5 free meetings left · resets 1 November.');
+    await act(async () => tree.unmount());
+  });
+
+  test('Pro sees no allowance line', async () => {
+    allowance.mockResolvedValue({ ...FREE, paid: true });
+    const tree = await focusTheLibrary();
+    expect(texts(tree).some(t => /free meetings left/.test(t))).toBe(false);
+    await act(async () => tree.unmount());
+  });
+
+  test('with none left the line is still calm, and a saved meeting still opens', async () => {
+    allowance.mockResolvedValue({ ...FREE, used: 5, remaining: 0 });
+    (db.listMeetings as jest.Mock).mockResolvedValue([saved]);
+    const tree = await focusTheLibrary();
+    expect(texts(tree)).toContain('0 of 5 free meetings left · resets 1 November.');
+    const card = tree.root.find(n => typeof n.props.onPress === 'function' && n.props.onLongPress);
+    await act(async () => card.props.onPress());
+    expect((nav as any).navigate).toHaveBeenCalledWith('Meeting', { meetingId: 'm1' });
+    await act(async () => tree.unmount());
+  });
+
+  test('with none left the import button explains before it opens the picker, and offers Pro', async () => {
+    allowance.mockResolvedValue({ ...FREE, used: 5, remaining: 0 });
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const tree = await focusTheLibrary();
+    await act(async () => {
+      pressIconButton(tree, 'Import a recording');
+    });
+    expect(importer.pick).not.toHaveBeenCalled();
+    expect(alert).toHaveBeenCalledTimes(1);
+    const [, message, buttons] = alert.mock.calls[0] as [string, string, { text: string; onPress?: () => void }[]];
+    expect(message).toBe(exhaustedCopy('2026-11-01'));
+    await act(async () => buttons.find(b => b.text === 'Get Pro')!.onPress!());
+    expect((nav as any).navigate).toHaveBeenCalledWith('Paywall');
+    alert.mockRestore();
+    await act(async () => tree.unmount());
+  });
+
+  test('with meetings left the import button goes straight to the picker', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const tree = await focusTheLibrary();
+    await act(async () => {
+      pressIconButton(tree, 'Import a recording');
+    });
+    expect(importer.pick).toHaveBeenCalledTimes(1);
+    expect(alert).not.toHaveBeenCalled();
+    alert.mockRestore();
+    await act(async () => tree.unmount());
+  });
+
+  test('a stale zero does not shut the picker: native is asked again first', async () => {
+    const tree = await focusTheLibrary();
+    // The screen last heard "none left"; a slot has since been given back.
+    await act(async () => {
+      useAllowanceStore.setState({ status: { ...FREE, used: 5, remaining: 0 } });
+    });
+    await act(async () => {
+      pressIconButton(tree, 'Import a recording');
+    });
+    expect(importer.pick).toHaveBeenCalledTimes(1);
+    await act(async () => tree.unmount());
+  });
+
+  test('a file over the hour is refused with the Free limit and an offer of Pro', async () => {
+    importer.pick.mockRejectedValue(Object.assign(new Error('That recording is longer than the 1 hour Free limit'), { code: 'import_too_long' }));
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const tree = await focusTheLibrary();
+    await act(async () => {
+      pressIconButton(tree, 'Import a recording');
+    });
+    const [, message, buttons] = alert.mock.calls[0] as [string, string, { text: string; onPress?: () => void }[]];
+    expect(message).toBe('That recording is longer than the 1 hour Free limit. Pro has no length limit.');
+    await act(async () => buttons.find(b => b.text === 'Get Pro')!.onPress!());
+    expect((nav as any).navigate).toHaveBeenCalledWith('Paywall');
+    alert.mockRestore();
+    await act(async () => tree.unmount());
+  });
+
+  test('an import while recording says to finish recording first, with no upsell', async () => {
+    importer.pick.mockRejectedValue(Object.assign(new Error('Finish recording first'), { code: 'recording_in_progress' }));
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const tree = await focusTheLibrary();
+    await act(async () => {
+      pressIconButton(tree, 'Import a recording');
+    });
+    const [, message, buttons] = alert.mock.calls[0] as [string, string, { text: string }[]];
+    expect(message).toBe('Finish recording first');
+    expect(buttons.map(b => b.text)).not.toContain('Get Pro');
+    alert.mockRestore();
+    await act(async () => tree.unmount());
+  });
+
+  test('a second import while one runs says to finish the import first', async () => {
+    importer.pick.mockRejectedValue(Object.assign(new Error('Finish the import first'), { code: 'import_in_progress' }));
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const tree = await focusTheLibrary();
+    await act(async () => {
+      pressIconButton(tree, 'Import a recording');
+    });
+    expect((alert.mock.calls[0] as unknown[])[1]).toBe('Finish the import first');
+    alert.mockRestore();
+    await act(async () => tree.unmount());
+  });
+
+  test('any other failure keeps the old title and the native message', async () => {
+    importer.pick.mockRejectedValue(Object.assign(new Error('There is no audio in that file'), { code: 'import_failed' }));
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const tree = await focusTheLibrary();
+    await act(async () => {
+      pressIconButton(tree, 'Import a recording');
+    });
+    expect(alert).toHaveBeenCalledWith('Could not import that', 'There is no audio in that file');
+    alert.mockRestore();
+    await act(async () => tree.unmount());
+  });
+
+  test('a shared file is confirmed with the allowance line and the explainer on Free, and not on Pro', async () => {
+    importer.consumePendingImport.mockResolvedValueOnce({ uri: 'content://x', name: 'Voice note' });
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const tree = await focusTheLibrary();
+    const free = (alert.mock.calls[0] as unknown[])[1] as string;
+    expect(free).toContain('“Voice note” will be transcribed on this phone. Nothing is uploaded.');
+    expect(free).toContain('3 of 5 free meetings left · resets 1 November.');
+    expect(free).toContain('Imports and dictations count as meetings.');
+    await act(async () => tree.unmount());
+
+    alert.mockClear();
+    allowance.mockResolvedValue({ ...FREE, paid: true });
+    useAllowanceStore.setState({ status: null });
+    importer.consumePendingImport.mockResolvedValueOnce({ uri: 'content://y', name: 'Voice note' });
+    const tree2 = await focusTheLibrary();
+    const pro = (alert.mock.calls[0] as unknown[])[1] as string;
+    expect(pro).toBe('“Voice note” will be transcribed on this phone. Nothing is uploaded.');
+    alert.mockRestore();
+    await act(async () => tree2.unmount());
+  });
 });

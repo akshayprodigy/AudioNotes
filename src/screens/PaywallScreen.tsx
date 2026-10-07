@@ -47,7 +47,8 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Paywall'>;
  *
  * Two rules this screen holds itself to:
  *
- *   - Nothing on it is advertised that is not built. The paid half is search by meaning, prose
+ *   - Nothing on it is advertised that is not built. The paid half is unlimited meetings of any
+ *     length (Free is five a month, up to an hour each), search by meaning, prose
  *     summaries shaped to the kind of meeting, narrated minutes, asking a meeting a question,
  *     remembered voices, threads across meetings, the vocabulary, and the larger transcriber —
  *     each one shipped and run on a phone before its row went in here. There is no roadmap on
@@ -64,12 +65,19 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Paywall'>;
  */
 const INCLUDED: { icon: IconName; title: string; body: string; needsWriter?: boolean }[] = [
   {
-    icon: 'search',
-    title: 'Search everything you have recorded',
+    icon: 'inbox',
+    title: 'More meetings, any length',
     body:
-      'Every word of every transcript, across all your meetings — and by meaning, so "what it ' +
-      'will cost" is found when you search for the budget. For when you know it was said and not ' +
-      'which meeting it was said in.',
+      'Free is 5 meetings a month, up to 1 hour each. Pro has no monthly limit and no length ' +
+      'limit: record as many meetings as you like, and a ninety-minute one in a single go.',
+  },
+  {
+    icon: 'search',
+    title: 'Search by meaning',
+    body:
+      'Search finds every word across your meetings for free. Pro also finds what you meant: ' +
+      '"what it will cost" turns up the budget even when nobody said "cost". For when you know ' +
+      'it was said and not which meeting it was said in.',
   },
   {
     icon: 'edit',
@@ -109,6 +117,13 @@ const INCLUDED: { icon: IconName; title: string; body: string; needsWriter?: boo
     body:
       'Meetings that share a tag become a thread: what is still open across all of them, and ' +
       'every decision in the order it was made, with the ones that changed an earlier one marked.',
+  },
+  {
+    icon: 'list',
+    title: 'Every action in one list',
+    body:
+      'The open actions from all your meetings in a single worklist, each one opening the ' +
+      'moment it was said.',
   },
   {
     icon: 'sliders',
@@ -328,7 +343,7 @@ export default function PaywallScreen({ navigation, route }: Props) {
   /** The one line under the title, which is the only line most people will read. */
   const headline = bought
     ? 'You are on Pro. Everything below is already on.'
-    : 'Let the phone write your minutes for you, in sentences, before you decide.';
+    : 'More meetings with no length limit, and minutes the phone writes for you in sentences.';
 
   const priceLabel = chosenFree
     ? `Try it free for ${chosenFree}`

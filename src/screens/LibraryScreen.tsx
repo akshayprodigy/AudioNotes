@@ -8,6 +8,8 @@ import { useLibraryStore } from '../state/libraryStore';
 import type { MeetingSort } from '../db/queries';
 import { loadActions, tally } from './actionsData';
 import { useImport } from './useImport';
+import { refreshAllowance, useAllowance } from '../billing/allowance';
+import { AllowanceLine } from './AllowanceNote';
 import { PipelineController } from '../pipeline/PipelineController';
 import { db } from '../db/queries';
 import ProNudgeCard from './ProNudgeCard';
@@ -252,11 +254,15 @@ export default function LibraryScreen({ navigation }: Props) {
     useCallback(
       (meetingId: string) => {
         refresh();
+        refreshAllowance();
         navigation.navigate('Meeting', { meetingId });
       },
       [navigation, refresh],
     ),
+    useCallback(() => navigation.navigate('Paywall'), [navigation]),
   );
+  // The month's Free meetings, one quiet line under the count; nothing for Pro.
+  const allowance = useAllowance();
 
   const countActions = useCallback(() => {
     loadActions()
@@ -297,6 +303,7 @@ export default function LibraryScreen({ navigation }: Props) {
       // Pro is re-read on every focus, not only when the finished count moves: coming back from
       // the Pro screen after buying must unlock Search, Actions and Threads at once.
       entitlement().then(e => setPaid(e.paid)).catch(() => {});
+      refreshAllowance();
       countActions();
       PipelineController.processPending().then(refresh).catch(() => {});
     };
@@ -639,6 +646,7 @@ export default function LibraryScreen({ navigation }: Props) {
                 ? 'Nothing recorded yet'
                 : `${meetings.length} saved${totalMin > 0 ? ` · ${totalMin} min captured` : ''}`}
             </Txt>
+            <AllowanceLine status={allowance} />
           </View>
           <View style={st.headBtns}>
             {/* Sits with search and settings rather than beside the record button: importing is

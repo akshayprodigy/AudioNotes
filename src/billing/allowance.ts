@@ -13,6 +13,11 @@ import { useRecordingStore } from '../state/recordingStore';
  */
 export type { AllowanceStatus };
 
+/** Free, answered, and nothing left. Pro and "not known yet" are never exhausted. */
+export function isExhausted(status: AllowanceStatus | null): status is AllowanceStatus {
+  return !!status && !status.paid && status.remaining <= 0;
+}
+
 /** Whether a value from native is the shape this file promises. */
 function isStatus(v: unknown): v is AllowanceStatus {
   const s = v as Partial<AllowanceStatus> | null;

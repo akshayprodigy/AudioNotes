@@ -146,3 +146,36 @@ describe('PaywallScreen sells Play\'s free trial', () => {
     expect(alert.mock.calls[0][0]).toBe('Subscription restored');
   });
 });
+
+describe('PaywallScreen leads with meetings (F08)', () => {
+  it('states the Free allowance with the headline and the explainer, and never fifteen minutes', async () => {
+    const tree = await render();
+    const all = texts(tree).join('\n');
+    expect(all).toContain('Free: 5 meetings each month · up to 1 hour each.');
+    expect(all).toContain('Imports and dictations count as meetings.');
+    expect(all).not.toMatch(/15 min|fifteen/i);
+  });
+
+  it('lists more meetings first, before any model or summary', async () => {
+    const tree = await render();
+    const titles = texts(tree);
+    const first = titles.indexOf('More meetings, any length');
+    expect(first).toBeGreaterThanOrEqual(0);
+    for (const later of ['Search by meaning', 'Ask the meeting', 'The larger transcriber']) {
+      expect(titles.indexOf(later)).toBeGreaterThan(first);
+    }
+  });
+
+  it('says keyword search is free and sells meaning', async () => {
+    const tree = await render();
+    const all = texts(tree).join('\n');
+    expect(all).toContain('Search by meaning');
+    expect(all).toContain('Search finds every word across your meetings for free.');
+    expect(all).not.toContain('Search everything you have recorded');
+  });
+
+  it('does not advertise reminders or a digest, which are not built', async () => {
+    const tree = await render();
+    expect(texts(tree).join('\n')).not.toMatch(/reminder|digest/i);
+  });
+});

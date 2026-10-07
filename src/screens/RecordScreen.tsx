@@ -37,6 +37,9 @@ import {
   type RecordMode,
 } from './recordMode';
 import { entitlement } from '../billing/trial';
+import { refreshAllowance, useAllowance } from '../billing/allowance';
+import { finishImportFirst } from '../billing/allowanceCopy';
+import { AllowanceExhausted, AllowanceLine, isExhausted } from './AllowanceNote';
 import { buyWithPlay, playAvailable, playPlans } from '../billing/subscription';
 import { trialLength, trialPlan, trialTerms } from '../billing/trialTerms';
 import { purchaseNotice } from '../billing/purchaseNotice';
@@ -102,6 +105,15 @@ export default function RecordScreen({ navigation }: Props) {
   // limit without interrupting the recording. Native enforces it; this is only what is shown.
   const [capMs, setCapMs] = useState(FREE_CAP_MS);
   const [lifting, setLifting] = useState(false);
+  // The Free allowance, and the reset date from a start that native has just refused. The refusal
+  // is kept (not only the ledger) so the card appears the instant the tap is refused, before the
+  // ledger read comes back.
+  const allowance = useAllowance();
+  const [refusedOn, setRefusedOn] = useState<string | null>(null);
+  useEffect(() => {
+    // A purchase, or a new month, ends the refusal.
+    if (allowance && (allowance.paid || allowance.remaining > 0)) setRefusedOn(null);
+  }, [allowance]);
   // The plan the cap card can sell in place — monthly first, the smaller commitment for a decision
   // made mid-meeting. Null when this install cannot buy through Play or the account has had its
   // trial. RecordingService re-asks for the entitlement when the limit is reached, so a purchase
@@ -301,7 +313,21 @@ export default function RecordScreen({ navigation }: Props) {
           });
         }
       } else if (await ensurePermissions()) {
-        await start(null, mode === 'dictation' ? 'dictation' : undefined);
+        try {
+          setRefusedOn(null);
+          await start(null, mode === 'dictation' ? 'dictation' : undefined);
+        } catch (e: any) {
+          // Native decides the allowance (CaptureController.start); a refusal carries the reset
+          // date as its message. Saved meetings are untouched, and the card says so.
+          if (e?.code === 'allowance_exhausted') {
+            setRefusedOn(String(e.message ?? ''));
+            refreshAllowance();
+          } else if (e?.code === 'import_in_progress') {
+            Alert.alert('Could not start recording', finishImportFirst);
+          } else {
+            throw e;
+          }
+        }
       }
     } finally {
       setBusy(false);
@@ -485,7 +511,18 @@ export default function RecordScreen({ navigation }: Props) {
               : 'Listening — tap to finish'}
           </Txt>
 
-          {/* The offer arrives with three minutes left, not at the limit: enough to read this,
+          {!isRecording ? (
+            refusedOn !== null || isExhausted(allowance) ? (
+              <AllowanceExhausted
+                resetsOn={refusedOn || allowance?.resetsOn || ''}
+                onUpgrade={() => navigation.navigate('Paywall')}
+              />
+            ) : (
+              <AllowanceLine status={allowance} />
+            )
+          ) : null}
+
+          {/* The offer arrives with five minutes left, not at the limit: enough to read this,
               decide, and carry on without breaking stride. A purchase here lifts the cap for the
               recording ALREADY RUNNING — RecordingService asks for the entitlement again when the
               limit is reached, rather than trusting the cap it started with. */}
