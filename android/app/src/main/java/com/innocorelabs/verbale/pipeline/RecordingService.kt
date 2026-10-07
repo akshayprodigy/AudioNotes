@@ -154,6 +154,8 @@ class RecordingService : Service(), CaptureListener {
   @Volatile private var endReason: String = END_NORMAL
   /** True while the system has muted our capture (phone call, or another app took the mic). */
   @Volatile private var silenced = false
+  /** Stretches where the system silenced our microphone, noted for [GapPolicy] (F26). Fresh per capture. */
+  @Volatile private var gaps = GapTracker()
 
   /** The free limit's phase at the last check; the notification is re-posted when it changes. */
   @Volatile private var capPhase = CapClock.Phase.UNCAPPED
@@ -321,6 +323,7 @@ class RecordingService : Service(), CaptureListener {
 
     recording = true
     audioRecord = record
+    gaps = GapTracker()
     registerAudioWatchers(record)
 
     // A restart under START_REDELIVER_INTENT re-enters startCapture with the meeting's audio
@@ -577,6 +580,8 @@ class RecordingService : Service(), CaptureListener {
           val nowSilenced = mine?.isClientSilenced == true
           if (nowSilenced != silenced) {
             silenced = nowSilenced
+            // On the captured-audio clock (pauses excluded), so the interval lines up with the file.
+            gaps.onSilenced(nowSilenced, CaptureController.capturedMs)
             Log.w(TAG, if (nowSilenced) "capture SILENCED by the system (call or mic taken)" else "capture resumed")
             CaptureController.applySilenced(nowSilenced)
             refreshNotification()
@@ -686,6 +691,9 @@ class RecordingService : Service(), CaptureListener {
         val db = AudioDb.get(applicationContext)
         db.markCaptured(id, durationMs, path)
         db.setEndReason(id, EndNotice.stored(endReason))
+        // Call interruptions (F26): written once, now, so a recording with none writes nothing.
+        GapPolicy.toStore(db.getSetting(GapPolicy.key(id)), gaps.finish(durationMs), durationMs)
+          ?.let { db.setSetting(GapPolicy.key(id), it) }
         // Nothing captured is nothing to process: 'captured' would send an empty file down the pipeline.
         if (bytes == 0L) db.setStatus(id, "error")
         // The slot taken at start: handed back at once when nothing was captured or a dictation is

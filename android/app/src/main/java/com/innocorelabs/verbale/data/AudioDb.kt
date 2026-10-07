@@ -827,6 +827,11 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     }
   }
 
+  /** Native write of one settings row (the JS layer owns the table; this is for capture-time facts). */
+  fun setSetting(key: String, value: String) {
+    db.execSQL("INSERT OR REPLACE INTO settings(key, value) VALUES(?, ?)", arrayOf<Any?>(key, value))
+  }
+
   // ---- Free allowance (see billing/Allowance.kt for the rules) ----
 
   fun allowanceStore(): Allowance.Store = object : Allowance.Store {
