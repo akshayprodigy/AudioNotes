@@ -35,7 +35,6 @@ import {
   IconButton,
   LiveDot,
   Pop,
-  ProgressBar,
   Raised,
   Sheet,
   Tile,
@@ -756,47 +755,8 @@ export default function LibraryScreen({ navigation }: Props) {
           </View>
         ) : null}
 
-        {streak >= 2 ? (
-          <Pop style={st.streakWrap}>
-            <Raised
-              edge={colors.primaryEdge}
-              gradient={{ from: colors.primary, to: colors.primaryLight, angle: 135 }}
-              rad={radius.xl}
-              depth={8}>
-              <View style={st.streak}>
-                <View style={st.streakIcon}>
-                  <Icon name="flame" size={s(24)} color={colors.onPrimary} strokeWidth={2.4} />
-                </View>
-                <View style={st.flex}>
-                  <Txt variant="bodyBlack" color={colors.onPrimary}>
-                    {streak}-day capture streak
-                  </Txt>
-                  <View style={st.streakBar}>
-                    <ProgressBar
-                      pct={(Math.min(streak, 7) / 7) * 100}
-                      color={colors.gold}
-                      track="rgba(255,255,255,0.25)"
-                    />
-                  </View>
-                </View>
-                <View style={st.dots}>
-                  {[0, 1, 2, 3, 4].map(i => (
-                    <View
-                      key={i}
-                      style={[
-                        st.dot,
-                        { backgroundColor: i < Math.min(streak, 5) ? colors.gold : 'rgba(255,255,255,0.3)' },
-                      ]}
-                    />
-                  ))}
-                </View>
-              </View>
-            </Raised>
-          </Pop>
-        ) : null}
-
-        {/* The follow-up card, grown out of the open-actions card. Pro only; Free sees nothing
-            new here (the "Actions (Pro)" header button is its door). */}
+        {/* The follow-up card leads: what is still owed matters more than how often you record.
+            Pro only; Free sees nothing new here (the "Actions (Pro)" header button is its door). */}
         {paid && followUpVisible(work, follow) ? (
           <FollowUpCard
             work={work}
@@ -811,6 +771,18 @@ export default function LibraryScreen({ navigation }: Props) {
               }
             }}
           />
+        ) : null}
+
+        {/* A quiet footer, not a banner: how many days running somebody has recorded is a fact, and
+            never a state to protect. No urgency, no colour that means alert. The count is still
+            derived (captureStreak) so nothing about it was deleted. */}
+        {streak >= 2 ? (
+          <View style={st.streakLine}>
+            <Icon name="flame" size={s(14)} color={colors.inkFaint} strokeWidth={2.2} />
+            <Txt variant="chipSoft" color={colors.inkFaint}>
+              {`Recorded ${streak} days in a row`}
+            </Txt>
+          </View>
         ) : null}
 
         {nudge ? (
@@ -996,19 +968,13 @@ function makeStyles(c: Colors) {
     sub: { marginTop: s(6) },
     headBtns: { flexDirection: 'row', gap: s(8) },
 
-    streakWrap: { marginHorizontal: s(20), marginTop: s(16) },
-    streak: { flexDirection: 'row', alignItems: 'center', gap: s(14), paddingVertical: s(14), paddingHorizontal: s(16) },
-    streakIcon: {
-      width: s(46),
-      height: s(46),
-      borderRadius: s(16),
-      backgroundColor: 'rgba(255,255,255,0.18)',
+    streakLine: {
+      flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
+      gap: s(6),
+      marginHorizontal: s(20),
+      marginTop: s(10),
     },
-    streakBar: { marginTop: s(6) },
-    dots: { flexDirection: 'row', gap: s(5) },
-    dot: { width: s(9), height: s(9), borderRadius: radius.pill },
 
     dayLabel: { marginHorizontal: s(20), marginTop: s(22), marginBottom: s(8) },
     cards: { paddingHorizontal: s(20), gap: s(14) },

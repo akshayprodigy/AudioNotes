@@ -117,7 +117,7 @@ describe('the sample in the Library', () => {
     const yesterday = Date.now() - 86_400_000;
     (db.listMeetings as jest.Mock).mockResolvedValue([sample(), meeting('a', { createdAt: yesterday })]);
     const tree = await show();
-    expect(texts(tree).some(x => /-day capture streak/.test(x))).toBe(false);
+    expect(texts(tree).some(x => /days in a row/.test(x))).toBe(false);
     await act(async () => tree.unmount());
   });
 
