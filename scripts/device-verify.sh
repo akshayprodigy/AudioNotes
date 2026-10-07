@@ -89,6 +89,12 @@ CLASSES=(
   # replaceItems rows, real search_vec vectors and the Pro gate running before any table is
   # touched. Real SQLCipher and the real DecisionLinks/VecCodec, so not a JVM test.
   com.innocorelabs.verbale.ThreadsDbTest
+  # Renaming a speaker reaches every surface: owner_json is adopted and rewritten in real SQLCipher,
+  # and the search index and embeddings are re-stamped. SQL against the encrypted DB, so not a JVM test.
+  com.innocorelabs.verbale.SpeakerRenameDbTest
+  # A transcript correction writes through to utterances (first raw text kept), re-derives items through
+  # the Reconciler and survives a re-transcription by time overlap. Same reason: real SQLCipher.
+  com.innocorelabs.verbale.CorrectionsDbTest
 )
 
 if ! "$ADB" devices | grep -qE "device$"; then
