@@ -539,12 +539,15 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     }
     for ((id, path) in stranded) {
       val bytes = if (path != null) java.io.File(path).length() else 0L
-      // Under ~1s of PCM is not a meeting; treat it as a failed start.
-      if (bytes > 32_000L) {
-        markCaptured(id, bytes / 32L, path!!)
-        recovered++
-      } else {
-        setStatus(id, "error")
+      // Under ~1s of PCM is not a meeting; treat it as a failed start. The rule is OrphanVerdict's.
+      val verdict = com.innocorelabs.verbale.pipeline.OrphanVerdict.of(bytes, "recording")
+      when (verdict.kind) {
+        com.innocorelabs.verbale.pipeline.OrphanVerdict.Kind.CAPTURED -> {
+          markCaptured(id, verdict.durationMs, path!!)
+          recovered++
+        }
+        com.innocorelabs.verbale.pipeline.OrphanVerdict.Kind.ERROR -> setStatus(id, "error")
+        com.innocorelabs.verbale.pipeline.OrphanVerdict.Kind.LEAVE -> Unit
       }
     }
     return recovered
