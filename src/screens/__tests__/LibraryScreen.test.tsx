@@ -343,6 +343,29 @@ test('a crashed meeting reads DIDN\'T FINISH with its reason, not NO SPEECH', as
  * The Free allowance in the library (F08), and what an import is told. Pro sees none of it, and
  * an empty allowance never closes a saved meeting: the month's five limit NEW sessions only.
  */
+describe('keyword search is Free (F09)', () => {
+  test('on Free the search button is plain "Search meetings" and opens Search, not the paywall', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: false });
+    const tree = await focusTheLibrary();
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Search meetings (Pro)' }, { deep: false })).toHaveLength(0);
+    await act(async () => {
+      pressIconButton(tree, 'Search meetings');
+    });
+    expect((nav as any).navigate).toHaveBeenCalledWith('Search');
+    expect((nav as any).navigate).not.toHaveBeenCalledWith('Paywall');
+    await act(async () => tree.unmount());
+  });
+
+  test('on Pro it is the same button and the same screen', async () => {
+    const tree = await focusTheLibrary();
+    await act(async () => {
+      pressIconButton(tree, 'Search meetings');
+    });
+    expect((nav as any).navigate).toHaveBeenCalledWith('Search');
+    await act(async () => tree.unmount());
+  });
+});
+
 describe('the Free allowance', () => {
   const allowance = Licence.allowance as unknown as jest.Mock;
   const FREE = { limit: 5, used: 2, remaining: 3, period: '2026-10', resetsOn: '2026-11-01', paid: false };

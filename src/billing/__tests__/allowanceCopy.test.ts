@@ -4,6 +4,7 @@ import {
   formatReset,
   freeHeadline,
   importErrorCopy,
+  meaningSearchOffer,
   remainingCopy,
   statusLine,
   settingsValue,
@@ -107,5 +108,12 @@ describe('importErrorCopy', () => {
   it('leaves every other failure to the caller', () => {
     expect(importErrorCopy('import_failed', 'x')).toBeNull();
     expect(importErrorCopy(undefined, 'x')).toBeNull();
+  });
+});
+
+describe('meaningSearchOffer', () => {
+  it('offers Pro for search by meaning, and does not promise what Free lacks is keyword search', () => {
+    expect(meaningSearchOffer).toBe('Pro also searches by meaning, so a question finds the answer even when the words differ.');
+    expect(meaningSearchOffer).not.toMatch(/Search every word/);
   });
 });

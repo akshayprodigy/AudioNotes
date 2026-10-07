@@ -4,6 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { MeetingTab, RootStackParamList } from '../navigation/RootNavigator';
 import { db } from '../db/queries';
+import { entitlement } from '../billing/trial';
+import { meaningSearchOffer } from '../billing/allowanceCopy';
 import { useLibraryStore } from '../state/libraryStore';
 import Icon from '../components/Icon';
 import Mascot from '../components/Mascot';
@@ -142,6 +144,19 @@ export default function SearchScreen({ navigation }: Props) {
   const [onlyActions, setOnlyActions] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
+  // Keyword search is Free; hits by meaning, and the offer of them, depend on this. Until it is
+  // known the screen behaves as Free: showing a Pro result to a Free phone is the worse mistake.
+  const [paid, setPaid] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    entitlement()
+      .then(e => alive && setPaid(Boolean(e.paid)))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const [meta, setMeta] = useState<Map<string, MeetingMeta>>(new Map());
   const [withActions, setWithActions] = useState<Set<string>>(new Set());
 
@@ -258,6 +273,9 @@ export default function SearchScreen({ navigation }: Props) {
     const order: string[] = [];
     const byMeeting = new Map<string, SearchHit[]>();
     for (const hit of results) {
+      // Search by meaning is Pro. Native already returns keyword hits only to a Free phone; this
+      // is the screen refusing to show one regardless, so the two cannot disagree on screen.
+      if (!paid && hit.byMeaning) continue;
       const m = meta.get(hit.meetingId);
       // A hit whose meeting is not in the map is a meeting the index knows about and the tables do
       // not. It is shown unfiltered, but a filter it cannot be checked against must exclude it —
@@ -277,7 +295,7 @@ export default function SearchScreen({ navigation }: Props) {
     // `results` arrives ranked by bm25, so first appearance is the best-matching meeting first and
     // the hits inside each group keep their own ranking.
     return order.map(id => ({ meetingId: id, meta: meta.get(id), hits: byMeeting.get(id) ?? [] }));
-  }, [results, meta, withActions, range, onlyActions, filtersOn]);
+  }, [results, meta, withActions, range, onlyActions, filtersOn, paid]);
 
   const totalHits = useMemo(() => groups.reduce((n, g) => n + g.hits.length, 0), [groups]);
 
@@ -587,7 +605,19 @@ export default function SearchScreen({ navigation }: Props) {
           {groups.length === 1 ? '' : 's'}
         </Txt>
       ) : null}
-      {unembedded > 0 ? (
+      {/* One quiet line, not an alert and not a lock: the words a Free phone searched for were
+          searched. Shown once a search has actually run, never before. */}
+      {!paid && query.length >= 2 && !busy && error === null ? (
+        <Pressable
+          onPress={() => navigation.navigate('Paywall')}
+          accessibilityRole="button"
+          accessibilityLabel={meaningSearchOffer}>
+          <Txt variant="chipSoft" color={colors.inkFaint} style={st.count}>
+            {meaningSearchOffer}
+          </Txt>
+        </Pressable>
+      ) : null}
+      {paid && unembedded > 0 ? (
         <Txt variant="chipSoft" color={colors.inkFaint} style={st.count}>
           Meaning search is still indexing {unembedded} meeting{unembedded === 1 ? '' : 's'}
         </Txt>

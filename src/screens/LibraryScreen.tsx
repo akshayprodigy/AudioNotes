@@ -361,8 +361,9 @@ export default function LibraryScreen({ navigation }: Props) {
   };
 
   const [nudge, setNudge] = useState(false);
-  // Search across every transcript is part of Pro. Read here rather than inside the button so the
-  // tap is decided from state that is already loaded, not from an await in a press handler.
+  // Whether this is Pro, for the doors that are (Actions, Threads). Search is not one of them:
+  // keyword search is Free. Read here rather than inside the button so the tap is decided from
+  // state that is already loaded, not from an await in a press handler.
   const [paid, setPaid] = useState(false);
 
   /**
@@ -657,12 +658,11 @@ export default function LibraryScreen({ navigation }: Props) {
               label="Import a recording"
               onPress={importing.busy ? () => {} : importing.pick}
             />
-            {/* Free lands on the paywall, where search is the first thing listed, so the tap
-                explains itself instead of appearing to do nothing. */}
+            {/* Keyword search is Free; only search by meaning is Pro, and the Search screen says so. */}
             <IconButton
               icon="search"
-              label={paid ? 'Search meetings' : 'Search meetings (Pro)'}
-              onPress={() => navigation.navigate(paid ? 'Search' : 'Paywall')}
+              label="Search meetings"
+              onPress={() => navigation.navigate('Search')}
             />
             <IconButton
               icon="list"

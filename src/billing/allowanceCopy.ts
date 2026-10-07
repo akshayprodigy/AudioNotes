@@ -83,3 +83,7 @@ export function importErrorCopy(
       return null;
   }
 }
+
+/** The one quiet line a Free phone sees under keyword search results (F09). Keyword search is Free. */
+export const meaningSearchOffer =
+  'Pro also searches by meaning, so a question finds the answer even when the words differ.';
