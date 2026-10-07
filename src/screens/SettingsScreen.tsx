@@ -36,6 +36,7 @@ import {
   Txt,
 } from '../components/ui';
 import { downloadLabel, downloadPct } from './downloadLabel';
+import { dropInstalled, isDownloadComplete } from './modelProgress';
 import VoicesSection from './settings/VoicesSection';
 import Backup from '../native/NativeBackup';
 import Licence, { type LicenceStatus } from '../native/NativeLicence';
@@ -273,7 +274,14 @@ export default function SettingsScreen({ navigation }: Props) {
       .catch(() => {});
   }, []);
 
-  const refresh = () => ModelManager.list().then(r => setModels(JSON.parse(r)));
+  const refresh = () =>
+    ModelManager.list()
+      .then(r => setModels(JSON.parse(r)))
+      .catch(() => {});
+  // A model the list says is installed has nothing left to download, whatever the last event said.
+  useEffect(() => {
+    setProgress(p => dropInstalled(p, models));
+  }, [models]);
 
   const countEmpties = useCallback(() => {
     db.emptyMeetings()
@@ -335,6 +343,10 @@ export default function SettingsScreen({ navigation }: Props) {
     countEmpties();
     const offFocus = navigation.addListener('focus', () => {
       countEmpties();
+      // A download started on the Paywall or in Onboarding is not ours to track: drop whatever we
+      // were holding (the next progress event puts a live one back) and read the real list.
+      setProgress({});
+      refresh();
       // Back from the Pro screen: a purchase made there shows here at once.
       refreshLicence();
       refreshAllowance();
@@ -372,6 +384,18 @@ export default function SettingsScreen({ navigation }: Props) {
     const sub = emitter.addListener(
       'onModelProgress',
       (e: { id: string; downloaded: number; total: number }) => {
+        // The final (size, size) event is the only completion signal there is, and it fires for a
+        // download started on ANY screen. Letting go of the entry and re-reading the list is what
+        // turns the row from "100%" into Remove; only this screen's own Get button used to do it.
+        if (isDownloadComplete(e.downloaded, e.total)) {
+          setProgress(p => {
+            const n = { ...p };
+            delete n[e.id];
+            return n;
+          });
+          refresh();
+          return;
+        }
         setProgress(p => ({ ...p, [e.id]: { downloaded: e.downloaded, total: e.total } }));
       },
     );
@@ -540,7 +564,9 @@ export default function SettingsScreen({ navigation }: Props) {
                           {off ? 'NOT ON THIS PHONE' : m.needsSubscription ? 'PRO' : m.required ? 'REQUIRED' : 'OPTIONAL'}
                         </Txt>
                       </View>
-                      <Txt variant="chipSoft" color={colors.inkFaint}>
+                      {/* flexShrink so a long name or a large-text setting wraps the line instead of
+                          pushing "· 100%" past the edge of the card (D21). */}
+                      <Txt variant="chipSoft" color={colors.inkFaint} style={st.metaText}>
                         {m.name} ·{' '}
                         {busy ? downloadLabel(prog.downloaded, prog.total) : mb(m.sizeBytes)}
                       </Txt>
@@ -1093,7 +1119,8 @@ function makeStyles(c: Colors) {
       paddingVertical: s(10),
     },
     modelMeta: { flexDirection: 'row', alignItems: 'center', gap: s(8), marginTop: s(12) },
-    tag: { paddingHorizontal: s(8), paddingVertical: s(4), borderRadius: radius.pill },
+    metaText: { flexShrink: 1 },
+    tag: { flexShrink: 0, paddingHorizontal: s(8), paddingVertical: s(4), borderRadius: radius.pill },
     pill: {
       flexDirection: 'row',
       alignItems: 'center',
