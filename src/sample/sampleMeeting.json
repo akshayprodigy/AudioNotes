@@ -1,0 +1,244 @@
+{
+ "id": "sample-meeting-v1",
+ "title": "Weekly check-in (sample)",
+ "durationMs": 64512,
+ "language": "en",
+ "speakers": [
+  {
+   "id": "sample-meeting-v1:spk:1",
+   "clusterLabel": "S0",
+   "displayName": "Priya"
+  },
+  {
+   "id": "sample-meeting-v1:spk:2",
+   "clusterLabel": "S1",
+   "displayName": "Sam"
+  }
+ ],
+ "utterances": [
+  {
+   "id": "sample-meeting-v1:u:1",
+   "startMs": 418,
+   "endMs": 5758,
+   "speakerId": "sample-meeting-v1:spk:1",
+   "text": "Morning Sam, thanks for joining. Let's start the weekly check-in with a quick recap."
+  },
+  {
+   "id": "sample-meeting-v1:u:2",
+   "startMs": 5758,
+   "endMs": 13218,
+   "speakerId": "sample-meeting-v1:spk:2",
+   "text": "Sure. The designs are finished, and testing wrapped up on Tuesday. The only open point is the launch video."
+  },
+  {
+   "id": "sample-meeting-v1:u:3",
+   "startMs": 13218,
+   "endMs": 16418,
+   "speakerId": "sample-meeting-v1:spk:1",
+   "text": "Right. Tell me about the agency quote."
+  },
+  {
+   "id": "sample-meeting-v1:u:4",
+   "startMs": 16418,
+   "endMs": 22418,
+   "speakerId": "sample-meeting-v1:spk:2",
+   "text": "Yes, this morning. The team has looked at it, and nobody had any concerns."
+  },
+  {
+   "id": "sample-meeting-v1:u:5",
+   "startMs": 22418,
+   "endMs": 28938,
+   "speakerId": "sample-meeting-v1:spk:1",
+   "text": "Good. We agreed to go with the agency quote of $4,500 for the launch video."
+  },
+  {
+   "id": "sample-meeting-v1:u:6",
+   "startMs": 28938,
+   "endMs": 36858,
+   "speakerId": "sample-meeting-v1:spk:2",
+   "text": "Great. The agency needs a week to edit, so the video will land close to the launch. Do we need captions on it?"
+  },
+  {
+   "id": "sample-meeting-v1:u:7",
+   "startMs": 36858,
+   "endMs": 41258,
+   "speakerId": "sample-meeting-v1:spk:1",
+   "text": "Not sure yet. I will send the signed quote to the agency by Wednesday."
+  },
+  {
+   "id": "sample-meeting-v1:u:8",
+   "startMs": 41258,
+   "endMs": 47018,
+   "speakerId": "sample-meeting-v1:spk:2",
+   "text": "I'll update the help articles by Friday. I will also share the launch checklist today."
+  },
+  {
+   "id": "sample-meeting-v1:u:9",
+   "startMs": 47018,
+   "endMs": 52338,
+   "speakerId": "sample-meeting-v1:spk:1",
+   "text": "Thanks. The review with the support team still needs to be booked before next Monday."
+  },
+  {
+   "id": "sample-meeting-v1:u:10",
+   "startMs": 52338,
+   "endMs": 57498,
+   "speakerId": "sample-meeting-v1:spk:2",
+   "text": "Understood. The store screenshots are finished, so that part is done."
+  },
+  {
+   "id": "sample-meeting-v1:u:11",
+   "startMs": 57498,
+   "endMs": 61694,
+   "speakerId": "sample-meeting-v1:spk:1",
+   "text": "Perfect. That is everything for this week. Thanks Sam."
+  },
+  {
+   "id": "sample-meeting-v1:u:12",
+   "startMs": 61694,
+   "endMs": 63714,
+   "speakerId": "sample-meeting-v1:spk:2",
+   "text": "Thanks Priya. Talk next week."
+  }
+ ],
+ "minutes": [
+  {
+   "kind": "summary",
+   "content": "Decided: We agreed to go with the agency quote of $4,500 for the launch video. Next: I will send the signed quote to the agency by Wednesday. — Priya (due by Wednesday); I'll update the help articles by Friday. — Sam (due by Friday); I will also share the launch checklist today. — Sam (due today). 4 action items, 1 decision, 1 open question."
+  },
+  {
+   "kind": "decision",
+   "content": "We agreed to go with the agency quote of $4,500 for the launch video."
+  },
+  {
+   "kind": "action",
+   "content": "I will send the signed quote to the agency by Wednesday. — Priya (due by Wednesday)"
+  },
+  {
+   "kind": "action",
+   "content": "I'll update the help articles by Friday. — Sam (due by Friday)"
+  },
+  {
+   "kind": "action",
+   "content": "I will also share the launch checklist today. — Sam (due today)"
+  },
+  {
+   "kind": "action",
+   "content": "The review with the support team still needs to be booked before next Monday. — Unassigned (due before next Monday)"
+  },
+  {
+   "kind": "question",
+   "content": "Do we need captions on it?"
+  }
+ ],
+ "items": [
+  {
+   "id": "sample-meeting-v1:item:1",
+   "kind": "decision",
+   "text": "We agreed to go with the agency quote of $4,500 for the launch video.",
+   "ownerJson": null,
+   "anchorStartMs": 22418,
+   "anchorEndMs": 28938,
+   "done": false,
+   "sources": [
+    {
+     "startMs": 22418,
+     "endMs": 28938,
+     "charStart": 6,
+     "charEnd": 75,
+     "utteranceId": "sample-meeting-v1:u:5"
+    }
+   ]
+  },
+  {
+   "id": "sample-meeting-v1:item:2",
+   "kind": "action",
+   "text": "I will send the signed quote to the agency by Wednesday. — Priya (due by Wednesday)",
+   "ownerJson": "{\"kind\":\"speaker\",\"id\":\"sample-meeting-v1:spk:1\"}",
+   "anchorStartMs": 36858,
+   "anchorEndMs": 41258,
+   "done": false,
+   "sources": [
+    {
+     "startMs": 36858,
+     "endMs": 41258,
+     "charStart": 14,
+     "charEnd": 70,
+     "utteranceId": "sample-meeting-v1:u:7"
+    }
+   ]
+  },
+  {
+   "id": "sample-meeting-v1:item:3",
+   "kind": "action",
+   "text": "I'll update the help articles by Friday. — Sam (due by Friday)",
+   "ownerJson": "{\"kind\":\"speaker\",\"id\":\"sample-meeting-v1:spk:2\"}",
+   "anchorStartMs": 41258,
+   "anchorEndMs": 47018,
+   "done": false,
+   "sources": [
+    {
+     "startMs": 41258,
+     "endMs": 47018,
+     "charStart": 0,
+     "charEnd": 40,
+     "utteranceId": "sample-meeting-v1:u:8"
+    }
+   ]
+  },
+  {
+   "id": "sample-meeting-v1:item:4",
+   "kind": "action",
+   "text": "I will also share the launch checklist today. — Sam (due today)",
+   "ownerJson": "{\"kind\":\"speaker\",\"id\":\"sample-meeting-v1:spk:2\"}",
+   "anchorStartMs": 41258,
+   "anchorEndMs": 47018,
+   "done": true,
+   "sources": [
+    {
+     "startMs": 41258,
+     "endMs": 47018,
+     "charStart": 41,
+     "charEnd": 86,
+     "utteranceId": "sample-meeting-v1:u:8"
+    }
+   ]
+  },
+  {
+   "id": "sample-meeting-v1:item:5",
+   "kind": "action",
+   "text": "The review with the support team still needs to be booked before next Monday. — Unassigned (due before next Monday)",
+   "ownerJson": null,
+   "anchorStartMs": 47018,
+   "anchorEndMs": 52338,
+   "done": false,
+   "sources": [
+    {
+     "startMs": 47018,
+     "endMs": 52338,
+     "charStart": 8,
+     "charEnd": 85,
+     "utteranceId": "sample-meeting-v1:u:9"
+    }
+   ]
+  },
+  {
+   "id": "sample-meeting-v1:item:6",
+   "kind": "question",
+   "text": "Do we need captions on it?",
+   "ownerJson": null,
+   "anchorStartMs": 28938,
+   "anchorEndMs": 36858,
+   "done": false,
+   "sources": [
+    {
+     "startMs": 28938,
+     "endMs": 36858,
+     "charStart": 84,
+     "charEnd": 110,
+     "utteranceId": "sample-meeting-v1:u:6"
+    }
+   ]
+  }
+ ]
+}

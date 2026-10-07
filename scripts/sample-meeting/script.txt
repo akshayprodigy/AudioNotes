@@ -1,0 +1,15 @@
+# The sample meeting's script. One line per turn: SPEAKER | VOICE | text.
+# Fictional: no real person, company or number. Speaker names are assigned by this file, not by
+# diarization, because two synthetic voices diarize as one speaker.
+Priya|Samantha|Morning Sam, thanks for joining. Let's start the weekly check-in with a quick recap.
+Sam|Daniel|Sure. The designs are finished, and testing wrapped up on Tuesday. The only open point is the launch video.
+Priya|Samantha|Right. Tell me about the agency quote.
+Sam|Daniel|Yes, this morning. The team has looked at it, and nobody had any concerns.
+Priya|Samantha|Good. We agreed to go with the agency quote of four thousand five hundred dollars for the launch video.
+Sam|Daniel|Great. The agency needs a week to edit, so the video will land close to the launch. Do we need captions on it?
+Priya|Samantha|Not sure yet. I will send the signed quote to the agency by Wednesday.
+Sam|Daniel|I'll update the help articles by Friday. I will also share the launch checklist today.
+Priya|Samantha|Thanks. The review with the support team still needs to be booked before next Monday.
+Sam|Daniel|Understood. The store screenshots are finished, so that part is done.
+Priya|Samantha|Perfect. That is everything for this week. Thanks Sam.
+Sam|Daniel|Thanks Priya. Talk next week.
