@@ -3,7 +3,7 @@ import { PanResponder, Pressable, StyleSheet, View } from 'react-native';
 import Icon from '../../components/Icon';
 import { Txt } from '../../components/ui';
 import { radius, s, useTheme, type Colors } from '../../theme';
-import { stamp } from './shared';
+import { MIN_TOUCH, stamp } from './shared';
 
 /**
  * The transport, docked below the tabs.
@@ -73,6 +73,7 @@ export default function PlayerBar({
         onPress={onToggle}
         accessibilityRole="button"
         accessibilityLabel={playing ? 'Pause' : 'Play'}
+        accessibilityHint={playing ? 'Pauses the recording' : 'Plays the recording from where it is'}
         hitSlop={s(8)}
         style={({ pressed }) => [st.play, { opacity: pressed ? 0.7 : 1 }]}>
         <Icon
@@ -89,11 +90,16 @@ export default function PlayerBar({
           onLayout={e => setWidth(e.nativeEvent.layout.width)}
           accessibilityRole="adjustable"
           accessibilityLabel="Playback position"
+          accessibilityHint="Swipe up or down to move 15 seconds"
           accessibilityValue={{
             min: 0,
             max: Math.max(1, Math.round(durationMs / 1000)),
             now: Math.round(shownMs / 1000),
+            text: `${stamp(shownMs)} of ${stamp(durationMs)}`,
           }}
+          // Declared, or the screen reader never offers them: onAccessibilityAction below handles
+          // the two, but only actions listed here appear in its menu.
+          accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
           onAccessibilityAction={e => {
             const step = 15_000;
             if (e.nativeEvent.actionName === 'increment') onSeek(Math.min(durationMs, shownMs + step));
@@ -108,10 +114,10 @@ export default function PlayerBar({
           <View style={[st.thumb, { left: `${pct * 100}%` }]} />
         </View>
         <View style={st.times}>
-          <Txt variant="chipSoft" color={colors.inkFaint}>
+          <Txt variant="chipSoft" color={colors.inkSoft}>
             {stamp(shownMs)}
           </Txt>
-          <Txt variant="chipSoft" color={colors.inkFaint}>
+          <Txt variant="chipSoft" color={colors.inkSoft}>
             {stamp(durationMs)}
           </Txt>
         </View>
@@ -135,9 +141,10 @@ function makeStyles(c: Colors) {
     },
     flex: { flex: 1 },
     play: {
-      width: s(40),
-      height: s(40),
-      borderRadius: s(20),
+      // Raw, not scaled: a small screen must not shrink the play button below 44 dp.
+      width: MIN_TOUCH,
+      height: MIN_TOUCH,
+      borderRadius: MIN_TOUCH / 2,
       backgroundColor: c.primary,
       alignItems: 'center',
       justifyContent: 'center',

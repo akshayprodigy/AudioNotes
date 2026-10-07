@@ -11,6 +11,7 @@ import {
   EditedTag,
   FlatPanel,
   MineTag,
+  NO_OWNER_YET,
   RecordChips,
   Rows,
   SectionHead,
@@ -28,6 +29,7 @@ import {
 import { ProvenanceButton } from './ItemProvenance';
 import { namesOf, resolveOwnerText } from '../../pipeline/itemOwner';
 import { previewOf } from './takeaway';
+import { actionA11yLabel } from './a11yLabels';
 import { labelsFor, type Labels } from './recordLabels';
 
 /**
@@ -78,11 +80,14 @@ function Item({
   const wears = Boolean(lab.type || lab.status || lab.day);
   return (
     <View style={st.checkRow}>
+      <View style={st.checkMain}>
+        {/* The checkbox is the row's words and the facts about them — text, owner, due, state — and
+            nothing else, because a screen reader merges everything inside an accessible element
+            into one stop. The controls (the moment, edit, remove, revert) sit outside it. */}
         <Pressable
-          style={st.checkMain}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: on }}
-          accessibilityLabel={text}
+          accessibilityLabel={actionA11yLabel(content, on)}
           accessibilityHint={onEdit ? 'Long press to correct this item' : undefined}
           accessibilityActions={onEdit ? [{ name: 'longpress', label: 'Correct this item' }] : undefined}
           onAccessibilityAction={e => {
@@ -106,29 +111,25 @@ function Item({
                 style={on ? st.struck : null}>
                 {sentenceCase(text)}
               </Txt>
-              {/* One row, TWO rules, and the difference is the whole point of it.
-
-                  Owner and due date are fields the extractor mashed into the text. They are shown
-                  as what they are, only when there is something to say — most owners resolve to
-                  "Unassigned", which is not information — and only while the item is still work: a
-                  finished item is proof of work and these marks belong to working on it.
-
-                  The timestamp is not that, and putting it inside their `!on` gate emptied the Done
-                  section of every evidence link it had. Checking an item off is exactly when a
-                  reader wants to verify it, and the Done disclosure is what somebody returning to a
-                  list opens. It stays whether the box is ticked or not. */}
-              {(!on && (owner || due || wears)) || provenance ? (
+              {/* Owner and due date are fields the extractor mashed into the text. They are shown
+                  as what they are, only while the item is still work: a finished item is proof of
+                  work and these marks belong to working on it. An action nobody owns says so,
+                  quietly, rather than saying nothing. */}
+              {!on ? (
                 <View style={st.tags}>
-                  {!on ? <RecordChips labels={lab} colors={colors} /> : null}
-                  {!on && owner ? (
+                  {owner ? (
                     <View style={[st.tag, { backgroundColor: colors.primarySoft }]}>
                       <Icon name="users" size={s(11)} color={colors.primary} strokeWidth={2.6} />
                       <Txt variant="chipSm" color={colors.primary}>
                         {owner}
                       </Txt>
                     </View>
-                  ) : null}
-                  {!on && due ? (
+                  ) : (
+                    <Txt variant="chipSoft" color={colors.inkDim}>
+                      {NO_OWNER_YET}
+                    </Txt>
+                  )}
+                  {due ? (
                     <View style={[st.tag, { backgroundColor: colors.warningSoft }]}>
                       <Icon name="clock" size={s(11)} color={colors.warning} strokeWidth={2.6} />
                       <Txt variant="chipSm" color={colors.warning}>
@@ -136,22 +137,37 @@ function Item({
                       </Txt>
                     </View>
                   ) : null}
-                  {provenance}
                 </View>
               ) : null}
-              {/* Not shown on a ticked row, for the reason the chips above are not: these are marks
-                  of work in progress. Unlike the timestamp, which is a fact about the item. */}
-              {!on && mine ? (
-                <MineTag colors={colors} onRemove={onRemove} />
-              ) : !on && edited ? (
-                <EditedTag colors={colors} onRevert={onRevert} />
+              {on ? (
+                <Txt variant="chipSoft" color={colors.success}>
+                  Done
+                </Txt>
               ) : null}
             </View>
           </View>
         </Pressable>
-        {/* Beside the checkbox and not inside it: a screen reader merges everything inside an
-            accessible Pressable into one stop, which would hide the button. */}
-        {onEdit ? <EditButton label="Edit this action" onPress={onEdit} colors={colors} /> : null}
+        {/* The timestamp is not a mark of work in progress, and putting it inside the `!on` gate
+            emptied the Done section of every evidence link it had. Checking an item off is exactly
+            when a reader wants to verify it. It stays whether the box is ticked or not. */}
+        {provenance || (!on && (wears || mine || edited)) ? (
+          <View style={st.extras}>
+            {provenance || (!on && wears) ? (
+              <View style={st.tags}>
+                {!on ? <RecordChips labels={lab} colors={colors} /> : null}
+                {provenance}
+              </View>
+            ) : null}
+            {!on && mine ? (
+              <MineTag colors={colors} onRemove={onRemove} />
+            ) : !on && edited ? (
+              <EditedTag colors={colors} onRevert={onRevert} />
+            ) : null}
+          </View>
+        ) : null}
+      </View>
+      {/* Beside the checkbox and not inside it, so it is a stop of its own. */}
+      {onEdit ? <EditButton label="Edit this action" onPress={onEdit} colors={colors} /> : null}
     </View>
   );
 }
@@ -498,6 +514,7 @@ function makeStyles(c: Colors) {
     fill: { height: '100%', borderRadius: s(3) },
     checkRow: { flexDirection: 'row', alignItems: 'flex-start' },
     checkMain: { flex: 1 },
+    extras: { marginLeft: s(35) },
     check: { flexDirection: 'row', gap: s(12), paddingVertical: s(2), alignItems: 'flex-start' },
     box: {
       width: s(23),

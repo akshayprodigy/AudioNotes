@@ -35,7 +35,6 @@ import {
   ProgressRing,
   GradientFill,
   Raised,
-  Segmented,
   Sheet,
   SoftButton,
   TextPrompt,
@@ -43,6 +42,7 @@ import {
   type SheetAction,
 } from '../components/ui';
 import SummaryTab from './meeting/SummaryTab';
+import TabBar from './meeting/TabBar';
 import AskEntry, { useAskState } from './meeting/AskEntry';
 import { askExplainer } from './meeting/askAccess';
 import MinutesTab from './meeting/MinutesTab';
@@ -1347,7 +1347,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
             </View>
           ) : null}
           <SampleBanner meetingId={meetingId} onDeleted={() => navigation.goBack()} />
-          <Segmented items={TABS} value={tab} onChange={setTab} style={st.tabs} />
+          <TabBar items={TABS} value={tab} onChange={setTab} style={st.tabs} />
           {/* Each tab owns its own scroll. Hosting them in one page scroll is what the split was
               for: the transcript can be a virtualised list only if it is the thing scrolling. */}
           <View style={st.flex}>

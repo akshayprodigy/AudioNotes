@@ -4,6 +4,7 @@ import { SoftButton, Txt } from '../../components/ui';
 import { db } from '../../db/queries';
 import Heading from './Heading';
 import { takeawayOf } from './takeaway';
+import { actionA11yLabel, plainA11yLabel } from './a11yLabels';
 import { s, useTheme, type Colors } from '../../theme';
 import type { Item, Minute, MinuteKind, Speaker } from '../../pipeline/types';
 import {
@@ -154,6 +155,7 @@ export default function MinutesTab({
       colors={colors}
       content={shown(r)}
       done={r.kind === 'action' && isDone(r)}
+      a11yLabel={r.kind === 'action' ? actionA11yLabel(shown(r), isDone(r)) : plainA11yLabel(shown(r))}
       edited={isEdited(ed, t.kind, t.key)}
       mine={r.mine}
       labels={labelsFor(r.record)}

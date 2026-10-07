@@ -493,7 +493,7 @@ describe('who said this', () => {
     });
   };
   const openScript = async (tree: renderer.ReactTestRenderer) => {
-    const tab = tree.root.findAllByProps({ accessibilityRole: 'tab', accessibilityLabel: 'Transcript' })[0];
+    const tab = tree.root.findAll(n => n.props.accessibilityRole === 'tab' && String(n.props.accessibilityLabel).startsWith('Transcript, tab'))[0];
     await act(async () => {
       tab.props.onPress();
     });
@@ -612,7 +612,7 @@ describe('a correction offered as a rule', () => {
     { id: 'u1', meetingId: 'm1', startMs: 0, endMs: 2000, speakerId: 's1', text: 'we sold it to in over last week' },
   ];
   const openScript = async (tree: renderer.ReactTestRenderer) => {
-    const tab = tree.root.findAllByProps({ accessibilityRole: 'tab', accessibilityLabel: 'Transcript' })[0];
+    const tab = tree.root.findAll(n => n.props.accessibilityRole === 'tab' && String(n.props.accessibilityLabel).startsWith('Transcript, tab'))[0];
     await act(async () => {
       tab.props.onPress();
     });
@@ -693,7 +693,7 @@ describe('a correction reaching the items (F15)', () => {
     { id: 'u1', meetingId: 'm1', startMs: 0, endMs: 2000, speakerId: 's1', text: 'send it to Meera on Friday' },
   ];
   const correctLine = async (tree: renderer.ReactTestRenderer, to: string) => {
-    const tab = tree.root.findAllByProps({ accessibilityRole: 'tab', accessibilityLabel: 'Transcript' })[0];
+    const tab = tree.root.findAll(n => n.props.accessibilityRole === 'tab' && String(n.props.accessibilityLabel).startsWith('Transcript, tab'))[0];
     await act(async () => { tab.props.onPress(); });
     const line = tree.root.findAllByProps({ accessibilityLabel: utts[0].text }, { deep: false })[0];
     await act(async () => { line.props.onLongPress(); });

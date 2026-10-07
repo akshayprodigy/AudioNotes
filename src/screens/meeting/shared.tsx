@@ -619,6 +619,7 @@ export function DocItem({
   provenance,
   labels,
   done,
+  a11yLabel,
 }: {
   kind: string;
   colors: Colors;
@@ -626,6 +627,8 @@ export function DocItem({
   content: string;
   /** An action that has been ticked off. Said in words and an icon, never by colour alone. */
   done?: boolean;
+  /** What a screen reader says for the row's own words; the row's text where omitted. */
+  a11yLabel?: string;
   edited?: boolean;
   /** This row was typed by the user rather than pulled out of the transcript. */
   mine?: boolean;
@@ -643,28 +646,57 @@ export function DocItem({
   const isAction = kind === 'action';
   const lab = labels ?? {};
   const wears = Boolean(lab.type || lab.status || lab.day);
-  const body = (
-    <View style={st.docRow}>
+  // The row's own words and what is said about them — one stop for a screen reader. Everything
+  // that is a control of its own (the moment, remove, revert, edit) sits OUTSIDE it, because a
+  // screen reader merges everything inside an accessible element into that one stop.
+  const words = (
+    <>
+      <Txt variant="prose">{sentenceCase(text)}</Txt>
+      {owner || due || isAction || done ? (
+        <View style={st.metaRow}>
+          {/* An action nobody has taken says so, quietly; it is not an error and it is not
+              invented. A due date nobody gave says nothing at all. */}
+          {owner || due || isAction ? (
+            <Txt variant="chipSoft" color={owner ? colors.inkSoft : colors.inkDim} style={st.shrink}>
+              {[owner ?? (isAction ? NO_OWNER_YET : null), due].filter(Boolean).join(' · ')}
+            </Txt>
+          ) : null}
+          {done ? (
+            <View style={st.doneMark}>
+              <Icon name="check" size={s(12)} color={colors.success} strokeWidth={3} />
+              <Txt variant="chipSoft" color={colors.success}>
+                Done
+              </Txt>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+    </>
+  );
+  const label = a11yLabel ?? text;
+  return (
+    <View style={st.itemRow}>
       <View style={[st.rule, { backgroundColor: meta.color }]} />
       <View style={st.flex}>
-        <Txt variant="prose">{sentenceCase(text)}</Txt>
-        {owner || due || provenance || wears || isAction || done ? (
+        {onEdit ? (
+          <Pressable
+            onLongPress={onEdit}
+            accessible
+            accessibilityLabel={label}
+            accessibilityHint="Long press to correct this line"
+            accessibilityActions={[{ name: 'longpress', label: 'Correct this line' }]}
+            onAccessibilityAction={e => {
+              if (e.nativeEvent.actionName === 'longpress') onEdit();
+            }}>
+            {words}
+          </Pressable>
+        ) : (
+          <View accessible accessibilityLabel={label}>
+            {words}
+          </View>
+        )}
+        {provenance || wears ? (
           <View style={st.metaRow}>
-            {/* An action nobody has taken says so, quietly; it is not an error and it is not
-                invented. A due date nobody gave says nothing at all. */}
-            {owner || due || isAction ? (
-              <Txt variant="chipSoft" color={owner ? colors.inkSoft : colors.inkDim} style={st.shrink}>
-                {[owner ?? (isAction ? NO_OWNER_YET : null), due].filter(Boolean).join(' · ')}
-              </Txt>
-            ) : null}
-            {done ? (
-              <View style={st.doneMark}>
-                <Icon name="check" size={s(12)} color={colors.success} strokeWidth={3} />
-                <Txt variant="chipSoft" color={colors.success}>
-                  Done
-                </Txt>
-              </View>
-            ) : null}
             <RecordChips labels={lab} colors={colors} />
             {provenance}
           </View>
@@ -677,26 +709,8 @@ export function DocItem({
           <EditedTag colors={colors} onRevert={onRevert} />
         ) : null}
       </View>
-    </View>
-  );
-  if (!onEdit) return body;
-  return (
-    <View style={st.itemRow}>
-      <Pressable
-        style={st.flex}
-        onLongPress={onEdit}
-        accessibilityRole="button"
-        accessibilityLabel={text}
-        accessibilityHint="Long press to correct this line"
-        accessibilityActions={[{ name: 'longpress', label: 'Correct this line' }]}
-        onAccessibilityAction={e => {
-          if (e.nativeEvent.actionName === 'longpress') onEdit();
-        }}>
-        {body}
-      </Pressable>
-      {/* A sibling of the long-press target and not inside it: a screen reader merges everything
-          inside an accessible Pressable into one stop, which would hide the button. */}
-      <EditButton label={editLabelFor(kind)} onPress={onEdit} colors={colors} />
+      {/* Beside the words and not around them, so it is a stop of its own. */}
+      {onEdit ? <EditButton label={editLabelFor(kind)} onPress={onEdit} colors={colors} /> : null}
     </View>
   );
 }
@@ -766,9 +780,9 @@ export function SectionHead({
   const st = React.useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={[st.head, style]}>
-      <Txt variant="overlineSm" color={colors.inkFaint}>
+      <Heading variant="overlineSm" color={colors.inkSoft}>
         {label}
-      </Txt>
+      </Heading>
       {right ?? null}
       {count !== undefined ? (
         <Txt variant="overlineSm" color={colors.inkFaint}>
@@ -949,7 +963,7 @@ function makeStyles(_c: Colors) {
     // Nudged down onto the first line's optical centre rather than its box top.
     dot: { width: s(6), height: s(6), borderRadius: s(3), marginTop: s(10) },
     recordChip: { paddingHorizontal: s(8), paddingVertical: s(3), borderRadius: s(8) },
-    itemRow: { flexDirection: 'row', alignItems: 'flex-start' },
+    itemRow: { flexDirection: 'row', alignItems: 'stretch', gap: s(12) },
     docRow: { flexDirection: 'row', gap: s(12), alignItems: 'stretch' },
     rule: { width: s(3), borderRadius: s(2) },
     metaRow: {
@@ -963,13 +977,13 @@ function makeStyles(_c: Colors) {
     shrink: { flexShrink: 1 },
     quiet: { minHeight: MIN_TOUCH, alignItems: 'center', justifyContent: 'center', paddingHorizontal: s(12) },
     flatRow: { paddingVertical: s(14) },
-    editBtn: { width: MIN_TOUCH, height: MIN_TOUCH, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+    editBtn: { width: MIN_TOUCH, height: MIN_TOUCH, alignItems: 'center', justifyContent: 'center', flexShrink: 0, alignSelf: 'flex-start' },
     quietText: { textDecorationLine: 'underline' },
     doneMark: { flexDirection: 'row', alignItems: 'center', gap: s(4) },
     empty: { padding: s(22), alignItems: 'center', gap: s(8) },
     emptyText: { textAlign: 'center' },
     editedRow: { flexDirection: 'row', alignItems: 'center', gap: s(12), marginTop: s(6) },
     revert: { flexDirection: 'row', alignItems: 'center', gap: s(4) },
-    tool: { flexDirection: 'row', alignItems: 'center', gap: s(6), paddingVertical: s(4) },
+    tool: { flexDirection: 'row', alignItems: 'center', gap: s(6), paddingVertical: s(4), minHeight: MIN_TOUCH },
   });
 }

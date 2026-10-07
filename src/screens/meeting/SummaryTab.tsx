@@ -34,6 +34,7 @@ import {
   type EditMap,
 } from './shared';
 import { previewOf } from './takeaway';
+import Heading from './Heading';
 import { STALE_SUMMARY_COPY } from './correctionNotices';
 
 /**
@@ -461,9 +462,9 @@ export default function SummaryTab({
                 white boxes to hold the numerals 18 and 3 was most of a screen spent on a fact
                 that fits on one line. */}
             <View style={st.headRow}>
-              <Txt variant="overlineSm" color={colors.primaryDeep}>
+              <Heading variant="overlineSm" color={colors.primaryDeep}>
                 SUMMARY
-              </Txt>
+              </Heading>
               {/* Phase 2 (sub-project 6a): the meeting's type, suggested from the transcript or
                   chosen here. Always shown, free tier included — it is a label until they buy,
                   never a paywall. flexShrink: 0 so a long label (e.g. "One-to-one") is never

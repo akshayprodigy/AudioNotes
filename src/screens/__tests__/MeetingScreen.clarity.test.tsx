@@ -400,3 +400,115 @@ describe('visible Edit controls', () => {
     await act(async () => tree.unmount());
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// Item 7 — accessibility: roles, labels, states and reading order
+// ---------------------------------------------------------------------------------------------
+
+describe('the tab bar for a screen reader', () => {
+  const { StyleSheet } = require('react-native');
+  const tabNodes = (t: renderer.ReactTestRenderer) =>
+    t.root.findAll(n => typeof n.type === 'string' && n.props.accessibilityRole === 'tab');
+
+  it('says where each tab is and which one is selected', async () => {
+    const tree = await open({ tab: 'mom' });
+    expect(tabNodes(tree).map(n => n.props.accessibilityLabel)).toEqual([
+      'Summary, tab 1 of 4',
+      'Minutes, tab 2 of 4',
+      'Transcript, tab 3 of 4',
+      'Actions, tab 4 of 4',
+    ]);
+    expect(tabNodes(tree).map(n => n.props.accessibilityState.selected)).toEqual([false, true, false, false]);
+    expect(tree.root.findAll(n => typeof n.type === 'string' && n.props.accessibilityRole === 'tablist')).toHaveLength(1);
+    await act(async () => tree.unmount());
+  });
+
+  it('moves the selection with the tab', async () => {
+    const tree = await open({ tab: 'mom' });
+    const press = tree.root.findAll(
+      n => String(n.props.accessibilityLabel).startsWith('Actions, tab') && typeof n.props.onPress === 'function',
+    )[0];
+    await act(async () => press.props.onPress());
+    expect(tabNodes(tree).map(n => n.props.accessibilityState.selected)).toEqual([false, false, false, true]);
+    await act(async () => tree.unmount());
+  });
+
+  it('is at least 44 dp tall and never gives a label a fixed height', async () => {
+    const tree = await open({ tab: 'mom' });
+    for (const n of tabNodes(tree)) {
+      const st = StyleSheet.flatten(n.props.style);
+      expect(st.minHeight).toBeGreaterThanOrEqual(44);
+      expect(st.height).toBeUndefined();
+    }
+    await act(async () => tree.unmount());
+  });
+});
+
+describe('headings, rows and reading order', () => {
+  beforeEach(() => {
+    (db.items as jest.Mock).mockResolvedValue(FIXTURE);
+    (db.minutes as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('reads title, then takeaway, then Decisions, then Next steps, top to bottom', async () => {
+    const tree = await open({ tab: 'mom' });
+    const order = texts(tree);
+    const at = (s: string) => order.findIndex(x => x.startsWith(s));
+    expect(at('Standup')).toBeGreaterThanOrEqual(0);
+    expect(at('Standup')).toBeLessThan(at('Decided:'));
+    expect(at('Decided:')).toBeLessThan(at('Decisions · 1'));
+    expect(at('Decisions · 1')).toBeLessThan(at('Next steps · 3'));
+    expect(at('Next steps · 3')).toBeLessThan(at('Questions · 1'));
+    await act(async () => tree.unmount());
+  });
+
+  it('marks the Summary tab\'s own heading as a heading', async () => {
+    const tree = await open({ tab: 'summary' });
+    expect(headers(tree)).toContain('SUMMARY');
+    await act(async () => tree.unmount());
+  });
+
+  it('gives each next step a spoken label with owner, due date and state, and a checkbox state', async () => {
+    (db.doneItems as jest.Mock).mockResolvedValue(new Set(['i4']));
+    const tree = await open({ tab: 'actions' });
+    const boxes = tree.root.findAll(n => typeof n.type === 'string' && n.props.accessibilityRole === 'checkbox');
+    const labels = boxes.map(b => [b.props.accessibilityLabel, b.props.accessibilityState.checked]);
+    expect(labels).toContainEqual(['I will send the signed quote. Owner Priya. Due Wednesday. Not done', false]);
+    expect(labels).toContainEqual(['The review still needs to be booked. No owner yet. Not done', false]);
+    await act(async () => tree.unmount());
+  });
+
+  it('says Done in the label of a ticked one, and in words on the Minutes tab too', async () => {
+    (db.doneItems as jest.Mock).mockResolvedValue(new Set(['i4']));
+    const mom = await open({ tab: 'mom' });
+    const spoken = mom.root
+      .findAll(n => typeof n.type === 'string' && String(n.props.accessibilityLabel ?? '').startsWith('I will share the checklist'))
+      .map(n => n.props.accessibilityLabel);
+    expect(spoken).toContain('I will share the checklist. Owner Sam. Done');
+    expect(texts(mom)).toContain('Done');
+    await act(async () => mom.unmount());
+  });
+
+  it('does not depend on colour: a ticked action on the Actions tab says Done in words and is a checked checkbox', async () => {
+    (db.doneItems as jest.Mock).mockResolvedValue(new Set(['i4']));
+    const tree = await open({ tab: 'actions' });
+    // Done is folded away by default; open it.
+    const fold = tree.root.findAll(n => n.props.accessibilityState?.expanded === false && typeof n.props.onPress === 'function')[0];
+    await act(async () => fold.props.onPress());
+    expect(texts(tree)).toContain('Done');
+    const ticked = tree.root.findAll(
+      n => typeof n.type === 'string' && n.props.accessibilityRole === 'checkbox' && n.props.accessibilityState.checked === true,
+    );
+    expect(ticked.map(b => b.props.accessibilityLabel)).toEqual(['I will share the checklist. Owner Sam. Done']);
+    await act(async () => tree.unmount());
+  });
+
+  it('keeps the Ask entry a labelled button, in reading order after the takeaway', async () => {
+    const tree = await open({ tab: 'mom' });
+    const buttons = tree.root.findAll(n => typeof n.type === 'string' && n.props.accessibilityLabel === 'Ask this meeting' && n.props.accessibilityRole === 'button');
+    expect(buttons.length).toBeGreaterThan(0);
+    const order = texts(tree);
+    expect(order.findIndex(x => x.startsWith('Decided:'))).toBeLessThan(order.indexOf('Ask this meeting', order.findIndex(x => x.startsWith('Decided:'))));
+    await act(async () => tree.unmount());
+  });
+});

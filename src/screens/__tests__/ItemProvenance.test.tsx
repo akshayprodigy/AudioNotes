@@ -706,7 +706,8 @@ describe('the Actions tab', () => {
 
     const tree = await render({ tab: 'actions' });
     const boxes = tree.root.findAllByProps({ accessibilityRole: 'checkbox' });
-    const typedBox = boxes.find(b => b.props.accessibilityLabel === 'Call the vendor back')!;
+    // The row's label is its words and the facts about them (Workstream D): "<text>. No owner yet. Not done".
+    const typedBox = boxes.find(b => String(b.props.accessibilityLabel).startsWith('Call the vendor back.'))!;
 
     await act(async () => typedBox.props.onPress());
 
@@ -840,7 +841,7 @@ describe('the Summary tab’s counters', () => {
 
     const tree = await render({ tab: 'summary' });
 
-    expect(byLabel(tree, 'Minutes')).toHaveLength(1);
+    expect(byLabel(tree, 'Minutes, tab 2 of 4')).toHaveLength(1);
     expect(JSON.stringify(tree.toJSON())).not.toContain('Writing your notes');
     await act(async () => tree.unmount());
   });
@@ -1029,7 +1030,7 @@ describe('opening an item’s evidence', () => {
 
     // Back to the Minutes tab and tap the very same row again.
     await act(async () => {
-      tree.root.findAllByProps({ accessibilityRole: 'tab', accessibilityLabel: 'Minutes' })[0].props
+      tree.root.findAll(n => n.props.accessibilityRole === 'tab' && String(n.props.accessibilityLabel).startsWith('Minutes, tab'))[0].props
         .onPress();
     });
     await act(async () => {
