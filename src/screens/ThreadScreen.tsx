@@ -7,6 +7,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { db } from '../db/queries';
 import type { ThreadDecision, ThreadOpenItem, ThreadResult } from '../pipeline/types';
 import { dayLabel } from '../pipeline/dateNorm';
+import { ownerSpeakerId, resolveOwnerText } from '../pipeline/itemOwner';
 import { labelsFor } from './meeting/recordLabels';
 import { RecordChips, SectionHead, sentenceCase, splitAction } from './meeting/shared';
 import { IconButton, Txt } from '../components/ui';
@@ -121,7 +122,8 @@ function OpenRow({
   colors: Colors;
   onPress: () => void;
 }) {
-  const { text, owner, due } = splitAction(item.content);
+  // The owner under the name its speaker has NOW; native supplies that name beside owner_json (F14).
+  const { text, owner, due } = splitAction(resolvedContent(item));
   const labels = labelsFor({ itemType: item.itemType, status: item.status, dateNorm: item.dateNorm });
   const dim = [owner, due, `${item.meetingTitle}, ${dayLabel(item.meetingAt)}`].filter(Boolean).join(' · ');
   return (
@@ -141,6 +143,13 @@ function DecisionRow({
   onPress,
 }: {
   decision: ThreadDecision;
+/** An item's content with its owner resolved from the speaker it points at. */
+function resolvedContent(item: { content: string; ownerJson?: string | null; ownerName?: string | null }): string {
+  const id = ownerSpeakerId(item.ownerJson);
+  if (!id || !item.ownerName) return item.content;
+  return resolveOwnerText(item.content, item.ownerJson, new Map([[id, item.ownerName]]));
+}
+
   colors: Colors;
   onPress: () => void;
 }) {
@@ -148,9 +157,9 @@ function DecisionRow({
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={sentenceCase(decision.content)}
+      accessibilityLabel={sentenceCase(resolvedContent(decision))}
       style={rowStyle.row}>
-      <Txt variant="prose">{sentenceCase(decision.content)}</Txt>
+      <Txt variant="prose">{sentenceCase(resolvedContent(decision))}</Txt>
       <Txt variant="chipSoft" color={colors.inkFaint}>
         {`${decision.meetingTitle}, ${dayLabel(decision.meetingAt)}`}
       </Txt>

@@ -389,6 +389,12 @@ class PipelineControllerImpl {
    */
   async regenerateMinutes(meetingId: string): Promise<void> {
     await this.buildMinutes(meetingId);
+    // For a meeting WITH items this used to be a no-op: it rewrites `minutes` rows only, and the
+    // Actions and Minutes tabs read `items`. Those resolve each owner from the speaker row live
+    // (pipeline/itemOwner), so what was stale was the search index and the vectors. Reindexing is
+    // what makes "Regenerate" visibly do what its button says, and it touches no tick, no hand
+    // correction and no hand-typed item (F14).
+    await Storage.reindex(meetingId);
   }
 
   /**

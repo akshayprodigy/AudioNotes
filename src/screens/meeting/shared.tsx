@@ -172,6 +172,12 @@ export type ItemRow = {
   anchorStartMs: number | null;
   /** The typed record's visible part, or null until the Pro classifier has read the item. */
   record: RecordSummary | null;
+  /**
+   * `items.owner_json`: which speaker owns an action, so the owner is shown under the name that
+   * speaker has NOW rather than the one baked into [text] at extraction. Null for a row that is
+   * only a minute, and wherever the owner is not a speaker. See src/pipeline/itemOwner.
+   */
+  ownerJson: string | null;
 };
 
 /**
@@ -222,6 +228,7 @@ export function toItemRows(items: Item[], minutes: Minute[]): ItemRow[] {
     // nothing here has to know that the column is NOT NULL and holds a sentinel.
     anchorStartMs: it.anchorStartMs,
     record: it.itemType ? { itemType: it.itemType, status: it.status, dateNorm: it.dateNorm } : null,
+    ownerJson: it.ownerJson ?? null,
   }));
 
   // "Have the RULES produced items for this meeting" — see the note above for why it is not
@@ -244,6 +251,7 @@ export function toItemRows(items: Item[], minutes: Minute[]): ItemRow[] {
       mine: m.source === MINUTE_SOURCE_USER,
       anchorStartMs: null,
       record: null,
+      ownerJson: null,
     });
   }
   return rows;

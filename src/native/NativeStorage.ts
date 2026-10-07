@@ -11,6 +11,9 @@ export interface Spec extends TurboModule {
   // Writes only — there is no result set. For a change that must not be seen half done
   // (db.mergeSpeakers); a single statement needs no transaction and uses `query`.
   transaction(statements: string): Promise<void>;
+  // Rename a speaker and carry the name to every surface: records which items the old name owned,
+  // changes it, then reindexes the meeting (F14). Not a bare UPDATE on purpose.
+  renameSpeaker(speakerId: string, name: string): Promise<void>;
   // Ranked full-text search across transcripts, minutes, titles and summaries (FTS5).
   // Returns a JSON array of SearchHit; see src/pipeline/types.ts.
   search(term: string): Promise<string>;

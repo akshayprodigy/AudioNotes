@@ -44,7 +44,7 @@ object ItemClassifier {
     DateNorm.spanIn(statement) ?: modelPhrase.trim().ifBlank { null }
 
   fun pending(db: AudioDb, meetingId: String): List<AudioDb.StoredItem> =
-    db.items(meetingId).filter { isPending(it.record != null, it.genVersion, it.review) }
+    db.items(meetingId).filter { isPending(it.classified, it.genVersion, it.review) }
 
   /**
    * Unread, or read by an older classifier, and not a person's: those are re-read. A person's
@@ -123,7 +123,7 @@ object ItemClassifier {
       // A re-read replaces the older classifier's own flag: its needs_review was ITS doubt, and
       // the new reading is entitled to settle it. (A person's flag never reaches here — see
       // isPending.) An unread item keeps whatever the reconciler left on it.
-      val currentReview = if (item.record != null) AudioDb.Review.SUGGESTED else item.review
+      val currentReview = if (item.classified) AudioDb.Review.SUGGESTED else item.review
       val decision = ReviewRule.decide(
         kind = item.kind, type = r.getString("type"), status = r.getString("status"),
         confidence = confidence, ownerKind = owner.getString("kind"),

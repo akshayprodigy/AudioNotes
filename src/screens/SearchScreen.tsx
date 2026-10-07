@@ -13,6 +13,7 @@ import { IconButton, Pop, Raised, SoftButton, Txt } from '../components/ui';
 import { font, radius, s, sv, useTheme, type Colors } from '../theme';
 
 import type { SearchHit } from '../pipeline/types';
+import { stripUnassigned } from '../pipeline/itemOwner';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Search'>;
 
@@ -337,6 +338,8 @@ export default function SearchScreen({ navigation }: Props) {
   /** One result row: what kind of text matched, the snippet with the match picked out, and when. */
   const Hit = ({ hit }: { hit: SearchHit }) => {
     const k = kindMeta(hit.kind, colors);
+    // What somebody SAID is shown as said; an item or minute loses the extractor's " — Unassigned".
+    const snippet = hit.kind === 'utterance' ? hit.snippet : stripUnassigned(hit.snippet);
     return (
       <Raised
         edge={colors.line}
@@ -346,7 +349,7 @@ export default function SearchScreen({ navigation }: Props) {
         onPress={() => openHit(hit)}>
         <View
           accessibilityRole="button"
-          accessibilityLabel={`${k.label.toLowerCase()}${hit.byMeaning ? ' (by meaning)' : ''}: ${plain(hit.snippet)}`}
+          accessibilityLabel={`${k.label.toLowerCase()}${hit.byMeaning ? ' (by meaning)' : ''}: ${plain(snippet)}`}
           style={st.hit}>
           <View style={st.hitTop}>
             <View style={[st.kind, { backgroundColor: k.soft }]}>
@@ -370,7 +373,7 @@ export default function SearchScreen({ navigation }: Props) {
                 {'≈ '}
               </Text>
             ) : null}
-            {runsOf(hit.snippet).map((run, i) =>
+            {runsOf(snippet).map((run, i) =>
               run.hit ? (
                 <Text key={i} style={st.mark}>
                   {run.text}

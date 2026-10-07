@@ -55,6 +55,17 @@ class StorageModule(private val ctx: ReactApplicationContext) :
     }
   }
 
+  /** Rename a speaker and carry the name to search and every other surface (F14); see AudioDb.renameSpeaker. */
+  @ReactMethod
+  fun renameSpeaker(speakerId: String, name: String, promise: Promise) {
+    try {
+      AudioDb.get(ctx).renameSpeaker(speakerId, name)
+      promise.resolve(null)
+    } catch (e: Throwable) {
+      promise.reject("db_rename_speaker", e)
+    }
+  }
+
   @ReactMethod
   fun reindex(meetingId: String, promise: Promise) {
     try {

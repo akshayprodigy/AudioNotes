@@ -12,6 +12,7 @@ import { IconButton, Raised, Sheet, TextPrompt, Txt, type SheetAction } from '..
 import { ProvenanceButton } from './meeting/ItemProvenance';
 import SpeakerPicker from './meeting/SpeakerPicker';
 import { labelsFor } from './meeting/recordLabels';
+import { ownerLabel } from '../pipeline/itemOwner';
 import { composeAction, editedText, sentenceCase, splitAction, toEditMap } from './meeting/shared';
 import { usePlayer } from './meeting/usePlayer';
 import { radius, s, useTheme, type Colors } from '../theme';
@@ -51,17 +52,6 @@ function confidenceOf(ownerJson: string | null): string | null {
     return ownerJson ? ((JSON.parse(ownerJson).confidence as string | undefined) ?? null) : null;
   } catch {
     return null;
-  }
-}
-
-function ownerLabel(ownerJson: string | null, speakers: Speaker[]): string {
-  try {
-    const o = ownerJson ? JSON.parse(ownerJson) : null;
-    if (!o || o.kind === 'unassigned') return 'No owner';
-    if (o.kind === 'speaker') return speakers.find(x => x.id === o.id)?.displayName ?? 'A speaker';
-    return String(o.name ?? 'Someone');
-  } catch {
-    return 'No owner';
   }
 }
 

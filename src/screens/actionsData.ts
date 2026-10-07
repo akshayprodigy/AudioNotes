@@ -1,5 +1,6 @@
 import { db } from '../db/queries';
 import type { ActionRow } from '../pipeline/types';
+import { ownerSpeakerId, resolveOwnerText } from '../pipeline/itemOwner';
 
 /**
  * Loading the cross-meeting worklist.
@@ -35,9 +36,24 @@ import type { ActionRow } from '../pipeline/types';
 
 /** The full worklist, newest meeting first, with each item's tick resolved. */
 export async function loadActions(): Promise<ActionRow[]> {
-  const [rows, done] = await Promise.all([db.allActions(), db.doneItemIds()]);
+  const [rows, done, speakerNames] = await Promise.all([
+    db.allActions(),
+    db.doneItemIds(),
+    // A speaker list that cannot be read must not cost the worklist: the stored owner is still
+    // true, only possibly stale.
+    Promise.resolve()
+      .then(() => db.speakerNames())
+      .catch(() => new Map<string, string>()),
+  ]);
+  const names = speakerNames ?? new Map<string, string>();
   // The separator matches db.doneItemIds exactly: a NUL, which cannot occur in either half.
-  return rows.map(r => ({ ...r, done: done.has(`${r.meetingId}\u0000${r.id}`) }));
+  return rows.map(r => {
+    const id = ownerSpeakerId(r.ownerJson);
+    const name = id ? names.get(`${r.meetingId}\u0000${id}`) : undefined;
+    // The owner is the speaker's name NOW, not the one baked into the text at extraction (F14).
+    const content = id && name ? resolveOwnerText(r.content, r.ownerJson, new Map([[id, name]])) : r.content;
+    return { ...r, content, done: done.has(`${r.meetingId}\u0000${r.id}`) };
+  });
 }
 
 /**

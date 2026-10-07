@@ -2,7 +2,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Raised, SoftButton, Txt } from '../../components/ui';
 import { radius, s, useTheme, type Colors } from '../../theme';
-import type { Item, Minute, MinuteKind } from '../../pipeline/types';
+import type { Item, Minute, MinuteKind, Speaker } from '../../pipeline/types';
 import {
   DOC_KEY,
   DocItem,
@@ -18,6 +18,7 @@ import {
   type ItemRow,
 } from './shared';
 import { ProvenanceButton } from './ItemProvenance';
+import { namesOf, resolveOwnerText } from '../../pipeline/itemOwner';
 import { labelsFor } from './recordLabels';
 
 /**
@@ -49,9 +50,12 @@ export default function MinutesTab({
   onRevertNarrative,
   onOpenProvenance,
   canPlay,
+  speakers,
 }: {
   items: Item[];
   minutes: Minute[];
+  /** The meeting's speakers, so an owner shows the name they have NOW (F14). */
+  speakers?: Speaker[];
   onExport: () => void;
   /** The whole write-up on the clipboard — the same document Export would have shared. */
   onCopy?: () => void;
@@ -85,6 +89,7 @@ export default function MinutesTab({
   const narrative = editedText(ed, 'narrative', DOC_KEY, written);
   const narrativeEdited = isEdited(ed, 'narrative', DOC_KEY);
   const rows = React.useMemo(() => toItemRows(items, minutes), [items, minutes]);
+  const names = React.useMemo(() => namesOf(speakers ?? []), [speakers]);
   const decisions = rows.filter(r => r.kind === 'decision');
   const actions = rows.filter(r => r.kind === 'action');
 
@@ -99,7 +104,7 @@ export default function MinutesTab({
       key={r.key}
       kind={r.kind}
       colors={colors}
-      content={editedText(ed, t.kind, t.key, r.text) ?? r.text}
+      content={resolveOwnerText(editedText(ed, t.kind, t.key, r.text) ?? r.text, r.ownerJson, names)}
       edited={isEdited(ed, t.kind, t.key)}
       mine={r.mine}
       labels={labelsFor(r.record)}

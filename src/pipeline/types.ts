@@ -368,6 +368,8 @@ export interface ActionRow {
   createdAt: number;
   id: string;
   content: string;
+  /** `items.owner_json` — resolved to the owner's CURRENT speaker name on render (F14). */
+  ownerJson: string | null;
   /** Where the row came from, derived from `items.gen_version`. See db.allActions. */
   source: MinuteSource;
   /**
@@ -408,6 +410,11 @@ export interface ThreadOpenItem {
   itemType: string | null;
   status: string | null;
   dateNorm: number | null;
+  /** items.owner_json, and the name the speaker it points at carries now (null when none). F14. */
+  ownerJson?: string | null;
+  ownerName?: string | null;
+  /** Where it was said; null for a row a person typed. F17: opening the thread lands here. */
+  anchorStartMs?: number | null;
 }
 
 /** The earlier decision a later one "changes" — DecisionLinks.link's one link per decision. */
@@ -426,6 +433,10 @@ export interface ThreadDecision {
   content: string;
   itemType: string | null;
   status: string | null;
+  ownerJson?: string | null;
+  ownerName?: string | null;
+  /** Where it was said; null for a row a person typed. F17: opening the thread lands here. */
+  anchorStartMs?: number | null;
   /** Null for free, a model not yet downloaded, or a backfill that has not reached this item. */
   changes: ThreadDecisionChange | null;
 }

@@ -799,4 +799,64 @@ class ExportItemsTest {
     assertEquals(listOf(2_500L, 6_000L, 14_000L), h.map { it.atMs })
     assertEquals(15_000L, FileExportModule.HIGHLIGHT_GAP_MS)
   }
+
+  // ---- F14: a speaker rename reaches the action lines ----------------------------------------
+
+  private val ownerS1 = JSONObject().put("kind", "speaker").put("id", "s1").toString()
+
+  /**
+   * The stored text still says "Speaker 1"; the speaker row says Priya. Every format the document
+   * is written in must show the name the person gave, and never the one the extractor baked in.
+   */
+  @Test fun aRenamedSpeakerIsTheOwnerOnEveryActionLineOfEveryFormat() {
+    val items = FileExportModule.exportItems(
+      rows(
+        itemRow("it-1", "action", "Send the report by Friday — Speaker 1 (due Friday)", 61_000L)
+          .put("owner_json", ownerS1),
+      ),
+      rows(),
+      emptyMap(),
+      mapOf("s1" to "Priya"),
+    )
+    val c = content(items = items)
+    for ((format, out) in listOf(
+      "markdown" to FileExportModule.renderMarkdown(c),
+      "text" to FileExportModule.renderText(c),
+      "pdf" to FileExportModule.pdfBlocks(c).joinToString("\n") { it.text },
+    )) {
+      assertTrue("$format lost the new name: $out", out.contains("Send the report by Friday — Priya (due Friday)"))
+      assertFalse("$format still has the old name: $out", out.contains("Speaker 1"))
+    }
+  }
+
+  /** A hand correction wins for the words, and a rename still reaches the owner inside it. */
+  @Test fun aCorrectedLineStillShowsTheCurrentSpeaker() {
+    val items = FileExportModule.exportItems(
+      rows(itemRow("it-1", "action", "Send the report — Speaker 1", 61_000L).put("owner_json", ownerS1)),
+      rows(),
+      mapOf("item/it-1" to "Send the Q3 report — Speaker 1"),
+      mapOf("s1" to "Priya"),
+    )
+    assertEquals("Send the Q3 report — Priya", items.single().text)
+  }
+
+  /** "<Name> will …" and a hand-typed owner have no speaker behind them, so no rename touches them. */
+  @Test fun aNamedPersonAndAHandTypedOwnerAreExportedAsStored() {
+    val items = FileExportModule.exportItems(
+      rows(
+        itemRow("it-1", "action", "Maya will send the summary — Maya", 61_000L),
+        itemRow("it-2", "action", "Call the vendor — Dana", 70_000L, genVersion = AudioDb.Gen.USER)
+          .put("owner_json", JSONObject().put("kind", "unassigned").toString()),
+        itemRow("it-3", "action", "Ship it — Maya", 80_000L)
+          .put("owner_json", JSONObject().put("kind", "person").put("name", "Maya").toString()),
+      ),
+      rows(),
+      emptyMap(),
+      mapOf("s1" to "Priya"),
+    )
+    assertEquals(
+      listOf("Maya will send the summary — Maya", "Call the vendor — Dana", "Ship it — Maya"),
+      items.map { it.text },
+    )
+  }
 }

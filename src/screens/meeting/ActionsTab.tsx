@@ -3,7 +3,7 @@ import { LayoutAnimation, Pressable, ScrollView, StyleSheet, View } from 'react-
 import Icon from '../../components/Icon';
 import { Raised, Txt } from '../../components/ui';
 import { radius, s, useTheme, type Colors } from '../../theme';
-import type { Item, Minute, MinuteKind } from '../../pipeline/types';
+import type { Item, Minute, MinuteKind, Speaker } from '../../pipeline/types';
 import { db } from '../../db/queries';
 import {
   Empty,
@@ -22,6 +22,7 @@ import {
   type ItemRow,
 } from './shared';
 import { ProvenanceButton } from './ItemProvenance';
+import { namesOf, resolveOwnerText } from '../../pipeline/itemOwner';
 import { labelsFor, type Labels } from './recordLabels';
 
 /**
@@ -183,11 +184,14 @@ export default function ActionsTab({
   onAdd,
   onOpenProvenance,
   canPlay,
+  speakers,
 }: {
   meetingId: string;
   items: Item[];
   minutes: Minute[];
   edits?: EditMap;
+  /** The meeting's speakers, so an owner shows the name they have NOW (F14). */
+  speakers?: Speaker[];
   onEditItem?: (row: ItemRow) => void;
   /** Takes the ROW, not a key: where a correction lives is editTargetOf's answer, not a tab's. */
   onRevertItem?: (row: ItemRow) => void;
@@ -215,6 +219,7 @@ export default function ActionsTab({
   const ed = React.useMemo<EditMap>(() => edits ?? new Map(), [edits]);
 
   const rows = React.useMemo(() => toItemRows(items, minutes), [items, minutes]);
+  const names = React.useMemo(() => namesOf(speakers ?? []), [speakers]);
 
   React.useEffect(() => {
     let alive = true;
@@ -273,13 +278,18 @@ export default function ActionsTab({
     [isDone, meetingId],
   );
 
-  /** The text to display: the correction where there is one, the stored text otherwise. */
+  /**
+   * The text to display: the correction where there is one, the stored text otherwise — with the
+   * owner put under the name its speaker has now. Resolved AFTER the correction: the person's
+   * words win for everything but the speaker's name, and a hand-typed owner has no speaker row
+   * behind it (ownerAfterEdit unlinks it on save), so it is never rewritten.
+   */
   const shown = React.useCallback(
     (r: ItemRow) => {
       const t = editTargetOf(r);
-      return editedText(ed, t.kind, t.key, r.text) ?? r.text;
+      return resolveOwnerText(editedText(ed, t.kind, t.key, r.text) ?? r.text, r.ownerJson, names);
     },
-    [ed],
+    [ed, names],
   );
 
   /** The way back to the moment. Nothing for a row that never claimed to have been said. */

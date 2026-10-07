@@ -84,4 +84,21 @@ class ItemClassifierTest {
     assertEquals("rules@1", ItemClassifier.baseGen("rules@1"))
     assertEquals("rules@1" + ItemClassifier.GEN_SUFFIX, ItemClassifier.baseGen("rules@1+qwen2.5-1.5b/classify@1") + ItemClassifier.GEN_SUFFIX)
   }
+
+  /**
+   * F14: the rule pass now records WHICH SPEAKER owns an action (owner_json alone), so a row can
+   * carry a record without ever having been read by the classifier. That record must not count as
+   * "classified" — the review queue, the Pro re-read and the labels all mean the model read it.
+   */
+  @Test fun anOwnerOnlyRecordIsNotAClassifierReading() {
+    val ownerOnly = item("u1", 5000).copy(record = AudioDb.Classified(null, null, """{"kind":"speaker","id":"s1"}""", null, null))
+    assertEquals(false, ownerOnly.classified)
+    assertEquals(true, ItemClassifier.isPending(ownerOnly.classified, ownerOnly.genVersion, ownerOnly.review))
+    val read = item("u1", 5000).copy(
+      genVersion = "rules@1" + ItemClassifier.GEN_SUFFIX,
+      record = AudioDb.Classified("commitment", "open", """{"kind":"speaker","id":"s1"}""", null, null),
+    )
+    assertEquals(true, read.classified)
+    assertEquals(false, ItemClassifier.isPending(read.classified, read.genVersion, read.review))
+  }
 }

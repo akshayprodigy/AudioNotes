@@ -18,6 +18,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { db } from '../db/queries';
 import { countsExcluding } from './threadData';
 import { PipelineController } from '../pipeline/PipelineController';
+import { namesOf, resolveOwnerText } from '../pipeline/itemOwner';
 import { entitlement, shouldOfferPaywall } from '../billing/trial';
 import SampleBanner from '../sample/SampleBanner';
 import { isSampleId } from '../sample/sampleId';
@@ -585,6 +586,9 @@ export default function MeetingScreen({ route, navigation }: Props) {
         // render reads. A failed write is put right by the refresh in the catch.
         setEdits(prev => new Map(prev).set(editKey(kind, key), value));
         await db.putEdit(meetingId, kind, key, value);
+        // A person who types a different owner has re-assigned it by hand: drop the speaker link
+        // so resolving the owner live can never overwrite their words (F14).
+        if (kind === 'item' && (await db.reconcileItemOwner(key, value).catch(() => false))) await refresh();
         if (kind === 'utterance') void offerRule(spec.initial, value);
       } catch (e: any) {
         Alert.alert('Could not save that', String(e?.message ?? e));
@@ -653,12 +657,14 @@ export default function MeetingScreen({ route, navigation }: Props) {
       setEditing({
         title: 'Correct this line',
         hint: 'Your wording replaces what the app wrote. The original is kept, and you can put it back.',
-        initial: edits.get(editKey(target.kind, target.key)) ?? row.text,
+        // The owner under the name its speaker has NOW, so saving without touching it cannot
+        // write a stale name over a rename (F14) — see db.reconcileItemOwner.
+        initial: resolveOwnerText(edits.get(editKey(target.kind, target.key)) ?? row.text, row.ownerJson, namesOf(speakers)),
         multiline: true,
         target,
       });
     },
-    [edits],
+    [edits, speakers],
   );
 
   /** Undo a correction, wherever this row's correction happens to live. */
@@ -1342,6 +1348,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
                   })
                 }
                 onRevertNarrative={() => onRevertEdit('narrative', DOC_KEY)}
+                speakers={speakers}
               />
             ) : tab === 'transcript' ? (
               <TranscriptTab
@@ -1385,6 +1392,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
               when the audio has been swept, because a disabled play button just invites tapping. */}
           {player.available ? (
             <View style={{ paddingBottom: insets.bottom }}>
+                speakers={speakers}
               {player.error ? (
                 <Pressable onPress={player.dismissError} style={st.playerNote}>
                   <Icon name="alert" size={s(14)} color={colors.warning} strokeWidth={2.4} />

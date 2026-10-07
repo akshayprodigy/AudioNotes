@@ -1,5 +1,6 @@
 // Typed query layer over the Storage TurboModule. Screens/state call these, never raw SQL.
 import Storage from '../native/NativeStorage';
+import { ownerAfterEdit, ownerSpeakerId } from '../pipeline/itemOwner';
 import Llm from '../native/NativeLlm';
 import { NO_ANCHOR, USER_GEN } from '../pipeline/types';
 import type {
@@ -484,8 +485,25 @@ export const db = {
       [meetingId],
     ),
 
-  renameSpeaker: (speakerId: string, name: string) =>
-    run('UPDATE speakers SET display_name = ? WHERE id = ?', [name, speakerId]),
+  /**
+   * Rename a speaker, and carry the name to everything that shows it (F14).
+   *
+   * Native, not a bare UPDATE: before the name changes, AudioDb.renameSpeaker records which items
+   * the old name owned (the old name in the item's text is the only evidence), then changes it, then
+   * reindexes the meeting so search finds the new name and no longer the old one. The stored item
+   * text is untouched; every surface resolves the owner from the speaker row (pipeline/itemOwner).
+   */
+  renameSpeaker: (speakerId: string, name: string) => Storage.renameSpeaker(speakerId, name),
+
+  /** Every speaker's current name, keyed `meetingId\u0000speakerId`, for the cross-meeting worklist. */
+  speakerNames: async (): Promise<Map<string, string>> => {
+    const rows = await run<{ meetingId: string; id: string; name: string | null }>(
+      'SELECT meeting_id AS meetingId, id, display_name AS name FROM speakers',
+    );
+    const out = new Map<string, string>();
+    for (const r of rows) if (r.name) out.set(`${r.meetingId}\u0000${r.id}`, r.name);
+    return out;
+  },
 
   // Phase 4: remembered voices. rememberVoice is called after a rename to fold this speaker's
   // voice into the person's centroid; the result is inspected for the reason key.
@@ -753,6 +771,23 @@ export const db = {
   setItemReview: (id: string, review: 'confirmed' | 'rejected') =>
     run('UPDATE items SET review = ? WHERE id = ?', [review, id]),
 
+  /**
+   * After a hand correction of an item's text: drop the speaker link if the person typed a
+   * different owner, so resolving the owner live never overwrites their words (F14). No-op for
+   * an item that does not point at a speaker, and never touches `review`.
+   */
+  reconcileItemOwner: async (itemId: string, editedText: string): Promise<boolean> => {
+    const rows = await run<{ ownerJson: string | null }>('SELECT owner_json AS ownerJson FROM items WHERE id = ?', [itemId]);
+    const ownerJson = rows[0]?.ownerJson ?? null;
+    const speakerId = ownerSpeakerId(ownerJson);
+    if (!speakerId) return false;
+    const sp = await run<{ name: string | null }>('SELECT display_name AS name FROM speakers WHERE id = ?', [speakerId]);
+    const next = ownerAfterEdit(ownerJson, sp[0]?.name ?? null, editedText);
+    if (next === null) return false;
+    await run('UPDATE items SET owner_json = ? WHERE id = ?', [next, itemId]);
+    return true;
+  },
+
   setItemOwner: (id: string, ownerJson: string) =>
     run("UPDATE items SET owner_json = ?, review = 'confirmed' WHERE id = ?", [ownerJson, id]),
 
@@ -893,7 +928,7 @@ export const db = {
   allActions: () =>
     run<Omit<ActionRow, 'done'>>(
       'SELECT i.id AS id, i.meeting_id AS meetingId, mt.title AS meetingTitle, ' +
-        'mt.created_at AS createdAt, i.text AS content, ' +
+        'mt.created_at AS createdAt, i.text AS content, i.owner_json AS ownerJson, ' +
         // The same derivation db.items makes, for the same reason: a hand-typed action has no
         // moment, and `ActionRow.anchorStartMs` is what the "take me to where this was said"
         // gesture will read. Handing it the sentinel would send somebody 285,000 years into a

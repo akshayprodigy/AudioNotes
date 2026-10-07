@@ -133,7 +133,7 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
         // gen_version comes back because it is what decides whether a row HAS a moment: the
         // column is NOT NULL, a hand-typed row stores AudioDb.Gen.NO_ANCHOR, and exportItems
         // derives "no anchor" from the gen and never from the number.
-        "SELECT id,kind,text,anchor_start_ms,gen_version,item_type,status,date_norm FROM items " +
+        "SELECT id,kind,text,anchor_start_ms,gen_version,item_type,status,date_norm,owner_json FROM items " +
           "WHERE meeting_id=? AND review<>'rejected' ORDER BY anchor_start_ms, rowid",
         arrayOf(meetingId),
       ),
@@ -184,7 +184,7 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
       createdAt = createdAt,
       summary = summaryOf(minutes, edits),
       narrative = narrativeOf(minutes, edits),
-      items = exportItems(items, minutes, edits),
+      items = exportItems(items, minutes, edits, nameById),
       turns = turns,
       highlights = highlightsFor(db.marks(meetingId).map { it.atMs }, turns),
     )
@@ -404,6 +404,12 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
       items: JSONArray,
       minutes: JSONArray,
       edits: Map<String, String>,
+      /**
+       * Speaker id to the name they carry now. An action's owner is resolved from owner_json
+       * against this, so a rename reaches the exported line (F14); a name that is not a speaker,
+       * and a hand-typed owner, stay as the text has them.
+       */
+      nameById: Map<String, String?> = emptyMap(),
     ): List<ExportItem> {
       val out = ArrayList<ExportItem>()
       // Whether the RULES have produced items for this meeting — not whether it has any. See the
@@ -417,7 +423,11 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
         out.add(
           ExportItem(
             o.getString("kind"),
-            edits["item/" + o.getString("id")] ?: text,
+            ItemOwner.resolve(
+              edits["item/" + o.getString("id")] ?: text,
+              if (o.isNull("owner_json")) null else o.optString("owner_json"),
+              nameById,
+            ),
             // THE DERIVATION, and it asks the gen rather than the number. A hand-typed row stores
             // AudioDb.Gen.NO_ANCHOR because the column is NOT NULL; printing it would give
             // `[2562047788:00:54]`, and printing a 0 stored there instead would give `[0:00]` —
