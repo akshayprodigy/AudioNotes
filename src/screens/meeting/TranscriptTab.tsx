@@ -1,12 +1,13 @@
 import React from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import Icon from '../../components/Icon';
-import { Raised, Txt } from '../../components/ui';
+import { Txt } from '../../components/ui';
 import { radius, s, useTheme, type Colors } from '../../theme';
 import type { Speaker, Utterance } from '../../pipeline/types';
 import {
   EditButton,
   EditedTag,
+  Hairline,
   ToolButton,
   editedText,
   initials,
@@ -237,6 +238,7 @@ export default function TranscriptTab({
         }, 80);
       }}
       contentContainerStyle={st.pad}
+      ItemSeparatorComponent={() => <Hairline colors={colors} />}
       showsVerticalScrollIndicator={false}
       initialNumToRender={12}
       windowSize={11}
@@ -297,12 +299,14 @@ export default function TranscriptTab({
           }
         }
         const card = (
-          <Raised
-            edge={on ? colors.primary : colors.line}
-            fill={on ? colors.primarySoft : colors.card}
-            rad={radius.card}
-            depth={4}>
-            {/* One card for the whole turn, but each segment is its own pressable: tapping plays
+          <View
+            style={[
+              st.flatTurn,
+              // The line being played: a tint and the volume mark beside the time, so it is told
+              // by more than colour. No raised edge — a transcript is read, not stacked.
+              on && { backgroundColor: colors.primarySoft, borderRadius: radius.card },
+            ]}>
+            {/* One block for the whole turn, but each segment is its own pressable: tapping plays
                 from THAT line rather than from the top of an eight-segment turn, and a correction
                 is keyed on the utterance it belongs to. The pauses the VAD found stay legible as
                 paragraph breaks either way. */}
@@ -361,7 +365,7 @@ export default function TranscriptTab({
                 );
               })}
             </View>
-          </Raised>
+          </View>
         );
         return (
           <View style={st.turn}>
@@ -403,12 +407,12 @@ export default function TranscriptTab({
 
 function makeStyles(_c: Colors) {
   return StyleSheet.create({
-    pad: { paddingHorizontal: s(16), paddingBottom: s(30), gap: s(16) },
+    pad: { paddingHorizontal: s(16), paddingBottom: s(30) },
     // Says the gesture exists. A tappable transcript is invisible until you happen to tap one.
     head: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: s(10), paddingHorizontal: s(2) },
     flex: { flex: 1 },
     empty: { paddingVertical: s(30), textAlign: 'center' },
-    turn: { gap: s(7) },
+    turn: { gap: s(7), paddingVertical: s(14) },
     // The attribution sits above the card as a line of its own, so the card holds nothing but
     // what was said and the eye can skim the left edge for who is speaking.
     who: { flexDirection: 'row', alignItems: 'center', gap: s(8), paddingLeft: s(2) },
@@ -419,7 +423,8 @@ function makeStyles(_c: Colors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    card: { padding: s(14), gap: s(8) },
+    card: { gap: s(8) },
+    flatTurn: { paddingHorizontal: s(10), paddingVertical: s(4), marginHorizontal: -s(10) },
     lineRow: { flexDirection: 'row', alignItems: 'flex-start' },
   });
 }

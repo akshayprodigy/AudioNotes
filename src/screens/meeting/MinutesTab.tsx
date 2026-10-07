@@ -1,16 +1,18 @@
 import React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { Raised, SoftButton, Txt } from '../../components/ui';
+import { SoftButton, Txt } from '../../components/ui';
 import { db } from '../../db/queries';
 import Heading from './Heading';
 import { takeawayOf } from './takeaway';
-import { radius, s, useTheme, type Colors } from '../../theme';
+import { s, useTheme, type Colors } from '../../theme';
 import type { Item, Minute, MinuteKind, Speaker } from '../../pipeline/types';
 import {
   DOC_KEY,
   DocItem,
   EditedTag,
+  FlatPanel,
   Prose,
+  Rows,
   SectionTitle,
   ToolButton,
   editTargetOf,
@@ -199,7 +201,7 @@ export default function MinutesTab({
       ) : null}
 
       {decisions.length > 0 ? (
-        <Raised edge={colors.line} fill={colors.card} rad={radius.card24} depth={5}>
+        <FlatPanel colors={colors}>
           <View style={st.doc}>
             <SectionTitle
               label="Decisions"
@@ -217,30 +219,30 @@ export default function MinutesTab({
                 ) : undefined
               }
             />
-            <View style={st.list}>{decisions.map(item)}</View>
+            <Rows colors={colors}>{decisions.map(item)}</Rows>
           </View>
-        </Raised>
+        </FlatPanel>
       ) : null}
 
       {actions.length > 0 ? (
-        <Raised edge={colors.line} fill={colors.card} rad={radius.card24} depth={5}>
+        <FlatPanel colors={colors}>
           <View style={st.doc}>
             <SectionTitle label="Next steps" count={actions.length} colors={colors} />
-            <View style={st.list}>{actions.map(item)}</View>
+            <Rows colors={colors}>{actions.map(item)}</Rows>
           </View>
-        </Raised>
+        </FlatPanel>
       ) : null}
 
       {questions.length > 0 ? (
-        <Raised edge={colors.line} fill={colors.card} rad={radius.card24} depth={5}>
+        <FlatPanel colors={colors}>
           <View style={st.doc}>
             <SectionTitle label="Questions" count={questions.length} colors={colors} />
-            <View style={st.list}>{questions.map(item)}</View>
+            <Rows colors={colors}>{questions.map(item)}</Rows>
           </View>
-        </Raised>
+        </FlatPanel>
       ) : null}
 
-      <Raised edge={colors.line} fill={colors.card} rad={radius.card24} depth={5}>
+      <FlatPanel colors={colors}>
         <View style={st.doc}>
           <SectionTitle
             label="Written minutes"
@@ -289,7 +291,7 @@ export default function MinutesTab({
             </>
           )}
         </View>
-      </Raised>
+      </FlatPanel>
 
       <SoftButton icon="share" label="Export minutes" onPress={onExport} />
     </ScrollView>
@@ -299,10 +301,9 @@ export default function MinutesTab({
 function makeStyles(_c: Colors) {
   return StyleSheet.create({
     pad: { paddingHorizontal: s(16), paddingBottom: s(30), gap: s(14) },
-    // One card per section rather than one card per item: a document reads as a document, and
+    // One flat panel per section, hairlines between its rows: a document reads as a document, and
     // twenty-nine separately raised, separately tilted cards read as a pile.
-    doc: { padding: s(18), gap: s(14) },
-    list: { gap: s(14) },
+    doc: { paddingHorizontal: s(18), paddingTop: s(16), paddingBottom: s(6), gap: s(4) },
     takeaway: { paddingHorizontal: s(4) },
     tools: { flexDirection: 'row', gap: s(14) },
   });

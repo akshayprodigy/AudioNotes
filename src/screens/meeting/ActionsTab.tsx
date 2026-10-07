@@ -1,16 +1,18 @@
 import React from 'react';
 import { LayoutAnimation, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Icon from '../../components/Icon';
-import { Raised, Txt } from '../../components/ui';
-import { radius, s, useTheme, type Colors } from '../../theme';
+import { Txt } from '../../components/ui';
+import { s, useTheme, type Colors } from '../../theme';
 import type { Item, Minute, MinuteKind, Speaker } from '../../pipeline/types';
 import { db } from '../../db/queries';
 import {
   Empty,
   EditButton,
   EditedTag,
+  FlatPanel,
   MineTag,
   RecordChips,
+  Rows,
   SectionHead,
   ToolButton,
   editLabelFor,
@@ -25,6 +27,7 @@ import {
 } from './shared';
 import { ProvenanceButton } from './ItemProvenance';
 import { namesOf, resolveOwnerText } from '../../pipeline/itemOwner';
+import { previewOf } from './takeaway';
 import { labelsFor, type Labels } from './recordLabels';
 
 /**
@@ -74,8 +77,7 @@ function Item({
   const lab = labels ?? {};
   const wears = Boolean(lab.type || lab.status || lab.day);
   return (
-    <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={on ? 2 : 4}>
-      <View style={st.checkRow}>
+    <View style={st.checkRow}>
         <Pressable
           style={st.checkMain}
           accessibilityRole="checkbox"
@@ -95,7 +97,7 @@ function Item({
                 { borderColor: on ? colors.success : colors.line },
                 on && { backgroundColor: colors.success, borderColor: colors.success },
               ]}>
-              {on ? <Icon name="check" size={s(14)} color="#FFFFFF" strokeWidth={3.4} /> : null}
+              {on ? <Icon name="check" size={s(14)} color={colors.onPrimary} strokeWidth={3.4} /> : null}
             </View>
             <View style={st.flex}>
               <Txt
@@ -150,8 +152,7 @@ function Item({
         {/* Beside the checkbox and not inside it: a screen reader merges everything inside an
             accessible Pressable into one stop, which would hide the button. */}
         {onEdit ? <EditButton label="Edit this action" onPress={onEdit} colors={colors} /> : null}
-      </View>
-    </Raised>
+    </View>
   );
 }
 
@@ -357,18 +358,16 @@ export default function ActionsTab({
 
   /** A decision or an open question: read-only, and still checkable against the recording. */
   const plain = (r: ItemRow, tone: string) => (
-    <Raised key={r.key} edge={colors.line} fill={colors.card} rad={radius.xl} depth={4}>
-      <View style={st.plain}>
-        <View style={[st.rule, { backgroundColor: tone }]} />
-        <View style={st.flex}>
-          <Txt variant="prose">{sentenceCase(splitAction(shown(r)).text)}</Txt>
-          {provenanceFor(r)}
-        </View>
-        {onEditItem ? (
-          <EditButton label={editLabelFor(r.kind)} onPress={() => onEditItem(r)} colors={colors} />
-        ) : null}
+    <View key={r.key} style={st.plain}>
+      <View style={[st.rule, { backgroundColor: tone }]} />
+      <View style={st.flex}>
+        <Txt variant="prose">{sentenceCase(splitAction(shown(r)).text)}</Txt>
+        {provenanceFor(r)}
       </View>
-    </Raised>
+      {onEditItem ? (
+        <EditButton label={editLabelFor(r.kind)} onPress={() => onEditItem(r)} colors={colors} />
+      ) : null}
+    </View>
   );
 
   return (
@@ -406,7 +405,11 @@ export default function ActionsTab({
           </View>
 
           {todo.length > 0 ? (
-            <View style={st.list}>{todo.map(r => row(r, false))}</View>
+            <FlatPanel colors={colors}>
+              <View style={st.panel}>
+                <Rows colors={colors}>{todo.map(r => row(r, false))}</Rows>
+              </View>
+            </FlatPanel>
           ) : (
             <Empty text="Everything here is done." colors={colors} />
           )}
@@ -422,9 +425,17 @@ export default function ActionsTab({
                   setShowDone(v => !v);
                 }}>
                 <View style={st.foldRow}>
-                  <Txt variant="overlineSm" color={colors.inkFaint}>
-                    DONE · {finished.length}
-                  </Txt>
+                  <View style={st.foldText}>
+                    <Txt variant="overlineSm" color={colors.inkFaint}>
+                      DONE · {finished.length}
+                    </Txt>
+                    {/* Folded away, so the first one is said here: a count alone says nothing. */}
+                    {!showDone ? (
+                      <Txt variant="chipSoft" color={colors.inkSoft} numberOfLines={1}>
+                        {previewOf(finished.slice(0, 1).map(shown))}
+                      </Txt>
+                    ) : null}
+                  </View>
                   <Icon
                     name={showDone ? 'chevronUp' : 'chevronDown'}
                     size={s(16)}
@@ -434,7 +445,11 @@ export default function ActionsTab({
                 </View>
               </Pressable>
               {showDone ? (
-                <View style={st.list}>{finished.map(r => row(r, true))}</View>
+                <FlatPanel colors={colors}>
+                  <View style={st.panel}>
+                    <Rows colors={colors}>{finished.map(r => row(r, true))}</Rows>
+                  </View>
+                </FlatPanel>
               ) : null}
             </>
           ) : null}
@@ -444,7 +459,11 @@ export default function ActionsTab({
       {decisions.length > 0 ? (
         <>
           <SectionHead label="DECIDED" count={decisions.length} colors={colors} style={st.heading} />
-          <View style={st.list}>{decisions.map(r => plain(r, colors.primary))}</View>
+          <FlatPanel colors={colors}>
+            <View style={st.panel}>
+              <Rows colors={colors}>{decisions.map(r => plain(r, colors.primary))}</Rows>
+            </View>
+          </FlatPanel>
         </>
       ) : null}
 
@@ -456,7 +475,11 @@ export default function ActionsTab({
             colors={colors}
             style={st.heading}
           />
-          <View style={st.list}>{questions.map(r => plain(r, colors.success))}</View>
+          <FlatPanel colors={colors}>
+            <View style={st.panel}>
+              <Rows colors={colors}>{questions.map(r => plain(r, colors.success))}</Rows>
+            </View>
+          </FlatPanel>
         </>
       ) : null}
     </ScrollView>
@@ -466,7 +489,7 @@ export default function ActionsTab({
 function makeStyles(c: Colors) {
   return StyleSheet.create({
     pad: { paddingHorizontal: s(16), paddingBottom: s(30), gap: s(12) },
-    list: { gap: s(10) },
+    panel: { paddingHorizontal: s(14) },
     heading: { marginTop: s(10) },
     addRow: { flexDirection: 'row', paddingHorizontal: s(2), paddingTop: s(2) },
     flex: { flex: 1 },
@@ -475,7 +498,7 @@ function makeStyles(c: Colors) {
     fill: { height: '100%', borderRadius: s(3) },
     checkRow: { flexDirection: 'row', alignItems: 'flex-start' },
     checkMain: { flex: 1 },
-    check: { flexDirection: 'row', gap: s(12), padding: s(14), alignItems: 'flex-start' },
+    check: { flexDirection: 'row', gap: s(12), paddingVertical: s(2), alignItems: 'flex-start' },
     box: {
       width: s(23),
       height: s(23),
@@ -496,6 +519,7 @@ function makeStyles(c: Colors) {
       paddingVertical: s(4),
       borderRadius: s(8),
     },
+    foldText: { flex: 1, flexShrink: 1 },
     foldRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -503,7 +527,7 @@ function makeStyles(c: Colors) {
       paddingVertical: s(8),
       marginTop: s(4),
     },
-    plain: { flexDirection: 'row', gap: s(12), padding: s(14), alignItems: 'stretch' },
+    plain: { flexDirection: 'row', gap: s(12), alignItems: 'stretch' },
     rule: { width: s(3), borderRadius: s(2) },
   });
 }

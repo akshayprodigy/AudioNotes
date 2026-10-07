@@ -22,8 +22,10 @@ import { writerBlockedReason } from '../deviceFit';
 import {
   DOC_KEY,
   EditedTag,
+  FlatPanel,
   Prose,
   QuietAction,
+  Rows,
   ToolButton,
   editTargetOf,
   editedText,
@@ -426,37 +428,40 @@ export default function SummaryTab({
       {highlights.length > 0 ? (
         <View style={st.highlights}>
           <SectionHead label="HIGHLIGHTS" count={highlights.length} colors={colors} />
-          {highlights.map(h => (
-            <Raised key={h.id} edge={colors.line} fill={colors.card} rad={radius.card} depth={4}>
-              <View style={st.highlight}>
-                <View style={st.flex}>
-                  <Txt variant="body" color={h.text ? colors.ink : colors.inkSoft}>
-                    {h.text ?? 'Nothing said here yet'}
-                  </Txt>
-                  <ProvenanceButton
-                    anchorStartMs={h.anchorStartMs}
-                    onOpen={onOpenProvenance}
-                    canPlay={canPlay}
-                  />
-                </View>
-                <IconButton icon="x" label="Remove this mark" onPress={() => onRemoveMark(h.id)} />
-              </View>
-            </Raised>
-          ))}
+          <FlatPanel colors={colors}>
+            <View style={st.panelPad}>
+              <Rows colors={colors}>
+                {highlights.map(h => (
+                  <View key={h.id} style={st.highlight}>
+                    <View style={st.flex}>
+                      <Txt variant="body" color={h.text ? colors.ink : colors.inkSoft}>
+                        {h.text ?? 'Nothing said here yet'}
+                      </Txt>
+                      <ProvenanceButton
+                        anchorStartMs={h.anchorStartMs}
+                        onOpen={onOpenProvenance}
+                        canPlay={canPlay}
+                      />
+                    </View>
+                    <IconButton icon="x" label="Remove this mark" onPress={() => onRemoveMark(h.id)} />
+                  </View>
+                ))}
+              </Rows>
+            </View>
+          </FlatPanel>
         </View>
       ) : null}
       <Slide>
-        <Raised
-          edge={colors.primaryEdge}
-          gradient={{ from: colors.primary, to: colors.primaryLight, angle: 135 }}
-          rad={radius.card24}
-          depth={6}>
+        {/* A flat tinted panel, not the raised indigo card it was: this is what people READ, and
+            white text on a gradient with a 3-D edge is a hero banner, not a page. The brand shows
+            as the tint and as the primary-coloured labels and tools. */}
+        <View style={[st.hero, { backgroundColor: colors.primarySoft }]}>
           <View style={st.gist}>
             {/* The meeting's shape, on the card rather than in tiles of its own below. Two large
                 white boxes to hold the numerals 18 and 3 was most of a screen spent on a fact
                 that fits on one line. */}
             <View style={st.headRow}>
-              <Txt variant="overlineSm" color={colors.onPrimary}>
+              <Txt variant="overlineSm" color={colors.primaryDeep}>
                 SUMMARY
               </Txt>
               {/* Phase 2 (sub-project 6a): the meeting's type, suggested from the transcript or
@@ -471,11 +476,11 @@ export default function SummaryTab({
                 disabled={template === DICTATION_TEMPLATE}
                 onPress={() => setTemplateSheetOpen(true)}
                 style={st.templateChip}>
-                <Txt variant="chipSoft" color={colors.onPrimary}>
+                <Txt variant="chipSoft" color={colors.primaryDeep}>
                   {templateLabel(template)}
                 </Txt>
               </Pressable>
-              <Txt variant="chipSoft" color={colors.onPrimary} style={[st.dim, st.meta]} numberOfLines={1}>
+              <Txt variant="chipSoft" color={colors.inkSoft} style={st.meta} numberOfLines={1}>
                 {`${mins} min · ${
                   template === DICTATION_TEMPLATE
                     ? 'one voice'
@@ -493,7 +498,7 @@ export default function SummaryTab({
                       label="Edit"
                       hint="Correct the summary"
                       colors={colors}
-                      tone={colors.onPrimary}
+                      tone={colors.primaryDeep}
                       onPress={() => onEdit(prose, 'summary')}
                     />
                   ) : null}
@@ -503,7 +508,7 @@ export default function SummaryTab({
                       label="Copy"
                       hint="Copies the summary text"
                       colors={colors}
-                      tone={colors.onPrimary}
+                      tone={colors.primaryDeep}
                       onPress={() => onCopy(prose)}
                     />
                   ) : null}
@@ -512,17 +517,17 @@ export default function SummaryTab({
             </View>
             {prose ? (
               <>
-                <Prose text={prose} colors={colors} color={colors.onPrimary} />
+                <Prose text={prose} colors={colors} />
                 {proseEdited ? (
                   <EditedTag
                     colors={colors}
-                    tone={colors.onPrimary}
+                    tone={colors.primaryDeep}
                     onRevert={onRevert ? () => onRevert('summary') : undefined}
                   />
                 ) : null}
               </>
             ) : (
-              <Txt variant="prose" color={colors.onPrimary}>
+              <Txt variant="prose" color={colors.ink}>
                 {reason === 'checking'
                   ? // No claim at all until the check has answered.
                     'Checking…'
@@ -544,7 +549,7 @@ export default function SummaryTab({
               </Txt>
             )}
             {!prose && reason === 'no-model' ? (
-              <Txt variant="chipSoft" color={colors.onPrimary} style={st.note}>
+              <Txt variant="chipSoft" color={colors.inkSoft} style={st.note}>
                 Settings → Models
               </Txt>
             ) : null}
@@ -564,7 +569,7 @@ export default function SummaryTab({
               </View>
             ) : null}
           </View>
-        </Raised>
+        </View>
       </Slide>
 
       {/* One line per thread this meeting belongs to (Phase 3), at most three — paid only, and
@@ -747,14 +752,16 @@ function Glance({
   );
 }
 
-function makeStyles(_c: Colors) {
+function makeStyles(c: Colors) {
   return StyleSheet.create({
     pad: { paddingHorizontal: s(16), paddingBottom: s(30), gap: s(14) },
     reviewWrap: { marginBottom: s(14) },
     reviewBanner: { flexDirection: 'row', alignItems: 'center', gap: s(12), padding: s(14) },
     highlights: { gap: s(10) },
-    highlight: { flexDirection: 'row', gap: s(10), padding: s(14), alignItems: 'flex-start' },
+    highlight: { flexDirection: 'row', gap: s(10), alignItems: 'flex-start' },
     flex: { flex: 1, gap: s(8) },
+    hero: { borderRadius: radius.card24, overflow: 'hidden' },
+    panelPad: { paddingHorizontal: s(14) },
     gist: { padding: s(18), gap: s(12) },
     headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: s(6) },
     templateChip: {
@@ -762,9 +769,8 @@ function makeStyles(_c: Colors) {
       paddingHorizontal: s(8),
       paddingVertical: s(3),
       borderRadius: radius.pill,
-      backgroundColor: 'rgba(255,255,255,0.18)',
+      backgroundColor: c.card,
     },
-    dim: { opacity: 0.8 },
     // The one member of the header row that may lose characters: at 384 dp the chip, the meta,
     // Edit and Copy do not fit, and without this the row overflows and clips "Copy" to "Co".
     meta: { flexShrink: 1 },

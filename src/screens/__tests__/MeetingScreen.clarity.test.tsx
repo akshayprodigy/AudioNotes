@@ -169,6 +169,18 @@ describe('the Minutes tab leads with the takeaway', () => {
   });
 });
 
+describe('a folded section says what is in it', () => {
+  it('shows the first finished next step beside DONE while it is folded', async () => {
+    (db.items as jest.Mock).mockResolvedValue(FIXTURE);
+    (db.minutes as jest.Mock).mockResolvedValue([]);
+    (db.doneItems as jest.Mock).mockResolvedValue(new Set(['i4']));
+    const tree = await open({ tab: 'actions' });
+    expect(texts(tree)).toContain('DONE · 1');
+    expect(texts(tree)).toContain('I will share the checklist');
+    await act(async () => tree.unmount());
+  });
+});
+
 describe('the Summary tab shows what is in each count', () => {
   it('puts the first decision beside its count', async () => {
     (db.items as jest.Mock).mockResolvedValue(FIXTURE);

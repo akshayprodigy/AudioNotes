@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Icon, { type IconName } from '../../components/Icon';
-import { Raised, Txt } from '../../components/ui';
+import { Txt } from '../../components/ui';
 import { radius, s, type Colors } from '../../theme';
 import { MINUTE_SOURCE_USER, USER_GEN } from '../../pipeline/types';
 import Heading from './Heading';
@@ -885,18 +885,59 @@ export function EditButton({
 export const editLabelFor = (kind: string) =>
   kind === 'action' ? 'Edit this action' : kind === 'decision' ? 'Edit this decision' : kind === 'question' ? 'Edit this question' : 'Edit this line';
 
+/**
+ * The surface a reading area sits on: the theme's card colour, a hairline edge, rounded corners and
+ * NO raised shadow. Reading twenty items on a stack of 3-D cards is card soup; one flat panel with
+ * hairlines between its rows is a page.
+ */
+export function FlatPanel({ colors, children }: { colors: Colors; children: React.ReactNode }) {
+  return (
+    <View
+      style={{
+        backgroundColor: colors.card,
+        borderRadius: radius.card24,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: colors.line,
+        overflow: 'hidden',
+      }}>
+      {children}
+    </View>
+  );
+}
+
+/** One hairline, in the theme's own line colour. Separates rows; carries no meaning of its own. */
+export function Hairline({ colors }: { colors: Colors }) {
+  return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: colors.line }} />;
+}
+
+/** Rows with a hairline between each pair and a little air around every one. */
+export function Rows({ colors, children }: { colors: Colors; children: React.ReactNode }) {
+  const st = React.useMemo(() => makeStyles(colors), [colors]);
+  const rows = React.Children.toArray(children);
+  return (
+    <View>
+      {rows.map((row, i) => (
+        <View key={i}>
+          {i > 0 ? <Hairline colors={colors} /> : null}
+          <View style={st.flatRow}>{row}</View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 /** A card with nothing in it yet, said plainly rather than left blank. */
 export function Empty({ text, colors }: { text: string; colors: Colors }) {
   const st = React.useMemo(() => makeStyles(colors), [colors]);
   return (
-    <Raised edge={colors.line} fill={colors.card} rad={radius.card24} depth={4}>
+    <FlatPanel colors={colors}>
       <View style={st.empty}>
         <Icon name="list" size={s(22)} color={colors.inkFaint} strokeWidth={2.4} />
         <Txt variant="body" color={colors.inkSoft} style={st.emptyText}>
           {text}
         </Txt>
       </View>
-    </Raised>
+    </FlatPanel>
   );
 }
 
@@ -921,6 +962,7 @@ function makeStyles(_c: Colors) {
     head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: s(10) },
     shrink: { flexShrink: 1 },
     quiet: { minHeight: MIN_TOUCH, alignItems: 'center', justifyContent: 'center', paddingHorizontal: s(12) },
+    flatRow: { paddingVertical: s(14) },
     editBtn: { width: MIN_TOUCH, height: MIN_TOUCH, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
     quietText: { textDecorationLine: 'underline' },
     doneMark: { flexDirection: 'row', alignItems: 'center', gap: s(4) },
