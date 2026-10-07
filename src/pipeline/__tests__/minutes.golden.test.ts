@@ -42,6 +42,11 @@ const F16 = [
   { text: "Let's get started. Let's begin the review after lunch.", speakerId: 'S1' }, // flow, then flow + time
   { text: 'Meera will triage tomorrow.', speakerId: 'S0' }, // due without an object: action
   { text: 'Meera will triage.', speakerId: 'S0' }, // neither: not an action
+  // Enough words and a due to pass the open-verb test, but be/not/never rule them out first:
+  { text: 'Priya will be the lead on the launch tomorrow.', speakerId: 'S1' },
+  { text: 'Priya will probably not ship the build by Friday.', speakerId: 'S1' },
+  { text: 'Priya will never agree to that deal.', speakerId: 'S0' },
+  { text: 'I will not send the notes tomorrow.', speakerId: 'S0' },
 ];
 
 const DEDUP = [
