@@ -87,7 +87,7 @@ const speakerEdits = (meetingId: string) =>
 beforeEach(() => {
   mockSqlite = new DatabaseSync(':memory:');
   mockSqlite.exec('PRAGMA foreign_keys = ON;');
-  for (const t of ['meetings', 'utterances', 'speakers']) mockSqlite.exec(ddlFor(t));
+  for (const t of ['meetings', 'utterances', 'speakers', 'items']) mockSqlite.exec(ddlFor(t));
   mockSqlite.exec(EDITS_DDL);
   for (const m of ['m1', 'm2']) {
     mockSqlite
@@ -116,6 +116,33 @@ beforeEach(() => {
 afterEach(() => mockSqlite.close());
 
 describe('mergeSpeakers', () => {
+  it('repoints an action owned by the dropped speaker at the kept one, and leaves other owners alone', async () => {
+    const put = (id: string, m: string, owner: string | null) =>
+      mockSqlite
+        .prepare(
+          "INSERT INTO items(id, meeting_id, kind, text, owner_json, gen_version, anchor_start_ms, anchor_end_ms, created_at) VALUES(?,?, 'action', 'x', ?, 'v1', 0, 1, 0)",
+        )
+        .run(id, m, owner);
+    put('i-dropped', 'm1', JSON.stringify({ kind: 'speaker', id: 'm1:b' }));
+    put('i-dropped-reordered', 'm1', JSON.stringify({ id: 'm1:b', kind: 'speaker' }));
+    put('i-kept', 'm1', JSON.stringify({ kind: 'speaker', id: 'm1:c' }));
+    put('i-person', 'm1', JSON.stringify({ kind: 'person', name: 'Maya' }));
+    put('i-none', 'm1', null);
+    put('i-other-meeting', 'm2', JSON.stringify({ kind: 'speaker', id: 'm2:b' }));
+
+    await db.mergeSpeakers('m1', 'm1:a', 'm1:b');
+
+    const owners = Object.fromEntries(
+      (mockSqlite.prepare('SELECT id, owner_json FROM items').all() as unknown as { id: string; owner_json: string | null }[]).map(r => [r.id, r.owner_json]),
+    );
+    expect(owners['i-dropped']).toBe(JSON.stringify({ kind: 'speaker', id: 'm1:a' }));
+    expect(owners['i-dropped-reordered']).toBe(JSON.stringify({ kind: 'speaker', id: 'm1:a' }));
+    expect(owners['i-kept']).toBe(JSON.stringify({ kind: 'speaker', id: 'm1:c' }));
+    expect(owners['i-person']).toBe(JSON.stringify({ kind: 'person', name: 'Maya' }));
+    expect(owners['i-none']).toBeNull();
+    expect(owners['i-other-meeting']).toBe(JSON.stringify({ kind: 'speaker', id: 'm2:b' }));
+  });
+
   it('moves every line to the kept speaker and drops the other, and touches nothing else', async () => {
     await db.mergeSpeakers('m1', 'm1:a', 'm1:b');
 

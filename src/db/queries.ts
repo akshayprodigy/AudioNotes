@@ -556,6 +556,19 @@ export const db = {
         sql: 'UPDATE utterances SET speaker_id = ? WHERE meeting_id = ? AND speaker_id = ?',
         params: [keepId, meetingId, dropId],
       },
+      // An action whose owner was the dropped speaker is now the kept speaker's: owner_json points
+      // at a speaker by id (F14), and a row that names a speaker that no longer exists would fall
+      // back to its stored text. Matched on the exact JSON the writers produce (either key order)
+      // rather than json_set, because the JSON1 functions are not guaranteed in the bundled SQLCipher.
+      {
+        sql: 'UPDATE items SET owner_json = ? WHERE meeting_id = ? AND owner_json IN (?, ?)',
+        params: [
+          JSON.stringify({ kind: 'speaker', id: keepId }),
+          meetingId,
+          JSON.stringify({ kind: 'speaker', id: dropId }),
+          JSON.stringify({ id: dropId, kind: 'speaker' }),
+        ],
+      },
       { sql: 'DELETE FROM speakers WHERE id = ?', params: [dropId] },
     ];
     await Storage.transaction(JSON.stringify(statements));
