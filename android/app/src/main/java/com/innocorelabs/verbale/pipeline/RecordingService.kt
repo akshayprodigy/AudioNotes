@@ -396,11 +396,12 @@ class RecordingService : Service(), CaptureListener {
                 // Logged every run, pass or fail: the thresholds were set from six recordings on
                 // one phone, and this line is how the next phone tells us they were wrong.
                 Log.i(TAG, "announcement check: $verdict")
-                announcedLagMs = AnnouncementSpan.lagToExclude(verdict)
-                // Written now, heard or not: the stamp below is heard-only, the exclusion is not.
-                val lag = announcedLagMs
-                if (lag != null) meetingId?.let { db.setAnnouncedLag(it, lag) }
-                AnnouncementPlayer.verified(playback, verdict.heard)
+                // What to store is AnnouncementStore's call (D04): the lag whenever the clip was
+                // found, written now; the stamp below only when it was heard.
+                val plan = AnnouncementStore.plan(verdict)
+                announcedLagMs = plan.lagMs
+                meetingId?.let { id -> AnnouncementStore.applyLag(plan) { db.setAnnouncedLag(id, it) } }
+                AnnouncementPlayer.verified(playback, plan.stampHeard)
               }
             }
 

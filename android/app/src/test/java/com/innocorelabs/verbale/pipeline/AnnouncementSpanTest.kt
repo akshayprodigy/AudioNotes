@@ -100,4 +100,22 @@ class AnnouncementSpanTest {
     // Not found means nothing matched: cutting the opening seconds there would cut real speech.
     assertNull(AnnouncementSpan.lagToExclude(verdict(heard = false, found = false, lagFrames = 35)))
   }
+
+  @Test
+  fun `the engine drops the span only when a lag is stored`() {
+    val spans = longArrayOf(400, 4_000, 9_000, 27_000)
+    // No lag: every span, the very same array.
+    assertEquals(spans, AnnouncementSpan.free(spans, null, 4_505L))
+    // A lag but no clip length: also untouched.
+    assertEquals(spans, AnnouncementSpan.free(spans, 350L, null))
+    // A lag and a clip: the opening span lies inside the cut and is dropped.
+    assertArrayEquals(longArrayOf(9_000, 27_000), AnnouncementSpan.free(spans, 350L, 4_505L))
+  }
+
+  @Test
+  fun `a lag of zero is a lag`() {
+    // 0 ms is a real position (clip at the very start), not "no lag"; a null check written as a
+    // truthiness check would skip it.
+    assertArrayEquals(longArrayOf(6_000, 20_000), AnnouncementSpan.free(longArrayOf(0, 3_000, 6_000, 20_000), 0L, 4_505L))
+  }
 }

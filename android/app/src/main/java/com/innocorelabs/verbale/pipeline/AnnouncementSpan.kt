@@ -31,6 +31,16 @@ object AnnouncementSpan {
   fun lagToExclude(verdict: AnnouncementVerifier.Verdict): Long? =
     if (verdict.found) verdict.lagFrames * 10L else null
 
+  /**
+   * The engine's decision, without the database: the spans with the clip cut out when the meeting
+   * HAS a stored lag and the clip's length is known, and the same spans (the same array) when
+   * either is missing. A meeting with no lag keeps every span.
+   */
+  fun free(spans: LongArray, lagMs: Long?, clipMs: Long?): LongArray {
+    if (lagMs == null || clipMs == null) return spans
+    return exclude(spans, lagMs, lagMs + clipMs)
+  }
+
   /** Below this a trimmed remainder is the edge of the margin, not a word. */
   private const val MIN_REMAINDER_MS = 250L
 

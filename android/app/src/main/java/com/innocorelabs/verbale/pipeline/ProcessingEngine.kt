@@ -621,7 +621,7 @@ class ProcessingEngine(
   private fun announcementFree(db: AudioDb, meetingId: String, spans: LongArray): LongArray {
     val lag = db.announcedLagMs(meetingId) ?: return spans
     val clipMs = AnnouncementPlayer.bundledClipMs(ctx) ?: return spans
-    val out = AnnouncementSpan.exclude(spans, lag, lag + clipMs)
+    val out = AnnouncementSpan.free(spans, lag, clipMs)
     // Always logged, with the numbers a lost first line (D16) needs: where the cut was, and where
     // the first VAD span began before and after it. Diagnostic only; the exclusion is unchanged.
     Log.i(
