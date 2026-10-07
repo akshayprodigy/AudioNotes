@@ -58,4 +58,48 @@ class CaptureEndTest {
       CaptureEnd.afterFlush(RecordingService.END_NORMAL) { throw IllegalStateException("closed") },
     )
   }
+
+  // ---- CaptureLoopClose: the order, with fakes ----
+
+  private class Steps {
+    val order = ArrayList<String>()
+    fun flush(throws: Boolean = false): () -> Unit = { order.add("flush"); if (throws) throw IOException("ENOSPC") }
+    fun close(throws: Boolean = false): () -> Unit = { order.add("close"); if (throws) throw IOException("ENOSPC") }
+    val stopSelf: () -> Unit = { order.add("stopSelf") }
+  }
+
+  @Test fun theClosingSequenceRunsFlushThenCloseThenStopSelfForAnAbnormalEnd() {
+    val s = Steps()
+    val r = CaptureLoopClose.run(RecordingService.END_DISK_FULL, s.flush(), s.close(), s.stopSelf)
+    assertEquals(listOf("flush", "close", "stopSelf"), s.order)
+    assertEquals(RecordingService.END_DISK_FULL, r)
+  }
+
+  @Test fun aFlushThatThrowsStillClosesAndStopsTheService() {
+    val s = Steps()
+    val r = CaptureLoopClose.run(RecordingService.END_NORMAL, s.flush(throws = true), s.close(), s.stopSelf)
+    assertEquals(listOf("flush", "close", "stopSelf"), s.order)
+    assertEquals(RecordingService.END_WRITE_FAILED, r)
+  }
+
+  @Test fun aCloseThatThrowsStillStopsTheService() {
+    val s = Steps()
+    val r = CaptureLoopClose.run(RecordingService.END_NORMAL, s.flush(), s.close(throws = true), s.stopSelf)
+    assertEquals(listOf("flush", "close", "stopSelf"), s.order)
+    assertEquals(RecordingService.END_WRITE_FAILED, r)
+  }
+
+  @Test fun bothThrowingStillStopsTheServiceAndKeepsTheLoopsOwnReason() {
+    val s = Steps()
+    val r = CaptureLoopClose.run(RecordingService.END_MIC_LOST, s.flush(throws = true), s.close(throws = true), s.stopSelf)
+    assertEquals(listOf("flush", "close", "stopSelf"), s.order)
+    assertEquals(RecordingService.END_MIC_LOST, r)
+  }
+
+  @Test fun aNormalStopTearsTheServiceDownElsewhereNotHere() {
+    val s = Steps()
+    val r = CaptureLoopClose.run(RecordingService.END_NORMAL, s.flush(), s.close(), s.stopSelf)
+    assertEquals(listOf("flush", "close"), s.order)
+    assertEquals(RecordingService.END_NORMAL, r)
+  }
 }

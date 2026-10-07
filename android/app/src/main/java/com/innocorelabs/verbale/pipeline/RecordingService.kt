@@ -346,11 +346,17 @@ class RecordingService : Service(), CaptureListener {
       val buf = ByteArray(4096)
       // APPEND, not truncate: after a START_REDELIVER_INTENT restart the file already holds
       // everything captured before the kill. Opening without append would silently delete it.
-      // `use` closes the stream, and closing flushes again, so a full disk can throw from the close
-      // as well as from the flush in the finally below. Contained for the same reason (N05): the
-      // catch at the end of this block keeps stopSelf() reachable.
+      // Closing flushes again, so a full disk can throw from the close as well as from the flush.
+      // Both are contained, and stopSelf() stays reachable, in CaptureLoopClose (N05).
+      val stream = try {
+        BufferedOutputStream(FileOutputStream(File(path), true), 1 shl 16)
+      } catch (e: Exception) {
+        Log.e(TAG, "opening the audio file failed", e)
+        endReason = CaptureEnd.reasonAfterFailure(endReason)
+        null
+      }
       try {
-      BufferedOutputStream(FileOutputStream(File(path), true), 1 shl 16).use { out ->
+      stream?.let { out ->
         record.startRecording()
         // AFTER startRecording(), deliberately: the clip has to land IN the audio. Announcing
         // before the recorder is live would produce a polite app and a recording that proves
@@ -526,17 +532,17 @@ class RecordingService : Service(), CaptureListener {
         } finally {
           try { record.stop() } catch (_: Exception) {}
           record.release()
-          // Contained: this runs before stopSelf() below, and a flush that throws on a full disk
-          // used to skip it (N05). See CaptureEnd.afterFlush.
-          endReason = CaptureEnd.afterFlush(endReason) { out.flush() }
         }
       }
       } catch (e: Exception) {
-        Log.e(TAG, "closing the audio file failed", e)
+        Log.e(TAG, "capture setup failed", e)
         endReason = CaptureEnd.reasonAfterFailure(endReason)
       }
-      // Disk-full / mic-loss end the loop from inside; the service still has to tear itself down.
-      if (endReason != END_NORMAL) stopSelf()
+      // Flush, close, then (for any ending but a Stop) stopSelf(), each step contained — a full
+      // disk throws from the flush and from the close, and used to skip stopSelf() (N05). The
+      // order is CaptureLoopClose's, held by CaptureEndTest. Disk-full / mic-loss end the loop
+      // from inside; the service still has to tear itself down.
+      endReason = CaptureLoopClose.run(endReason, { stream?.flush() }, { stream?.close() }, { stopSelf() })
     }
 
     // AFTER the capture thread exists, deliberately: this reads the file that thread writes, and
