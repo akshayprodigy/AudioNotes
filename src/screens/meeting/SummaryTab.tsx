@@ -15,6 +15,8 @@ import { PLAY_MANAGE_URL, licenceStatus, playAvailable, playPlans, syncEntitleme
 import { trialLength, trialPlan } from '../../billing/trialTerms';
 import { DICTATION_TEMPLATE, TEMPLATE_IDS, templateHint, templateLabel } from './templateLabels';
 import { threadLine } from '../threadData';
+import { db } from '../../db/queries';
+import { writerCheckKey, writerCheckLine } from './writerCheck';
 import { soundsLike } from '../voiceCopy';
 import { writerBlockedReason } from '../deviceFit';
 import {
@@ -149,6 +151,30 @@ export default function SummaryTab({
   // run the model is still the summary of that meeting.
   const prose = editedText(ed, 'summary', DOC_KEY, written);
   const proseEdited = isEdited(ed, 'summary', DOC_KEY);
+
+  // F24: how many sentences the writer's fact check removed from this summary and the minutes
+  // behind it. Re-read when the summary row changes, so "Write it again" replaces the line rather
+  // than leaving the last run's count under it. Hidden once the person has put their own words in:
+  // it describes what the model wrote, and that is no longer what is on the card.
+  const checkedMeetingId = minutes.find(m => m.kind === 'summary' && m.source === 'llm')?.meetingId;
+  const [removedLine, setRemovedLine] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (!checkedMeetingId) {
+      setRemovedLine(null);
+      return;
+    }
+    let live = true;
+    Promise.resolve(db.getSetting(writerCheckKey(checkedMeetingId)))
+      .then(v => {
+        if (live) setRemovedLine(writerCheckLine(v));
+      })
+      .catch(() => {
+        if (live) setRemovedLine(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, [checkedMeetingId, written]);
   const mins = Math.max(1, Math.round(speechMs / 60000));
 
   // THE SAME LIST THE TABS THIS LINKS TO WILL DRAW, and not a second count of its own.
@@ -580,6 +606,11 @@ export default function SummaryTab({
           only recourse when the model has written a poor one is to ask it again — there is
           nothing else on the screen that can change the answer. Withheld when the model is
           missing or the phone cannot run it, where the button would be an empty promise. */}
+      {removedLine && prose && !proseEdited ? (
+        <Txt variant="chipSoft" color={colors.inkDim} style={st.lapsed}>
+          {removedLine}
+        </Txt>
+      ) : null}
       {stale && prose ? (
         <Txt variant="chipSoft" color={colors.inkDim} style={st.lapsed}>
           {STALE_SUMMARY_COPY}

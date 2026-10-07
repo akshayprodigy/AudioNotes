@@ -37,6 +37,7 @@
 #include "minutes/ask.h"
 #include "minutes/evidence.h"
 #include "minutes/evidence_record.h"
+#include "minutes/fact_check.h"
 #include "minutes/llm_minutes.h"
 #include "minutes/minutes_extractor.h"
 #include "minutes/templates.h"
@@ -1075,6 +1076,29 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeDropAbsenceTail(
     JNIEnv* env, jobject /*thiz*/, jstring jText) {
   return promptCall(env, jText, &audionotes::dropAbsenceTail);
+}
+
+// F24 (minutes/fact_check.h): hold what the writer wrote against the transcript it was written
+// from. Two strings in and a structured answer out, so not promptCall; the answer is ONE string,
+// "<dropped>|<class,class>\n<text>", because a JNI method returns one thing and Kotlin
+// (FactGuard.parse) is the one place that reads it back.
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_innocorelabs_verbale_pipeline_NativeBridge_nativeFactCheck(
+    JNIEnv* env, jobject /*thiz*/, jstring jWritten, jstring jTranscript) {
+  try {
+    const audionotes::FactCheck r =
+        audionotes::checkWriterFacts(jstr(env, jWritten), jstr(env, jTranscript));
+    std::string out = std::to_string(r.dropped) + "|";
+    for (size_t i = 0; i < r.classes.size(); ++i) {
+      if (i) out += ",";
+      out += r.classes[i];
+    }
+    out += "\n" + r.text;
+    return env->NewStringUTF(out.c_str());
+  } catch (const std::exception& e) {
+    throwRuntime(env, e.what());
+    return env->NewStringUTF("");
+  }
 }
 
 // Not promptCall: every other prompt builder here takes one jstring in, but a meeting type is a

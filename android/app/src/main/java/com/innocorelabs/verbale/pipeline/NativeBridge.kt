@@ -323,6 +323,14 @@ object NativeBridge {
   external fun nativeDropAbsenceTail(text: String): String
 
   /**
+   * F24: the writer fact check (cpp/minutes/fact_check.h). [written] is held against [transcript];
+   * every sentence with a number, amount, date or completion verb the transcript does not support
+   * is removed. Returns "<dropped>|<class,class>\n<text>" — read it with [FactGuard.parse], never
+   * by hand. Pure text in and out: no model, and it can throw only on a native allocation failure.
+   */
+  external fun nativeFactCheck(written: String, transcript: String): String
+
+  /**
    * Which notes to merge so they fit one prompt. Flat [groupIndex, noteIndex, ...] pairs; empty
    * when the notes already fit.
    */

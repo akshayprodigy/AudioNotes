@@ -194,6 +194,12 @@ object Narrator {
 
     val spks = db.speakers(meetingId)
 
+    // F24: the plain words of the meeting, which every writer output below is held against before
+    // it can be stored. The writer was shown this text (whole, or as digests of it), so it is the
+    // right thing to check against; speaker labels are left out because they are not claims.
+    val transcript = utts.joinToString("\n") { it.text }
+    val factTally = FactGuard.Tally()
+
     val chunks = NativeBridge.nativeLlmChunks(
       Array(utts.size) { utts[it].text },
       Array(utts.size) { utts[it].speakerId ?: "" },
@@ -310,18 +316,30 @@ object Narrator {
       // not cached from earlier in run(), so "Write it again" after changing the type on the
       // Summary tab picks up the new one without a second narration pass.
       val template = db.template(meetingId) ?: "general"
-      val narrative =
-        clean(gen(NativeBridge.nativeLlmNarrativePrompt(source, template), NARRATIVE_TOKENS), template)
+      //
+      // CHECKED BEFORE THE SUMMARY IS BUILT FROM IT (F24): the summary is a condensation of the
+      // narrative, so a sentence the transcript does not support must be gone from what the summary
+      // reads, not merely from what is stored. A narrative the check empties is a narrative the
+      // model did not produce: the same "nothing stored" exit below.
+      val narrative = FactGuard.guard(
+        clean(gen(NativeBridge.nativeLlmNarrativePrompt(source, template), NARRATIVE_TOKENS), template),
+        transcript, factTally,
+      )
       if (narrative.isEmpty()) {
-        Log.w(TAG, "no narrative produced for $meetingId")
+        Log.w(TAG, "no narrative produced for $meetingId (${factTally.dropped} sentence(s) removed " +
+          "as unsupported)")
         return false
       }
 
       if (tick()) return false
       step++
-      val summary = clean(gen(NativeBridge.nativeLlmSummaryPrompt(narrative), SUMMARY_TOKENS))
+      val summary = FactGuard.guard(
+        clean(gen(NativeBridge.nativeLlmSummaryPrompt(narrative), SUMMARY_TOKENS)),
+        transcript, factTally,
+      )
       if (summary.isEmpty()) {
-        Log.w(TAG, "no summary produced for $meetingId")
+        Log.w(TAG, "no summary produced for $meetingId (${factTally.dropped} sentence(s) removed " +
+          "as unsupported)")
         return false
       }
 
@@ -335,8 +353,13 @@ object Narrator {
         DraftMinute("narrative", narrative, "llm"),
       ))
       // The model likes to wrap a one-liner in quotes despite being told not to.
-      val line = headline.trim().trim('"', '“', '”').trim()
+      val line = FactGuard.guard(headline.trim().trim('"', '“', '”').trim(), transcript, factTally)
       if (line.isNotEmpty()) db.setSummaryLine(meetingId, line)
+
+      // What the check removed, for the Summary card's one quiet line. Written with the rows it
+      // describes and rewritten on every narration ("0|" when nothing was removed), so a re-run
+      // never leaves a stale count under a summary that no longer has the sentences it counts.
+      db.putSetting(FactGuard.settingKey(meetingId), factTally.encoded())
 
       // The checkpoint has served its purpose; leaving it would make a later re-narration resume
       // from stale digests of a transcript that may since have been re-diarized.
@@ -352,7 +375,8 @@ object Narrator {
 
       progress.onStage("narrate", total, total)
       Log.i(TAG, "narrated $meetingId in ${System.currentTimeMillis() - startedAt}ms " +
-        "(${chunks.size} chunk(s), summary ${summary.length} chars)")
+        "(${chunks.size} chunk(s), summary ${summary.length} chars, " +
+        "${factTally.dropped} unsupported sentence(s) removed ${factTally.classes})")
       return true
     } finally {
       NativeBridge.nativeLlmFree(handle)

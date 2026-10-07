@@ -126,6 +126,7 @@ struct Tok {
   int sent = 0;
   bool question = false;
   bool brk = false;         // a clause break sits between the previous token and this one
+  bool cap = false;         // written with a capital: a name, as far as this check can tell
 };
 
 bool isEmDash(const std::string& t, size_t i) {
@@ -282,7 +283,12 @@ void tokenizeInto(const std::string& raw, int sent, bool question, std::vector<T
         ++j;
       }
       (void)hasDigit;  // "q3", "v2": an opaque word either way
-      pushWord(lower(t.substr(i, j - i)));
+      {
+        Tok k;
+        k.w = lower(t.substr(i, j - i));
+        k.cap = t[i] >= 'A' && t[i] <= 'Z';
+        push(std::move(k));
+      }
       i = j;
       continue;
     }
@@ -874,7 +880,12 @@ Analysis analyze(const std::vector<Tok>& t, bool transcript) {
           }
         }
       }
-      m.consumed = true;  // a spelled "first" is a word, not a claim
+      if (!m.digit && m.keys.size() == 1 && m.keys[0] % 1000 == 0) {
+        // A spelled "fifteenth" is not a claim, but it IS the transcript naming a day.
+        const Key d = m.keys[0] / 1000;
+        if (d >= 1 && d <= 31) a.days.push_back(static_cast<int>(d));
+      }
+      m.consumed = true;
       continue;
     }
     // Times: "3 pm", "three o'clock", "ten thirty am"
@@ -1080,7 +1091,9 @@ int evaluateSentence(const std::string& sentence, const Index& x) {
   // supported by the same verb said about something the writer's sentence is also about.
   std::set<std::string> subject;
   for (const auto& tok : t) {
-    if (tok.num || tok.w.size() < 4) continue;
+    // A capitalised word is a name (Priya, Ravi) — who did it, not what it was done to, and the
+    // transcript has no reason to carry it: the speaker labels were never part of it.
+    if (tok.num || tok.cap || tok.w.size() < 4) continue;
     if (stopWords().count(tok.w) || verbForms().count(depossess(tok.w)) || catOf(tok.w) != C_NONE ||
         !currencyOf(tok.w).empty() || isDateWord(tok.w))
       continue;

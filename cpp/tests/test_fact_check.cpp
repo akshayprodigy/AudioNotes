@@ -214,6 +214,9 @@ static void weekdaysAndMonths() {
   CHECK(checkWriterFacts("The deadline is 10 March.", said).dropped == 0);
   CHECK(checkWriterFacts("The deadline is March 10.", said).dropped == 0);
   CHECK(checkWriterFacts("The deadline is the 10th of March.", said).dropped == 0);
+  // A day named alone, in words or digits, supports the same day in the other form.
+  CHECK(checkWriterFacts("It is due on the 15th.", "Get it to me by the fifteenth.").dropped == 0);
+  CHECK(checkWriterFacts("It is due on the 16th.", "Get it to me by the fifteenth.").dropped == 1);
   CHECK(checkWriterFacts("The deadline is 10/03.", said).dropped == 0);
   const auto wrongDay = checkWriterFacts("The deadline is 11 March.", said);
   CHECK(wrongDay.dropped == 1 && hasClass(wrongDay, "date"));
@@ -281,6 +284,15 @@ static void completionNeedsTheSameSubjectNearby() {
       "report is still being written.";
   CHECK(checkWriterFacts("The report was sent.", said).dropped == 1);
   CHECK(checkWriterFacts("The invite was sent.", said).dropped == 0);
+}
+
+static void aNameIsNotTheSubjectTheVerbIsHeldTo() {
+  // "Priya" comes from a speaker label; the transcript says "I". The export is what ties the
+  // claim to the transcript, and it does.
+  CHECK(checkWriterFacts("Priya finished the export screen.", "Yesterday I finished the export screen.").dropped == 0);
+  // A sentence about a name alone has no subject to hold, so the verb is held to the transcript.
+  CHECK(checkWriterFacts("Priya signed off.", "We signed the contract yesterday.").dropped == 0);
+  CHECK(checkWriterFacts("Priya signed off.", "We talked about the weather.").dropped == 1);
 }
 
 static void movedOnIsNotAPostponement() {
@@ -380,6 +392,7 @@ int main() {
   tenseFlipIsCaught();
   aNegatedOrAskedAboutCompletionDoesNotSupportIt();
   completionNeedsTheSameSubjectNearby();
+  aNameIsNotTheSubjectTheVerbIsHeldTo();
   movedOnIsNotAPostponement();
   aCleanSummaryPassesByteForByte();
   everySentenceUnsupportedLeavesNothing();
