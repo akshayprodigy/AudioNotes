@@ -33,6 +33,47 @@ verdicts — sampling only its agreements would measure half the instrument — 
 answer is hidden in the labelling file, because seeing it first is the quickest way to agree
 with it.
 
+## Quality benchmark (facts: prices, dates, owners, commitments)
+
+Counts factual errors on real meetings, the thing WER/DER and the minutes judge cannot see.
+Protocol: `docs/superpowers/reports/2026-10-07-phase-0-baseline.md` section 3. Standard library
+only. **This tool sets no thresholds and prints no pass/fail.**
+
+Order of work, per meeting (`<id>` is a directory under `eval/fixtures/`):
+
+    python3 -m eval.corpus.facts_label init <id>        # empty facts.json + facts.sheet.txt
+    # HUMAN: label from the AUDIO in facts.sheet.txt, delete the STATUS line (two people, apart)
+    python3 -m eval.corpus.facts_label import <id>      # sheet -> validated facts.json
+    python3 -m eval.corpus.facts_label validate <id>
+    python3 -m eval.corpus.facts_label agreement <id> a.json b.json
+    # HUMAN: a third person adjudicates the listed disagreements into the final facts.json
+    python3 -m eval.score_facts --fixture eval/fixtures/<id> --run <run.json>
+    # writes matches.todo.json (candidates only) and stops
+    # HUMAN: decide every pair while listening; save as matches.json
+    python3 -m eval.score_facts --fixture eval/fixtures/<id> --run <run.json> --matches matches.json
+    python3 -m eval.aggregate_facts eval/results/facts-*/facts_score.json --min-instances 30
+
+`--produced produced.json` takes the app's own export converted to a plain list
+(`id, kind, text, owner, due, anchor_ms, flagged_for_review, source`) instead of a run document.
+`meta.json` may carry the cohort tags `device`, `capture_path`, `tier`, `meeting_type`,
+`field_density`; reports are split by them.
+
+Rules the tooling enforces:
+
+- **Matches are human.** Without `--matches` nothing is scored. Every reference fact gets exactly
+  one outcome (`correct`, `wrong_value`, `missing`); every produced action/decision/price/date is
+  matched, `spurious`, or `ignored` with a written reason. A `wrong_value` row names which
+  `fields` were wrong, which is what separates owner errors from state errors.
+- **Count first.** A rate is printed only for a class with at least `--min-instances` (default 30)
+  reference instances; below that the report prints raw counts and the individual errors.
+- **Silent S1.** An S1 error whose produced item was not `flagged_for_review` has its own line.
+- `facts.json`, `truth.json`, matches and audio for `real-*` fixtures are gitignored; the outputs
+  land in `eval/results/` (also ignored). Nothing about a real meeting is committed.
+
+What needs a human: recording with consent, labelling, adjudicating, confirming every match.
+What is not here: an automated matcher and an adapter for the app's own exports (see
+`docs/superpowers/reports/2026-10-07-f23-benchmark-tooling.md`).
+
 ## Tests
 
     python3 -m unittest discover -s eval/tests -v
