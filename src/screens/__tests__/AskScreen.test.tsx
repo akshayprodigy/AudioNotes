@@ -80,7 +80,26 @@ describe('AskScreen', () => {
     (db.asks as jest.Mock).mockResolvedValue(past);
     const tree = await render();
     await press(tree, 'Play [2] Rahul at 0:06');
-    expect(nav.navigate).toHaveBeenCalledWith('Meeting', { meetingId: 'm1', tab: 'transcript', atMs: 6500 });
+    // And it PLAYS from there (F17): an Ask citation is the person asking to hear the moment, so
+    // the Meeting screen is told to, not merely to scroll.
+    expect(nav.navigate).toHaveBeenCalledWith('Meeting', { meetingId: 'm1', tab: 'transcript', atMs: 6500, play: true });
+  });
+
+  it('never shows a stored citation to the minutes as a moment (the A07 "[4] Minutes · 0:00")', async () => {
+    (db.asks as jest.Mock).mockResolvedValue([
+      {
+        ...past[0],
+        answer: 'A draft goes Friday [1] and the minutes say so [4].',
+        cites: [
+          { n: 1, refId: 'u1', startMs: 5000, speaker: 'Priya' },
+          { n: 4, refId: 'm1', startMs: 0, speaker: 'Minutes' },
+        ],
+      },
+    ]);
+    const t = texts(await render());
+    expect(t).toContain('[1] Priya · 0:05');
+    expect(t.some(x => x.includes('Minutes'))).toBe(false);
+    expect(t.some(x => x.includes('0:00'))).toBe(false);
   });
 
   it('sending a question asks the meeting and appends the answer', async () => {

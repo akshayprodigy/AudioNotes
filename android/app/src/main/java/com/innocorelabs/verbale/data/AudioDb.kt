@@ -667,6 +667,34 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     )
   }
 
+  /**
+   * Where an item was said, for an Ask citation: the speaker of the transcript line it was lifted
+   * from and that line's moment (the item's own anchor). Null for a hand-typed row — it never
+   * claimed a moment — and for an item that no longer exists.
+   *
+   * The line is found by the item's first source (its utterance id, else the line covering its
+   * anchor), the way [ItemClassifier.windowFor] finds it.
+   */
+  fun itemMoment(itemId: String): com.innocorelabs.verbale.pipeline.Asker.ItemMoment? {
+    var meetingId: String? = null
+    var anchor = 0L
+    db.rawQuery("SELECT meeting_id, gen_version, anchor_start_ms FROM items WHERE id=?", arrayOf(itemId)).use { c ->
+      if (!c.moveToFirst() || c.getString(1) == Gen.USER) return null
+      meetingId = c.getString(0)
+      anchor = c.getLong(2)
+    }
+    val speaker = db.rawQuery(
+      "SELECT u.speaker_id FROM item_sources s JOIN utterances u ON u.id = s.utterance_id " +
+        "WHERE s.item_id=? ORDER BY s.ordinal LIMIT 1",
+      arrayOf(itemId),
+    ).use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getString(0) else null }
+      ?: db.rawQuery(
+        "SELECT speaker_id FROM utterances WHERE meeting_id=? AND start_ms<=? AND end_ms>=? ORDER BY start_ms DESC LIMIT 1",
+        arrayOf(meetingId, anchor.toString(), anchor.toString()),
+      ).use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getString(0) else null }
+    return com.innocorelabs.verbale.pipeline.Asker.ItemMoment(speaker, anchor)
+  }
+
   /** The speaker id of one utterance, or null. */
   fun utteranceSpeaker(utteranceId: String): String? {
     db.rawQuery("SELECT speaker_id FROM utterances WHERE id=?", arrayOf(utteranceId)).use { c ->

@@ -108,6 +108,55 @@ static void bracketsThatAreNotCitesAreLeftAlone() {
   CHECK(a.cites.size() == 1 && a.cites[0] == 1);
 }
 
+
+// F17: the grammar is `body cite+`, so a cited answer can still hold a sentence nothing supports.
+// After generation every sentence without a valid [n] is dropped; nothing left means "nothing".
+static void anUncitedSentenceInsideACitedAnswerIsDropped() {
+  const AskAnswer a = validateAnswer(
+      "Priya agreed to a draft [1]. The budget is already fixed. Rahul wants another week [2].", 3);
+  CHECK(!a.nothing);
+  CHECK(a.text == "Priya agreed to a draft [1]. Rahul wants another week [2].");
+  CHECK(a.cites.size() == 2 && a.cites[0] == 1 && a.cites[1] == 2);
+  CHECK(a.text.find("budget") == std::string::npos);
+}
+
+static void aWholeAnswerOfUncitedSentencesIsNothing() {
+  CHECK(validateAnswer("Priya agreed to a draft. The budget is fixed.", 3).nothing);
+  // Cited only to a passage that does not exist: the cite is stripped, so the sentence is uncited.
+  CHECK(validateAnswer("Priya agreed to a draft [9]. The budget is fixed [7].", 3).nothing);
+  CHECK(validateAnswer("Priya agreed to a draft [9]. The budget is fixed [7].", 3).text.empty());
+}
+
+static void theCiteListComesFromWhatSurvivedInFirstMentionOrder() {
+  const AskAnswer a = validateAnswer("Fine [3]. Wrong and uncited. Also this [1]. Again [3].", 3);
+  CHECK(!a.nothing);
+  CHECK(a.cites.size() == 2 && a.cites[0] == 3 && a.cites[1] == 1);
+  CHECK(a.text == "Fine [3]. Also this [1]. Again [3].");
+}
+
+// The grammar writes every cite at the very end, after the full stop; that cite supports the
+// sentence it follows and must not strand it.
+static void aCiteAfterTheFullStopBelongsToTheSentenceBeforeIt() {
+  const AskAnswer a = validateAnswer("The draft goes Friday. [1] The final needs a week. [2][3]", 3);
+  CHECK(!a.nothing);
+  CHECK(a.cites.size() == 3 && a.cites[0] == 1 && a.cites[1] == 2 && a.cites[2] == 3);
+  CHECK(a.text.find("final needs a week") != std::string::npos);
+  const AskAnswer b = validateAnswer("Nothing but a claim. Another claim. [2]", 3);
+  CHECK(!b.nothing);
+  CHECK(b.text == "Another claim. [2]");
+}
+
+static void abbreviationsAndDecimalsDoNotSplitASentence() {
+  const AskAnswer a = validateAnswer("Mr. Rao will send version 2.1 on Friday [1].", 3);
+  CHECK(!a.nothing);
+  CHECK(a.text == "Mr. Rao will send version 2.1 on Friday [1].");
+}
+
+static void aLineBreakEndsASentenceToo() {
+  const AskAnswer a = validateAnswer("The draft goes Friday [1]\nand nothing supports this line", 3);
+  CHECK(a.text == "The draft goes Friday [1]");
+}
+
 int main() {
   promptIsNumberedStampedAndFenced();
   stampsPastAnHourReadLikeTheScreen();
@@ -120,6 +169,12 @@ int main() {
   anAnswerThatIsOnlyEchoIsNothing();
   thePromptCarriesAWorkedExample();
   grammarBoundsTheCitesToThePassages();
+  anUncitedSentenceInsideACitedAnswerIsDropped();
+  aWholeAnswerOfUncitedSentencesIsNothing();
+  theCiteListComesFromWhatSurvivedInFirstMentionOrder();
+  aCiteAfterTheFullStopBelongsToTheSentenceBeforeIt();
+  abbreviationsAndDecimalsDoNotSplitASentence();
+  aLineBreakEndsASentenceToo();
   if (failures) {
     std::fprintf(stderr, "test_ask: %d failure(s)\n", failures);
     return 1;

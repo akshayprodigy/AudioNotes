@@ -944,6 +944,45 @@ describe('the Summary tab’s counters', () => {
   });
 });
 
+/**
+ * F17: the meeting opened FROM a moment someone asked to hear — an Ask citation, a thread row, a
+ * worklist row — arrives with `atMs` and `play`, and plays from there once the recording is known
+ * to have audio. A search hit sends `atMs` alone and only scrolls.
+ */
+describe('opening a meeting at a moment with play', () => {
+  it('plays from the moment, once, when the recording has audio', async () => {
+    player().hasAudio.mockResolvedValue(true);
+    const tree = await render({ tab: 'transcript', atMs: 65_000, play: true });
+    expect(player().seek).toHaveBeenCalledWith(65_000);
+    expect(player().play).toHaveBeenCalledTimes(1);
+    expect(tree.root.findByType(TranscriptTab).props.scrollToMs).toBe(65_000);
+    // A later re-render must not play it again.
+    await act(async () => {
+      tree.update(
+        <MeetingScreen navigation={nav} route={{ key: 'meeting', name: 'Meeting', params: { meetingId: 'm1', tab: 'transcript', atMs: 65_000, play: true } } as any} />,
+      );
+    });
+    expect(player().play).toHaveBeenCalledTimes(1);
+    await act(async () => tree.unmount());
+  });
+
+  it('does not play for a search hit, which sends atMs alone', async () => {
+    player().hasAudio.mockResolvedValue(true);
+    const tree = await render({ tab: 'transcript', atMs: 65_000 });
+    expect(player().seek).not.toHaveBeenCalled();
+    expect(player().play).not.toHaveBeenCalled();
+    expect(tree.root.findByType(TranscriptTab).props.scrollToMs).toBe(65_000);
+    await act(async () => tree.unmount());
+  });
+
+  it('opens on the line without playing when the recording is gone', async () => {
+    const tree = await render({ tab: 'transcript', atMs: 65_000, play: true });
+    expect(player().play).not.toHaveBeenCalled();
+    expect(tree.root.findByType(TranscriptTab).props.scrollToMs).toBe(65_000);
+    await act(async () => tree.unmount());
+  });
+});
+
 describe('opening an item’s evidence', () => {
   it('switches to the transcript and plays from the anchor', async () => {
     player().hasAudio.mockResolvedValue(true);

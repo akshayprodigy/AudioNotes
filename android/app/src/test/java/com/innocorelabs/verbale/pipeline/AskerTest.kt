@@ -45,13 +45,79 @@ class AskerTest {
     assertEquals("Only a draft; the final version needs another week.", p[0].text)
   }
 
-  @Test fun anItemOrTheSummaryIsSpokenByTheMinutes() {
-    val hits = listOf(
-      Retriever.Hit("m1", "item", "i1", 5000, 5000, "Send the proposal", 1.0, false),
-      Retriever.Hit("m1", "summary", "m1", 0, 0, "A short meeting", .9, true),
+  /**
+   * F17. This test used to pin the OLD behaviour — "an item or the summary is spoken by the
+   * Minutes" — which is exactly what put "[4] Minutes · 0:00" in front of the A07: an item hit was
+   * labelled "Minutes" and the summary was indexed at 0. An item was SAID, on a line, at a moment;
+   * a citation to it names that line's speaker and that moment. Only what nobody said (the
+   * summary, a minutes passage, the title, a hand-typed row) is "Minutes", and none of those is a
+   * moment a person can be taken to.
+   */
+  @Test fun anItemIsSpokenByTheSpeakerOfTheLineItCameFromAtThatMoment() {
+    val hits = listOf(Retriever.Hit("m1", "item", "i1", 5000, 5000, "Send the proposal", 1.0, false))
+    val p = Asker.passages(
+      hits, speakerOf = { null }, names = mapOf("s1" to "Priya"),
+      itemMoment = { if (it == "i1") Asker.ItemMoment("s1", 5000L) else null },
     )
-    val p = Asker.passages(hits, speakerOf = { null }, names = emptyMap())
-    assertEquals(listOf("Minutes", "Minutes"), p.map { it.speaker })
+    assertEquals("Priya", p[0].speaker)
+    assertEquals(5000L, p[0].startMs)
+    assertEquals(true, p[0].anchored)
+  }
+
+  @Test fun anItemWithNoNamedSpeakerIsStillSomeoneNeverMinutes() {
+    val hits = listOf(Retriever.Hit("m1", "item", "i1", 5000, 5000, "Send the proposal", 1.0, false))
+    val p = Asker.passages(hits, speakerOf = { null }, names = emptyMap(), itemMoment = { Asker.ItemMoment("s9", 5000L) })
+    assertEquals("Someone", p[0].speaker)
+    assertEquals(true, p[0].anchored)
+  }
+
+  @Test fun theSummaryAMinutesPassageTheTitleAndAHandTypedItemHaveNoMoment() {
+    val hits = listOf(
+      Retriever.Hit("m1", "summary", "m1", 0, 0, "A short meeting", .9, true),
+      Retriever.Hit("m1", "minute", "min1", 0, 0, "Decided: ship it", .8, false),
+      Retriever.Hit("m1", "title", null, 0, 0, "Standup", .7, false),
+      Retriever.Hit("m1", "item", "typed", 0, 0, "Book the venue", .6, false),
+    )
+    // The hand-typed row never claimed a moment, so the lookup answers null for it.
+    val p = Asker.passages(hits, speakerOf = { null }, names = emptyMap(), itemMoment = { null })
+    assertEquals(listOf("Minutes", "Minutes", "Minutes", "Minutes"), p.map { it.speaker })
+    assertEquals(listOf(false, false, false, false), p.map { it.anchored })
+  }
+
+  /** An utterance is a moment even at 0:00: the first line of a meeting is a line, not "no moment". */
+  @Test fun anUtteranceAtTheVeryStartIsStillAMoment() {
+    val hits = listOf(Retriever.Hit("m1", "utterance", "u1", 0, 0, "Hello", 1.0, false))
+    assertEquals(true, Asker.passages(hits, speakerOf = { "s1" }, names = mapOf("s1" to "Priya"))[0].anchored)
+  }
+
+  /**
+   * THE A07 REGRESSION. The model cited [4], a minutes passage. That cite is removed from the
+   * answer before validation, so the sentence it supported is uncited and the validator drops it;
+   * an answer that was resting on that cite alone is the "nothing" state. It is never shown as
+   * "Minutes · 0:00".
+   */
+  @Test fun aCiteToAMinutesPassageIsRemovedNotShownAsMinutesAtZero() {
+    val ps = listOf(
+      Asker.Passage("Priya", 5000, "a", "u1"),
+      Asker.Passage("Minutes", 0, "Decided: ship it", "min1", anchored = false),
+    )
+    assertEquals("Ship on Friday per Priya [1] and the minutes.", Asker.withoutUnresolvableCites("Ship on Friday per Priya [1] and the minutes [2].", ps))
+    assertEquals("Ship on Friday.", Asker.withoutUnresolvableCites("Ship on Friday [2].", ps))
+    // A cite the passages do not have at all is left for the validator, which strips it.
+    assertEquals("Friday [9].", Asker.withoutUnresolvableCites("Friday [9].", ps))
+  }
+
+  @Test fun theNothingStatePointsOnlyAtPassagesThatHaveAMoment() {
+    val ps = listOf(
+      Asker.Passage("Minutes", 0, "s", "m1", anchored = false),
+      Asker.Passage("Priya", 5000, "a", "u1"),
+      Asker.Passage("Minutes", 0, "t", "m2", anchored = false),
+      Asker.Passage("Rahul", 6500, "b", "u2"),
+      Asker.Passage("Priya", 9000, "c", "u3"),
+      Asker.Passage("Priya", 9500, "d", "u4"),
+    )
+    assertEquals(listOf(2, 4, 5), Asker.closestResolvable(ps))
+    assertEquals(emptyList<Int>(), Asker.closestResolvable(listOf(Asker.Passage("Minutes", 0, "s", "m1", anchored = false))))
   }
 
   @Test fun aSpeakerRowWithNoNameIsStillSomeone() {

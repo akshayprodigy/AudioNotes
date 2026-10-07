@@ -147,3 +147,26 @@ test('the meeting row opens that meeting on its Actions tab', async () => {
   });
   expect(nav.navigate).toHaveBeenCalledWith('Meeting', { meetingId: 'm1', tab: 'actions' });
 });
+
+/**
+ * F17: an item row opens the transcript at the moment it was said and plays from it; one a person
+ * typed has no moment and opens the meeting's Actions tab as before.
+ */
+test('an item row opens the transcript at its moment and plays', async () => {
+  const tree = await render();
+  await act(async () => {
+    tree.root.findByProps({ accessibilityLabel: 'Open the meeting this came from: Send the report' }).props.onPress();
+  });
+  expect(nav.navigate).toHaveBeenCalledWith('Meeting', { meetingId: 'm1', tab: 'transcript', atMs: 5000, play: true });
+  await act(async () => tree.unmount());
+});
+
+test('an item row with no moment opens the Actions tab as before', async () => {
+  (db.allActions as jest.Mock).mockResolvedValue([{ ...action, source: 'user', anchorStartMs: null }]);
+  const tree = await render();
+  await act(async () => {
+    tree.root.findByProps({ accessibilityLabel: 'Open the meeting this came from: Send the report' }).props.onPress();
+  });
+  expect(nav.navigate).toHaveBeenCalledWith('Meeting', { meetingId: 'm1', tab: 'actions' });
+  await act(async () => tree.unmount());
+});

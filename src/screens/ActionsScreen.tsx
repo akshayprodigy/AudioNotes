@@ -139,6 +139,21 @@ export default function ActionsScreen({ navigation }: Props) {
     [navigation],
   );
 
+  // An item row opens the transcript at the moment it was said and plays from it (F17); one a
+  // person typed has no moment and opens the meeting's Actions tab as it always did.
+  const openItem = useCallback(
+    (item: ActionRow) =>
+      item.anchorStartMs === null || item.anchorStartMs === undefined
+        ? open(item.meetingId)
+        : navigation.navigate('Meeting', {
+            meetingId: item.meetingId,
+            tab: 'transcript',
+            atMs: item.anchorStartMs,
+            play: true,
+          }),
+    [navigation, open],
+  );
+
   const outstanding = useMemo(() => rows.filter(r => !r.done), [rows]);
   const finished = useMemo(() => rows.filter(r => r.done), [rows]);
   const meetingCount = useMemo(
@@ -232,7 +247,7 @@ export default function ActionsScreen({ navigation }: Props) {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Open the meeting this came from: ${body}`}
-              onPress={() => open(item.meetingId)}
+              onPress={() => openItem(item)}
               style={st.flex}>
               <Txt
                 variant="prose"

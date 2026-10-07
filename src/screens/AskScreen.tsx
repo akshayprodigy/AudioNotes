@@ -68,7 +68,7 @@ export default function AskScreen({ route, navigation }: Props) {
   );
 
   const openMoment = useCallback(
-    (c: AskCite) => navigation.navigate('Meeting', { meetingId, tab: 'transcript', atMs: c.startMs }),
+    (c: AskCite) => navigation.navigate('Meeting', { meetingId, tab: 'transcript', atMs: c.startMs, play: true }),
     [navigation, meetingId],
   );
 
@@ -151,7 +151,7 @@ export default function AskScreen({ route, navigation }: Props) {
                     <Txt variant="prose" color={e.ask.nothing ? colors.inkSoft : colors.ink}>
                       {e.ask.answer}
                     </Txt>
-                    {e.ask.cites.length > 0 ? (
+                    {momentsOf(e.ask.cites).length > 0 ? (
                       <>
                         {e.ask.nothing ? (
                           <Txt variant="overline" color={colors.inkFaint}>
@@ -159,7 +159,7 @@ export default function AskScreen({ route, navigation }: Props) {
                           </Txt>
                         ) : null}
                         <View style={st.cites}>
-                          {e.ask.cites.map(c => (
+                          {momentsOf(e.ask.cites).map(c => (
                             <Cite key={`${e.ask.id}-${c.n}`} c={c} onOpen={openMoment} st={st} colors={colors} />
                           ))}
                         </View>
@@ -203,6 +203,14 @@ export default function AskScreen({ route, navigation }: Props) {
     </KeyboardAvoidingView>
   );
 }
+
+/**
+ * The citations a person can follow. A citation to the minutes, the summary or the title has no
+ * moment — it was stored at 0:00 and labelled "Minutes" before F17 stopped producing them — so an
+ * older stored answer's cite of that kind is not shown as a moment it does not have.
+ */
+const NO_MOMENT_SPEAKER = 'Minutes';
+export const momentsOf = (cites: AskCite[]): AskCite[] => cites.filter(c => c.speaker !== NO_MOMENT_SPEAKER);
 
 /** One citation: "[n] Speaker · m:ss", a way back to the moment. */
 function Cite({

@@ -86,7 +86,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
   const st = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
-  const { meetingId, tab: initialTab, atMs, fromNotification } = route.params;
+  const { meetingId, tab: initialTab, atMs, play: playOnOpen, fromNotification } = route.params;
 
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [minutes, setMinutes] = useState<Minute[]>([]);
@@ -695,6 +695,16 @@ export default function MeetingScreen({ route, navigation }: Props) {
     },
     [player],
   );
+
+  // Arriving with `play` (an Ask citation, a thread or worklist row) is the person asking to HEAR
+  // that moment, exactly as pressing the timestamp on an item is, so it plays — once, as soon as the
+  // recording turns out to have audio. A meeting whose audio is gone still opens on the line.
+  const playedOnOpen = useRef(false);
+  useEffect(() => {
+    if (!playOnOpen || atMs === undefined || playedOnOpen.current || !player.available) return;
+    playedOnOpen.current = true;
+    player.playFrom(atMs);
+  }, [playOnOpen, atMs, player]);
 
   const onAddMinute = useCallback((kind: MinuteKind) => {
     setEditing({
@@ -1338,6 +1348,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 onAdd={onAddMinute}
                 onOpenProvenance={openProvenance}
                 canPlay={player.available}
+                speakers={speakers}
                 onEditNarrative={initial =>
                   setEditing({
                     title: 'Correct the minutes',
@@ -1348,7 +1359,6 @@ export default function MeetingScreen({ route, navigation }: Props) {
                   })
                 }
                 onRevertNarrative={() => onRevertEdit('narrative', DOC_KEY)}
-                speakers={speakers}
               />
             ) : tab === 'transcript' ? (
               <TranscriptTab
@@ -1382,6 +1392,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 onAdd={onAddMinute}
                 onOpenProvenance={openProvenance}
                 canPlay={player.available}
+                speakers={speakers}
               />
             )}
           </View>
@@ -1392,7 +1403,6 @@ export default function MeetingScreen({ route, navigation }: Props) {
               when the audio has been swept, because a disabled play button just invites tapping. */}
           {player.available ? (
             <View style={{ paddingBottom: insets.bottom }}>
-                speakers={speakers}
               {player.error ? (
                 <Pressable onPress={player.dismissError} style={st.playerNote}>
                   <Icon name="alert" size={s(14)} color={colors.warning} strokeWidth={2.4} />

@@ -126,6 +126,39 @@ test('tapping a decision row navigates to its meeting', async () => {
   await act(async () => tree.unmount());
 });
 
+// F17: a row that says where it was said opens the meeting AT that moment and plays from it. A row
+// without one (typed by a person) opens the meeting as before — the two tests above.
+test('an open row with a moment opens the transcript there and plays', async () => {
+  (db.thread as jest.Mock).mockResolvedValue({
+    ...fixture,
+    open: [{ ...fixture.open[0], anchorStartMs: 65_000 }, fixture.open[1]],
+  });
+  const tree = await render();
+  await act(async () => {
+    tree.root.findByProps({ accessibilityLabel: 'Draft the mapping table' }).props.onPress();
+  });
+  expect(nav.navigate).toHaveBeenCalledWith('Meeting', { meetingId: 'm2', tab: 'transcript', atMs: 65_000, play: true });
+  await act(async () => tree.unmount());
+});
+
+test('a decision row with a moment opens the transcript there and plays; one at 0:00 still counts as a moment', async () => {
+  (db.thread as jest.Mock).mockResolvedValue({
+    ...fixture,
+    decisions: [{ ...fixture.decisions[0], anchorStartMs: 0 }, { ...fixture.decisions[1], anchorStartMs: null }],
+  });
+  const tree = await render();
+  await act(async () => {
+    tree.root.findByProps({ accessibilityLabel: 'Vendor codes will be six digits.' }).props.onPress();
+  });
+  expect(nav.navigate).toHaveBeenCalledWith('Meeting', { meetingId: 'm1', tab: 'transcript', atMs: 0, play: true });
+  nav.navigate.mockClear();
+  await act(async () => {
+    tree.root.findByProps({ accessibilityLabel: 'Existing vendors keep their old codes.' }).props.onPress();
+  });
+  expect(nav.navigate).toHaveBeenCalledWith('Meeting', { meetingId: 'm2' });
+  await act(async () => tree.unmount());
+});
+
 test('tapping a meeting row navigates to it too', async () => {
   (db.thread as jest.Mock).mockResolvedValue(fixture);
   const tree = await render();

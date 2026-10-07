@@ -52,6 +52,12 @@ export default function ThreadScreen({ route, navigation }: Props) {
   );
 
   const openMeeting = (meetingId: string) => navigation.navigate('Meeting', { meetingId });
+  // A row that says where it was said opens the meeting AT that moment and plays from it (F17);
+  // a row with no moment — one a person typed — opens the meeting as it always did.
+  const openMoment = (meetingId: string, anchorStartMs?: number | null) =>
+    anchorStartMs === undefined || anchorStartMs === null
+      ? openMeeting(meetingId)
+      : navigation.navigate('Meeting', { meetingId, tab: 'transcript', atMs: anchorStartMs, play: true });
 
   return (
     <View style={[st.root, { paddingTop: insets.top + s(8) }]}>
@@ -78,7 +84,7 @@ export default function ThreadScreen({ route, navigation }: Props) {
             </Txt>
           ) : (
             result.open.map(item => (
-              <OpenRow key={item.itemId} item={item} colors={colors} onPress={() => openMeeting(item.meetingId)} />
+              <OpenRow key={item.itemId} item={item} colors={colors} onPress={() => openMoment(item.meetingId, item.anchorStartMs)} />
             ))
           )}
 
@@ -89,7 +95,7 @@ export default function ThreadScreen({ route, navigation }: Props) {
             </Txt>
           ) : (
             result.decisions.map(d => (
-              <DecisionRow key={d.itemId} decision={d} colors={colors} onPress={() => openMeeting(d.meetingId)} />
+              <DecisionRow key={d.itemId} decision={d} colors={colors} onPress={() => openMoment(d.meetingId, d.anchorStartMs)} />
             ))
           )}
 
@@ -137,12 +143,6 @@ function OpenRow({
   );
 }
 
-function DecisionRow({
-  decision,
-  colors,
-  onPress,
-}: {
-  decision: ThreadDecision;
 /** An item's content with its owner resolved from the speaker it points at. */
 function resolvedContent(item: { content: string; ownerJson?: string | null; ownerName?: string | null }): string {
   const id = ownerSpeakerId(item.ownerJson);
@@ -150,6 +150,12 @@ function resolvedContent(item: { content: string; ownerJson?: string | null; own
   return resolveOwnerText(item.content, item.ownerJson, new Map([[id, item.ownerName]]));
 }
 
+function DecisionRow({
+  decision,
+  colors,
+  onPress,
+}: {
+  decision: ThreadDecision;
   colors: Colors;
   onPress: () => void;
 }) {

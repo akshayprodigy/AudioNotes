@@ -32,7 +32,18 @@ export type RootStackParamList = {
    * `tab` and `atMs` let something outside the screen say where to land: a search hit opens the
    * transcript at the moment the phrase was said, a "Notes ready" tap opens the summary.
    */
-  Meeting: { meetingId: string; tab?: MeetingTab; atMs?: number; fromNotification?: boolean };
+  Meeting: {
+    meetingId: string;
+    tab?: MeetingTab;
+    atMs?: number;
+    /**
+     * With `atMs`: also PLAY from that moment, once, when the recording still has audio. Set by the
+     * places that hand over a moment the person asked to hear — an Ask citation, a thread or
+     * worklist row — and never by a search hit, which only scrolls (see MeetingScreen).
+     */
+    play?: boolean;
+    fromNotification?: boolean;
+  };
   Speakers: { meetingId: string };
   /** The review queue for one meeting: what the classifier could not settle, one card at a time. */
   Review: { meetingId: string };
