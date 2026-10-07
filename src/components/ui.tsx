@@ -417,7 +417,9 @@ export function Sheet({
             {title}
           </Text>
         ) : null}
-        <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
+        {/* The indicator is the only cue that Archive and Delete are below the fold (D20); Android
+            would fade it before anyone looked, so it stays put. Nothing is drawn when the rows fit. */}
+        <ScrollView bounces={false} showsVerticalScrollIndicator persistentScrollbar>
           {actions.map(a => {
             const tint = a.destructive ? colors.danger : colors.primaryDeep;
             const soft = a.destructive ? colors.dangerSoft : colors.primarySoft;

@@ -43,6 +43,19 @@ describe('Sheet', () => {
     expect(flat.maxHeight).toBeLessThanOrEqual(windowHeight * 0.85);
   });
 
+  /**
+   * F22d (D20): the rows scroll, but the indicator was hidden, so Archive and Delete below the fold
+   * gave no sign they were there. The indicator is on, and persistent on Android (it otherwise
+   * fades a moment after the sheet opens — before anyone has looked for it). Native draws nothing
+   * when the rows fit, so a short sheet is unchanged.
+   */
+  it('shows a scroll indicator, and keeps it visible, so hidden rows can be found', async () => {
+    const tree = await renderSheet();
+    const scroll = tree.root.findByType(ScrollView);
+    expect(scroll.props.showsVerticalScrollIndicator).toBe(true);
+    expect(scroll.props.persistentScrollbar).toBe(true);
+  });
+
   it('the title and Cancel are not inside the scroll', async () => {
     const tree = await renderSheet();
     const scroll = tree.root.findByType(ScrollView);
