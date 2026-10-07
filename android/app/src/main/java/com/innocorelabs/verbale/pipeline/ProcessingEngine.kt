@@ -617,9 +617,14 @@ class ProcessingEngine(
     val lag = db.announcedLagMs(meetingId) ?: return spans
     val clipMs = AnnouncementPlayer.bundledClipMs(ctx) ?: return spans
     val out = AnnouncementSpan.exclude(spans, lag, lag + clipMs)
-    if (out.size != spans.size) {
-      Log.i(TAG, "announcement at ${lag}ms kept out of ASR: ${spans.size / 2} span(s) -> ${out.size / 2}")
-    }
+    // Always logged, with the numbers a lost first line (D16) needs: where the cut was, and where
+    // the first VAD span began before and after it. Diagnostic only; the exclusion is unchanged.
+    Log.i(
+      TAG,
+      "announcement at ${lag}ms (clip ${clipMs}ms, cut ${lag - AnnouncementSpan.MARGIN_MS}.." +
+        "${lag + clipMs + AnnouncementSpan.MARGIN_MS}ms) kept out of ASR: ${spans.size / 2} span(s) -> " +
+        "${out.size / 2}; first span starts ${spans.firstOrNull()}ms -> ${out.firstOrNull()}ms",
+    )
     return out
   }
 
