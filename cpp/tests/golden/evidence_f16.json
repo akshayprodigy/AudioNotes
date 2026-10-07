@@ -128,6 +128,14 @@
         "endMs": 66500,
         "speakerId": "S0",
         "text": "I will not send the notes tomorrow."
+      },
+      {
+        "id": "u16",
+        "meetingId": "m",
+        "startMs": 66500,
+        "endMs": 70500,
+        "speakerId": "S1",
+        "text": "Let's start the audit in 3 days."
       }
     ],
     "speakers": [
@@ -235,6 +243,21 @@
       ],
       "anchorStartMs": 42500,
       "anchorEndMs": 46500
+    },
+    {
+      "kind": "action",
+      "text": "Let's start the audit in 3 days. — Speaker 2 (due in 3 days)",
+      "sources": [
+        {
+          "utteranceId": "u16",
+          "startMs": 66500,
+          "endMs": 70500,
+          "charStart": 0,
+          "charEnd": 32
+        }
+      ],
+      "anchorStartMs": 66500,
+      "anchorEndMs": 70500
     }
   ]
 }

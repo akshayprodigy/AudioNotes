@@ -64,6 +64,10 @@
    {
     "text": "I will not send the notes tomorrow.",
     "speakerId": "S0"
+   },
+   {
+    "text": "Let's start the audit in 3 days.",
+    "speakerId": "S1"
    }
   ],
   "speakers": [
@@ -80,7 +84,7 @@
  "output": [
   {
    "kind": "summary",
-   "content": "Next: Rahul will recruit ten more testers by Monday. — Rahul (due by Monday); Sam should send the invoices before Wednesday. — Sam (due before Wednesday); Let's start the migration on Monday. — Speaker 1 (due on Monday). 6 action items, 0 decisions, 0 open questions.",
+   "content": "Next: Rahul will recruit ten more testers by Monday. — Rahul (due by Monday); Sam should send the invoices before Wednesday. — Sam (due before Wednesday); Let's start the migration on Monday. — Speaker 1 (due on Monday). 7 action items, 0 decisions, 0 open questions.",
    "source": "rule"
   },
   {
@@ -111,6 +115,11 @@
   {
    "kind": "action",
    "content": "Meera will triage tomorrow. — Meera (due tomorrow)",
+   "source": "rule"
+  },
+  {
+   "kind": "action",
+   "content": "Let's start the audit in 3 days. — Speaker 2 (due in 3 days)",
    "source": "rule"
   }
  ]

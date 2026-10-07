@@ -47,6 +47,8 @@ const F16 = [
   { text: 'Priya will probably not ship the build by Friday.', speakerId: 'S1' },
   { text: 'Priya will never agree to that deal.', speakerId: 'S0' },
   { text: 'I will not send the notes tomorrow.', speakerId: 'S0' },
+  // A due the flow exemption must honour on DUE alone (no "on/by/after/next" word to save it):
+  { text: "Let's start the audit in 3 days.", speakerId: 'S1' },
 ];
 
 const DEDUP = [
@@ -182,6 +184,7 @@ test('write golden files for the C++ parity tests', () => {
     'Rahul will probably recruit ten more testers. — Rahul',
     "Let's begin the review after lunch. — Speaker 2",
     'Meera will triage tomorrow. — Meera (due tomorrow)',
+    "Let's start the audit in 3 days. — Speaker 2 (due in 3 days)",
   ]);
 
   const decisionDedup = extractMinutes(DECISION_DEDUP as any, SPEAKERS as any);
@@ -374,7 +377,7 @@ it('writes the evidence goldens', () => {
   expect(a07.find(i => i.kind === 'action')!.text).toContain('due by Friday');
 
   const f16 = writeEvidenceGolden('evidence_f16.json', F16);
-  expect(f16.filter(i => i.kind === 'action')).toHaveLength(6); // the same six extractMinutes keeps
+  expect(f16.filter(i => i.kind === 'action')).toHaveLength(7); // the same seven extractMinutes keeps
 
   const spans = writeEvidenceGolden('evidence_spans.json', SPANS);
   const decisions = spans.filter(i => i.kind === 'decision');
