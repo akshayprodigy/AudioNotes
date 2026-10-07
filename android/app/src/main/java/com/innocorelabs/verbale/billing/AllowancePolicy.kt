@@ -132,6 +132,9 @@ object AllowancePolicy {
   fun isUsableText(text: String): Boolean =
     text.split(Regex("\\s+")).count { w -> w.any { it.isLetterOrDigit() } } >= USABLE_MIN_WORDS
 
+  /** The captured-audio limit for a new session: none for a paid one, an hour for a Free one. */
+  fun capFor(paid: Boolean): Long = if (paid) 0L else FREE_DURATION_MS
+
   /**
    * Whether an import may be accepted. [durationMs] is the DECODED length (an import has no capture;
    * a container header that disagrees is overruled by the decode); 0 means unknown and is let

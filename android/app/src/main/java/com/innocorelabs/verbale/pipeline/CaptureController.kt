@@ -9,8 +9,12 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.innocorelabs.verbale.billing.Allowance
+import com.innocorelabs.verbale.billing.AllowancePolicy
+import com.innocorelabs.verbale.billing.LicenceStore
 import com.innocorelabs.verbale.data.AudioDb
 import java.io.File
+import java.util.TimeZone
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.CountDownLatch
@@ -383,8 +387,20 @@ object CaptureController {
     }
   }
 
-  /** Create the meeting row, start the foreground capture service. Returns the meetingId, or null. */
-  fun start(context: Context, tier: String = "free", capMs: Long = 0L, mode: String? = null): String? {
+  /** A Free start was refused: the month's sessions are used up. [resetsOn] is "YYYY-MM-DD". */
+  class AllowanceExhausted(val resetsOn: String) : Exception("free allowance used up until $resetsOn")
+
+  /**
+   * Create the meeting row, start the foreground capture service. Returns the meetingId, or null.
+   * Throws [AllowanceExhausted] when a Free session is not available.
+   *
+   * The allowance and the length limit are decided HERE, natively, from the licence — not passed in.
+   * The Quick Settings tile and the shortcut call this with nothing but a context, and used to
+   * record without a limit. Order (addendum R7): permission, licence, take a slot, open the
+   * microphone — so a start that fails after the slot is taken gives it back, here for what throws
+   * and in RecordingService's capture end for what fails later (nothing captured refunds).
+   */
+  fun start(context: Context, tier: String = "free", mode: String? = null): String? {
     if (isRecording) return currentMeetingId
     // A start that lands during the flush would open a second session over a file the old one is
     // still writing. The caller sees null and can say "finishing the last one" rather than
@@ -395,22 +411,36 @@ object CaptureController {
 
     val meetingId = UUID.randomUUID().toString()
     val createdAt = System.currentTimeMillis()
-    val dir = File(context.filesDir, "meetings/$meetingId").apply { mkdirs() }
-    val audioPath = File(dir, "audio.pcm").absolutePath
+    val db = AudioDb.get(context)
+    // Pro is whatever the licence says at THIS instant (GAP-5): a session that begins paid stays
+    // uncapped for its whole length, and one that begins Free is only lifted by a verified purchase.
+    val paid = LicenceStore.entitled(context)
+    val reservation = Allowance.reserve(db.allowanceStore(), meetingId, paid, createdAt, TimeZone.getDefault())
+    if (reservation is Allowance.Reservation.Denied) throw AllowanceExhausted(reservation.resetsOn)
+    val capMs = AllowancePolicy.capFor(paid)
 
-    AudioDb.get(context).insertMeeting(meetingId, defaultTitle(createdAt), createdAt, tier, audioPath)
+    try {
+      val dir = File(context.filesDir, "meetings/$meetingId").apply { mkdirs() }
+      val audioPath = File(dir, "audio.pcm").absolutePath
 
-    if (mode == "dictation") AudioDb.get(context).setMode(meetingId, "dictation")
+      db.insertMeeting(meetingId, defaultTitle(createdAt), createdAt, tier, audioPath)
 
-    val intent = Intent(context, RecordingService::class.java).apply {
-      putExtra(RecordingService.EXTRA_MEETING_ID, meetingId)
-      putExtra(RecordingService.EXTRA_AUDIO_PATH, audioPath)
-      // The free tier's length limit, in ms; 0 means uncapped. Enforced in the capture loop and
-      // not in the UI, because a recording runs with the screen off and the app killed — which is
-      // the normal case, and a limit that only existed in JavaScript would not survive it.
-      putExtra(RecordingService.EXTRA_CAP_MS, capMs)
+      if (mode == "dictation") db.setMode(meetingId, "dictation")
+
+      val intent = Intent(context, RecordingService::class.java).apply {
+        putExtra(RecordingService.EXTRA_MEETING_ID, meetingId)
+        putExtra(RecordingService.EXTRA_AUDIO_PATH, audioPath)
+        // The free tier's length limit, in ms; 0 means uncapped. Enforced in the capture loop and
+        // not in the UI, because a recording runs with the screen off and the app killed — which is
+        // the normal case, and a limit that only existed in JavaScript would not survive it.
+        putExtra(RecordingService.EXTRA_CAP_MS, capMs)
+      }
+      ContextCompat.startForegroundService(context, intent)
+    } catch (e: Exception) {
+      // Nothing started: the slot was never used.
+      Allowance.refund(db.allowanceStore(), meetingId)
+      throw e
     }
-    ContextCompat.startForegroundService(context, intent)
 
     currentMeetingId = meetingId
     startedAtMs = createdAt

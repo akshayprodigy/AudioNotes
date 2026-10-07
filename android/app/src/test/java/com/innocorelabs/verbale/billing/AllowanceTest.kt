@@ -120,4 +120,14 @@ class AllowanceTest {
     assertEquals(State.RESERVED, s.rows["m"]!!.state)
     assertEquals(1, Allowance.status(s, false, oct, utc).used)
   }
+
+  @Test fun `a start that fails after taking the slot gives it back`() {
+    val s = FakeStore()
+    (1..4).forEach { Allowance.reserve(s, "m$it", false, oct, utc) }
+    Allowance.reserve(s, "fail", false, oct, utc) // the fifth slot, taken before the microphone opens
+    assertTrue(Allowance.reserve(s, "next", false, oct, utc) is Allowance.Reservation.Denied)
+    Allowance.refund(s, "fail") // CaptureController's catch, or capture end with nothing captured
+    assertEquals(1, Allowance.status(s, false, oct, utc).remaining)
+    assertTrue(Allowance.reserve(s, "next", false, oct, utc) is Allowance.Reservation.Free)
+  }
 }

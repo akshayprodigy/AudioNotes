@@ -27,3 +27,10 @@ Branch `dev/october-plan`. Never pushed. Plan: `docs/superpowers/plans/2026-10-0
 - New `data/BackupManagerTest` (4): travels in a backup; other tables still REPLACE; ledger SQL shape (upsert, no REPLACE, period untouched, incoming wins only if higher); SQL priorities equal the policy's.
 - Mutants killed: table check bypassed; CASE branches swapped; others' verb changed to IGNORE; `allowance` dropped from TABLES; priorities flattened to 1; `allowance` moved out of TABLES (`SchemaTest`/Backup test).
 - Device-verified later: the SQL itself (the JVM cannot run SQLCipher).
+
+## Task 5 — native start reserves a slot and decides the cap; the tile hole is closed
+- `AllowancePolicy.capFor(paid)`; `CaptureController.start(context, tier, mode)` has NO cap parameter: it reads `LicenceStore.entitled` (GAP-5), reserves via `Allowance.reserve` (atomic, in the ledger), throws `AllowanceExhausted(resetsOn)` when Free is spent, and refunds the slot if anything between reserve and `startForegroundService` throws (R7: permission, licence, slot, microphone).
+- `AudioPipelineModule.start` no longer reads `capMs` (JS still sends it; ignored; `NativeAudioPipeline.ts` untouched for Session 2) and rejects `allowance_exhausted` with `resetsOn` as the message. `ShimActivity.quickStart` opens the app when exhausted. `tsc --noEmit` and `compileDebugAndroidTestKotlin` pass.
+- Tests: `CapResolutionTest` (3, including a reflection pin that `start` takes no `Long`); `AllowanceTest` "a start that fails after taking the slot gives it back". Mutants killed: `capFor` swapped, `capFor` always 0, `start` regaining a `Long` cap parameter.
+- NOT done here (Task 8 / Session 2): "start refuses while an import is running" and the import-side "recording in progress" check (R5 second half).
+- Device-verified later: the tile actually refusing, the foreground-service start failing and refunding.

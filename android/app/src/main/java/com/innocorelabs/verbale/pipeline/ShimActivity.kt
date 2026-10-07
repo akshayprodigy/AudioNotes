@@ -66,6 +66,19 @@ class ShimActivity : Activity() {
     // happen while this activity is still the foreground window. Correctness beats the frame.
     val id = try {
       CaptureController.start(applicationContext)
+    } catch (e: CaptureController.AllowanceExhausted) {
+      // The tile used to start an uncapped recording without asking anyone. Now it asks the same
+      // ledger the app does, and a spent month opens the app, which says why.
+      Log.i(TAG, "quick start refused: allowance used up until ${e.resetsOn}; opening the app")
+      try {
+        startActivity(
+          android.content.Intent(this, com.innocorelabs.verbale.MainActivity::class.java)
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+      } catch (e2: Exception) {
+        Log.w(TAG, "could not open the app", e2)
+      }
+      null
     } catch (e: Exception) {
       Log.e(TAG, "quick start failed", e)
       null

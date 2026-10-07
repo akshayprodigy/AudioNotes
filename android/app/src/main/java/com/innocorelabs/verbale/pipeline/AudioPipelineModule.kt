@@ -160,14 +160,15 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
     }
     try {
       val tier = if (config.hasKey("tier")) config.getString("tier") ?: "free" else "free"
-      // The free tier's length limit in ms; 0 or absent means uncapped. Decided in JS, where
-      // entitlement lives, and enforced natively, where the recording actually runs.
-      val capMs = if (config.hasKey("capMs")) config.getDouble("capMs").toLong() else 0L
+      // Any capMs JS still sends is ignored: the limit and the monthly allowance are decided in
+      // CaptureController.start, from the licence, so every way of starting a recording agrees.
       val mode = if (config.hasKey("mode")) config.getString("mode") else null
-      val meetingId = CaptureController.start(ctx, tier, capMs, mode)
+      val meetingId = CaptureController.start(ctx, tier, mode)
         ?: throw IllegalStateException("could not start capture")
       startLevelEmitter()
       promise.resolve(meetingId) // sessionId == meetingId
+    } catch (e: CaptureController.AllowanceExhausted) {
+      promise.reject("allowance_exhausted", e.resetsOn)
     } catch (e: Exception) {
       promise.reject("start_failed", e)
     }
