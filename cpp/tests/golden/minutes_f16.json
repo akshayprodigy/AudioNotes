@@ -1,0 +1,101 @@
+{
+ "input": {
+  "utterances": [
+   {
+    "text": "Let's start the weekly check-in.",
+    "speakerId": "S0"
+   },
+   {
+    "text": "Rahul will recruit ten more testers by Monday.",
+    "speakerId": "S1"
+   },
+   {
+    "text": "Sam should send the invoices before Wednesday.",
+    "speakerId": "S1"
+   },
+   {
+    "text": "Priya will be late.",
+    "speakerId": "S0"
+   },
+   {
+    "text": "We will not ship Friday.",
+    "speakerId": "S0"
+   },
+   {
+    "text": "Let's start",
+    "speakerId": "S1"
+   },
+   {
+    "text": "Let's start the migration on Monday.",
+    "speakerId": "S0"
+   },
+   {
+    "text": "Rahul will probably recruit ten more testers.",
+    "speakerId": "S1"
+   },
+   {
+    "text": "She will recruit ten more testers.",
+    "speakerId": "S0"
+   },
+   {
+    "text": "Let's get started. Let's begin the review after lunch.",
+    "speakerId": "S1"
+   },
+   {
+    "text": "Meera will triage tomorrow.",
+    "speakerId": "S0"
+   },
+   {
+    "text": "Meera will triage.",
+    "speakerId": "S0"
+   }
+  ],
+  "speakers": [
+   {
+    "id": "S0",
+    "displayName": "Speaker 1"
+   },
+   {
+    "id": "S1",
+    "displayName": "Speaker 2"
+   }
+  ]
+ },
+ "output": [
+  {
+   "kind": "summary",
+   "content": "Next: Rahul will recruit ten more testers by Monday. — Rahul (due by Monday); Sam should send the invoices before Wednesday. — Sam (due before Wednesday); Let's start the migration on Monday. — Speaker 1 (due on Monday). 6 action items, 0 decisions, 0 open questions.",
+   "source": "rule"
+  },
+  {
+   "kind": "action",
+   "content": "Rahul will recruit ten more testers by Monday. — Rahul (due by Monday)",
+   "source": "rule"
+  },
+  {
+   "kind": "action",
+   "content": "Sam should send the invoices before Wednesday. — Sam (due before Wednesday)",
+   "source": "rule"
+  },
+  {
+   "kind": "action",
+   "content": "Let's start the migration on Monday. — Speaker 1 (due on Monday)",
+   "source": "rule"
+  },
+  {
+   "kind": "action",
+   "content": "Rahul will probably recruit ten more testers. — Rahul",
+   "source": "rule"
+  },
+  {
+   "kind": "action",
+   "content": "Let's begin the review after lunch. — Speaker 2",
+   "source": "rule"
+  },
+  {
+   "kind": "action",
+   "content": "Meera will triage tomorrow. — Meera (due tomorrow)",
+   "source": "rule"
+  }
+ ]
+}

@@ -1,0 +1,208 @@
+{
+  "input": {
+    "utterances": [
+      {
+        "id": "u0",
+        "meetingId": "m",
+        "startMs": 0,
+        "endMs": 4000,
+        "speakerId": "S0",
+        "text": "Let's start the weekly check-in."
+      },
+      {
+        "id": "u1",
+        "meetingId": "m",
+        "startMs": 4000,
+        "endMs": 8000,
+        "speakerId": "S1",
+        "text": "Rahul will recruit ten more testers by Monday."
+      },
+      {
+        "id": "u2",
+        "meetingId": "m",
+        "startMs": 8000,
+        "endMs": 14500,
+        "speakerId": "S1",
+        "text": "Sam should send the invoices before Wednesday."
+      },
+      {
+        "id": "u3",
+        "meetingId": "m",
+        "startMs": 14500,
+        "endMs": 18500,
+        "speakerId": "S0",
+        "text": "Priya will be late."
+      },
+      {
+        "id": "u4",
+        "meetingId": "m",
+        "startMs": 18500,
+        "endMs": 22500,
+        "speakerId": "S0",
+        "text": "We will not ship Friday."
+      },
+      {
+        "id": "u5",
+        "meetingId": "m",
+        "startMs": 22500,
+        "endMs": 26500,
+        "speakerId": "S1",
+        "text": "Let's start"
+      },
+      {
+        "id": "u6",
+        "meetingId": "m",
+        "startMs": 26500,
+        "endMs": 30500,
+        "speakerId": "S0",
+        "text": "Let's start the migration on Monday."
+      },
+      {
+        "id": "u7",
+        "meetingId": "m",
+        "startMs": 30500,
+        "endMs": 34500,
+        "speakerId": "S1",
+        "text": "Rahul will probably recruit ten more testers."
+      },
+      {
+        "id": "u8",
+        "meetingId": "m",
+        "startMs": 34500,
+        "endMs": 38500,
+        "speakerId": "S0",
+        "text": "She will recruit ten more testers."
+      },
+      {
+        "id": "u9",
+        "meetingId": "m",
+        "startMs": 38500,
+        "endMs": 42500,
+        "speakerId": "S1",
+        "text": "Let's get started. Let's begin the review after lunch."
+      },
+      {
+        "id": "u10",
+        "meetingId": "m",
+        "startMs": 42500,
+        "endMs": 46500,
+        "speakerId": "S0",
+        "text": "Meera will triage tomorrow."
+      },
+      {
+        "id": "u11",
+        "meetingId": "m",
+        "startMs": 46500,
+        "endMs": 50500,
+        "speakerId": "S0",
+        "text": "Meera will triage."
+      }
+    ],
+    "speakers": [
+      {
+        "id": "S0",
+        "displayName": "Speaker 1",
+        "meetingId": "m",
+        "clusterLabel": "S0"
+      },
+      {
+        "id": "S1",
+        "displayName": "Speaker 2",
+        "meetingId": "m",
+        "clusterLabel": "S1"
+      }
+    ]
+  },
+  "output": [
+    {
+      "kind": "action",
+      "text": "Rahul will recruit ten more testers by Monday. — Rahul (due by Monday)",
+      "sources": [
+        {
+          "utteranceId": "u1",
+          "startMs": 4000,
+          "endMs": 8000,
+          "charStart": 0,
+          "charEnd": 46
+        }
+      ],
+      "anchorStartMs": 4000,
+      "anchorEndMs": 8000
+    },
+    {
+      "kind": "action",
+      "text": "Sam should send the invoices before Wednesday. — Sam (due before Wednesday)",
+      "sources": [
+        {
+          "utteranceId": "u2",
+          "startMs": 8000,
+          "endMs": 14500,
+          "charStart": 0,
+          "charEnd": 46
+        }
+      ],
+      "anchorStartMs": 8000,
+      "anchorEndMs": 14500
+    },
+    {
+      "kind": "action",
+      "text": "Let's start the migration on Monday. — Speaker 1 (due on Monday)",
+      "sources": [
+        {
+          "utteranceId": "u6",
+          "startMs": 26500,
+          "endMs": 30500,
+          "charStart": 0,
+          "charEnd": 36
+        }
+      ],
+      "anchorStartMs": 26500,
+      "anchorEndMs": 30500
+    },
+    {
+      "kind": "action",
+      "text": "Rahul will probably recruit ten more testers. — Rahul",
+      "sources": [
+        {
+          "utteranceId": "u7",
+          "startMs": 30500,
+          "endMs": 34500,
+          "charStart": 0,
+          "charEnd": 45
+        }
+      ],
+      "anchorStartMs": 30500,
+      "anchorEndMs": 34500
+    },
+    {
+      "kind": "action",
+      "text": "Let's begin the review after lunch. — Speaker 2",
+      "sources": [
+        {
+          "utteranceId": "u9",
+          "startMs": 38500,
+          "endMs": 42500,
+          "charStart": 19,
+          "charEnd": 54
+        }
+      ],
+      "anchorStartMs": 38500,
+      "anchorEndMs": 42500
+    },
+    {
+      "kind": "action",
+      "text": "Meera will triage tomorrow. — Meera (due tomorrow)",
+      "sources": [
+        {
+          "utteranceId": "u10",
+          "startMs": 42500,
+          "endMs": 46500,
+          "charStart": 0,
+          "charEnd": 27
+        }
+      ],
+      "anchorStartMs": 42500,
+      "anchorEndMs": 46500
+    }
+  ]
+}

@@ -60,7 +60,12 @@ export function isDecision(sentence: string): boolean {
   );
 }
 
-export const DUE = /\b(today|tonight|tomorrow|this (morning|afternoon|evening|week|month)|next (week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|by (the )?(end of (the )?(day|week|month)|eod|cob|monday|tuesday|wednesday|thursday|friday|saturday|sunday|noon|\w+day)|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|in \d+ (day|days|week|weeks)|\d{1,2}(st|nd|rd|th)?( of)? (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b/i;
+// `before <day>` (F16c; A07: "finish the audit before Wednesday" had no due). The same vocabulary
+// as `by`, plus today/tomorrow/next-<day>, because "before tomorrow" is a deadline too. The
+// matched phrase keeps its "before", so the action reads "(due before Wednesday)" - and
+// dateNorm.ts deliberately does NOT resolve it to a day: a deadline is not a day.
+// Mirrored in cpp/minutes/minutes_extractor.cpp; the goldens keep the two in step.
+export const DUE =/\b(today|tonight|tomorrow|this (morning|afternoon|evening|week|month)|next (week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|by (the )?(end of (the )?(day|week|month)|eod|cob|monday|tuesday|wednesday|thursday|friday|saturday|sunday|noon|\w+day)|before (the )?(end of (the )?(day|week|month)|eod|cob|noon|today|tomorrow|next (week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|\w+day|\d{1,2}(st|nd|rd|th)?( of)? (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|in \d+ (day|days|week|weeks)|\d{1,2}(st|nd|rd|th)?( of)? (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b/i;
 
 const NAMED_OWNER = /\b([A-Z][a-z]{1,20})\s+(?:will|to|should|is going to|needs to|has to|can|could|please)\b/;
 
@@ -95,7 +100,59 @@ export function detectOwner(sentence: string, speakerName: string | null): strin
   return 'Unassigned';
 }
 
-export function isAction(sentence: string): boolean {
+// ASCII-alnum runs rather than \p{L}: the C++ port matches bytes with std::regex and has no
+// Unicode classes, so a Unicode-aware count here would diverge from it on exactly the text no
+// golden covers. English-only for v1.
+const WORDS = /[A-Za-z0-9]+/g;
+
+// ---- F16: three corrections to what counts as an action -------------------------------------
+//
+// (a) Meeting flow. "Let's start the weekly check-in." is the chair opening the meeting, not a
+// task anybody owes, and `let's` in ACTION_FIRST_PERSON made it one (A07, defect 12a). When the
+// ONLY cue is let's start/begin/get started/kick off, the sentence is flow - unless it also
+// carries a time marker ("Let's start the migration on Monday." is a real commitment).
+// The phrase is replaced by a placeholder rather than deleted so the remainder is judged on its
+// own: "Let's start, and I'll send the notes" keeps its second cue, and a remainder that happens
+// to begin with an imperative verb cannot become an action by losing its first words.
+// Mirrored in cpp/minutes/minutes_extractor.cpp; the goldens keep the two in step.
+const FLOW_START = /\blet['’]s (start|begin|get started|kick off)\b/i;
+const FLOW_START_ALL = /\blet['’]s (start|begin|get started|kick off)\b/gi;
+const FLOW_TIME = /\b(tomorrow|next \w+|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|by \w+|after \w+)\b/i;
+
+// A first-person future that is a refusal. "We will not ship Friday" matched ACTION_FIRST_PERSON
+// on "we will" and was listed as something somebody owes. The hedges between "will" and "not" are
+// the same ones the named rule skips.
+const NEGATED_FIRST_WILL = /\b(i|we) will (?:(?:probably|definitely|certainly|possibly|also|just|then|still|really|maybe|likely|surely|now|soon|even|only|always|actually|basically) )*(not|never)\b/gi;
+
+// (b) `<Name> will <verb>` for ANY verb (A07, defect 12b: "Rahul will recruit ten more testers by
+// Monday" - owner and due were found, the sentence was not an action because `recruit` was not in
+// the closed list). The closed list in ACTION_OBLIGATION stays as the fast path. An open verb
+// needs evidence it is a commitment and not a forecast: a due in the sentence, or an object (two
+// more words after the verb). `will be/been/being`, `will not/never` and a clause that ends at
+// "will" are never actions; hedges (probably, also, ...) are skipped and the rest judged the same.
+// NOT_A_NAME keeps "She will ..." and "It will ..." from being a person. Mirrored in the C++ port.
+const NAME_WILL = /\b([A-Z][a-z]{1,20})\s+will\b/g;
+const NOT_A_NAME = /^(I|We|You|The|This|That|It|Let|Please|He|She|They|There|These|Those|Here|Who|What|Which|And|But|So|Then|If|When)$/;
+const WILL_HEDGE = /^\s*(probably|definitely|certainly|possibly|also|just|then|still|really|maybe|likely|surely|now|soon|even|only|always|actually|basically)\b/i;
+const WILL_NO_ACTION = /^\s*(not|never|be|been|being)\b/i;
+const WILL_VERB = /^\s*([A-Za-z]+)(.*)$/;
+
+function namedWillAction(sentence: string): boolean {
+  const re = new RegExp(NAME_WILL.source, 'g');
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(sentence)) !== null) {
+    if (NOT_A_NAME.test(m[1])) continue;
+    let tail = sentence.slice(m.index + m[0].length);
+    for (let h = WILL_HEDGE.exec(tail); h; h = WILL_HEDGE.exec(tail)) tail = tail.slice(h[0].length);
+    if (WILL_NO_ACTION.test(tail)) continue;
+    const v = WILL_VERB.exec(tail);
+    if (!v) continue;
+    if ((v[2].match(WORDS)?.length ?? 0) >= 2 || DUE.test(sentence)) return true;
+  }
+  return false;
+}
+
+function hasCue(sentence: string): boolean {
   return (
     ACTION_FIRST_PERSON.test(sentence) ||
     ACTION_ASSIGN.test(sentence) ||
@@ -104,10 +161,14 @@ export function isAction(sentence: string): boolean {
   );
 }
 
-// ASCII-alnum runs rather than \p{L}: the C++ port matches bytes with std::regex and has no
-// Unicode classes, so a Unicode-aware count here would diverge from it on exactly the text no
-// golden covers. English-only for v1.
-const WORDS = /[A-Za-z0-9]+/g;
+export function isAction(sentence: string): boolean {
+  let judged = sentence;
+  if (FLOW_START.test(sentence) && !DUE.test(sentence) && !FLOW_TIME.test(sentence)) {
+    judged = judged.replace(FLOW_START_ALL, ' # ');
+  }
+  judged = judged.replace(NEGATED_FIRST_WILL, ' # ');
+  return hasCue(judged) || namedWillAction(sentence);
+}
 
 export function isQuestion(sentence: string): boolean {
   const t = sentence.trim();

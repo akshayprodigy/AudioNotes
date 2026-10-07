@@ -24,6 +24,10 @@
     { "said": "another week", "norm": null },
     { "said": "soon", "norm": null },
     { "said": "after the launch", "norm": null },
+    { "said": "before Wednesday", "norm": null },
+    { "said": "before tomorrow", "norm": null },
+    { "said": "before next Friday", "norm": null },
+    { "said": "before the 21st", "norm": null },
     { "said": "Friday or Monday", "norm": null },
     { "said": "", "norm": null }
   ]

@@ -25,6 +25,25 @@ const MEETING = [
   { text: 'What about the pricing question? Should we revisit it next week?', speakerId: 'S0' },
 ];
 
+// F16 (A07 defect 12a-c): the three extractor rules, as a fixture the C++ port replays. The
+// readable per-rule tests are minutes.f16.test.ts; this is the parity half. The first three rows
+// are the A07's sentences; the rest are the negatives and the mixed cases that stop a port from
+// passing by loosening a rule.
+const F16 = [
+  { text: "Let's start the weekly check-in.", speakerId: 'S0' }, // flow: not an action
+  { text: 'Rahul will recruit ten more testers by Monday.', speakerId: 'S1' }, // open verb: action
+  { text: 'Sam should send the invoices before Wednesday.', speakerId: 'S1' }, // "before" is a due
+  { text: 'Priya will be late.', speakerId: 'S0' }, // will be: not an action
+  { text: 'We will not ship Friday.', speakerId: 'S0' }, // refusal: not an action
+  { text: "Let's start", speakerId: 'S1' }, // no object, no time: flow
+  { text: "Let's start the migration on Monday.", speakerId: 'S0' }, // flow + time: stays an action
+  { text: 'Rahul will probably recruit ten more testers.', speakerId: 'S1' }, // hedge skipped: action
+  { text: 'She will recruit ten more testers.', speakerId: 'S0' }, // not a name: not an action
+  { text: "Let's get started. Let's begin the review after lunch.", speakerId: 'S1' }, // flow, then flow + time
+  { text: 'Meera will triage tomorrow.', speakerId: 'S0' }, // due without an object: action
+  { text: 'Meera will triage.', speakerId: 'S0' }, // neither: not an action
+];
+
 const DEDUP = [
   { text: "I'll send the report by Friday. I'll send the report by Friday.", speakerId: 'S0' },
   { text: "i'll send THE REPORT by friday!", speakerId: 'S1' },
@@ -113,11 +132,15 @@ test('write golden files for the C++ parity tests', () => {
   expect(meeting[0].kind).toBe('summary');
   expect(meeting[0].content).toBe(
     'Decided: We decided to go with the phased rollout. ' +
-      "Next: Alright team, let's kick off the design review. — Speaker 1; " +
-      "Sure, I'll update the roadmap by Thursday. — Speaker 2 (due by Thursday); " +
-      'Maya will send the summary to everyone tomorrow. — Maya (due tomorrow). ' +
-      '4 action items, 1 decision, 3 open questions.',
+      "Next: Sure, I'll update the roadmap by Thursday. — Speaker 2 (due by Thursday); " +
+      'Maya will send the summary to everyone tomorrow. — Maya (due tomorrow); ' +
+      'I think we should ship version 2.1 this Friday. — Unassigned. ' +
+      '3 action items, 1 decision, 3 open questions.',
   );
+  // F16a: the chair's "let's kick off the design review" used to be the lead "Next:" item - a
+  // meeting-flow phrase quoted as the first thing anybody owes. It is no longer an action at all,
+  // so it is in neither the summary nor the list; the summary leads with the owned actions.
+  expect(meeting.some(m => m.content.includes('kick off'))).toBe(false);
 
   const dedup = extractMinutes(DEDUP as any, SPEAKERS as any);
   write('minutes_dedup', { input: { utterances: DEDUP, speakers: SPEAKERS }, output: dedup });
@@ -144,6 +167,17 @@ test('write golden files for the C++ parity tests', () => {
   expect(kindOf('I moved to Bangalore')).toBeUndefined();
   expect(kindOf('He pushed back on the price')).toBeUndefined();
   expect(kindOf('We need to move the review to Friday')).toBe('action');
+
+  const f16 = extractMinutes(F16 as any, SPEAKERS as any);
+  write('minutes_f16', { input: { utterances: F16, speakers: SPEAKERS }, output: f16 });
+  expect(f16.filter(m => m.kind === 'action').map(m => m.content)).toEqual([
+    'Rahul will recruit ten more testers by Monday. — Rahul (due by Monday)',
+    'Sam should send the invoices before Wednesday. — Sam (due before Wednesday)',
+    "Let's start the migration on Monday. — Speaker 1 (due on Monday)",
+    'Rahul will probably recruit ten more testers. — Rahul',
+    "Let's begin the review after lunch. — Speaker 2",
+    'Meera will triage tomorrow. — Meera (due tomorrow)',
+  ]);
 
   const decisionDedup = extractMinutes(DECISION_DEDUP as any, SPEAKERS as any);
   write('minutes_decision_dedup', {
@@ -324,7 +358,7 @@ function writeEvidenceGolden(
 it('writes the evidence goldens', () => {
   const meeting = writeEvidenceGolden('evidence_meeting.json', MEETING);
   expect(fs.existsSync(path.join(GOLDEN_DIR, 'evidence_meeting.json'))).toBe(true);
-  expect(meeting.length).toBe(8); // 1 decision + 4 actions + 3 questions - exact, not just non-empty
+  expect(meeting.length).toBe(7); // 1 decision + 3 actions + 3 questions - exact, not just non-empty (F16a: the "let's kick off" row is flow, no longer an action)
 
   const dedup = writeEvidenceGolden('evidence_dedup.json', DEDUP);
   expect(dedup.filter(i => i.kind === 'action').length).toBe(2);
@@ -333,6 +367,9 @@ it('writes the evidence goldens', () => {
   // Exact, not non-empty: 2 decisions, 1 action, 1 question, and nothing for the forecast row.
   expect(a07.map(i => i.kind).sort()).toEqual(['action', 'decision', 'decision', 'question']);
   expect(a07.find(i => i.kind === 'action')!.text).toContain('due by Friday');
+
+  const f16 = writeEvidenceGolden('evidence_f16.json', F16);
+  expect(f16.filter(i => i.kind === 'action')).toHaveLength(6); // the same six extractMinutes keeps
 
   const spans = writeEvidenceGolden('evidence_spans.json', SPANS);
   const decisions = spans.filter(i => i.kind === 'decision');

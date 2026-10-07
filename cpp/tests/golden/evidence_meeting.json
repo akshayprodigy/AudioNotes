@@ -75,21 +75,6 @@
     },
     {
       "kind": "action",
-      "text": "Alright team, let's kick off the design review. — Speaker 1",
-      "sources": [
-        {
-          "utteranceId": "u0",
-          "startMs": 0,
-          "endMs": 4000,
-          "charStart": 0,
-          "charEnd": 47
-        }
-      ],
-      "anchorStartMs": 0,
-      "anchorEndMs": 4000
-    },
-    {
-      "kind": "action",
       "text": "I think we should ship version 2.1 this Friday. — Unassigned",
       "sources": [
         {
