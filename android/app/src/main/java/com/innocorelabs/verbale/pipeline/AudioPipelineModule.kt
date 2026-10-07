@@ -158,6 +158,10 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
       promise.reject("no_permission", "RECORD_AUDIO not granted")
       return
     }
+    if (ImportGate.blocksStart) {
+      promise.reject("import_in_progress", "Finish the import first")
+      return
+    }
     try {
       val tier = if (config.hasKey("tier")) config.getString("tier") ?: "free" else "free"
       // Any capMs JS still sends is ignored: the limit and the monthly allowance are decided in
@@ -291,7 +295,8 @@ class AudioPipelineModule(private val ctx: ReactApplicationContext) :
         if (n > 0) Log.i("AudioPipeline", "recovered $n meeting(s) stranded in 'recording'")
         // A reservation abandoned by a dead process settles from the file and transcript now that
         // the orphans have left 'recording'. Never while a capture is running: its own slot is live.
-        if (!CaptureController.isRecording) {
+        // Nor while an import runs: its slot is taken before its meeting row exists.
+        if (!CaptureController.isRecording && !ImportGate.running) {
           try { AudioDb.get(ctx).sweepAllowance() } catch (e: Exception) { Log.w("AudioPipeline", "allowance sweep failed", e) }
         }
         promise.resolve(n)

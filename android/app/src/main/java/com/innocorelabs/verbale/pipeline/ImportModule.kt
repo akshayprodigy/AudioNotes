@@ -155,7 +155,9 @@ class ImportModule(private val ctx: ReactApplicationContext) : ReactContextBaseJ
         }
         promise.resolve(meetingId)
       } catch (e: AudioImport.ImportError) {
-        promise.reject("import_failed", e.message)
+        // code: import_failed | allowance_exhausted (message = the reset date, YYYY-MM-DD) |
+        // import_too_long | recording_in_progress | import_in_progress.
+        promise.reject(e.code, e.message)
       } catch (e: Throwable) {
         Log.e(TAG, "import failed", e)
         promise.reject("import_failed", "That file could not be imported")

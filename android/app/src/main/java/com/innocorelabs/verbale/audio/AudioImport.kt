@@ -7,8 +7,12 @@ import android.media.MediaFormat
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Log
+import com.innocorelabs.verbale.billing.Allowance
+import com.innocorelabs.verbale.billing.AllowancePolicy
+import com.innocorelabs.verbale.billing.LicenceStore
 import com.innocorelabs.verbale.data.AudioDb
 import com.innocorelabs.verbale.pipeline.CaptureController
+import com.innocorelabs.verbale.pipeline.ImportGate
 import com.innocorelabs.verbale.pipeline.RecordingService
 import java.io.BufferedOutputStream
 import java.io.File
@@ -49,7 +53,14 @@ object AudioImport {
 
   private const val TIMEOUT_US = 10_000L
 
-  class ImportError(message: String) : Exception(message)
+  /** What JS shows (with an upgrade offer) for a Free file over the hour. */
+  const val TOO_LONG_MESSAGE = "That recording is longer than the 1 hour Free limit"
+
+  /**
+   * [code] is what the bridge rejects with and JS matches on; [message] is for people. A plain
+   * failure keeps "import_failed", as before.
+   */
+  class ImportError(message: String, val code: String = "import_failed") : Exception(message)
 
   /** done/total are milliseconds of source audio, so a caller can show real progress. */
   fun interface Progress {
@@ -69,40 +80,70 @@ object AudioImport {
       throw ImportError("Not enough free space to import this file")
     }
 
+    // One session at a time (R5): not while recording, not alongside another import. The gate is
+    // held until the meeting is on disk, and a recording cannot start while it is.
+    ImportGate.enter(CaptureController.isRecording)?.let { throw ImportError(it.message, it.code) }
+    try {
+      return importUnderGate(ctx, uri, progress)
+    } finally {
+      ImportGate.exit()
+    }
+  }
+
+  private fun importUnderGate(ctx: Context, uri: Uri, progress: Progress?): String {
+    // A slot is taken BEFORE the file is accepted, and given back on any failure, so a rejected,
+    // cancelled or undecodable import costs nothing. A Pro import takes no slot (Unlimited).
+    val meetingId = UUID.randomUUID().toString()
+    val paid = LicenceStore.entitled(ctx)
+    val db = AudioDb.get(ctx)
+    val store = db.allowanceStore()
+    val reservation = Allowance.reserve(store, meetingId, paid, System.currentTimeMillis(), java.util.TimeZone.getDefault())
+    if (reservation is Allowance.Reservation.Denied) {
+      throw ImportError(reservation.resetsOn, "allowance_exhausted")
+    }
+
     val staging = File(ctx.filesDir, "imports").apply { mkdirs() }
     val temp = File(staging, "${UUID.randomUUID()}.pcm")
-    val bytes: Long
     try {
-      bytes = decodeTo(ctx, uri, temp, progress)
+      val bytes = decodeTo(ctx, uri, temp, paid, progress)
+
+      if (bytes < RecordingService.BYTES_PER_MS * 250L) {
+        throw ImportError("That file has almost no audio in it")
+      }
+      // The decoded length is the truth: a container that gave no duration, or lied, is overruled
+      // here. Refused whole — never truncated to fit.
+      if (AllowancePolicy.importVerdict(paid, bytes / RecordingService.BYTES_PER_MS) ==
+        AllowancePolicy.ImportVerdict.TOO_LONG
+      ) {
+        throw ImportError(TOO_LONG_MESSAGE, "import_too_long")
+      }
+
+      val createdAt = System.currentTimeMillis()
+      val dir = File(ctx.filesDir, "meetings/$meetingId").apply { mkdirs() }
+      val audio = File(dir, "audio.pcm")
+      if (!temp.renameTo(audio)) {
+        // Different filesystem, or a stale target. Copy rather than fail the whole import.
+        temp.inputStream().use { input -> audio.outputStream().use { input.copyTo(it) } }
+        temp.delete()
+      }
+
+      // The placeholder title on purpose, not the file name: shared audio arrives called
+      // "AUD-20260831-WA0002", and the pipeline's auto-retitle will name this from what was actually
+      // said — which is the whole reason that retitle exists. A name the user chooses beats both,
+      // and renaming is one tap away.
+      db.insertMeeting(meetingId, CaptureController.defaultTitle(createdAt), createdAt, "free", audio.absolutePath)
+      db.markCaptured(meetingId, bytes / RecordingService.BYTES_PER_MS, audio.absolutePath)
+      // An import of a minute or more commits once speech detection has found speech (the run's
+      // own checkpoints settle it); a shorter one waits for its transcript. Bookkeeping must not
+      // fail an import whose audio is already safe on disk.
+      try { db.settleAllowance(meetingId, processingDone = false) } catch (e: Throwable) { Log.w(TAG, "settle failed", e) }
+      Log.i(TAG, "imported $meetingId (${bytes / 1024}KB of 16 kHz mono)")
+      return meetingId
     } catch (e: Throwable) {
       temp.delete()
+      try { Allowance.refund(store, meetingId) } catch (r: Throwable) { Log.w(TAG, "refund failed", r) }
       throw e
     }
-
-    if (bytes < RecordingService.BYTES_PER_MS * 250L) {
-      temp.delete()
-      throw ImportError("That file has almost no audio in it")
-    }
-
-    val meetingId = UUID.randomUUID().toString()
-    val createdAt = System.currentTimeMillis()
-    val dir = File(ctx.filesDir, "meetings/$meetingId").apply { mkdirs() }
-    val audio = File(dir, "audio.pcm")
-    if (!temp.renameTo(audio)) {
-      // Different filesystem, or a stale target. Copy rather than fail the whole import.
-      temp.inputStream().use { input -> audio.outputStream().use { input.copyTo(it) } }
-      temp.delete()
-    }
-
-    val db = AudioDb.get(ctx)
-    // The placeholder title on purpose, not the file name: shared audio arrives called
-    // "AUD-20260831-WA0002", and the pipeline's auto-retitle will name this from what was actually
-    // said — which is the whole reason that retitle exists. A name the user chooses beats both,
-    // and renaming is one tap away.
-    db.insertMeeting(meetingId, CaptureController.defaultTitle(createdAt), createdAt, "free", audio.absolutePath)
-    db.markCaptured(meetingId, bytes / RecordingService.BYTES_PER_MS, audio.absolutePath)
-    Log.i(TAG, "imported $meetingId (${bytes / 1024}KB of 16 kHz mono)")
-    return meetingId
   }
 
   /** The file's own name, for telling the user what is being worked on. */
@@ -114,7 +155,7 @@ object AudioImport {
       null
     }
 
-  private fun decodeTo(ctx: Context, uri: Uri, out: File, progress: Progress?): Long {
+  private fun decodeTo(ctx: Context, uri: Uri, out: File, paid: Boolean, progress: Progress?): Long {
     val extractor = MediaExtractor()
     try {
       extractor.setDataSource(ctx, uri, null)
@@ -146,6 +187,12 @@ object AudioImport {
     if (totalMs > MAX_DURATION_MS) {
       extractor.release()
       throw ImportError("That recording is longer than four hours")
+    }
+    // The container's own word, checked before any decoding. 0 (it says nothing) is let through
+    // and decided on the decoded length, which is checked as the decode runs and again after it.
+    if (AllowancePolicy.importVerdict(paid, totalMs) == AllowancePolicy.ImportVerdict.TOO_LONG) {
+      extractor.release()
+      throw ImportError(TOO_LONG_MESSAGE, "import_too_long")
     }
 
     extractor.selectTrack(track)
@@ -226,6 +273,13 @@ object AudioImport {
 
           if (written > MAX_DURATION_MS * RecordingService.BYTES_PER_MS) {
             throw ImportError("That recording is longer than four hours")
+          }
+          // The same one-hour rule on what has actually been decoded so far: stop at once rather
+          // than spend minutes decoding a file that will be refused whole.
+          if (AllowancePolicy.importVerdict(paid, written / RecordingService.BYTES_PER_MS) ==
+            AllowancePolicy.ImportVerdict.TOO_LONG
+          ) {
+            throw ImportError(TOO_LONG_MESSAGE, "import_too_long")
           }
           progress?.onProgress(written / RecordingService.BYTES_PER_MS, totalMs)
         }

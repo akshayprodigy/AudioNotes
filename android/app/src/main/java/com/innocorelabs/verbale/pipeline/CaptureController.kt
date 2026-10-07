@@ -410,6 +410,8 @@ object CaptureController {
     // still writing. The caller sees null and can say "finishing the last one" rather than
     // silently producing a corrupt meeting.
     if (stopping) return null
+    // One session at a time: an import in flight holds a slot and the disk (addendum R5).
+    if (ImportGate.blocksStart) return null
     if (!hasMicPermission(context)) return null
     attach(context)
 
