@@ -249,6 +249,21 @@ def test_the_landing_page_states_the_free_allowance_and_not_the_old_fifteen_minu
         assert old not in body, old
 
 
+# How long the notes take after a meeting is a number nobody has measured on a range of phones
+# (whisper-base runs at under real time on a cheap one, and the backlog is serial), so no page may
+# promise a speed. 7 Oct 2026, workstream E: the store caption "the moment it ends" went with it.
+UNMEASURED_SPEED_CLAIMS = (
+    "the moment it ends", "the moment the meeting ends", "the moment you stop",
+    "as soon as the meeting ends", "as soon as you stop", "instantly", "in seconds",
+)
+
+
+def test_the_landing_page_makes_no_unmeasured_speed_claim(client):
+    body = client.get("/").text.lower()
+    for claim in UNMEASURED_SPEED_CLAIMS:
+        assert claim not in body, claim
+
+
 def test_the_landing_page_gives_keyword_search_to_free_and_meaning_search_to_pro(client):
     body = client.get("/").text
     free, pro = body.split('class="card tier pro')
