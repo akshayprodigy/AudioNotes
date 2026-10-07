@@ -39,7 +39,7 @@ class PipContentView(context: Context) : View(context) {
   private val cInkDim = Color.parseColor("#8A90A6")
   private val cMuteEdge = Color.parseColor("#7C84A6")
   private val cBlush = Color.parseColor("#FFC9CE")
-  // The free limit's warning colours: amber for the last three minutes, the danger edge for the
+  // The free limit's warning colours: amber for the last five minutes, the danger edge for the
   // last one. Both dark enough to read on cCanvas at PiP size.
   private val cAmber = Color.parseColor("#B86E00")
 

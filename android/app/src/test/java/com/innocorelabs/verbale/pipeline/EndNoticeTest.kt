@@ -12,7 +12,7 @@ class EndNoticeTest {
   @Test fun aStopIsStoredAsStoppedAndExplainsNothing() {
     assertEquals("stopped", EndNotice.stored(RecordingService.END_NORMAL))
     assertFalse(EndNotice.shouldProcess(RecordingService.END_NORMAL, someAudio))
-    assertNull(EndNotice.of(RecordingService.END_NORMAL, someAudio, processing = true, capMinutes = 15))
+    assertNull(EndNotice.of(RecordingService.END_NORMAL, someAudio, processing = true, capMinutes = 60))
   }
 
   @Test fun everyOtherEndingWithAudioIsProcessedAndStoredByName() {
@@ -44,7 +44,7 @@ class EndNoticeTest {
 
   @Test fun theFreeLimitNoticeNamesTheLimit() =
     assertEquals(
-      "Stopped at the 15-minute Free limit",
-      EndNotice.of(RecordingService.END_CAP_REACHED, someAudio, processing = true, capMinutes = 15)!!.title,
+      "Stopped at the 60-minute Free limit",
+      EndNotice.of(RecordingService.END_CAP_REACHED, someAudio, processing = true, capMinutes = 60)!!.title,
     )
 }

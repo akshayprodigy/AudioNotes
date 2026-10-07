@@ -19,25 +19,26 @@ import {
 const MIN = 60 * 1000;
 
 describe('who is capped', () => {
-  it('caps a free recording at fifteen minutes', () => {
+  it('caps a free recording at one hour', () => {
     expect(capMsFor(false)).toBe(FREE_CAP_MS);
-    expect(FREE_CAP_MS).toBe(15 * MIN);
+    expect(FREE_CAP_MS).toBe(60 * MIN);
+    expect(WARN_BEFORE_MS).toBe(5 * MIN);
   });
 
   it('does not cap a subscriber, or somebody inside a trial', () => {
-    // entitlement().paid is true for both, which is what lets the offer at minute twelve keep a
+    // entitlement().paid is true for both, which is what lets the offer at minute fifty-five keep a
     // recording running instead of restarting it.
     expect(capMsFor(true)).toBe(NO_CAP);
   });
 });
 
 describe('phases', () => {
-  it('runs quietly until three minutes are left', () => {
+  it('runs quietly until five minutes are left', () => {
     expect(capPhase(0, FREE_CAP_MS)).toBe('running');
-    expect(capPhase(11 * MIN, FREE_CAP_MS)).toBe('running');
+    expect(capPhase(50 * MIN, FREE_CAP_MS)).toBe('running');
   });
 
-  it('warns exactly three minutes out, not a moment later', () => {
+  it('warns exactly five minutes out, not a moment later', () => {
     expect(capPhase(FREE_CAP_MS - WARN_BEFORE_MS, FREE_CAP_MS)).toBe('warning');
     expect(capPhase(FREE_CAP_MS - WARN_BEFORE_MS - 1, FREE_CAP_MS)).toBe('running');
   });
@@ -56,8 +57,8 @@ describe('phases', () => {
 
 describe('the countdown', () => {
   it('reads as minutes and seconds', () => {
-    expect(countdown(12 * MIN, FREE_CAP_MS)).toBe('3:00');
-    expect(countdown(12 * MIN + 1000, FREE_CAP_MS)).toBe('2:59');
+    expect(countdown(55 * MIN, FREE_CAP_MS)).toBe('5:00');
+    expect(countdown(55 * MIN + 1000, FREE_CAP_MS)).toBe('4:59');
     expect(countdown(FREE_CAP_MS - 500, FREE_CAP_MS)).toBe('0:01');
   });
 

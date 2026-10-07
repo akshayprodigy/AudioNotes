@@ -34,3 +34,9 @@ Branch `dev/october-plan`. Never pushed. Plan: `docs/superpowers/plans/2026-10-0
 - Tests: `CapResolutionTest` (3, including a reflection pin that `start` takes no `Long`); `AllowanceTest` "a start that fails after taking the slot gives it back". Mutants killed: `capFor` swapped, `capFor` always 0, `start` regaining a `Long` cap parameter.
 - NOT done here (Task 8 / Session 2): "start refuses while an import is running" and the import-side "recording in progress" check (R5 second half).
 - Device-verified later: the tile actually refusing, the foreground-service start failing and refunding.
+
+## Task 6 — one hour, five-minute warning, enforced to the second
+- `CapClock.WARN_BEFORE_MS` = 5 min; `src/billing/recordingCap.ts` `FREE_CAP_MS` = 60 min, `WARN_BEFORE_MS` = 5 min (comments updated). `CapClockTest` and `recordingCap.test.ts` rewritten to the hour (tests first: they failed before the constants moved); new CapClock test pins the 5-minute mirror. `EndNoticeTest` uses 60 for the cap-reached sentence.
+- `RecordingService` loop: the cap is checked at the 8-read (about 1 s) cadence; the entitlement poll that lifts the cap stays at the 256-read (about 33 s) cadence and now starts five minutes out. The old single block did both on the slow cadence.
+- Mutants killed: native `WARN_BEFORE_MS` back to 3 min (2 tests); TS `WARN_BEFORE_MS` 3 min (1 test); TS `FREE_CAP_MS` 15 min (3 tests).
+- Not unit-testable: the loop's cadence (device-verified later). Left alone: `notif_cap_warning` reads "Stops at the 60-minute Free limit" from the cap, which is correct; reword in copy work if wanted.

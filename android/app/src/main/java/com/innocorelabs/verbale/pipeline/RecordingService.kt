@@ -459,21 +459,30 @@ class RecordingService : Service(), CaptureListener {
               }
             }
             val cap = CaptureController.capMs
-            if (cap > 0L && reads % DISK_CHECK_EVERY_READS == 0) {
+            // Enforced at the one-second cadence, not the half-minute one, so the overrun is about a
+            // second (GAP-6). Order matters: this runs before the half-minute entitlement poll below,
+            // so it can stop a recording that poll has not yet had the chance to lift. That is
+            // acceptable only because the poll starts five minutes out (it ran three before), which
+            // gives it about ten chances before the limit.
+            if (cap > 0L && reads % WARN_CHECK_EVERY_READS == 0) {
               val capturedMs = File(path).length() / BYTES_PER_MS
-              // In the last three minutes, ask whether Pro has been bought — the record screen's
-              // card and the notification both sell it then — and lift the limit for the recording
-              // ALREADY RUNNING, so the countdown stops soon after the purchase rather than at the
-              // limit. About every half a minute (the disk-check cadence), and only in those three
-              // minutes: it is a database read and a signature check. This is the ONE place the
-              // limit is lifted or enforced.
-              if (CapClock.counting(CapClock.phase(capturedMs, cap)) && LicenceStore.entitled(this@RecordingService)) {
-                Log.i(TAG, "entitled at ${capturedMs}ms with ${cap - capturedMs}ms to the free limit — cap lifted")
-                CaptureController.capMs = 0L
-              } else if (capturedMs >= cap) {
+              if (capturedMs >= cap) {
                 Log.i(TAG, "free tier limit reached at ${capturedMs}ms — stopping and keeping it")
                 endReason = END_CAP_REACHED
                 recording = false
+              }
+            }
+            if (cap > 0L && reads % DISK_CHECK_EVERY_READS == 0) {
+              val capturedMs = File(path).length() / BYTES_PER_MS
+              // In the last five minutes, ask whether Pro has been bought — the record screen's
+              // card and the notification both sell it then — and lift the limit for the recording
+              // ALREADY RUNNING, so the countdown stops soon after the purchase rather than at the
+              // limit. About every half a minute (the disk-check cadence), and only in those five
+              // minutes: it is a database read and a signature check. This is the ONE place the
+              // limit is lifted; the check above is the one place it is enforced.
+              if (CapClock.counting(CapClock.phase(capturedMs, cap)) && LicenceStore.entitled(this@RecordingService)) {
+                Log.i(TAG, "entitled at ${capturedMs}ms with ${cap - capturedMs}ms to the free limit — cap lifted")
+                CaptureController.capMs = 0L
               }
             }
             if (reads % DISK_CHECK_EVERY_READS == 0 && filesDir.usableSpace < MIN_FREE_BYTES) {
@@ -851,7 +860,7 @@ class RecordingService : Service(), CaptureListener {
       else -> getString(R.string.notif_title_recording)
     }
     val warning = CaptureController.warning
-    // The free limit, from three minutes out: the body says so and the chronometer counts DOWN.
+    // The free limit, from five minutes out: the body says so and the chronometer counts DOWN.
     val capMs = CaptureController.capMs
     val capLeftMs = CapClock.remainingMs(CaptureController.capturedMs, capMs)
     val capCounting = CaptureController.isRecording && !paused && !silenced &&

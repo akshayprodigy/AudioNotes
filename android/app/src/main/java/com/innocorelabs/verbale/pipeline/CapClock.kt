@@ -5,7 +5,7 @@ import java.util.Locale
 /**
  * The free tier's length limit, as the surfaces outside the app show it.
  *
- * The record screen has its own card for the last three minutes; the PiP window and the recording
+ * The record screen has its own card for the last five minutes; the PiP window and the recording
  * notification are what a person sees when the app is NOT in front, which is how most meetings
  * are recorded. They change at the same second the card does: WARN_BEFORE_MS mirrors
  * WARN_BEFORE_MS in src/billing/recordingCap.ts, and if one moves the other moves in the same
@@ -15,7 +15,7 @@ import java.util.Locale
  */
 object CapClock {
   /** Mirrors WARN_BEFORE_MS in src/billing/recordingCap.ts. */
-  const val WARN_BEFORE_MS = 3 * 60_000L
+  const val WARN_BEFORE_MS = 5 * 60_000L
 
   /** The last minute, when the warning turns red. */
   const val FINAL_MS = 60_000L

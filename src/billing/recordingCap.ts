@@ -4,8 +4,8 @@
  * The free tier gives away the whole pipeline — record, transcribe, tell the speakers apart,
  * rule-based minutes, export — because somebody has to see it work before they will pay for more
  * of it. What it does not give away is LENGTH, and length is the right lever for this product:
- * the founder's own case is that real meetings run sixty to ninety minutes, so a genuine meeting
- * reaches the cap while a trial of the app does not.
+ * real meetings run sixty to ninety minutes, so a long one reaches the cap while a trial of the
+ * app does not. (The month's five-session allowance is native too: AllowancePolicy.)
  *
  * Two rules this file exists to keep:
  *
@@ -13,7 +13,7 @@
  *      The audio captured is saved and transcribed in full. An app that throws away somebody's
  *      meeting to enforce a price is an app they uninstall with a review attached.
  *   2. NOBODY IS SURPRISED. The limit is on the record screen before the first tap, and the
- *      warning arrives with three minutes left — enough to start the trial and keep going, which
+ *      warning arrives with five minutes left — enough to buy Pro and keep going, which
  *      is the point. Discovering a limit at the moment it takes your meeting is the failure this
  *      whole design is arranged around.
  *
@@ -22,11 +22,11 @@
  * limit that only exists in JavaScript would not survive it.
  */
 
-/** Fifteen minutes. Long enough for a real stand-up to finish and show the whole pipeline. */
-export const FREE_CAP_MS = 15 * 60 * 1000;
+/** An hour — about one recurring meeting, so a real meeting fits and a trial of the app never nears it. */
+export const FREE_CAP_MS = 60 * 60 * 1000;
 
-/** Three minutes of notice: time to read it, decide, and start a trial without breaking stride. */
-export const WARN_BEFORE_MS = 3 * 60 * 1000;
+/** Five minutes of notice: time to read it, decide, and buy Pro without breaking stride. */
+export const WARN_BEFORE_MS = 5 * 60 * 1000;
 
 /** No cap at all, for a subscriber or somebody inside their trial. */
 export const NO_CAP = 0;
@@ -34,7 +34,7 @@ export const NO_CAP = 0;
 /**
  * The cap for an entitlement, in milliseconds. 0 means uncapped.
  *
- * A trial lifts it exactly as a subscription does — which is what makes the offer at minute twelve
+ * A trial lifts it exactly as a subscription does — which is what makes the offer at minute fifty-five
  * work: one tap, no account, no payment, and the recording carries on rather than restarting.
  */
 export function capMsFor(paid: boolean): number {
