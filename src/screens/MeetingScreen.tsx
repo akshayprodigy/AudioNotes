@@ -14,6 +14,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { highlightsFor, type Mark } from './meeting/highlights';
 import { announceLine, endingNote, holdFor } from './meeting/meetingNotes';
+import { loadCaptureGapNote } from '../capture/gaps';
+import { useAddToProject } from '../projects/AddToProjectSheet';
 import { staleKey, takeDroppedNotice } from './meeting/correctionNotices';
 import { MEETING_TABS, tabKey } from './meeting/meetingTabs';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -127,6 +129,8 @@ export default function MeetingScreen({ route, navigation }: Props) {
   const [scrollTo, setScrollTo] = useState<{ ms: number; seq: number } | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
+  // A call or another app silenced the microphone during the recording (F26); null when it did not.
+  const [gapNote, setGapNote] = useState<string | null>(null);
   const [tagging, setTagging] = useState(false);
   const [edits, setEdits] = useState<EditMap>(new Map());
   // The transcript was corrected after the written summary was made (F15) — native keeps the flag.
@@ -865,8 +869,9 @@ export default function MeetingScreen({ route, navigation }: Props) {
   // dialog offered PDF, Markdown and Plain text, and "Subtitles (.srt)" and "Cancel" were never
   // rendered — so the subtitle export the menu promised was unreachable, and the dialog could not
   // be backed out of. The app's own sheet has no such limit and carries a line per row.
-  const [exportSheet, setExportSheet] = useState(false);
-  const onExport = () => setExportSheet(true);
+  // Export is the Share screen now: a preview of exactly what will be shared, the format, and the
+  // optional credit line. The old four-row sheet is gone; every format is still offered there.
+  const onExport = () => navigation.navigate('Share', { meetingId });
   /**
    * Who said these lines. Splitting and merging turns are both this: the scope picks the ids,
    * setLineSpeaker writes through and records the edit, and the Transcript regroups on refresh.
@@ -895,16 +900,6 @@ export default function MeetingScreen({ route, navigation }: Props) {
     [naming, meetingId, speakers, applySpeaker],
   );
 
-  const exportActions: SheetAction[] = [
-    { icon: 'share', label: 'PDF', hint: 'The one that looks the same wherever it lands.',
-      onPress: () => FileExport.share(meetingId, 'pdf') },
-    { icon: 'copy', label: 'Markdown', hint: 'For notes apps and wikis.',
-      onPress: () => FileExport.share(meetingId, 'md') },
-    { icon: 'copy', label: 'Plain text', hint: 'For anything else.',
-      onPress: () => FileExport.share(meetingId, 'txt') },
-    { icon: 'share', label: 'Subtitles (.srt)', hint: 'The transcript, timed, for a video editor.',
-      onPress: () => FileExport.share(meetingId, 'srt') },
-  ];
 
   // A recording we declined to transcribe is FINISHED, not in flight. Without this it fell through
   // to the progress view and span on "Writing your notes..." forever, because nothing was running
@@ -935,6 +930,25 @@ export default function MeetingScreen({ route, navigation }: Props) {
       (!settled && nothingWritten && hold === 'waiting'));
   const empty =
     !refused && !working && nothingWritten && utterances.length === 0 && (settled || hold !== 'waiting');
+  // The person's own tags for this meeting after a project is chosen: re-read them so the chips update.
+  const project = useAddToProject(meetingId, {
+    meetingTitle: meeting?.title,
+    onUpgrade: () => navigation.navigate('Paywall', { meetingId }),
+    onChanged: () => {
+      db.tagsFor(meetingId)
+        .then(setTags)
+        .catch(() => {});
+    },
+  });
+  useEffect(() => {
+    let live = true;
+    loadCaptureGapNote(meetingId, meeting?.durationMs ?? 0, db.getSetting).then(note => {
+      if (live) setGapNote(note);
+    });
+    return () => {
+      live = false;
+    };
+  }, [meetingId, meeting?.durationMs]);
   const endNote = endingNote(meeting?.endReason, meeting?.durationMs ?? 0);
   const announce = announceLine(meeting?.announceOutcome);
 
@@ -975,6 +989,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
       hint: 'Group this with meetings like it — a client, a project, a weekly.',
       onPress: () => setTagging(true),
     },
+    project.action,
     {
       icon: 'share',
       label: 'Export',
@@ -1158,12 +1173,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
           actions={sheetActions}
           onClose={() => setSheet(false)}
         />
-        <Sheet
-          visible={exportSheet}
-          title="Export minutes"
-          actions={exportActions}
-          onClose={() => setExportSheet(false)}
-        />
+        {project.sheet}
       </View>
     );
   }
@@ -1323,6 +1333,13 @@ export default function MeetingScreen({ route, navigation }: Props) {
             <View style={st.forcedBanner}>
               <Txt variant="sub" color={announce.warn ? colors.warning : colors.inkDim}>
                 {announce.text}
+              </Txt>
+            </View>
+          ) : null}
+          {gapNote ? (
+            <View style={st.forcedBanner}>
+              <Txt variant="sub" color={colors.inkSoft}>
+                {gapNote}
               </Txt>
             </View>
           ) : null}
@@ -1486,13 +1503,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
         actions={sheetActions}
         onClose={() => setSheet(false)}
       />
-
-      <Sheet
-        visible={exportSheet}
-        title="Export minutes"
-        actions={exportActions}
-        onClose={() => setExportSheet(false)}
-      />
+      {project.sheet}
 
       <TextPrompt
         visible={editing !== null}

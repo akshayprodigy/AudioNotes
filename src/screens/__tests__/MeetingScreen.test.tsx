@@ -237,21 +237,48 @@ test('regaining focus reloads the meeting, but the first focus does not load it 
 });
 
 /**
- * Every export format the menu promises must be reachable.
- *
- * The format picker used to be an Alert with five buttons; Android renders three, so on the Pixel
- * "Subtitles (.srt)" and "Cancel" did not exist and the dialog could not be backed out of. It is
- * now the app's own sheet, and this pins the list: all four formats, by name, in one place.
+ * Export is the Share screen (Workstream E): a preview of exactly what will be shared, a format
+ * picker with all four formats, and the optional credit line. The overflow sheet's "Export" row
+ * and the footer button both open it; the old four-row sheet no longer exists on this screen.
  */
-test('the export picker offers all four formats, subtitles included', async () => {
+test('Export opens the Share screen for this meeting, and the old export sheet is gone', async () => {
   const { Sheet } = require('../../components/ui');
+  nav.navigate.mockClear();
   const tree = await render();
   const sheets = tree.root.findAllByType(Sheet);
-  const picker = sheets.find(s => s.props.title === 'Export minutes');
-  expect(picker).toBeDefined();
-  expect(picker!.props.actions.map((a: { label: string }) => a.label)).toEqual([
-    'PDF', 'Markdown', 'Plain text', 'Subtitles (.srt)',
-  ]);
+  expect(sheets.find(s => s.props.title === 'Export minutes')).toBeUndefined();
+  const overflow = sheets.find(s => s.props.actions.some((a: { label: string }) => a.label === 'Export'));
+  expect(overflow).toBeDefined();
+  const exportRow = overflow!.props.actions.find((a: { label: string }) => a.label === 'Export');
+  await act(async () => {
+    exportRow.onPress();
+  });
+  expect(nav.navigate).toHaveBeenCalledWith('Share', { meetingId: 'm1' });
+});
+
+/** The overflow sheet offers "Add to project" beside "Add a tag" (Workstream F). */
+test('the overflow sheet offers Add to project next to Add a tag', async () => {
+  const { Sheet } = require('../../components/ui');
+  const tree = await render();
+  const overflow = tree.root
+    .findAllByType(Sheet)
+    .find(s => s.props.actions.some((a: { label: string }) => a.label === 'Add a tag'));
+  const labels = overflow!.props.actions.map((a: { label: string }) => a.label);
+  expect(labels.indexOf('Add to project')).toBe(labels.indexOf('Add a tag') + 1);
+});
+
+/** A call that silenced the microphone is said once, plainly, under the ending lines (F26). */
+test('a stored capture gap shows as one sentence on the meeting', async () => {
+  (db.getSetting as jest.Mock).mockImplementation(async (k: string) =>
+    k === 'capture_gaps:m1' ? JSON.stringify([[10_000, 50_000]]) : null,
+  );
+  try {
+    const tree = await render();
+    const text = JSON.stringify(tree.toJSON());
+    expect(text).toContain("microphone was silenced for 40 seconds");
+  } finally {
+    (db.getSetting as jest.Mock).mockResolvedValue(null);
+  }
 });
 
 /**
