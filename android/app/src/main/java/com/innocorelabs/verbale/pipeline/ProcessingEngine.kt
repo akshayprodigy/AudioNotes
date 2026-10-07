@@ -467,9 +467,14 @@ class ProcessingEngine(
       // sweep() now awaits this run's terminal event — missing it wedges that one meeting forever
       // and blocks the whole sweep loop for the rest of the app session.
       Log.e(TAG, "process failed for $meetingId", e)
-      val reason = FailureReason.of(e)
-      try { AudioDb.get(ctx).markFailed(meetingId, reason) } catch (_: Exception) {}
-      listener.onComplete("error", reason)
+      // The decision (reason, strike count, whether the sweep will try again) is FailureOutcome's;
+      // the UPDATE is AudioDb.markFailed and is device-only.
+      val so = try { AudioDb.get(ctx).failCount(meetingId) } catch (_: Exception) { 0 }
+      val outcome = FailureOutcome.of(e, so)
+      Log.w(TAG, "$meetingId ${outcome.status}: strike ${outcome.newFailCount}/${FailureOutcome.MAX_STRIKES}, " +
+        if (outcome.retriable) "the sweep will try again" else "the sweep will not retry")
+      try { AudioDb.get(ctx).markFailed(meetingId, outcome.reason) } catch (_: Exception) {}
+      listener.onComplete("error", outcome.reason)
     }
   }
 

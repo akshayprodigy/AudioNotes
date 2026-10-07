@@ -764,6 +764,13 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
     db.execSQL("UPDATE meetings SET status=? WHERE id=?", arrayOf<Any?>(status, id))
   }
 
+  /** How many runs of this meeting have crashed so far (0 when unknown). Read for the log line only. */
+  fun failCount(id: String): Int {
+    db.rawQuery("SELECT fail_count FROM meetings WHERE id=?", arrayOf(id)).use { c ->
+      return if (c.moveToFirst() && !c.isNull(0)) c.getInt(0) else 0
+    }
+  }
+
   /** A processing run crashed: its own status (not 'error', which is "no speech"), the reason, one more strike. */
   fun markFailed(id: String, reason: String) {
     db.execSQL(
