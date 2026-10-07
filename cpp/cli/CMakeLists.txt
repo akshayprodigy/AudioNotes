@@ -106,6 +106,7 @@ add_executable(audionotes_cli
   ${CORE}/minutes/minutes_extractor.cpp
   ${CORE}/minutes/llm_minutes.cpp
   ${CORE}/minutes/llm_prompts.cpp
+  ${CORE}/minutes/fact_check.cpp
   ${CORE}/minutes/templates.cpp
   ${CORE}/minutes/fence.cpp
   ${CORE}/capi/audionotes_capi.cpp)
@@ -310,6 +311,7 @@ audionotes_add_test(test_narrate_live
   ${CORE}/tests/test_narrate_live.cpp
   ${CORE}/llm/llama_engine.cpp
   ${CORE}/minutes/llm_prompts.cpp
+  ${CORE}/minutes/fact_check.cpp
   ${CORE}/minutes/templates.cpp
   ${CORE}/minutes/dictation.cpp
   ${CORE}/minutes/fence.cpp
@@ -317,6 +319,12 @@ audionotes_add_test(test_narrate_live
 target_include_directories(test_narrate_live PRIVATE ${TP}/llama.cpp/include)
 target_compile_definitions(test_narrate_live PRIVATE HAVE_LLAMA=1)
 target_link_libraries(test_narrate_live PRIVATE llama ${CMAKE_DL_LIBS})
+
+# F24: the writer fact check (numbers, amounts, dates, status verbs against the transcript). Pure
+# text in, pure text out — no model, no engine — so the three A07 cases run on every gate.
+audionotes_add_test(test_fact_check
+  ${CORE}/tests/test_fact_check.cpp
+  ${CORE}/minutes/fact_check.cpp)
 
 # Phase 5 (dictation): spoken punctuation, off a device and off a model.
 audionotes_add_test(test_dictation
@@ -335,6 +343,7 @@ audionotes_add_test(test_templates
   ${CORE}/tests/test_templates.cpp
   ${CORE}/minutes/templates.cpp
   ${CORE}/minutes/llm_prompts.cpp
+  ${CORE}/minutes/fact_check.cpp
   ${CORE}/minutes/fence.cpp)
 
 # Sub-project 5: sentence embeddings against the real model (skips itself without the file).
@@ -349,6 +358,7 @@ audionotes_add_test(test_llm_minutes
   ${CORE}/tests/test_llm_minutes.cpp
   ${CORE}/minutes/llm_minutes.cpp
   ${CORE}/minutes/llm_prompts.cpp
+  ${CORE}/minutes/fact_check.cpp
   ${CORE}/minutes/templates.cpp
   ${CORE}/minutes/fence.cpp
   ${CORE}/minutes/minutes_extractor.cpp)
@@ -359,6 +369,7 @@ audionotes_add_test(test_pipeline_align
   ${CORE}/minutes/minutes_extractor.cpp
   ${CORE}/minutes/llm_minutes.cpp
   ${CORE}/minutes/llm_prompts.cpp
+  ${CORE}/minutes/fact_check.cpp
   ${CORE}/minutes/templates.cpp
   ${CORE}/minutes/fence.cpp
   ${CORE}/asr/whisper_asr.cpp
@@ -396,6 +407,7 @@ audionotes_add_test(test_cancel
   ${CORE}/minutes/minutes_extractor.cpp
   ${CORE}/minutes/llm_minutes.cpp
   ${CORE}/minutes/llm_prompts.cpp
+  ${CORE}/minutes/fact_check.cpp
   ${CORE}/minutes/templates.cpp
   ${CORE}/minutes/fence.cpp
   ${CORE}/asr/whisper_asr.cpp
@@ -433,6 +445,7 @@ audionotes_add_test(test_capi
   ${CORE}/minutes/minutes_extractor.cpp
   ${CORE}/minutes/llm_minutes.cpp
   ${CORE}/minutes/llm_prompts.cpp
+  ${CORE}/minutes/fact_check.cpp
   ${CORE}/minutes/templates.cpp
   ${CORE}/minutes/fence.cpp
   ${CORE}/asr/whisper_asr.cpp

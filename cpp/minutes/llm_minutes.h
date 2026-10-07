@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "minutes/fact_check.h"
 #include "minutes/minutes_extractor.h"  // DraftMinute, MinuteUtt, MinuteSpk
 
 namespace audionotes {
@@ -146,6 +147,11 @@ struct Narration {
   std::string narrative;  // MOM body, three or four paragraphs
   std::string summary;    // 2-3 sentences, the Summary tab
   std::string headline;   // <= 15 words, the library row
+  // F24: sentences the fact check removed from the three above because the transcript does not
+  // support them (see minutes/fact_check.h), and which claim classes removed them. Zero and empty
+  // when everything the writer wrote was supported.
+  int fact_dropped = 0;
+  std::vector<std::string> fact_classes;
 };
 
 // Notes characters one prompt may carry: ~4 chars/token against an 8192 context, holding back room

@@ -17,9 +17,11 @@
 // path ever drives a model again, fence it before it does.
 #include "minutes/llm_minutes.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <unordered_map>
 
+#include "minutes/fact_check.h"
 #include "minutes/fence.h"
 #include "minutes/templates.h"
 
@@ -256,6 +258,9 @@ std::string narrativePrompt(const std::string& record, const std::string& langua
          "- Never say that something was not stated, not specified, not mentioned, not decided or "
          "not clarified. If a detail is missing, leave it out silently.\n"
          "- Do not mention how long the meeting was or when it started or ended.\n"
+         "- Keep every number, amount, date and status exactly as it was said. Something promised "
+         "or planned is not something done: never write that it was sent, finished or approved "
+         "unless the record says it already was.\n"
          + lang +
          "Start writing now:";
 }
@@ -277,6 +282,9 @@ std::string summaryPrompt(const std::string& narrative, const std::string& langu
          "- Never say that something was not stated, not specified, not mentioned, not decided or "
          "not clarified. If a detail is missing, leave it out silently.\n"
          "- Do not mention how long the meeting was or when it started or ended.\n"
+         "- Keep every number, amount, date and status exactly as it was said. Something promised "
+         "or planned is not something done: never write that it was sent, finished or approved "
+         "unless the record says it already was.\n"
          + lang +
          "Start writing the summary now:";
 }
@@ -665,13 +673,30 @@ Narration narrate(const std::vector<MinuteUtt>& utterances,
     }
   }
 
+  // F24: every generation is held against the transcript before the next one is built from it, so
+  // the summary is written from a narrative that has already lost what the transcript does not
+  // support. Narrator.kt does the same, per output, with the same function.
+  std::string transcript;
+  for (const auto& u : utterances) {
+    transcript += u.text;
+    transcript += '\n';
+  }
+  auto guard = [&](const std::string& written) {
+    const FactCheck f = checkWriterFacts(written, transcript);
+    out.fact_dropped += f.dropped;
+    for (const auto& c : f.classes)
+      if (std::find(out.fact_classes.begin(), out.fact_classes.end(), c) == out.fact_classes.end())
+        out.fact_classes.push_back(c);
+    return f.text;
+  };
+
   // Progressive condensation. Only the narrative pays a full prefill; the other two read a few
   // hundred characters, and neither can contradict the one above it.
-  out.narrative = clean(generate(narrativePrompt(source), 640));
+  out.narrative = guard(clean(generate(narrativePrompt(source), 640)));
   if (out.narrative.empty()) return out;
-  out.summary = clean(generate(summaryPrompt(out.narrative), 192));
+  out.summary = guard(clean(generate(summaryPrompt(out.narrative), 192)));
   if (out.summary.empty()) return out;
-  out.headline = generate(headlinePrompt(out.summary), 48);
+  out.headline = guard(generate(headlinePrompt(out.summary), 48));
   return out;
 }
 

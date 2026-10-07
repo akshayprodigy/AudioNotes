@@ -441,6 +441,44 @@ int main(int argc, char** argv) {
     }
   }
 
+  // F24: what the writer says is held against the transcript before the next generation is built
+  // from it. The faulty sentence is gone from the narrative the summary is written FROM, and the
+  // counter says so — a drop is never silent.
+  {
+    std::vector<std::string> seen;
+    int n = 0;
+    auto gen = [&](const std::string& p, int) {
+      seen.push_back(p);
+      switch (n++) {
+        case 0: return std::string("The group reviewed the report. The report was sent out. Pricing was discussed.");
+        case 1: return std::string("The group reviewed the report and discussed pricing.");
+        default: return std::string("Report and pricing review");
+      }
+    };
+    const auto out = audionotes::narrate(
+        {{"I'll send the report to the client on Friday.", "S0"}, {"We also talked about pricing.", "S0"}},
+        {{"S0", "Ana"}}, gen);
+    CHECK(out.narrative == "The group reviewed the report. Pricing was discussed.",
+          "the unsupported sentence should be removed from the narrative, got: %s", out.narrative.c_str());
+    CHECK(seen.size() == 3 && seen[1].find("The report was sent out.") == std::string::npos,
+          "the summary must be written from the checked narrative");
+    CHECK(out.fact_dropped == 1, "one sentence was dropped, counted %d", out.fact_dropped);
+    CHECK(out.fact_classes.size() == 1 && out.fact_classes[0] == "tense",
+          "the drop is a tense flip");
+  }
+
+  // ...and a narrative with nothing left after the check stops the chain exactly as an empty one
+  // does: nothing stored, no summary built on nothing.
+  {
+    int calls = 0;
+    auto gen = [&](const std::string&, int) { ++calls; return std::string("It was sent for $999 on Tuesday."); };
+    const auto out = audionotes::narrate({{"We spoke for a while about the website redesign.", ""}}, {}, gen);
+    CHECK(out.narrative.empty() && out.summary.empty() && out.headline.empty(),
+          "a narrative the transcript does not support must not reach the summary");
+    CHECK(calls == 1, "narrate should stop after the emptied narrative, made %d calls", calls);
+    CHECK(out.fact_dropped == 1, "the emptied narrative still counts its drop");
+  }
+
   // A narrative that never arrives stops the chain — no summary built on nothing.
   {
     int calls = 0;

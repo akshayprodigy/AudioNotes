@@ -43,6 +43,8 @@ add_library(audionotes SHARED
   # from Kotlin (Narrator) so it can checkpoint each chunk and honour cancellation, but it must not
   # own a word of the prompts — those live here, where the CLI and the eval harness exercise them.
   minutes/llm_prompts.cpp
+  # F24: the writer fact check llm_prompts' narrate() and Narrator.kt both run before storing.
+  minutes/fact_check.cpp
   # Sub-project 6a: the seven meeting-type ids and the sections each narrows narrativePrompt to.
   minutes/templates.cpp
   # Phase 5: spoken punctuation for dictation mode.
