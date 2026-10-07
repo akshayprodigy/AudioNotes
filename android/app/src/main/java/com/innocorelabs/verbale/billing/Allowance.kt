@@ -63,8 +63,17 @@ object Allowance {
     if (store.entries().firstOrNull { it.id == id }?.state == State.RESERVED) store.setState(id, to)
   }
 
-  fun settle(store: Store, id: String, capturedMs: Long, usableTranscript: Boolean, processingDone: Boolean) {
-    when (AllowancePolicy.settleAction(capturedMs, usableTranscript, processingDone)) {
+  fun settle(
+    store: Store,
+    id: String,
+    capturedMs: Long,
+    isDictation: Boolean,
+    vadDone: Boolean,
+    speechFound: Boolean,
+    usableTranscript: Boolean,
+    processingDone: Boolean,
+  ) {
+    when (AllowancePolicy.settleAction(capturedMs, isDictation, vadDone, speechFound, usableTranscript, processingDone)) {
       Settle.COMMIT -> commit(store, id)
       Settle.REFUND -> refund(store, id)
       Settle.WAIT -> Unit
@@ -73,11 +82,12 @@ object Allowance {
 
   fun status(store: Store, paid: Boolean, nowMs: Long, zone: TimeZone): Status {
     val entries = store.entries()
-    val period = AllowancePolicy.effectivePeriod(AllowancePolicy.periodOf(nowMs, zone), entries)
+    val nowPeriod = AllowancePolicy.periodOf(nowMs, zone)
+    val period = AllowancePolicy.effectivePeriod(nowPeriod, entries)
     return Status(
       limit = AllowancePolicy.FREE_SESSIONS,
-      used = AllowancePolicy.used(entries, period),
-      remaining = AllowancePolicy.remaining(entries, period),
+      used = AllowancePolicy.used(entries, nowPeriod),
+      remaining = AllowancePolicy.remaining(entries, nowPeriod),
       period = period,
       resetsOn = AllowancePolicy.resetsOn(period),
       paid = paid,

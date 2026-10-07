@@ -101,9 +101,23 @@ class AllowanceTest {
     val s = FakeStore()
     Allowance.reserve(s, "long", false, oct, utc)
     Allowance.reserve(s, "blip", false, oct, utc)
-    Allowance.settle(s, "long", capturedMs = 120_000L, usableTranscript = false, processingDone = false)
-    Allowance.settle(s, "blip", capturedMs = 5_000L, usableTranscript = false, processingDone = true)
+    Allowance.reserve(s, "quiet", false, oct, utc)
+    Allowance.reserve(s, "note", false, oct, utc)
+    Allowance.settle(s, "long", 120_000L, isDictation = false, vadDone = true, speechFound = true, usableTranscript = false, processingDone = false)
+    Allowance.settle(s, "blip", 5_000L, isDictation = false, vadDone = true, speechFound = true, usableTranscript = false, processingDone = true)
+    Allowance.settle(s, "quiet", 20 * 60_000L, isDictation = false, vadDone = true, speechFound = false, usableTranscript = false, processingDone = false)
+    Allowance.settle(s, "note", 30_000L, isDictation = true, vadDone = false, speechFound = false, usableTranscript = false, processingDone = false)
     assertEquals(State.COMMITTED, s.rows["long"]!!.state)
     assertEquals(State.REFUNDED, s.rows["blip"]!!.state)
+    assertEquals(State.REFUNDED, s.rows["quiet"]!!.state)
+    assertEquals(State.REFUNDED, s.rows["note"]!!.state)
+  }
+
+  @Test fun `a waiting settle leaves the slot reserved and counted as used`() {
+    val s = FakeStore()
+    Allowance.reserve(s, "m", false, oct, utc)
+    Allowance.settle(s, "m", 30_000L, false, false, false, false, false)
+    assertEquals(State.RESERVED, s.rows["m"]!!.state)
+    assertEquals(1, Allowance.status(s, false, oct, utc).used)
   }
 }
