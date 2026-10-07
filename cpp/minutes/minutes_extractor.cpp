@@ -43,10 +43,34 @@ const std::regex SCHEDULE_WHEN(
 const std::regex SCHEDULE_INTENT(
     R"rx(\b(to|must|should|shall|will|would|can|could|may|might|let's|please)\s+(you |we |i |they |he |she |it )?(move|push|postpone|delay|reschedule|shift|bump|bring forward|pull forward|put back)\b)rx",
     std::regex::icase);
-// JS DUE regex, verbatim (only ['’] simplified):
+// JS DUE regex, verbatim (only ['’] simplified). F16c: the `before ...` branch is new — a
+// deadline that excludes its own day, so dateNorm leaves it unresolved (see dateNorm.ts).
 const std::regex DUE(
-    R"rx(\b(today|tonight|tomorrow|this (morning|afternoon|evening|week|month)|next (week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|by (the )?(end of (the )?(day|week|month)|eod|cob|monday|tuesday|wednesday|thursday|friday|saturday|sunday|noon|\w+day)|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|in \d+ (day|days|week|weeks)|\d{1,2}(st|nd|rd|th)?( of)? (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b)rx",
+    R"rx(\b(today|tonight|tomorrow|this (morning|afternoon|evening|week|month)|next (week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|by (the )?(end of (the )?(day|week|month)|eod|cob|monday|tuesday|wednesday|thursday|friday|saturday|sunday|noon|\w+day)|before (the )?(end of (the )?(day|week|month)|eod|cob|noon|today|tomorrow|next (week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|\w+day|\d{1,2}(st|nd|rd|th)?( of)? (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|in \d+ (day|days|week|weeks)|\d{1,2}(st|nd|rd|th)?( of)? (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b)rx",
     std::regex::icase);
+
+// ---- F16: three corrections to what counts as an action (see minutes.ts for the reasoning) ----
+// JS: /\blet['’]s (start|begin|get started|kick off)\b/i  (meeting flow, F16a)
+const std::regex FLOW_START(R"rx(\blet's (start|begin|get started|kick off)\b)rx", std::regex::icase);
+// JS: /\b(tomorrow|next \w+|on (monday|...|sunday)|by \w+|after \w+)\b/i
+const std::regex FLOW_TIME(
+    R"rx(\b(tomorrow|next \w+|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|by \w+|after \w+)\b)rx",
+    std::regex::icase);
+// JS: NEGATED_FIRST_WILL — "we will not ship Friday" is a refusal, not a commitment.
+const std::regex NEGATED_FIRST_WILL(
+    R"rx(\b(i|we) will (?:(?:probably|definitely|certainly|possibly|also|just|then|still|really|maybe|likely|surely|now|soon|even|only|always|actually|basically) )*(not|never)\b)rx",
+    std::regex::icase);
+// JS: /\b([A-Z][a-z]{1,20})\s+will\b/g  (case-SENSITIVE: capitalization marks the name)
+const std::regex NAME_WILL(R"rx(\b([A-Z][a-z]{1,20})\s+will\b)rx");
+// JS: NOT_A_NAME (case-sensitive)
+const std::regex NOT_A_NAME(
+    R"rx(^(I|We|You|The|This|That|It|Let|Please|He|She|They|There|These|Those|Here|Who|What|Which|And|But|So|Then|If|When)$)rx");
+// JS: WILL_HEDGE / WILL_NO_ACTION / WILL_VERB
+const std::regex WILL_HEDGE(
+    R"rx(^\s*(probably|definitely|certainly|possibly|also|just|then|still|really|maybe|likely|surely|now|soon|even|only|always|actually|basically)\b)rx",
+    std::regex::icase);
+const std::regex WILL_NO_ACTION(R"rx(^\s*(not|never|be|been|being)\b)rx", std::regex::icase);
+const std::regex WILL_VERB(R"rx(^\s*([A-Za-z]+)(.*)$)rx");
 // JS: /\b([A-Z][a-z]{1,20})\s+(?:will|to|should|is going to|needs to|has to|can|could|please)\b/
 // (case-SENSITIVE on purpose — capitalization is what marks a proper name)
 const std::regex NAMED_OWNER(
@@ -168,12 +192,6 @@ std::string detectOwner(const std::string& sentence, const std::string& speaker_
   return "Unassigned";
 }
 
-bool isAction(const std::string& sentence) {
-  return std::regex_search(sentence, ACTION_FIRST_PERSON) ||
-         std::regex_search(sentence, ACTION_ASSIGN) ||
-         std::regex_search(sentence, ACTION_OBLIGATION) || startsWithImperative(sentence);
-}
-
 // JS: /[A-Za-z0-9]+/g counted over the trimmed sentence. ASCII on purpose — see the JS comment.
 int asciiWordCount(const std::string& s) {
   int n = 0;
@@ -184,6 +202,44 @@ int asciiWordCount(const std::string& s) {
     in_word = w;
   }
   return n;
+}
+
+namespace {
+
+// JS: namedWillAction — `<Name> will <verb>` for ANY verb once there is a due or an object.
+bool namedWillAction(const std::string& sentence) {
+  for (std::sregex_iterator it(sentence.begin(), sentence.end(), NAME_WILL), end; it != end; ++it) {
+    const std::smatch& m = *it;
+    if (std::regex_match(m[1].str(), NOT_A_NAME)) continue;
+    std::string tail = sentence.substr(static_cast<size_t>(m.position(0) + m.length(0)));
+    std::smatch h;
+    while (std::regex_search(tail, h, WILL_HEDGE)) tail = tail.substr(static_cast<size_t>(h.length(0)));
+    if (std::regex_search(tail, WILL_NO_ACTION)) continue;
+    std::smatch v;
+    if (!std::regex_search(tail, v, WILL_VERB)) continue;
+    if (asciiWordCount(v[2].str()) >= 2 || std::regex_search(sentence, DUE)) return true;
+  }
+  return false;
+}
+
+bool hasCue(const std::string& sentence) {
+  return std::regex_search(sentence, ACTION_FIRST_PERSON) ||
+         std::regex_search(sentence, ACTION_ASSIGN) ||
+         std::regex_search(sentence, ACTION_OBLIGATION) || startsWithImperative(sentence);
+}
+
+}  // namespace
+
+// JS: isAction. Flow phrases and negated first-person futures are replaced by a placeholder
+// (not deleted) so the remainder is judged on its own; see minutes.ts.
+bool isAction(const std::string& sentence) {
+  std::string judged = sentence;
+  if (std::regex_search(sentence, FLOW_START) && !std::regex_search(sentence, DUE) &&
+      !std::regex_search(sentence, FLOW_TIME)) {
+    judged = std::regex_replace(judged, FLOW_START, " # ");
+  }
+  judged = std::regex_replace(judged, NEGATED_FIRST_WILL, " # ");
+  return hasCue(judged) || namedWillAction(sentence);
 }
 
 bool isQuestion(const std::string& sentence) {

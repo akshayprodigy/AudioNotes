@@ -62,6 +62,7 @@ int main(int argc, char** argv) {
   runMinutesGolden(dir, "minutes_decision_dedup.json");
   runMinutesGolden(dir, "minutes_unassigned.json");
   runMinutesGolden(dir, "minutes_empty.json");
+  runMinutesGolden(dir, "minutes_f16.json");  // F16: flow phrases, open `will <verb>`, `before <day>`
 
   // Caps: 35 distinct action sentences -> 30 actions kept; summary counts the trimmed list.
   {
