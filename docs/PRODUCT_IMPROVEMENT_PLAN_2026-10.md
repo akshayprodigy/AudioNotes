@@ -63,7 +63,7 @@ The following edge-case rules are proposed implementation defaults under the app
 ### What consumes a session
 
 - A new meeting recording, dictation, or imported audio file uses the same allowance. Do not create a separate import or dictation route around the limit.
-- Reserve one slot atomically before starting capture or accepting an import. Commit the slot once the session has at least 60 seconds of captured audio, or a shorter session produces a usable transcript.
+- Reserve one slot atomically before starting capture or accepting an import. Commit the slot once the session has at least 60 seconds of captured audio, or a shorter **meeting** produces a usable transcript. **[R2, founder decision 7 Oct] A dictation under 60 seconds of captured audio never consumes a slot**, whether or not it produced words; a dictation of 60 seconds or more counts like any session.
 - Refund an accidental short session with no usable transcript, an empty recording, or a cancelled/invalid import. A longer retained recording consumes a slot even if processing fails; retrying it is free.
 - Pausing/resuming the same recording, crash recovery, retrying processing, editing, and regenerating existing output never consume another slot.
 - Deleting or archiving a counted meeting does not restore the allowance. Restoring a backup does not recount historical meetings as new sessions.
@@ -93,12 +93,12 @@ The following edge-case rules are proposed implementation defaults under the app
 
 ### 3a. [R2] Gaps in the rules above, with proposed defaults
 
-The baseline report (Section 2) worked 45 scenarios through the rules and found 14 places where this section is silent or two rules conflict. Each has a **proposed default** below. They are proposals, not decisions: the founder confirms them (`FOUNDER_TODO_2026-10.md` A2), and until then engineering builds the proposed default and flags it in the code. Scenario numbers refer to the baseline report.
+The baseline report (Section 2) worked 45 scenarios through the rules and found 14 places where this section is silent or two rules conflict. Each has a **proposed default** below. **Confirmed by the founder on 7 October 2026: all 14 defaults are accepted, with one change to GAP-2** (short dictations are free, below). Scenario numbers refer to the baseline report. Scenario numbers refer to the baseline report.
 
 | Gap | Question | Proposed default | Why |
 |---|---|---|---|
 | GAP-1 | What is a "usable transcript"? (rows 6, 7, 35) | At least one utterance of three or more words, after the transcription pass. Retune from the benchmark. | The built core says "at least one utterance"; a one-word cough should not take a slot. |
-| GAP-2 | "Empty recording" is refunded but a longer retained recording consumes a slot even if processing fails. (rows 7, 9, 33) | *Empty* = no speech found by the speech-detection stage, at any length: refund. *Retained* = speech found and at least 60 s: counts even if processing then fails. A crash on a session under 60 s keeps the slot reserved until a retry completes. A short dictation with real words **does** take a slot (as written) — flagged because it lets one sentence cost one-fifth of a month. | Separates "nothing there" from "something there that failed". The dictation cost is the founder's call. |
+| GAP-2 | "Empty recording" is refunded but a longer retained recording consumes a slot even if processing fails. (rows 7, 9, 33) | *Empty* = no speech found by the speech-detection stage, at any length: refund. *Retained* = speech found and at least 60 s: counts even if processing then fails. A crash on a session under 60 s keeps the slot reserved until a retry completes. **Founder decision: a dictation under 60 s never takes a slot, even with real words; meetings under 60 s keep the usable-transcript rule.** A dictation of 60 s or more counts as any session. | Separates "nothing there" from "something there that failed", and keeps quick notes from burning the month. Accepted trade-off: a user can make unlimited sub-minute dictations. |
 | GAP-3 | What does the screen show while a slot is reserved but unsettled? (rows 2, 6) | Reserved counts as used. A session under 60 s settles right after the speech-detection stage (about 0.01× real time), not after full transcription, so an accidental tap returns its slot within seconds. | Avoids "0 left" for minutes because of a refundable tap. |
 | GAP-4 | A Free session upgraded mid-way (row 23) | Keeps its slot. | No special case; Pro is unlimited anyway. |
 | GAP-5 | What is "began with Pro"? (row 22) | A valid, unexpired licence on the phone at the instant of start. The payment-grace token counts until the server has said no (the lapsed-subscription fix). A pending purchase and an offline, unrefreshable expired token count as Free. | Offline-first, consistent with the licence design. |
@@ -125,7 +125,7 @@ Every issue in the baseline report's backlog is below with an id, the defects it
 | F01 | — | Review and merge `free-allowance` (policy and service code) into `main`. | Reviewer reads the four commits; JVM tests pass on `main`. | S | Founder A1 |
 | F02 | D44 | Resolve the cap **natively** in `CaptureController.start` so the tile, shortcut, PiP and Record screen all get it; delete the JS-supplied `capMs`. | JVM test that no entry point can start uncapped; device test of a tile start on Free. | S | F01 |
 | F03 | D15 | One-hour cap and five-minute warning enforced on the ~1 s cadence, not the ~33 s disk cadence. | `CapClockTest` and a cadence test; a paused 60-minute run stops at 60:00 ±1 s on a phone. | S | F01 |
-| F04 | — | Ledger table in the encrypted DB, backup carries it (merge by id, GAP-9), commit/refund when capture and processing end, reconcile abandoned reservations after a crash, settle short sessions after the speech-detection stage (GAP-3). | JVM tests per rule; instrumented test of crash reconcile; the 45 baseline scenarios as the checklist. | M | F01, Founder A2 |
+| F04 | — | Ledger table in the encrypted DB, backup carries it (merge by id, GAP-9), commit/refund when capture and processing end, reconcile abandoned reservations after a crash, settle short sessions after the speech-detection stage (GAP-3); a dictation under 60 s is always refunded (founder decision, GAP-2). | JVM tests per rule; instrumented test of crash reconcile; the 45 baseline scenarios as the checklist. | M | F01, Founder A2 |
 | F05 | — | Imports use the same allowance; refuse over-long Free imports **before** accepting; refund on decode failure. | Scenario rows 28–33 (unit + device). | M | F04 |
 | F06 | N04 | JS stops deciding the cap and only renders; every 15-minute string in the app, tests, landing page source and docs replaced. | `git grep` for "15 min" finds only meeting *content*; copy tests updated. | S | F04 |
 | F07 | D01 | Record screen: the Free-limit card replaces the mascot, the stage scrolls if needed, Stop stays reachable at 384×853 dp and large text; add the first `RecordScreen` test. | Test of Stop reachability; device check at large font. | M | — |
@@ -260,7 +260,7 @@ Acceptance: users can follow an action back to its source meeting and complete i
 | 3. Package and release | Weeks 9–10 | Free/Pro copy, store assets, migration, release QA, the Play Console list (founder D) | App/store policy agrees; staged-release checklist complete |
 | 4. Improve repeat usage | Week 11 onward | Follow-up home and project discovery; measure first cohorts | Evidence supports the next iteration |
 
-Responsibilities: product owner maintains policy and priorities; design owner specifies flows/copy; engineering owns native enforcement and persistence; QA owns device scenarios; founder owns store/commercial updates and release decisions. Roles may be held by the same person. **Assign named owners before Phase 1a begins** (founder item A4).
+Responsibilities: product owner maintains policy and priorities; design owner specifies flows/copy; engineering owns native enforcement and persistence; QA owns device scenarios; founder owns store/commercial updates and release decisions. Roles may be held by the same person. **Decided 7 Oct: every role is held by the product owner** (the founder), so there is nothing further to name.
 
 ## 6. Verification and release requirements
 

@@ -2,6 +2,8 @@
 
 *7 October 2026. Branch `phase-0-baseline`, cut from `main` at `81396d0`. Documentation only: no app code was changed, nothing was pushed, no phone was used. Sources: `docs/PRODUCT_IMPROVEMENT_PLAN_2026-10.md` (§3–§7), the three September documents (A07 pass, Phase B report, fix plan), `docs/NEXT.md`, the free-allowance native plan (it exists only on branch `free-allowance`), and `eval/`.*
 
+**Addendum, 7 October 2026 (founder decisions, made after this report was written).** The body below is the snapshot as audited and is not rewritten. (1) `free-allowance` and this branch are merged onto `main`. (2) All 14 policy gaps in Section 2 take the proposed defaults in plan §3a, with one change: **a dictation under 60 seconds never takes a slot** (GAP-2; this changes scenario rows 7 and 35 for dictations, and removes the "8-second note burns a slot" concern; meetings under 60 s keep the usable-transcript rule). (3) The blanks in the consent wording (4.5) are filled by `docs/FOUNDER_TODO_2026-10.md` section A3: notes kept 12 months, no recordings of sessions, benchmark audio deleted 90 days after the last scored run, the product owner as contact. (4) Every role is the product owner.
+
 **Read this first.** Three facts shape everything below.
 
 1. **Nothing in the allowance design is live.** The two pure-Kotlin building blocks sit on an unmerged side branch and nothing calls them. The app still enforces 15 minutes, decided in JavaScript, and a Free recording started from the Quick Settings tile has no cap at all.

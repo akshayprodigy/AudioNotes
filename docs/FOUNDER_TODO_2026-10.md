@@ -11,37 +11,40 @@ How to use it: tick a box when done, and write the date and one line of result n
 ## A. Decisions — before Phase 1 starts ▶ do first
 
 **A1. Merge the allowance branch?** `free-allowance` holds the policy code (2 of 10 tasks) and the plan, 4 commits ahead of `main`, unmerged. The October work builds on it. Recommendation: merge it after Claude's review of the 4 commits, then build on `main`.
-- [ ] Yes, merge after review / [ ] No, rebuild on `main` instead — *blocks Phase 1a*
+- [x] **Decided 7 Oct: yes — merge it, and everything else, onto `main`** so the real launch build can be tested. Done locally; not pushed.
 
 **A2. The 14 allowance-policy gaps** (baseline report §2). Each has a proposed default in plan §3a. Reply "accept all", or list the ones you want changed.
-- [ ] GAP-1 what counts as a "usable transcript" (proposed: at least one utterance of 3 words or more)
-- [ ] GAP-2 an empty or no-speech recording is refunded; whether a short dictation with real words costs a slot (proposed: yes, per plan §3 — your call, it is the most visible one)
-- [ ] GAP-3 short sessions are settled right after the fast speech-detection stage, not after full transcription
-- [ ] GAP-4 a Free session you upgrade mid-way keeps its slot
-- [ ] GAP-5 "Pro at the start" means a valid, unexpired licence on the phone at that moment
-- [ ] GAP-6 stop at 60:00 of captured audio (about a second's overrun is acceptable); an import over 60:00 + 1 s is refused
-- [ ] GAP-7 a paused recording is ended and kept after 60 minutes paused (number is a starting guess)
-- [ ] GAP-8 clock changes: a counted session more than one month ahead of the phone's clock is read as this month (bounds any lock-out to one month)
-- [ ] GAP-9 backup merge: the state that uses more allowance wins
-- [ ] GAP-10 order at start: permission → storage → licence → take a slot → open the microphone
-- [ ] GAP-11 one session at a time; an import while recording is refused
-- [ ] GAP-12 wording: "5 meetings each month · up to 1 hour each" plus one line saying imports and dictations count too
-- [ ] GAP-13 an import's length is its decoded length
-- [ ] GAP-14 an unverified purchase stays Free until verified (the "payment received" card remains)
+- [x] GAP-1 what counts as a "usable transcript" (proposed: at least one utterance of 3 words or more)
+- [x] GAP-2 an empty or no-speech recording is refunded. **Decided 7 Oct: a dictation under 60 seconds never costs a slot** (meetings under 60 s keep the usable-transcript rule)
+- [x] GAP-3 short sessions are settled right after the fast speech-detection stage, not after full transcription
+- [x] GAP-4 a Free session you upgrade mid-way keeps its slot
+- [x] GAP-5 "Pro at the start" means a valid, unexpired licence on the phone at that moment
+- [x] GAP-6 stop at 60:00 of captured audio (about a second's overrun is acceptable); an import over 60:00 + 1 s is refused
+- [x] GAP-7 a paused recording is ended and kept after 60 minutes paused (number is a starting guess)
+- [x] GAP-8 clock changes: a counted session more than one month ahead of the phone's clock is read as this month (bounds any lock-out to one month)
+- [x] GAP-9 backup merge: the state that uses more allowance wins
+- [x] GAP-10 order at start: permission → storage → licence → take a slot → open the microphone
+- [x] GAP-11 one session at a time; an import while recording is refused
+- [x] GAP-12 wording: "5 meetings each month · up to 1 hour each" plus one line saying imports and dictations count too
+- [x] GAP-13 an import's length is its decoded length
+- [x] GAP-14 an unverified purchase stays Free until verified (the "payment received" card remains)
 
-*Blocks Phase 1a. Without a yes, engineering builds the proposed default and flags it.*
+*Decided 7 Oct: accept all 14 defaults, with the GAP-2 change above.*
 
 **A3. Interview and benchmark ground rules**
-- [ ] How long we keep research notes and audio, and who may hear them (the consent wording has blanks for this)
-- [ ] Incentive for interview participants
-- [ ] A contact name/email for the consent form
-- [ ] Whether screen mirroring to a laptop is acceptable in sessions (only scripted content appears on screen)
-- [ ] Who the second labeller is (the benchmark needs two people who can hear the audio)
+*Decided 7 Oct: left to Claude. The rules chosen are below; change any of them by saying so.*
+
+- [x] **Interview notes:** typed or handwritten, identified by a participant number (P1…), name kept separately; kept 12 months, then deleted. No audio, video or screen recording of sessions.
+- [x] **Benchmark meeting audio and labels:** stay on one encrypted disk, never in git (`real-*` is already ignored); only the named labellers and the product owner may hear them; deleted 90 days after the last scored run, or sooner if any speaker asks. Nothing leaves the owner's machines. Every speaker in a recorded meeting consents in writing first.
+- [x] **Incentive:** a voucher worth US$30 or ₹2,500 per 60-minute interview session; benchmark meeting owners get a copy of their own notes instead of money. *(Amounts are a starting figure — change when you pay.)*
+- [x] **Contact on the consent form:** the product owner, by the work email printed on the form. *(Type the address in when the form is printed; none exists in the repo.)*
+- [x] **Screen mirroring:** not used. The facilitator watches the participant's phone directly.
+- [ ] **Second labeller:** the first labeller is the product owner; the second must be a different person who hears the audio well and is not the engineer who wrote the extractors. *A person has to be named before recording starts — this one cannot be decided for you.*
 
 *Blocks the interview round and the benchmark.*
 
 **A4. Roles** — plan §5 says to name owners before implementation: product owner, design owner, engineering, device QA, release.
-- [ ] Names written into the plan
+- [x] **Decided 7 Oct: every role is the product owner.**
 
 ---
 
