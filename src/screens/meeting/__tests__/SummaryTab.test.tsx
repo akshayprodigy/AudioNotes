@@ -30,6 +30,9 @@ jest.mock('../../../billing/subscription', () => ({
   playAvailable: jest.fn().mockResolvedValue(false),
   playPlans: jest.fn().mockResolvedValue([]),
   syncEntitlement: jest.fn().mockResolvedValue(undefined),
+  // The real one adds the lapsed flag on top of the native status; these tests drive the native
+  // status directly, and SummaryTab.lapsed.test.tsx covers the flag with the real module.
+  licenceStatus: () => require('../../../native/NativeLicence').default.status(),
   PLAY_MANAGE_URL: 'https://play.google.com/store/account/subscriptions',
 }));
 

@@ -1,6 +1,7 @@
 import Billing, { type PlayPlan } from '../native/NativeBilling';
 import Licence, { type LicenceStatus } from '../native/NativeLicence';
 import { hostOf, record } from '../privacy/ledger';
+import { db } from '../db/queries';
 
 /**
  * Talking to the licence server.
@@ -13,6 +14,48 @@ import { hostOf, record } from '../privacy/ledger';
 
 /** Refresh once a token is inside this much of its expiry. */
 const RENEW_WINDOW_SECONDS = 5 * 24 * 60 * 60;
+
+/**
+ * Set (to a unix-seconds string) when the licence server ANSWERED "not entitled" to a phone that
+ * held a licence, cleared when a verified licence is stored again or the person signs out.
+ *
+ * Why it exists: dropping the token is `Licence.store('', null)`, which the native verifier reads
+ * as state NONE — the ordinary state of every Free user, which earns the Free upsell. A person
+ * whose Pro just ended deserves the lapsed card (Check again / Manage in Google Play) instead, and
+ * NONE alone cannot tell the two apart. The flag is JS-side and display-only; it never grants
+ * anything, so it needs no signature.
+ */
+const KEY_PRO_LAPSED = 'pro_lapsed_at';
+
+async function markLapsed(now: number): Promise<void> {
+  await db.setSetting(KEY_PRO_LAPSED, String(Math.floor(now))).catch(() => {});
+}
+
+async function clearLapsed(): Promise<void> {
+  await db.setSetting(KEY_PRO_LAPSED, '').catch(() => {});
+}
+
+/**
+ * Store a licence, and forget the lapsed flag when what was stored is a real, verified token.
+ * An empty token (the free-account sign-in, the dropped token) never clears it.
+ */
+async function storeLicence(token: string, refreshKey: string | null): Promise<boolean> {
+  const stored = await Licence.store(token, refreshKey);
+  if (token && stored) await clearLapsed();
+  return stored;
+}
+
+/**
+ * The licence as the screens should read it: the native verdict, except that NONE after a licence
+ * the server withdrew is reported as `expired`, so the Summary shows the lapsed card rather than
+ * the Free upsell. Throws when the native status does, like `Licence.status()`.
+ */
+export async function licenceStatus(): Promise<LicenceStatus> {
+  const status = await Licence.status();
+  if (status.state !== 'none' || status.paid) return status;
+  const flag = await db.getSetting(KEY_PRO_LAPSED).catch(() => null);
+  return flag ? { ...status, state: 'expired' } : status;
+}
 
 /**
  * An error carrying the licence server's HTTP status, which decides what the buyer is told. A
@@ -93,12 +136,13 @@ export async function signIn(email: string, password: string): Promise<SignInRes
 
   // The refresh key is stored even when there is no token yet, so a subscription bought later
   // can be picked up by a plain refresh instead of asking for the password again.
-  await Licence.store(res.token ?? '', res.refreshKey);
+  await storeLicence(res.token ?? '', res.refreshKey);
   return { email: res.email, plan: res.plan, paid: Boolean(res.token) };
 }
 
 export async function signOut(): Promise<void> {
   await Licence.clear();
+  await clearLapsed();
 }
 
 /**
@@ -139,9 +183,13 @@ export async function refreshIfNeeded(now = Date.now() / 1000): Promise<LicenceS
       // renewal on the web is still picked up by the next refresh without a password. Only an
       // answer does this. A failure to get one lands in the catch below and keeps the token.
       await Licence.store('', null);
+      // Only a phone that HELD a licence has lost anything. A signed-in Free account (state
+      // `none`, refresh key stored) is asked too, and told no too, and must not be shown a
+      // lapsed card for a Pro it never had.
+      if (status.state !== 'none') await markLapsed(now);
       return await Licence.status();
     }
-    await Licence.store(res.token, null);
+    await storeLicence(res.token, null);
     return await Licence.status();
   } catch {
     return null;
@@ -185,7 +233,7 @@ async function redeem(base: string, purchaseToken: string): Promise<PlayResult> 
       '/api/billing/play/link',
       { purchaseToken, deviceId },
     );
-    await Licence.store(res.token ?? '', res.refreshKey);
+    await storeLicence(res.token ?? '', res.refreshKey);
     return { paid: Boolean(res.token) };
   } catch (e) {
     const status = statusOf(e);

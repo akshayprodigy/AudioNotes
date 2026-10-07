@@ -11,7 +11,7 @@ import Llm from '../../native/NativeLlm';
 import ModelManager from '../../native/NativeModelManager';
 import Licence from '../../native/NativeLicence';
 import { entitlement } from '../../billing/trial';
-import { PLAY_MANAGE_URL, playAvailable, playPlans, syncEntitlement } from '../../billing/subscription';
+import { PLAY_MANAGE_URL, licenceStatus, playAvailable, playPlans, syncEntitlement } from '../../billing/subscription';
 import { trialLength, trialPlan } from '../../billing/trialTerms';
 import { DICTATION_TEMPLATE, TEMPLATE_IDS, templateHint, templateLabel } from './templateLabels';
 import { threadLine } from '../threadData';
@@ -229,7 +229,8 @@ export default function SummaryTab({
     let alive = true;
     (async () => {
       try {
-        const licence = await Licence.status();
+        // `licenceStatus` reports a licence the server withdrew as `expired`, not NONE (F18).
+        const licence = await licenceStatus();
         if (!alive) return;
         setLapsedCopy(licence.lapsedCopy);
         if (licence.state === 'expired') {
