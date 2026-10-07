@@ -7,11 +7,13 @@ import type { Item, Minute, MinuteKind, Speaker } from '../../pipeline/types';
 import { db } from '../../db/queries';
 import {
   Empty,
+  EditButton,
   EditedTag,
   MineTag,
   RecordChips,
   SectionHead,
   ToolButton,
+  editLabelFor,
   editTargetOf,
   editedText,
   isEdited,
@@ -72,78 +74,84 @@ function Item({
   const lab = labels ?? {};
   const wears = Boolean(lab.type || lab.status || lab.day);
   return (
-    <Pressable
-      accessibilityRole="checkbox"
-      accessibilityState={{ checked: on }}
-      accessibilityLabel={text}
-      accessibilityHint={onEdit ? 'Long press to correct this item' : undefined}
-      accessibilityActions={onEdit ? [{ name: 'longpress', label: 'Correct this item' }] : undefined}
-      onAccessibilityAction={e => {
-        if (e.nativeEvent.actionName === 'longpress') onEdit?.();
-      }}
-      onLongPress={onEdit}
-      onPress={onToggle}>
-      <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={on ? 2 : 4}>
-        <View style={st.check}>
-          <View
-            style={[
-              st.box,
-              { borderColor: on ? colors.success : colors.line },
-              on && { backgroundColor: colors.success, borderColor: colors.success },
-            ]}>
-            {on ? <Icon name="check" size={s(14)} color="#FFFFFF" strokeWidth={3.4} /> : null}
-          </View>
-          <View style={st.flex}>
-            <Txt
-              variant="prose"
-              color={on ? colors.inkFaint : colors.ink}
-              style={on ? st.struck : null}>
-              {sentenceCase(text)}
-            </Txt>
-            {/* One row, TWO rules, and the difference is the whole point of it.
+    <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={on ? 2 : 4}>
+      <View style={st.checkRow}>
+        <Pressable
+          style={st.checkMain}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: on }}
+          accessibilityLabel={text}
+          accessibilityHint={onEdit ? 'Long press to correct this item' : undefined}
+          accessibilityActions={onEdit ? [{ name: 'longpress', label: 'Correct this item' }] : undefined}
+          onAccessibilityAction={e => {
+            if (e.nativeEvent.actionName === 'longpress') onEdit?.();
+          }}
+          onLongPress={onEdit}
+          onPress={onToggle}>
+          <View style={st.check}>
+            <View
+              style={[
+                st.box,
+                { borderColor: on ? colors.success : colors.line },
+                on && { backgroundColor: colors.success, borderColor: colors.success },
+              ]}>
+              {on ? <Icon name="check" size={s(14)} color="#FFFFFF" strokeWidth={3.4} /> : null}
+            </View>
+            <View style={st.flex}>
+              <Txt
+                variant="prose"
+                color={on ? colors.inkFaint : colors.ink}
+                style={on ? st.struck : null}>
+                {sentenceCase(text)}
+              </Txt>
+              {/* One row, TWO rules, and the difference is the whole point of it.
 
-                Owner and due date are fields the extractor mashed into the text. They are shown
-                as what they are, only when there is something to say — most owners resolve to
-                "Unassigned", which is not information — and only while the item is still work: a
-                finished item is proof of work and these marks belong to working on it.
+                  Owner and due date are fields the extractor mashed into the text. They are shown
+                  as what they are, only when there is something to say — most owners resolve to
+                  "Unassigned", which is not information — and only while the item is still work: a
+                  finished item is proof of work and these marks belong to working on it.
 
-                The timestamp is not that, and putting it inside their `!on` gate emptied the Done
-                section of every evidence link it had. Checking an item off is exactly when a
-                reader wants to verify it, and the Done disclosure is what somebody returning to a
-                list opens. It stays whether the box is ticked or not. */}
-            {(!on && (owner || due || wears)) || provenance ? (
-              <View style={st.tags}>
-                {!on ? <RecordChips labels={lab} colors={colors} /> : null}
-                {!on && owner ? (
-                  <View style={[st.tag, { backgroundColor: colors.primarySoft }]}>
-                    <Icon name="users" size={s(11)} color={colors.primary} strokeWidth={2.6} />
-                    <Txt variant="chipSm" color={colors.primary}>
-                      {owner}
-                    </Txt>
-                  </View>
-                ) : null}
-                {!on && due ? (
-                  <View style={[st.tag, { backgroundColor: colors.warningSoft }]}>
-                    <Icon name="clock" size={s(11)} color={colors.warning} strokeWidth={2.6} />
-                    <Txt variant="chipSm" color={colors.warning}>
-                      {due}
-                    </Txt>
-                  </View>
-                ) : null}
-                {provenance}
-              </View>
-            ) : null}
-            {/* Not shown on a ticked row, for the reason the chips above are not: these are marks
-                of work in progress. Unlike the timestamp, which is a fact about the item. */}
-            {!on && mine ? (
-              <MineTag colors={colors} onRemove={onRemove} />
-            ) : !on && edited ? (
-              <EditedTag colors={colors} onRevert={onRevert} />
-            ) : null}
+                  The timestamp is not that, and putting it inside their `!on` gate emptied the Done
+                  section of every evidence link it had. Checking an item off is exactly when a
+                  reader wants to verify it, and the Done disclosure is what somebody returning to a
+                  list opens. It stays whether the box is ticked or not. */}
+              {(!on && (owner || due || wears)) || provenance ? (
+                <View style={st.tags}>
+                  {!on ? <RecordChips labels={lab} colors={colors} /> : null}
+                  {!on && owner ? (
+                    <View style={[st.tag, { backgroundColor: colors.primarySoft }]}>
+                      <Icon name="users" size={s(11)} color={colors.primary} strokeWidth={2.6} />
+                      <Txt variant="chipSm" color={colors.primary}>
+                        {owner}
+                      </Txt>
+                    </View>
+                  ) : null}
+                  {!on && due ? (
+                    <View style={[st.tag, { backgroundColor: colors.warningSoft }]}>
+                      <Icon name="clock" size={s(11)} color={colors.warning} strokeWidth={2.6} />
+                      <Txt variant="chipSm" color={colors.warning}>
+                        {due}
+                      </Txt>
+                    </View>
+                  ) : null}
+                  {provenance}
+                </View>
+              ) : null}
+              {/* Not shown on a ticked row, for the reason the chips above are not: these are marks
+                  of work in progress. Unlike the timestamp, which is a fact about the item. */}
+              {!on && mine ? (
+                <MineTag colors={colors} onRemove={onRemove} />
+              ) : !on && edited ? (
+                <EditedTag colors={colors} onRevert={onRevert} />
+              ) : null}
+            </View>
           </View>
-        </View>
-      </Raised>
-    </Pressable>
+        </Pressable>
+        {/* Beside the checkbox and not inside it: a screen reader merges everything inside an
+            accessible Pressable into one stop, which would hide the button. */}
+        {onEdit ? <EditButton label="Edit this action" onPress={onEdit} colors={colors} /> : null}
+      </View>
+    </Raised>
   );
 }
 
@@ -356,6 +364,9 @@ export default function ActionsTab({
           <Txt variant="prose">{sentenceCase(splitAction(shown(r)).text)}</Txt>
           {provenanceFor(r)}
         </View>
+        {onEditItem ? (
+          <EditButton label={editLabelFor(r.kind)} onPress={() => onEditItem(r)} colors={colors} />
+        ) : null}
       </View>
     </Raised>
   );
@@ -462,6 +473,8 @@ function makeStyles(c: Colors) {
     progressRow: { gap: s(8), paddingHorizontal: s(2) },
     track: { height: s(6), borderRadius: s(3), backgroundColor: c.cardAlt, overflow: 'hidden' },
     fill: { height: '100%', borderRadius: s(3) },
+    checkRow: { flexDirection: 'row', alignItems: 'flex-start' },
+    checkMain: { flex: 1 },
     check: { flexDirection: 'row', gap: s(12), padding: s(14), alignItems: 'flex-start' },
     box: {
       width: s(23),

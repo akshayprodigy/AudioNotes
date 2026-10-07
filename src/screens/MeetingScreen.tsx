@@ -711,6 +711,20 @@ export default function MeetingScreen({ route, navigation }: Props) {
     [edits, speakers],
   );
 
+  /**
+   * Open the correction editor on one transcript line. The long-press sheet's "Correct the words"
+   * and the visible Edit control on the line are this one function, so they cannot drift apart.
+   */
+  const onCorrectLine = useCallback((part: { id: string; text: string }) => {
+    setEditing({
+      title: 'Correct this line',
+      hint: 'Fixes a mis-heard word. The recording is untouched, and you can put the original back.',
+      initial: part.text,
+      multiline: true,
+      target: { kind: 'utterance', key: part.id },
+    });
+  }, []);
+
   /** Undo a correction, wherever this row's correction happens to live. */
   const onRevertRow = useCallback(
     (row: ItemRow) => {
@@ -1420,6 +1434,8 @@ export default function MeetingScreen({ route, navigation }: Props) {
                   setPicker({ lineId: turn.parts[0].id, text: turn.parts[0].text, turn, scopes: false })
                 }
                 onRevertLine={id => onRevertEdit('utterance', id)}
+                onEditLine={onCorrectLine}
+                onRenameSpeakers={() => navigation.navigate('Speakers', { meetingId })}
               />
             ) : (
               <ActionsTab
@@ -1524,14 +1540,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
             label: 'Correct the words',
             hint: 'Fixes a mis-heard word. The recording is untouched.',
             onPress: () => {
-              if (!lineSheet) return;
-              setEditing({
-                title: 'Correct this line',
-                hint: 'Fixes a mis-heard word. The recording is untouched, and you can put the original back.',
-                initial: lineSheet.part.text,
-                multiline: true,
-                target: { kind: 'utterance', key: lineSheet.part.id },
-              });
+              if (lineSheet) onCorrectLine(lineSheet.part);
             },
           },
           ...(meeting?.mode === 'dictation'

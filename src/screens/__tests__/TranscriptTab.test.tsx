@@ -100,3 +100,68 @@ describe('one voice', () => {
     expect(texts).toContain('The recording has been deleted. Long press a line to correct it.');
   });
 });
+
+/** Workstream D: the visible way to correct a line and to rename the people, beside the gestures. */
+describe('visible editing controls', () => {
+  const { StyleSheet } = require('react-native');
+  const editButtons = (tree: renderer.ReactTestRenderer) =>
+    tree.root.findAll(
+      n => typeof n.type === 'string' && n.props.accessibilityLabel === 'Edit this line' && n.props.accessibilityRole === 'button',
+    );
+  const withHandler = (tree: renderer.ReactTestRenderer, label: string) =>
+    tree.root.findAll(n => n.props.accessibilityLabel === label && typeof n.props.onPress === 'function');
+
+  it('puts a labelled Edit control on every line', async () => {
+    const tree = await render({ onEditLine: jest.fn(), onLineActions: jest.fn(), onPlayTurn: jest.fn() });
+    expect(editButtons(tree)).toHaveLength(3);
+  });
+
+  it('opens the correction for that line, as it reads now', async () => {
+    const onEditLine = jest.fn();
+    const tree = await render({ onEditLine, onLineActions: jest.fn(), onPlayTurn: jest.fn() });
+    await act(async () => withHandler(tree, 'Edit this line')[1].props.onPress());
+    expect(onEditLine).toHaveBeenCalledWith({ id: 'u2', text: 'Second line.' });
+  });
+
+  it('hands over a corrected line’s corrected words', async () => {
+    const onEditLine = jest.fn();
+    const edits = new Map([['utterance/u1', 'Hello, Priya.']]);
+    const tree = await render({ onEditLine, edits, onPlayTurn: jest.fn() });
+    await act(async () => withHandler(tree, 'Edit this line')[0].props.onPress());
+    expect(onEditLine).toHaveBeenCalledWith({ id: 'u1', text: 'Hello, Priya.' });
+  });
+
+  it('is at least 44 dp square', async () => {
+    const tree = await render({ onEditLine: jest.fn() });
+    const style = StyleSheet.flatten(editButtons(tree)[0].props.style);
+    expect(style.width).toBeGreaterThanOrEqual(44);
+    expect(style.height).toBeGreaterThanOrEqual(44);
+  });
+
+  it('is there with no audio and in a dictation too', async () => {
+    const tree = await render({ onEditLine: jest.fn(), oneVoice: true });
+    expect(editButtons(tree)).toHaveLength(3);
+  });
+
+  it('is absent when nothing can be edited', async () => {
+    const tree = await render({ onPlayTurn: jest.fn() });
+    expect(editButtons(tree)).toHaveLength(0);
+  });
+
+  it('leaves the long press where it was', async () => {
+    const onLineActions = jest.fn();
+    const tree = await render({ onEditLine: jest.fn(), onLineActions });
+    const line = tree.root.findAllByProps({ accessibilityLabel: 'Second line.' }, { deep: false })[0];
+    await act(async () => line.props.onLongPress());
+    expect(onLineActions).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers a visible Rename speakers in the header, and not for a dictation', async () => {
+    const onRenameSpeakers = jest.fn();
+    const tree = await render({ onRenameSpeakers });
+    await act(async () => withHandler(tree, 'Rename speakers')[0].props.onPress());
+    expect(onRenameSpeakers).toHaveBeenCalledTimes(1);
+    const dictation = await render({ onRenameSpeakers, oneVoice: true });
+    expect(withHandler(dictation, 'Rename speakers')).toHaveLength(0);
+  });
+});

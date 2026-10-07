@@ -289,3 +289,102 @@ describe('the "Ask this meeting" entry', () => {
     await act(async () => tree.unmount());
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// Item 5 — visible editing affordances
+// ---------------------------------------------------------------------------------------------
+
+describe('visible Edit controls', () => {
+  const { StyleSheet } = require('react-native');
+  const { TextPrompt } = require('../../components/ui');
+  const editBtn = (t: renderer.ReactTestRenderer, label: string) =>
+    t.root.findAll(
+      n => typeof n.type === 'string' && n.props.accessibilityLabel === label && n.props.accessibilityRole === 'button',
+    );
+  const withHandler = (t: renderer.ReactTestRenderer, label: string) =>
+    t.root.findAll(n => n.props.accessibilityLabel === label && typeof n.props.onPress === 'function');
+  const prompt = (t: renderer.ReactTestRenderer) => t.root.findAllByType(TextPrompt).find(p => p.props.visible);
+
+  beforeEach(() => {
+    (db.items as jest.Mock).mockResolvedValue(FIXTURE);
+    (db.minutes as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('gives every action and decision on the Minutes tab a labelled Edit control of 44 dp', async () => {
+    const tree = await open({ tab: 'mom' });
+    expect(editBtn(tree, 'Edit this action')).toHaveLength(3);
+    expect(editBtn(tree, 'Edit this decision')).toHaveLength(1);
+    expect(editBtn(tree, 'Edit this question')).toHaveLength(1);
+    const style = StyleSheet.flatten(editBtn(tree, 'Edit this action')[0].props.style);
+    expect(style.width).toBeGreaterThanOrEqual(44);
+    expect(style.height).toBeGreaterThanOrEqual(44);
+    await act(async () => tree.unmount());
+  });
+
+  it('opens the editor the long press opens, on the same words and the same item', async () => {
+    const tree = await open({ tab: 'mom' });
+    await act(async () => withHandler(tree, 'Edit this action')[0].props.onPress());
+    const viaButton = prompt(tree)!;
+    expect(viaButton.props.initial).toBe('I will send the signed quote — Priya (due Wednesday)');
+    expect(viaButton.props.title).toBe('Correct this line');
+    await act(async () => viaButton.props.onCancel());
+    // The long press on the same row.
+    const row = tree.root.findAll(
+      n => n.props.accessibilityHint === 'Long press to correct this line' && typeof n.props.onLongPress === 'function',
+    )[1];
+    await act(async () => row.props.onLongPress());
+    const viaLongPress = prompt(tree)!;
+    expect(viaLongPress.props.initial).toBe(viaButton.props.initial);
+    expect(viaLongPress.props.title).toBe(viaButton.props.title);
+    await act(async () => tree.unmount());
+  });
+
+  it('saves an edit made through the control against the item', async () => {
+    const tree = await open({ tab: 'mom' });
+    await act(async () => withHandler(tree, 'Edit this action')[0].props.onPress());
+    await act(async () => prompt(tree)!.props.onSubmit('I will send the quote by Thursday — Priya', ''));
+    expect(db.putEdit).toHaveBeenCalledWith('m1', 'item', 'i2', 'I will send the quote by Thursday — Priya');
+    await act(async () => tree.unmount());
+  });
+
+  it('is on every Actions-tab row, and ticking still works beside it', async () => {
+    (db.setItemDone as jest.Mock).mockResolvedValue(undefined);
+    const tree = await open({ tab: 'actions' });
+    expect(editBtn(tree, 'Edit this action')).toHaveLength(3);
+    expect(editBtn(tree, 'Edit this decision')).toHaveLength(1);
+    await act(async () => withHandler(tree, 'Edit this action')[0].props.onPress());
+    expect(prompt(tree)!.props.initial).toContain('signed quote');
+    expect(db.setItemDone).not.toHaveBeenCalled();
+    await act(async () => prompt(tree)!.props.onCancel());
+    const box = tree.root.findAll(n => n.props.accessibilityRole === 'checkbox' && typeof n.props.onPress === 'function')[0];
+    await act(async () => box.props.onPress());
+    expect(db.setItemDone).toHaveBeenCalledTimes(1);
+    await act(async () => tree.unmount());
+  });
+
+  it('puts an Edit control on a transcript line that opens the same correction as the long-press sheet', async () => {
+    (db.utterances as jest.Mock).mockResolvedValue([
+      { id: 'u1', meetingId: 'm1', startMs: 0, endMs: 2000, speakerId: 's1', text: 'Hello there.' },
+    ]);
+    (db.speakers as jest.Mock).mockResolvedValue([{ id: 's1', meetingId: 'm1', clusterLabel: 'S0', displayName: 'Priya' }]);
+    const tree = await open({ tab: 'transcript' });
+    await act(async () => withHandler(tree, 'Edit this line')[0].props.onPress());
+    const p = prompt(tree)!;
+    expect(p.props.initial).toBe('Hello there.');
+    expect(p.props.title).toBe('Correct this line');
+    await act(async () => p.props.onSubmit('Hello, Priya.', ''));
+    expect(db.putEdit).toHaveBeenCalledWith('m1', 'utterance', 'u1', 'Hello, Priya.');
+    await act(async () => tree.unmount());
+  });
+
+  it('rename speakers opens the Speakers screen', async () => {
+    (db.utterances as jest.Mock).mockResolvedValue([
+      { id: 'u1', meetingId: 'm1', startMs: 0, endMs: 2000, speakerId: 's1', text: 'Hello there.' },
+    ]);
+    (db.speakers as jest.Mock).mockResolvedValue([{ id: 's1', meetingId: 'm1', clusterLabel: 'S0', displayName: 'Priya' }]);
+    const tree = await open({ tab: 'transcript' });
+    await act(async () => withHandler(tree, 'Rename speakers')[0].props.onPress());
+    expect(nav.navigate).toHaveBeenCalledWith('Speakers', { meetingId: 'm1' });
+    await act(async () => tree.unmount());
+  });
+});

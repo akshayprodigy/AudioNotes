@@ -681,17 +681,23 @@ export function DocItem({
   );
   if (!onEdit) return body;
   return (
-    <Pressable
-      onLongPress={onEdit}
-      accessibilityRole="button"
-      accessibilityLabel={text}
-      accessibilityHint="Long press to correct this line"
-      accessibilityActions={[{ name: 'longpress', label: 'Correct this line' }]}
-      onAccessibilityAction={e => {
-        if (e.nativeEvent.actionName === 'longpress') onEdit();
-      }}>
-      {body}
-    </Pressable>
+    <View style={st.itemRow}>
+      <Pressable
+        style={st.flex}
+        onLongPress={onEdit}
+        accessibilityRole="button"
+        accessibilityLabel={text}
+        accessibilityHint="Long press to correct this line"
+        accessibilityActions={[{ name: 'longpress', label: 'Correct this line' }]}
+        onAccessibilityAction={e => {
+          if (e.nativeEvent.actionName === 'longpress') onEdit();
+        }}>
+        {body}
+      </Pressable>
+      {/* A sibling of the long-press target and not inside it: a screen reader merges everything
+          inside an accessible Pressable into one stop, which would hide the button. */}
+      <EditButton label={editLabelFor(kind)} onPress={onEdit} colors={colors} />
+    </View>
   );
 }
 
@@ -848,6 +854,37 @@ export function QuietAction({
   );
 }
 
+/**
+ * A visible Edit control for one row: a pencil in a 44 dp square, labelled for a screen reader.
+ *
+ * Long press stays — it is the quick way for somebody who knows it — but a gesture nobody has been
+ * told about is not an affordance. This opens exactly the editor the long press opens.
+ */
+export function EditButton({
+  label,
+  onPress,
+  colors,
+}: {
+  label: string;
+  onPress: () => void;
+  colors: Colors;
+}) {
+  const st = React.useMemo(() => makeStyles(colors), [colors]);
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => [st.editBtn, { opacity: pressed ? 0.5 : 1 }]}>
+      <Icon name="edit" size={s(16)} color={colors.inkDim} strokeWidth={2.4} />
+    </Pressable>
+  );
+}
+
+/** The label of a row's Edit control: "Edit this action", "Edit this decision", "Edit this question". */
+export const editLabelFor = (kind: string) =>
+  kind === 'action' ? 'Edit this action' : kind === 'decision' ? 'Edit this decision' : kind === 'question' ? 'Edit this question' : 'Edit this line';
+
 /** A card with nothing in it yet, said plainly rather than left blank. */
 export function Empty({ text, colors }: { text: string; colors: Colors }) {
   const st = React.useMemo(() => makeStyles(colors), [colors]);
@@ -871,6 +908,7 @@ function makeStyles(_c: Colors) {
     // Nudged down onto the first line's optical centre rather than its box top.
     dot: { width: s(6), height: s(6), borderRadius: s(3), marginTop: s(10) },
     recordChip: { paddingHorizontal: s(8), paddingVertical: s(3), borderRadius: s(8) },
+    itemRow: { flexDirection: 'row', alignItems: 'flex-start' },
     docRow: { flexDirection: 'row', gap: s(12), alignItems: 'stretch' },
     rule: { width: s(3), borderRadius: s(2) },
     metaRow: {
@@ -883,6 +921,7 @@ function makeStyles(_c: Colors) {
     head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: s(10) },
     shrink: { flexShrink: 1 },
     quiet: { minHeight: MIN_TOUCH, alignItems: 'center', justifyContent: 'center', paddingHorizontal: s(12) },
+    editBtn: { width: MIN_TOUCH, height: MIN_TOUCH, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
     quietText: { textDecorationLine: 'underline' },
     doneMark: { flexDirection: 'row', alignItems: 'center', gap: s(4) },
     empty: { padding: s(22), alignItems: 'center', gap: s(8) },

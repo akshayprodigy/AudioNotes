@@ -5,6 +5,7 @@ import { Raised, Txt } from '../../components/ui';
 import { radius, s, useTheme, type Colors } from '../../theme';
 import type { Speaker, Utterance } from '../../pipeline/types';
 import {
+  EditButton,
   EditedTag,
   ToolButton,
   editedText,
@@ -133,6 +134,8 @@ export default function TranscriptTab({
   onLineActions,
   onReassignTurn,
   onRevertLine,
+  onEditLine,
+  onRenameSpeakers,
   oneVoice = false,
 }: {
   utterances: Utterance[];
@@ -171,6 +174,13 @@ export default function TranscriptTab({
   /** Tap on the name at the head of a turn: change who said the whole turn. */
   onReassignTurn?: (turn: Turn) => void;
   onRevertLine?: (utteranceId: string) => void;
+  /**
+   * The visible Edit control on every line: the same correction editor the long press offers first.
+   * Takes the line as it reads now (the correction where there is one).
+   */
+  onEditLine?: (part: { id: string; text: string }) => void;
+  /** The visible way to rename the people in this transcript: opens the Speakers screen. */
+  onRenameSpeakers?: () => void;
 }) {
   const { colors } = useTheme();
   const st = React.useMemo(() => makeStyles(colors), [colors]);
@@ -247,6 +257,15 @@ export default function TranscriptTab({
                     : 'The recording has been deleted. Long press a line to correct it or change who said it.'
                   : 'The recording for this meeting has been deleted.'}
             </Txt>
+            {onRenameSpeakers && !oneVoice ? (
+              <ToolButton
+                icon="users"
+                label="Rename speakers"
+                hint="Opens the speakers: rename people, or merge two the app split apart"
+                colors={colors}
+                onPress={onRenameSpeakers}
+              />
+            ) : null}
             {onCopy ? (
               <ToolButton
                 icon="copy"
@@ -304,10 +323,21 @@ export default function TranscriptTab({
                     ) : null}
                   </View>
                 );
-                if (!onPlayTurn && !onLineActions) return <View key={part.id}>{line}</View>;
+                const edit = onEditLine ? (
+                  <EditButton label="Edit this line" onPress={() => onEditLine({ id: part.id, text })} colors={colors} />
+                ) : null;
+                if (!onPlayTurn && !onLineActions) {
+                  return (
+                    <View key={part.id} style={st.lineRow}>
+                      <View style={st.flex}>{line}</View>
+                      {edit}
+                    </View>
+                  );
+                }
                 return (
+                  <View key={part.id} style={st.lineRow}>
                   <Pressable
-                    key={part.id}
+                    style={st.flex}
                     onPress={onPlayTurn ? () => onPlayTurn(part.startMs) : undefined}
                     onLongPress={onLineActions ? () => onLineActions({ id: part.id, text }, t) : undefined}
                     accessibilityRole="button"
@@ -325,6 +355,9 @@ export default function TranscriptTab({
                     }}>
                     {line}
                   </Pressable>
+                  {/* Beside the line and not inside it, so a screen reader reaches it as its own stop. */}
+                  {edit}
+                  </View>
                 );
               })}
             </View>
@@ -372,7 +405,7 @@ function makeStyles(_c: Colors) {
   return StyleSheet.create({
     pad: { paddingHorizontal: s(16), paddingBottom: s(30), gap: s(16) },
     // Says the gesture exists. A tappable transcript is invisible until you happen to tap one.
-    head: { flexDirection: 'row', alignItems: 'center', gap: s(10), paddingHorizontal: s(2) },
+    head: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: s(10), paddingHorizontal: s(2) },
     flex: { flex: 1 },
     empty: { paddingVertical: s(30), textAlign: 'center' },
     turn: { gap: s(7) },
@@ -387,5 +420,6 @@ function makeStyles(_c: Colors) {
       justifyContent: 'center',
     },
     card: { padding: s(14), gap: s(8) },
+    lineRow: { flexDirection: 'row', alignItems: 'flex-start' },
   });
 }
