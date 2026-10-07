@@ -23,8 +23,25 @@ export interface LicenceStatus {
   lapsedCopy: string;
 }
 
+/**
+ * The Free allowance (android/.../billing/Allowance.kt): five counted sessions a calendar month.
+ * `paid` is true on a Pro phone, which takes no slot; the numbers are then not worth showing.
+ */
+export interface AllowanceStatus {
+  limit: number;
+  /** Counted sessions this period; a slot that is reserved but not yet settled counts as used. */
+  used: number;
+  remaining: number;
+  /** `YYYY-MM`. */
+  period: string;
+  /** `YYYY-MM-DD`, the first day of the next period. */
+  resetsOn: string;
+  paid: boolean;
+}
+
 export interface Spec extends TurboModule {
   status(): Promise<LicenceStatus>;
+  allowance(): Promise<AllowanceStatus>;
   /** `refreshKey` is null on a plain renewal, which must not clear the one already stored. */
   store(token: string, refreshKey: string | null): Promise<boolean>;
   refreshKey(): Promise<string | null>;

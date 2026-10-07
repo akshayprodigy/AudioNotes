@@ -60,6 +60,37 @@ class LicenceModule(private val ctx: ReactApplicationContext) :
     }
   }
 
+  /**
+   * The Free allowance for the screens: {limit, used, remaining, period, resetsOn, paid}.
+   *
+   * Read-only and display-only; the verdict that refuses a start is taken in CaptureController and
+   * AudioImport, from the same ledger. `paid` is the licence at this instant, so a Pro phone says
+   * so and JS shows no allowance copy.
+   */
+  @ReactMethod
+  fun allowance(promise: Promise) {
+    try {
+      val s = Allowance.status(
+        AudioDb.get(ctx).allowanceStore(),
+        LicenceStore.entitled(ctx),
+        System.currentTimeMillis(),
+        java.util.TimeZone.getDefault(),
+      )
+      promise.resolve(
+        Arguments.createMap().apply {
+          putInt("limit", s.limit)
+          putInt("used", s.used)
+          putInt("remaining", s.remaining)
+          putString("period", s.period)
+          putString("resetsOn", s.resetsOn)
+          putBoolean("paid", s.paid)
+        },
+      )
+    } catch (e: Exception) {
+      promise.reject("licence_allowance_failed", e)
+    }
+  }
+
   /** Take a freshly issued token — from sign-in, or from the periodic refresh. */
   @ReactMethod
   fun store(token: String, refreshKey: String?, promise: Promise) {

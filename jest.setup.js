@@ -113,6 +113,11 @@ const mockNativeModules = {
       account: null,
       lapsedCopy: 'Your subscription has ended.',
     })),
+    // Paid by default for the same reason: Pro never sees allowance copy. A Free-surface test
+    // overrides it with { paid: false, ... }.
+    allowance: jest.fn(async () => ({
+      limit: 5, used: 0, remaining: 5, period: '2026-10', resetsOn: '2026-11-01', paid: true,
+    })),
     store: jest.fn(async () => true),
     refreshKey: jest.fn(async () => null),
     // No server in tests, so sign-in is unavailable and refreshIfNeeded is a no-op.
