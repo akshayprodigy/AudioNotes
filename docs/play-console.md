@@ -267,21 +267,22 @@ Avoid going to exactly 80; Play's counting and yours will not always agree.
 > told why. More languages will follow one at a time, each measured before it is offered.
 >
 > **Free, forever**
-> • Record meetings of up to 15 minutes, as many as you like
+> • 5 meetings each month, up to 1 hour each (imports and dictations count as meetings)
 > • A full transcript, separated by speaker — tap any line to hear it
 > • Decisions, action items and open questions, pulled from what was actually said; each one opens
 >   the moment it was said
 > • Mark a moment while recording and it becomes a highlight
 > • Dictation mode, with spoken punctuation
+> • Search every word across your saved meetings
 > • Export as text, Markdown, subtitles or PDF
 >
 > **Pro, by subscription — monthly or yearly**
-> • Meetings of any length
+> • As many meetings as you like, of any length
 > • The summary and the minutes written in plain English by a language model that also runs on
 >   your phone — shaped to the kind of meeting: stand-up, client call, interview, lecture
 > • Ask a meeting a question; the answer points at the moment it was said, or says plainly that
 >   nothing in the meeting settles it
-> • Search everything you have recorded — by keyword and by meaning
+> • Search by meaning — find the answer even when the words differ
 > • Threads: meetings that share a tag show what is still open and every decision in order
 > • Remembered voices — name someone once and be asked "Sounds like Priya?" next time. Off until
 >   you switch it on; kept on this phone; forgotten in one tap

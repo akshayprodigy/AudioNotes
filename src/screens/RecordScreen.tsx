@@ -497,8 +497,8 @@ export default function RecordScreen({ navigation }: Props) {
                 </Txt>
                 <Txt variant="chip" color={colors.inkDim}>
                   {trialOffer
-                    ? `This recording will stop at 15 minutes and be transcribed in full. Pro has no limit. ${trialTerms(trialOffer)}`
-                    : 'This recording will stop at 15 minutes and be transcribed in full.'}
+                    ? `This recording will stop at 1 hour and be transcribed in full. Pro has no limit. ${trialTerms(trialOffer)}`
+                    : 'This recording will stop at 1 hour and be transcribed in full.'}
                 </Txt>
                 {trialOffer ? (
                   <SoftButton

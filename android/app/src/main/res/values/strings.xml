@@ -18,7 +18,7 @@
     <string name="notif_warn_faint">Voices are faint — move the phone closer to the people talking.</string>
     <string name="notif_warn_storage">About %1$d minutes of storage left.</string>
     <string name="notif_warn_unannounced">The announcement was not heard — tell the room you are recording.</string>
-    <string name="notif_cap_warning">Stops at the %1$d-minute Free limit — tap to keep recording with Pro</string>
+    <string name="notif_cap_warning">Stops at the 1-hour Free limit — tap to keep recording with Pro</string>
     <string name="notif_title_paused">Verbale — paused</string>
     <string name="notif_title_silenced">Verbale — mic unavailable</string>
 

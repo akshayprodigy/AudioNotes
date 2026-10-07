@@ -904,7 +904,7 @@ class RecordingService : Service(), CaptureListener {
     val body = when {
       silenced -> getString(R.string.notif_body_silenced)
       paused -> getString(R.string.notif_body_paused)
-      capCounting -> getString(R.string.notif_cap_warning, (capMs / 60_000L).toInt())
+      capCounting -> getString(R.string.notif_cap_warning)
       markFresh -> getString(R.string.notif_body_marked, stamp(markMs))
       warning != null -> when (warning.kind) {
         CaptureWarnings.Kind.STORAGE -> getString(R.string.notif_warn_storage, warning.minutesLeft)

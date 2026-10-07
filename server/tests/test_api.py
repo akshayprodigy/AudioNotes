@@ -239,6 +239,24 @@ def test_the_landing_page_offers_no_sign_in(client):
     assert "Sign in" not in body
 
 
+def test_the_landing_page_states_the_free_allowance_and_not_the_old_fifteen_minutes(client):
+    """The Free tier is five meetings a month of up to an hour (7 Oct 2026); nothing may say fifteen."""
+    body = client.get("/").text.lower()
+    assert "5 meetings each month, up to 1 hour each" in body
+    assert "why is free limited to five meetings a month?" in body
+    assert "imports and dictations count as meetings" in body
+    for old in ("15 minutes", "fifteen"):
+        assert old not in body, old
+
+
+def test_the_landing_page_gives_keyword_search_to_free_and_meaning_search_to_pro(client):
+    body = client.get("/").text
+    free, pro = body.split('class="card tier pro')
+    assert "Search every word across your saved meetings" in free
+    assert "Search by meaning" in pro
+    assert "Search every word" not in pro
+
+
 def test_every_page_the_site_links_to_actually_exists(client):
     """Catches a dead link in the footer, which is where dead links go to live."""
     import re

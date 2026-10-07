@@ -25,7 +25,7 @@ export function modeLabel(mode: RecordMode): string {
 /** The standing line under the clock while idle. `capMs > 0` is the free tier's limit. */
 export function idleHint(mode: RecordMode, capMs: number): string {
   const verb = mode === 'dictation' ? 'Tap to dictate' : 'Tap to start recording';
-  return capMs > 0 ? `${verb} · up to 15 min on Free` : verb;
+  return capMs > 0 ? `${verb} · up to 1 hour on Free` : verb;
 }
 
 /** Shown under the mode switch in dictation only: the marks are spoken, and this is the list. */

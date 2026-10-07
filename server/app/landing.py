@@ -233,9 +233,10 @@ def body(device_limit: int) -> str:
         <h3>Free</h3>
         <div class="price">&#8377;0<small> / forever</small></div>
         <ul class="feat">
-          <li><span class="tick">{TICK}</span>Meetings up to 15 minutes</li>
+          <li><span class="tick">{TICK}</span>5 meetings each month, up to 1 hour each</li>
           <li><span class="tick">{TICK}</span>Full transcript, separated by speaker</li>
           <li><span class="tick">{TICK}</span>Decisions, actions and open questions</li>
+          <li><span class="tick">{TICK}</span>Search every word across your saved meetings</li>
           <li><span class="tick">{TICK}</span>Export to PDF, Markdown, text and subtitles</li>
           <li><span class="tick">{TICK}</span>No account, nothing expires</li>
         </ul>
@@ -246,9 +247,10 @@ def body(device_limit: int) -> str:
         <div class="price">7 days free<small> &nbsp;then &#8377;299/month or &#8377;2,499/year</small></div>
         <ul class="feat">
           <li><span class="tick">{TICK}</span>Everything in Free</li>
-          <li><span class="tick">{TICK}</span>Recordings of any length &mdash; a ninety-minute
-              meeting in one go</li>
-          <li><span class="tick">{TICK}</span>Search every word you have ever recorded</li>
+          <li><span class="tick">{TICK}</span>As many meetings as you like, of any length &mdash; a
+              ninety-minute meeting in one go</li>
+          <li><span class="tick">{TICK}</span>Search by meaning, so a question finds the answer even
+              when the words differ</li>
           <li><span class="tick">{TICK}</span>The summary and the minutes written in plain
               English, by a model on your own phone</li>
           <li><span class="tick">{TICK}</span>A larger, more accurate transcriber for strong
@@ -288,13 +290,17 @@ def body(device_limit: int) -> str:
             "Recording, transcripts, speakers, export and the rule-based minutes keep working "
             "&mdash; those are the free tier and they do not expire, and every meeting you have "
             "already recorded stays exactly as it is, at whatever length it was. New recordings go "
-            "back to the fifteen-minute free limit, and search across meetings goes back to Pro.")}
-      {_faq("Why is Free limited to fifteen minutes?",
+            "back to the free allowance of five meetings a month, up to an hour each, and search by "
+            "meaning goes back to Pro. Searching for a word stays free.")}
+      {_faq("Why is Free limited to five meetings a month?",
             "Because the alternative was advertising, and an app that reads your meetings should "
-            "not also be selling your attention. Fifteen minutes is a real stand-up, so you can "
-            "see the whole thing work &mdash; transcript, speakers, minutes, export &mdash; before "
-            "deciding. A recording that reaches the limit stops there and is still transcribed in "
-            "full. Nothing you recorded is ever thrown away.")}
+            "not also be selling your attention. Five meetings of up to an hour each is roughly "
+            "one a week, enough to see the whole thing work &mdash; transcript, speakers, "
+            "minutes, export &mdash; on your own meetings before deciding. Imports and "
+            "dictations count as meetings. A recording that reaches the hour stops there and is "
+            "still transcribed in full, and when the month's five are used your saved meetings "
+            "stay open to listen to, search, edit and share. Nothing you recorded is ever thrown "
+            "away. The count starts again on the first of the month.")}
       {_faq("Do I need an account?",
             "No. There is nothing to sign up for. Subscribing happens in the app through Google "
             "Play, and the account that carries it between your devices is created by the "

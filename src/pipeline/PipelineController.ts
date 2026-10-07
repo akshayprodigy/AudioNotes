@@ -3,8 +3,6 @@
 // into app state. All ASR/diarization/LLM work happens off-thread in native/C++.
 import { NativeEventEmitter, NativeModules } from 'react-native';
 import AudioPipeline from '../native/NativeAudioPipeline';
-import { entitlement } from '../billing/trial';
-import { capMsFor } from '../billing/recordingCap';
 import Storage from '../native/NativeStorage';
 import { db } from '../db/queries';
 import { extractMinutes } from './minutes';
@@ -137,15 +135,14 @@ class PipelineControllerImpl {
   /**
    * Start capturing.
    *
-   * The cap is resolved HERE rather than by the caller, so every entry point — the record screen,
-   * the Quick Settings tile, the notification — gets the same limit. A tile that recorded without
-   * one would be a free unlimited recorder with a different button.
+   * Neither the length limit nor the monthly allowance is decided here: CaptureController.start
+   * resolves both natively from the licence, so every entry point — the record screen, the Quick
+   * Settings tile, the notification — gets the same ones. A refusal arrives as a rejection whose
+   * `code` is `allowance_exhausted` and whose message is the reset date (`YYYY-MM-DD`).
    */
   async startRecording(language: string | null, mode?: 'dictation'): Promise<string> {
-    const ent = await entitlement().catch(() => null);
-    const capMs = capMsFor(Boolean(ent?.paid));
     // Phase 5: the key is absent for a meeting, not null — AudioPipelineModule reads hasKey("mode").
-    return AudioPipeline.start({ sampleRate: 16000, language, capMs, ...(mode ? { mode } : {}) });
+    return AudioPipeline.start({ sampleRate: 16000, language, ...(mode ? { mode } : {}) });
   }
 
   async stopRecording(sessionId: string): Promise<void> {

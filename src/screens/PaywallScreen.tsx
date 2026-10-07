@@ -29,6 +29,7 @@ import {
 } from '../billing/subscription';
 import { trialLength, trialTerms } from '../billing/trialTerms';
 import { purchaseNotice } from '../billing/purchaseNotice';
+import { explainer, freeHeadline } from '../billing/allowanceCopy';
 import type { PlayPlan } from '../native/NativeBilling';
 import { radius, s, sv, useTheme, type Colors } from '../theme';
 
@@ -127,7 +128,7 @@ const INCLUDED: { icon: IconName; title: string; body: string; needsWriter?: boo
 
 const FREE_FOREVER =
   'Recording, transcripts, who-said-what, export and rule-based minutes stay free — with or ' +
-  'without a subscription, before or after a trial. Free meetings run up to 15 minutes.';
+  `without a subscription, before or after a trial. ${freeHeadline} ${explainer}`;
 
 export default function PaywallScreen({ navigation, route }: Props) {
   const { colors } = useTheme();

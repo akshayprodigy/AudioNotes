@@ -7,17 +7,15 @@ import { TurboModuleRegistry } from 'react-native';
 export interface Spec extends TurboModule {
   // Start capture in the foreground service. Returns a sessionId.
   /**
-   * `capMs` is the free tier's length limit in milliseconds; 0 or omitted means uncapped.
-   *
-   * Passed in rather than derived natively because entitlement is a JavaScript concept, and
-   * enforced natively because the recording outlives the UI — screen off, app killed, service
-   * still running. A limit that lived only here would not survive the case it exists for.
+   * The length limit and the monthly allowance are decided natively (CaptureController.start), not
+   * passed in: a limit JS could set is a limit the Quick Settings tile would not have. Rejects with
+   * `allowance_exhausted` (message = the reset date, `YYYY-MM-DD`) when a Free phone has used its
+   * five meetings, and `import_in_progress` while an import is running.
    */
   start(config: {
     sampleRate: number;
     language: string | null;
     tier?: string;
-    capMs?: number;
     // Phase 5: record in dictation mode (one voice, spoken punctuation, the note as the write-up).
     mode?: 'dictation';
   }): Promise<string>;

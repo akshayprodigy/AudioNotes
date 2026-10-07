@@ -21,9 +21,9 @@ describe('the words', () => {
   });
 
   it('keeps the free cap in the hint for both modes', () => {
-    expect(idleHint('meeting', 900_000)).toBe('Tap to start recording · up to 15 min on Free');
+    expect(idleHint('meeting', 3_600_000)).toBe('Tap to start recording · up to 1 hour on Free');
     expect(idleHint('meeting', 0)).toBe('Tap to start recording');
-    expect(idleHint('dictation', 900_000)).toBe('Tap to dictate · up to 15 min on Free');
+    expect(idleHint('dictation', 3_600_000)).toBe('Tap to dictate · up to 1 hour on Free');
     expect(idleHint('dictation', 0)).toBe('Tap to dictate');
   });
 
