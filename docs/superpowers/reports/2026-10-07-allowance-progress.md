@@ -49,3 +49,17 @@ Branch `dev/october-plan`. Never pushed. Plan: `docs/superpowers/plans/2026-10-0
 - R7: order permission, licence, slot, microphone is in `CaptureController.start` (Task 5); a failed start refunds via the catch there or via the capture-end settle when `bytes == 0`; an orphan whose service never started is swept (status `error`, duration 0, REFUND). Pure rule is covered by `AllowanceTest` "a start that fails after taking the slot gives it back".
 - Tests: `EndNoticeTest` (+2), `ResumePlanTest` (+1), `meetingNotes.test.ts` (+1). Mutants killed: pause notice branch disabled; notice sentence changed; no-capture variant replaced; `finished` including `failed`; `finished` dropping `unsupported_language`; TS `pause_timeout` entry removed.
 - NOT unit-testable, device-verified later: the capture loop's pause ask/end, the notification text, `settleAllowance`/`settleAllowanceAfterRun`/`sweepAllowance` SQL, the call sites in `RecordingService` / `ProcessingService`.
+
+## Session 1 close-out
+- Gate: `GATE_STAGES="types js scans mutations kotlin" scripts/gate.sh` all clear (types, jest 1983 tests, scans, 33 reconciler mutations caught, Kotlin 394 tests, 0 failures). `:app:compileDebugAndroidTestKotlin` compiles.
+- Baseline was 359 Kotlin / 74 targeted jest; added 35 Kotlin tests and a handful of jest tests across Tasks 1b-7.
+- Device: not run (no phone used). Everything marked "device-verified later" above is unproven on a phone.
+- For Session 2 (Tasks 8-9 and display):
+  - `AllowancePolicy.importVerdict(paid, decodedDurationMs)` and `ImportVerdict.TOO_LONG` exist; use the DECODED length. `AllowancePolicy.IMPORT_TOLERANCE_MS` = 1000.
+  - R5 second half is NOT done: `CaptureController.start` does not yet refuse while an import runs, and `AudioImport.import` does not yet throw `recording_in_progress`. `ImportModule` serialisation was not checked.
+  - `AudioPipelineModule.start` rejects with code `allowance_exhausted` and the reset date `YYYY-MM-DD` as the message. JS still sends `capMs` (ignored natively): remove it from `NativeAudioPipeline.ts`, `PipelineController.startRecording` and `RecordScreen`.
+  - JS still decides the cap for DISPLAY via `src/billing/recordingCap.ts` (now 60 min / 5 min, matching `CapClock`).
+  - `Allowance.status(...)` (used, remaining, resetsOn, period) is native-only so far; no bridge method exposes it to JS yet.
+  - `AllowancePolicy.used/remaining` now take the phone's CURRENT period, not the effective one.
+  - A Free import would take its slot through `Allowance.reserve` with the import's meeting id and settle through `AudioDb.settleAllowance` / `settleAllowanceAfterRun` (an import's status path must reach 'captured' with `duration_ms` = decoded length).
+  - The notification string `notif_cap_warning` still reads "Stops at the 60-minute Free limit"; copy work may reword.
