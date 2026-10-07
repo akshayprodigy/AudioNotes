@@ -127,7 +127,7 @@ class ExportItemsTest {
     )
     assertTrue(
       "the timestamp is what makes a forwarded claim checkable",
-      md.contains("- [1:02:05] Send the report — Priya\n"),
+      md.contains("- [1:02:05] Send the report — Priya · No date given\n"),
     )
   }
 
@@ -136,7 +136,7 @@ class ExportItemsTest {
     val txt = FileExportModule.renderText(
       content(items = listOf(FileExportModule.ExportItem("action", "Send the report — Priya", 3_725_000L))),
     )
-    assertTrue(txt.contains("  - [1:02:05] Send the report — Priya\n"))
+    assertTrue(txt.contains("  - [1:02:05] Send the report — Priya · No date given\n"))
   }
 
   /**
@@ -160,7 +160,7 @@ class ExportItemsTest {
       ),
     )
     assertEquals(
-      "  - [1:01] Write up the notes\n  - [2:05] Book the room",
+      "  - [1:01] Write up the notes · Owner not set · No date given\n  - [2:05] Book the room · Owner not set · No date given",
       textSectionOf(txt, "ACTION ITEMS"),
     )
     assertEquals("  - [1:30] A decision in between", textSectionOf(txt, "DECISIONS"))
@@ -181,10 +181,10 @@ class ExportItemsTest {
     )
     val md = FileExportModule.renderMarkdown(content(items = items))
     assertTrue("the user's own words did not reach the document", md.contains("Q3"))
-    assertFalse("the pipeline's text was exported over the user's", md.contains("- [1:02:05] Send the report — Priya"))
+    assertFalse("the pipeline's text was exported over the user's", md.contains("- [1:02:05] Send the report — Priya · No date given"))
     assertTrue(
       "the correction moved the moment it was said",
-      md.contains("- [1:02:05] Send the Q3 report — Priya, by Friday\n"),
+      md.contains("- [1:02:05] Send the Q3 report — Priya, by Friday · No date given\n"),
     )
   }
 
@@ -208,11 +208,11 @@ class ExportItemsTest {
       emptyMap(),
     )
     val md = FileExportModule.renderMarkdown(content(items = items))
-    assertTrue(md, md.contains("- [0:05] Send the proposal — Unassigned (due Friday) · Request · Contradicted\n"))
+    assertTrue(md, md.contains("- [0:05] Send the proposal (due Friday) · Request · Contradicted · Owner not set\n"))
     assertTrue(md, md.contains("- [0:09] Send the deck — Priya · Commitment · → Fri 18 Sep\n"))
     assertTrue(md, md.contains("- [0:12] Ship it\n"))
     val txt = FileExportModule.renderText(content(items = items))
-    assertTrue(txt, txt.contains("[0:05] Send the proposal — Unassigned (due Friday) · Request · Contradicted"))
+    assertTrue(txt, txt.contains("[0:05] Send the proposal (due Friday) · Request · Contradicted · Owner not set"))
   }
 
   /** A correction replaces the words, not the record: the labels stay on the corrected line. */
@@ -223,7 +223,7 @@ class ExportItemsTest {
       mapOf("item/it-1" to "Send the proposal — Rahul"),
     )
     val md = FileExportModule.renderMarkdown(content(items = items))
-    assertTrue(md, md.contains("- [0:05] Send the proposal — Rahul · Request · Contradicted\n"))
+    assertTrue(md, md.contains("- [0:05] Send the proposal — Rahul · Request · Contradicted · No date given\n"))
   }
 
   // ---- Where the rows come from -----------------------------------------------------------
@@ -253,7 +253,7 @@ class ExportItemsTest {
     assertTrue(md.contains("## Minutes\n\nThe team walked through the roadmap."))
     assertEquals(
       "the rule minute was exported alongside the item that replaced it — every action twice",
-      "- [1:05] Send the report — Priya\n", sectionOf(md, "Action items"),
+      "- [1:05] Send the report — Priya · No date given\n", sectionOf(md, "Action items"),
     )
   }
 
@@ -279,7 +279,7 @@ class ExportItemsTest {
     )
     val md = FileExportModule.renderMarkdown(content(items = items))
     assertEquals("- Ship on the 14th\n", sectionOf(md, "Decisions"))
-    assertEquals("- [1:05] Send the report — Priya\n", sectionOf(md, "Action items"))
+    assertEquals("- [1:05] Send the report — Priya · No date given\n", sectionOf(md, "Action items"))
   }
 
   /**
@@ -304,7 +304,7 @@ class ExportItemsTest {
     assertEquals(listOf<Long?>(65_000L, null), items.map { it.anchorStartMs })
     val md = FileExportModule.renderMarkdown(content(items = items))
     assertEquals(
-      "- [1:05] Send the report — Priya\n- Book the venue — Priya\n",
+      "- [1:05] Send the report — Priya · No date given\n- Book the venue — Priya · No date given\n",
       sectionOf(md, "Action items"),
     )
     assertFalse(
@@ -748,7 +748,7 @@ class ExportItemsTest {
       ),
     )
     assertEquals(
-      "- [1:01] Write up the notes\n- [2:05] Book the room\n", sectionOf(md, "Action items"),
+      "- [1:01] Write up the notes · Owner not set · No date given\n- [2:05] Book the room · Owner not set · No date given\n", sectionOf(md, "Action items"),
     )
     assertEquals("- [1:30] A decision in between\n", sectionOf(md, "Decisions"))
   }

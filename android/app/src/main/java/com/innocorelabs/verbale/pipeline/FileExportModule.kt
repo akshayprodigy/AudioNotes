@@ -37,7 +37,7 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
   override fun getName() = "FileExport"
 
   /** One meeting, rendered. `ext` drives both the filename and the share intent's MIME type. */
-  private class Document(
+  internal class Document(
     val title: String,
     val ext: String,
     val body: String,
@@ -61,7 +61,25 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
    * `labels` is what the model read, as the bullet's tail (RecordLabels.suffix): "" for a row
    * nothing has classified, which is every free-tier row and every row before the narrator ran.
    */
-  data class ExportItem(val kind: String, val text: String, val anchorStartMs: Long?, val labels: String = "")
+  data class ExportItem(
+    val kind: String,
+    val text: String,
+    val anchorStartMs: Long?,
+    val labels: String = "",
+    /** The person ticked it: a row in `item_done`, or in `action_done` for a row ticked before ids. */
+    val done: Boolean = false,
+    /**
+     * The review queue is holding it — the same test the queue applies: `needs_review` AND read by
+     * the model (`item_type` set). The reconciler's own ambiguity flag on an unclassified row is
+     * not the model's doubt, and the app never shows it as "Needs a look" either.
+     */
+    val needsLook: Boolean = false,
+    /**
+     * A date is known: normalised by the classifier, or SAID even though it could not be
+     * normalised. Only false when there is nothing at all — the one case "No date given" is true.
+     */
+    val dated: Boolean = false,
+  )
 
   /** One turn of the transcript, attributed and with its correction already applied. */
   data class ExportTurn(
@@ -111,7 +129,7 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
    * `AudioDb.carryUserMinutesOntoItems` has moved the ones already on disk. What [exportItems]
    * still merges back is a meeting whose migration has not run — see the note there.
    */
-  private fun document(meetingId: String, format: String): Document {
+  private fun document(meetingId: String, format: String, attribution: Boolean): Document {
     val db = AudioDb.get(ctx)
     val meeting = JSONArray(
       db.rawQueryJson(
@@ -133,7 +151,7 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
         // gen_version comes back because it is what decides whether a row HAS a moment: the
         // column is NOT NULL, a hand-typed row stores AudioDb.Gen.NO_ANCHOR, and exportItems
         // derives "no anchor" from the gen and never from the number.
-        "SELECT id,kind,text,anchor_start_ms,gen_version,item_type,status,date_norm,owner_json FROM items " +
+        "SELECT id,kind,text,anchor_start_ms,gen_version,item_type,status,date_norm,owner_json,review,date_said FROM items " +
           "WHERE meeting_id=? AND review<>'rejected' ORDER BY anchor_start_ms, rowid",
         arrayOf(meetingId),
       ),
@@ -155,6 +173,18 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
         arrayOf(meetingId),
       ),
     )
+    // Ticks live in two tables: `item_done` by item id, and `action_done` by a hash of the stored
+    // text for every row ticked before items had ids. Both are read, as the screen reads them.
+    val doneIds = HashSet<String>()
+    val tickRows = JSONArray(
+      db.rawQueryJson("SELECT item_id AS k FROM item_done WHERE meeting_id=?", arrayOf(meetingId)),
+    )
+    for (i in 0 until tickRows.length()) doneIds.add(tickRows.getJSONObject(i).getString("k"))
+    val doneKeys = HashSet<String>()
+    val keyRows = JSONArray(
+      db.rawQueryJson("SELECT item_key AS k FROM action_done WHERE meeting_id=?", arrayOf(meetingId)),
+    )
+    for (i in 0 until keyRows.length()) doneKeys.add(keyRows.getJSONObject(i).getString("k"))
     val nameById = HashMap<String, String>()
     for (i in 0 until speakerRows.length()) {
       val o = speakerRows.getJSONObject(i)
@@ -184,63 +214,36 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
       createdAt = createdAt,
       summary = summaryOf(minutes, edits),
       narrative = narrativeOf(minutes, edits),
-      items = exportItems(items, minutes, edits, nameById),
+      items = exportItems(items, minutes, edits, nameById, doneIds, doneKeys),
       turns = turns,
       highlights = highlightsFor(db.marks(meetingId).map { it.atMs }, turns),
     )
 
-    if (format == "pdf") {
-      // Blocks, not a string: a PDF is laid out rather than concatenated. The content still comes
-      // from the same accessors as every other format, so a correction reaches it for free.
-      val blocks = pdfBlocks(content)
-      // After the title and date, before any content: a reader who stops at the first paragraph
-      // must still have seen it. [PDF_HEADER_BLOCKS] is what "after the title and date" means to
-      // an index, and the count is a fact about pdfBlocks rather than about this statement.
-      val withMarker = if (marker == null) blocks else buildList {
-        addAll(blocks.take(PDF_HEADER_BLOCKS))
-        add(PdfExport.Block(marker, 10f, bold = true,
-                            color = rgb(0x8A, 0x5A, 0x00), spaceBefore = 14f))
-        addAll(blocks.drop(PDF_HEADER_BLOCKS))
-      }
-      // Last block on the last page, small and grey: a footer, not a stamp.
-      val withCredit = withMarker + PdfExport.Block(
-        EXPORT_CREDIT, 8f,
-        color = rgb(0x8A, 0x8F, 0xA2), spaceBefore = 20f,
-      )
-      return Document(title, "pdf", "", withCredit)
-    }
-
-    val ext = when (format) { "srt" -> "srt"; "txt", "transcript" -> "txt"; else -> "md" }
-    val body = when (format) {
-      "srt" -> renderSrt(content)
-      "txt" -> renderText(content)
-      "transcript" -> renderTranscript(content)
-      else -> renderMarkdown(content)
-    }
-    // SRT gets a real cue rather than a comment, because subtitle players drop comments — a
-    // warning nobody can see is not a warning.
-    val marked = when {
-      marker == null -> body
-      ext == "srt" -> "0\n00:00:00,000 --> 00:00:04,000\n" + marker + "\n\n" + body
-      ext == "md" -> "> " + marker + "\n\n" + body
-      else -> marker + "\n\n" + body
-    }
-    // The credit goes at the end, in the shape each format reads as a footer. SRT is deliberately
-    // left alone: a subtitle track is played over video, and a cue that appears at the end of
-    // somebody's meeting saying where the file came from is an advert in the middle of their work.
-    val credited = when (ext) {
-      "srt" -> marked
-      "md" -> marked.trimEnd() + "\n\n---\n\n*" + EXPORT_CREDIT + "*\n"
-      else -> marked.trimEnd() + "\n\n" + EXPORT_CREDIT + "\n"
-    }
-    return Document(title, ext, credited)
+    val c = compose(content, format, marker, ShareDocument.Options(attribution))
+    return Document(title, c.ext, c.body, c.blocks)
   }
 
+  /**
+   * Whether the person has asked for the one-line attribution. Off unless they turned it on in the
+   * share preview; read here so every way a document leaves the app agrees.
+   */
+  private fun savedAttribution(): Boolean =
+    try { AudioDb.get(ctx).getSetting(ATTRIBUTION_KEY) == "1" } catch (_: Exception) { false }
+
+  /** Share with whatever the person last chose for the attribution line. */
   @ReactMethod
-  fun share(meetingId: String, format: String, promise: Promise) {
+  fun share(meetingId: String, format: String, promise: Promise) =
+    shareWith(meetingId, format, savedAttribution(), promise)
+
+  /**
+   * Share with an explicit attribution choice — what the share preview calls, so the file is the
+   * document the preview showed whatever order the setting and the screen were saved in.
+   */
+  @ReactMethod
+  fun shareWith(meetingId: String, format: String, attribution: Boolean, promise: Promise) {
     Thread {
       try {
-        val doc = document(meetingId, format)
+        val doc = document(meetingId, format, attribution && format != "srt")
 
         val dir = File(ctx.cacheDir, "exports").apply { mkdirs() }
         val safe = doc.title.replace(Regex("[^A-Za-z0-9-_ ]"), "").trim().ifEmpty { "meeting" }
@@ -283,7 +286,28 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
           promise.reject("not_text", "A PDF can be shared but not copied")
           return@Thread
         }
-        promise.resolve(document(meetingId, format).body)
+        promise.resolve(document(meetingId, format, savedAttribution() && format != "srt" && format != "transcript").body)
+      } catch (e: Exception) {
+        promise.reject("export_failed", e)
+      }
+    }.start()
+  }
+
+  /**
+   * What sharing in [format] would send, as text, for the preview screen.
+   *
+   * The Markdown, text and subtitle formats return their own body, byte for byte. A PDF has no
+   * text body, so it returns the words of its blocks in order — what is on the pages, minus the
+   * ink. Built by [document] and [previewText], the same path as [shareWith], so the preview is the
+   * file rather than a description of it.
+   */
+  @ReactMethod
+  fun preview(meetingId: String, format: String, attribution: Boolean, promise: Promise) {
+    Thread {
+      try {
+        promise.resolve(
+          previewText(document(meetingId, format, attribution && format != "srt" && format != "transcript")),
+        )
       } catch (e: Exception) {
         promise.reject("export_failed", e)
       }
@@ -314,19 +338,8 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
   }
 
   companion object {
-    /**
-     * The line at the foot of every exported document.
-     *
-     * An exported set of minutes is forwarded to people who were in the meeting and people who were
-     * not, which makes it the only part of this product that travels on its own. A quiet credit at
-     * the bottom is what turns a document somebody wrote into a document that says where it came
-     * from — so it stays at the FOOT, after the content, never over it. Nobody forwards a page with
-     * a logo stamped across their minutes.
-     *
-     * It is not a paywall. Free exports carry it and so do paid ones: the point is reach, and the
-     * free tier is the half that gets forwarded most.
-     */
-    const val EXPORT_CREDIT = "Created with Verbale — verbale.innocorelabs.com"
+    /** The `settings` key behind the attribution toggle in the share preview ('1' = on). Default off. */
+    const val ATTRIBUTION_KEY = "shareAttribution"
 
     /**
      * How many blocks [pdfBlocks] emits before any content: the title and the date.
@@ -344,7 +357,7 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
     private const val PDF_HEADER_BLOCKS = 2
 
     /** The three sections of an exported document that are lists rather than prose, in order. */
-    private val SECTIONS =
+    internal val SECTIONS =
       listOf("decision" to "Decisions", "action" to "Action items", "question" to "Open questions")
 
     /** The kinds that live in `items`. `summary`, `narrative` and `headline` are documents. */
@@ -410,6 +423,10 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
        * and a hand-typed owner, stay as the text has them.
        */
       nameById: Map<String, String?> = emptyMap(),
+      /** `item_done.item_id` for the meeting: a tick keyed on the item's stable id. */
+      doneIds: Set<String> = emptySet(),
+      /** `action_done.item_key`: a tick keyed on a hash of the stored text, from before items had ids. */
+      doneKeys: Set<String> = emptySet(),
     ): List<ExportItem> {
       val out = ArrayList<ExportItem>()
       // Whether the RULES have produced items for this meeting — not whether it has any. See the
@@ -441,6 +458,11 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
               if (o.isNull("status")) null else o.getString("status"),
               if (o.isNull("date_norm")) null else o.getLong("date_norm"),
             ),
+            // Either store, as the Actions tab reads them. The text hash is of the STORED text,
+            // before any correction or owner rename, which is what the tick was keyed on.
+            done = o.getString("id") in doneIds || ItemKey.of(text) in doneKeys,
+            needsLook = o.optString("review") == AudioDb.Review.NEEDS_REVIEW && !o.isNull("item_type"),
+            dated = !o.isNull("date_norm") || (!o.isNull("date_said") && o.optString("date_said").isNotBlank()),
           ),
         )
       }
@@ -466,7 +488,12 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
         // A row with no item keeps the `minute/<hash-of-its-text>` key it has always had, which is
         // the only key it can have. A hand-typed row left this population in Task 12 — it is an
         // `items` row now, corrected under `item/<id>` — and an unmigrated meeting's rows have not.
-        out.add(ExportItem(kind, edits["minute/" + ItemKey.of(content)] ?: content, null))
+        out.add(
+          ExportItem(
+            kind, edits["minute/" + ItemKey.of(content)] ?: content, null,
+            done = ItemKey.of(content) in doneKeys,
+          ),
+        )
       }
       return out
     }
@@ -557,7 +584,7 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
     private fun rgb(r: Int, g: Int, b: Int): Int =
       (0xFF shl 24) or (r shl 16) or (g shl 8) or b
 
-    private fun dateStr(ms: Long): String =
+    internal fun dateStr(ms: Long): String =
       SimpleDateFormat("EEE d MMM yyyy, HH:mm", Locale.getDefault()).format(Date(ms))
 
     /**
@@ -587,59 +614,17 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
       }
     }
 
-    private fun highlightLine(h: ExportHighlight): String =
+    internal fun highlightLine(h: ExportHighlight): String =
       "[" + stamp(h.atMs) + "] " + (h.text ?: "(nothing said here yet)")
 
-    private fun bullet(item: ExportItem): String =
-      (if (item.anchorStartMs == null) item.text else "[" + stamp(item.anchorStartMs) + "] " + item.text) + item.labels
-
-    fun renderMarkdown(c: Content): String {
-      val sb = StringBuilder()
-      sb.append("# ").append(c.title).append("\n\n")
-      sb.append("_").append(dateStr(c.createdAt)).append("_\n\n")
-      c.summary?.let { sb.append(it).append("\n\n") }
-      c.narrative?.let { sb.append("## Minutes\n\n").append(it).append("\n\n") }
-      if (c.highlights.isNotEmpty()) {
-        sb.append("## Highlights\n\n")
-        for (h in c.highlights) sb.append("- ").append(highlightLine(h)).append("\n")
-        sb.append("\n")
-      }
-      for ((kind, heading) in SECTIONS) {
-        val items = c.items.filter { it.kind == kind }
-        if (items.isNotEmpty()) {
-          sb.append("## ").append(heading).append("\n\n")
-          for (item in items) sb.append("- ").append(bullet(item)).append("\n")
-          sb.append("\n")
-        }
-      }
-      sb.append("## Transcript\n\n")
-      for (t in c.turns) {
-        sb.append("**").append(t.speaker).append(":** ").append(t.text).append("\n\n")
-      }
-      return sb.toString()
+    fun renderMarkdown(c: Content, options: ShareDocument.Options = ShareDocument.Options()): String {
+      val d = ShareDocument.build(c, options)
+      return ShareDocument.withMarkdownFooter(ShareDocument.markdown(d), d)
     }
 
-    fun renderText(c: Content): String {
-      val sb = StringBuilder()
-      sb.append(c.title).append("\n").append(dateStr(c.createdAt)).append("\n\n")
-      c.summary?.let { sb.append(it).append("\n\n") }
-      c.narrative?.let { sb.append("MINUTES\n").append(it).append("\n\n") }
-      if (c.highlights.isNotEmpty()) {
-        sb.append("HIGHLIGHTS\n")
-        for (h in c.highlights) sb.append("  - ").append(highlightLine(h)).append("\n")
-        sb.append("\n")
-      }
-      for ((kind, heading) in SECTIONS) {
-        val items = c.items.filter { it.kind == kind }
-        if (items.isNotEmpty()) {
-          sb.append(heading.uppercase(Locale.US)).append("\n")
-          for (item in items) sb.append("  - ").append(bullet(item)).append("\n")
-          sb.append("\n")
-        }
-      }
-      sb.append("TRANSCRIPT\n")
-      for (t in c.turns) sb.append(t.speaker).append(": ").append(t.text).append("\n")
-      return sb.toString()
+    fun renderText(c: Content, options: ShareDocument.Options = ShareDocument.Options()): String {
+      val d = ShareDocument.build(c, options)
+      return ShareDocument.withTextFooter(ShareDocument.text(d), d)
     }
 
     /**
@@ -675,49 +660,77 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
     }
 
     /**
-     * The same document as the Markdown, described as blocks for the page.
-     *
-     * Deliberately the same order and the same sections: somebody who has been mailing the Markdown
-     * and switches to PDF should get the document they already know, not a redesign of it.
+     * The same document as the Markdown, described as blocks for the page. The attribution, when
+     * asked for, is the LAST block: small, grey, after everything, so it can only ever land at the
+     * foot of the last page and never over the body.
      */
-    fun pdfBlocks(c: Content): List<PdfExport.Block> {
-      val grey = rgb(0x6B, 0x70, 0x80)
-      val blocks = ArrayList<PdfExport.Block>()
-      blocks.add(PdfExport.Block(c.title, 22f, bold = true))
-      blocks.add(PdfExport.Block(dateStr(c.createdAt), 10f, color = grey, spaceBefore = 2f))
-
-      c.summary?.let { blocks.add(PdfExport.Block(it, 11f, spaceBefore = 18f)) }
-      c.narrative?.let {
-        blocks.add(PdfExport.Block("Minutes", 14f, bold = true, spaceBefore = 22f))
-        blocks.add(PdfExport.Block(it, 11f, spaceBefore = 8f))
-      }
-
-      if (c.highlights.isNotEmpty()) {
-        blocks.add(PdfExport.Block("Highlights", 14f, bold = true, spaceBefore = 22f))
-        for (h in c.highlights) {
-          blocks.add(PdfExport.Block("•  " + highlightLine(h), 11f, spaceBefore = 6f, indent = 8f))
-        }
-      }
-      for ((kind, heading) in SECTIONS) {
-        val items = c.items.filter { it.kind == kind }
-        if (items.isEmpty()) continue
-        blocks.add(PdfExport.Block(heading, 14f, bold = true, spaceBefore = 22f))
-        for (item in items) {
-          // The bullet is part of the string rather than drawn separately, so a wrapped item
-          // indents under its own text instead of under the bullet.
-          blocks.add(PdfExport.Block("•  " + bullet(item), 11f, spaceBefore = 6f, indent = 8f))
-        }
-      }
-
-      if (c.turns.isNotEmpty()) {
-        blocks.add(PdfExport.Block("Transcript", 14f, bold = true, spaceBefore = 24f))
-        for (t in c.turns) {
-          blocks.add(PdfExport.Block(t.speaker, 9f, bold = true, color = grey, spaceBefore = 10f))
-          blocks.add(PdfExport.Block(t.text, 11f, spaceBefore = 2f))
-        }
-      }
-      return blocks
+    fun pdfBlocks(c: Content, options: ShareDocument.Options = ShareDocument.Options()): List<PdfExport.Block> {
+      val d = ShareDocument.build(c, options)
+      val blocks = ShareDocument.pdfBlocks(d)
+      return if (d.footer == null) blocks else blocks + ShareDocument.footerBlock(d.footer)
     }
+
+    /**
+     * A meeting's content in one format — the whole of what happens after the reads.
+     *
+     * Pure, so a JVM test can hold the preview, the file and every option to one another. The
+     * forced-transcript warning is spliced in here for every format, the attribution is added here
+     * for every format that is a document (never SRT: a subtitle track is played over video, and a
+     * cue at the end saying where the file came from is an advert in the middle of somebody's
+     * work), and nothing else in the app decides either.
+     */
+    internal fun compose(
+      content: Content,
+      format: String,
+      marker: String?,
+      options: ShareDocument.Options,
+    ): Document {
+      if (format == "pdf") {
+        // Blocks, not a string: a PDF is laid out rather than concatenated. After the title and
+        // date, before any content: a reader who stops at the first paragraph must still have seen
+        // the warning. [PDF_HEADER_BLOCKS] is what "after the title and date" means to an index.
+        val footer = if (options.attribution) ShareDocument.footerBlock(ShareDocument.ATTRIBUTION) else null
+        val blocks = pdfBlocks(content, ShareDocument.Options(attribution = false))
+        val withMarker = if (marker == null) blocks else buildList {
+          addAll(blocks.take(PDF_HEADER_BLOCKS))
+          add(PdfExport.Block(marker, 10f, bold = true, color = rgb(0x8A, 0x5A, 0x00), spaceBefore = 14f))
+          addAll(blocks.drop(PDF_HEADER_BLOCKS))
+        }
+        return Document(content.title, "pdf", "", if (footer == null) withMarker else withMarker + footer)
+      }
+
+      val ext = when (format) { "srt" -> "srt"; "txt", "transcript" -> "txt"; else -> "md" }
+      val withAttribution = options.attribution && ext != "srt" && format != "transcript"
+      val shown = ShareDocument.Options(attribution = false)
+      val body = when (format) {
+        "srt" -> renderSrt(content)
+        "txt" -> renderText(content, shown)
+        "transcript" -> renderTranscript(content)
+        else -> renderMarkdown(content, shown)
+      }
+      // SRT gets a real cue rather than a comment, because subtitle players drop comments — a
+      // warning nobody can see is not a warning.
+      val marked = when {
+        marker == null -> body
+        ext == "srt" -> "0\n00:00:00,000 --> 00:00:04,000\n" + marker + "\n\n" + body
+        ext == "md" -> "> " + marker + "\n\n" + body
+        else -> marker + "\n\n" + body
+      }
+      // The attribution goes at the very end, in the shape each format reads as a footer.
+      val credited = when {
+        !withAttribution -> marked
+        ext == "md" -> marked.trimEnd() + "\n\n---\n\n*" + ShareDocument.ATTRIBUTION + "*\n"
+        else -> marked.trimEnd() + "\n\n" + ShareDocument.ATTRIBUTION + "\n"
+      }
+      return Document(content.title, ext, credited)
+    }
+
+    /**
+     * What the share preview shows: the document's own text. A text format returns its body
+     * unchanged; a PDF returns the words of its blocks, one per line, in page order.
+     */
+    internal fun previewText(d: Document): String =
+      d.blocks?.joinToString("\n") { it.text } ?: d.body
 
     /**
      * The line that travels with a forced transcript wherever it goes.
