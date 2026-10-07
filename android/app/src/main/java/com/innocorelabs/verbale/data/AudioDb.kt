@@ -1,6 +1,8 @@
 package com.innocorelabs.verbale.data
 
 import android.content.Context
+import com.innocorelabs.verbale.billing.Allowance
+import com.innocorelabs.verbale.billing.AllowancePolicy
 import com.innocorelabs.verbale.billing.LicenceStore
 import com.innocorelabs.verbale.pipeline.DecisionLinks
 import com.innocorelabs.verbale.pipeline.DraftMinute
@@ -758,6 +760,88 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       }
     } catch (_: Exception) {
       null
+    }
+  }
+
+  // ---- Free allowance (see billing/Allowance.kt for the rules) ----
+
+  fun allowanceStore(): Allowance.Store = object : Allowance.Store {
+    override fun <T> atomically(block: () -> T): T {
+      db.beginTransaction()
+      try {
+        val r = block()
+        db.setTransactionSuccessful()
+        return r
+      } finally {
+        db.endTransaction()
+      }
+    }
+
+    override fun entries(): List<AllowancePolicy.Entry> =
+      db.rawQuery("SELECT id, period, state FROM allowance", null).use { c ->
+        val out = ArrayList<AllowancePolicy.Entry>()
+        while (c.moveToNext()) {
+          // A state this build does not know (a newer build's backup) is skipped, not guessed at.
+          val state = runCatching { AllowancePolicy.State.valueOf(c.getString(2)) }.getOrNull() ?: continue
+          out.add(AllowancePolicy.Entry(c.getString(0), c.getString(1), state))
+        }
+        out
+      }
+
+    override fun insert(entry: AllowancePolicy.Entry, reservedAtMs: Long) {
+      db.execSQL(
+        "INSERT OR IGNORE INTO allowance(id, period, state, reserved_at) VALUES(?,?,?,?)",
+        arrayOf<Any?>(entry.id, entry.period, entry.state.name, reservedAtMs),
+      )
+    }
+
+    override fun setState(id: String, state: AllowancePolicy.State) {
+      db.execSQL("UPDATE allowance SET state=? WHERE id=?", arrayOf<Any?>(state.name, id))
+    }
+  }
+
+  /**
+   * Apply the policy's verdict to a session's slot using what the database knows about it. Called
+   * when capture ends, when the speech-detection stage ends, and when processing ends.
+   *
+   * "No speech" is read the way the Library reads it (ResumePlan.vadDone: the stage has run, and
+   * there are no rows in `segments`); a dictation is `meetings.mode`; "usable" is one utterance of
+   * three or more words (AllowancePolicy.isUsableText), not merely a row.
+   */
+  fun settleAllowance(meetingId: String, processingDone: Boolean) {
+    val (capturedMs, status) = db.rawQuery("SELECT duration_ms, status FROM meetings WHERE id=?", arrayOf(meetingId)).use {
+      if (it.moveToFirst()) it.getLong(0) to it.getString(1) else 0L to "error"
+    }
+    val speechFound = db.rawQuery("SELECT 1 FROM segments WHERE meeting_id=? LIMIT 1", arrayOf(meetingId)).use { it.moveToFirst() }
+    val usable = db.rawQuery("SELECT text FROM utterances WHERE meeting_id=?", arrayOf(meetingId)).use { c ->
+      var found = false
+      while (!found && c.moveToNext()) found = AllowancePolicy.isUsableText(c.getString(0))
+      found
+    }
+    Allowance.settle(
+      allowanceStore(), meetingId, capturedMs,
+      isDictation = mode(meetingId) == "dictation",
+      vadDone = ResumePlan.vadDone(status, speechFound),
+      speechFound = speechFound,
+      usableTranscript = usable,
+      processingDone = processingDone,
+    )
+  }
+
+  /**
+   * Settle every slot still RESERVED, for a process that died mid-session. A reservation whose
+   * meeting row is gone is refunded; the rest are judged from the file and the transcript. Call it
+   * when no capture is running. A run that CRASHED ('failed') is not final, so it is not refunded
+   * here: only a completed run can say "no speech" or "not usable".
+   */
+  fun sweepAllowance() {
+    val store = allowanceStore()
+    for (e in store.entries().filter { it.state == AllowancePolicy.State.RESERVED }) {
+      val row = db.rawQuery("SELECT status FROM meetings WHERE id=?", arrayOf(e.id)).use {
+        if (it.moveToFirst()) it.getString(0) else null
+      }
+      if (row == null) Allowance.refund(store, e.id)
+      else settleAllowance(e.id, processingDone = row == "done" || row == "error" || row == "unsupported_language")
     }
   }
 
@@ -3157,6 +3241,12 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       "CREATE TABLE IF NOT EXISTS asks(" +
         "id TEXT PRIMARY KEY, meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE, " +
         "question TEXT NOT NULL, answer TEXT NOT NULL, cites_json TEXT NOT NULL, asked_at INTEGER NOT NULL);",
+      // The Free allowance ledger (docs/PRODUCT_IMPROVEMENT_PLAN_2026-10.md §3). One row per
+      // counted session, keyed by the meeting's id so a restore merges instead of adding. NOT a
+      // foreign key to meetings: deleting or archiving a counted meeting must not give the slot
+      // back. state: RESERVED | COMMITTED | REFUNDED.
+      "CREATE TABLE IF NOT EXISTS allowance(" +
+        "id TEXT PRIMARY KEY, period TEXT NOT NULL, state TEXT NOT NULL, reserved_at INTEGER NOT NULL);",
     )
 
     fun get(context: Context): AudioDb =

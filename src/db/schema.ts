@@ -256,6 +256,16 @@ export const SCHEMA = [
      cites_json TEXT NOT NULL,      -- [{n, refId, startMs, speaker}]
      asked_at INTEGER NOT NULL
    );`,
+  // The Free allowance ledger (docs/PRODUCT_IMPROVEMENT_PLAN_2026-10.md §3). Native-owned: only
+  // AudioDb writes it, and it is mirrored here so both sides agree on the shape. Keyed by the
+  // meeting's id so a backup restore merges; deliberately NOT a foreign key to meetings, because
+  // deleting or archiving a counted meeting must not give the slot back.
+  `CREATE TABLE IF NOT EXISTS allowance (
+     id TEXT PRIMARY KEY,
+     period TEXT NOT NULL,          -- "YYYY-MM", fixed at reservation
+     state TEXT NOT NULL,           -- RESERVED | COMMITTED | REFUNDED
+     reserved_at INTEGER NOT NULL
+   );`,
 ];
 
 export const MIGRATIONS: string[][] = [SCHEMA];

@@ -339,4 +339,11 @@ class SchemaTest {
     assertEquals("vocabulary", tables.last())
     assertEquals("people", tables[tables.size - 2])
   }
+
+  /** The Free allowance ledger: a stable id per session, no foreign key to meetings. */
+  @Test fun theAllowanceLedgerHasAStableIdAPeriodAndAState() {
+    val ddl = ddlFor("allowance")
+    assertEquals(listOf("id", "period", "reserved_at", "state"), columnsOf(ddl).sorted())
+    assertFalse("a counted meeting's deletion must not give the slot back", ddl.contains("REFERENCES"))
+  }
 }

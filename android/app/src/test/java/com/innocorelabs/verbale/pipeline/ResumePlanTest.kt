@@ -118,4 +118,27 @@ class ResumePlanTest {
       assertEquals("NARRATE must be last in $state", Stage.NARRATE, state.last())
     }
   }
+
+  /**
+   * The Free slot settles on "VAD has finished", and "no speech" must mean to the allowance what it
+   * means to this planner: nothing left to run on a meeting that is past VAD with no segments.
+   */
+  @Test fun vadDoneAgreesWithWhatThePlannerCallsTerminalNoSpeech() {
+    for (status in listOf("vad", "asr", "diarized", "done", "error")) {
+      assertEquals(true, ResumePlan.vadDone(status, hasSegments = false))
+      assertEquals(emptyList<Stage>(), plan(status, seg = false, utt = false, spk = false))
+    }
+    // Not finished: still capturing, queued from capture, or a crash that starts again from VAD.
+    for (status in listOf("recording", "captured", "failed")) {
+      assertEquals("$status has not been through VAD", false, ResumePlan.vadDone(status, hasSegments = false))
+    }
+    assertEquals(listOf(Stage.VAD, Stage.ASR, Stage.DIARIZE, Stage.NARRATE), plan("captured", seg = false, utt = false, spk = false))
+    assertEquals(listOf(Stage.VAD, Stage.ASR, Stage.DIARIZE, Stage.NARRATE), plan("failed", seg = false, utt = false, spk = false))
+  }
+
+  @Test fun segmentsMeanVadIsDoneWhateverTheStatus() {
+    for (status in listOf("recording", "captured", "failed", "vad", "done")) {
+      assertEquals(true, ResumePlan.vadDone(status, hasSegments = true))
+    }
+  }
 }

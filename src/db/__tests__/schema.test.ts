@@ -33,6 +33,7 @@ function freshDb(): DatabaseSync {
   db.exec(ddlFor('search_vec'));
   db.exec(indexDdlFor('search_vec_meeting'));
   db.exec(ddlFor('asks'));
+  db.exec(ddlFor('allowance'));
   db.exec(ddlFor('vocabulary'));
   return db;
 }
@@ -216,6 +217,19 @@ describe('schema.ts evidence tables (executed in real SQLite)', () => {
       expect(fk).toHaveLength(1);
       expect(fk[0].table).toBe('meetings');
       expect(fk[0].on_delete).toBe('CASCADE');
+    });
+  });
+
+  describe('allowance', () => {
+    it('is a ledger keyed by session id with a period and a state, and is NOT tied to meetings', () => {
+      const db = freshDb();
+      const cols = columnsOf(db, 'allowance');
+      expect(cols.map(c => c.name).sort()).toEqual(['id', 'period', 'state', 'reserved_at'].sort());
+      expect(column(cols, 'id').pk).toBe(1);
+      expect(column(cols, 'period').notnull).toBe(1);
+      expect(column(cols, 'state').notnull).toBe(1);
+      // Deleting a counted meeting must not give the slot back, so there is no foreign key to cascade.
+      expect(foreignKeysOf(db, 'allowance')).toEqual([]);
     });
   });
 

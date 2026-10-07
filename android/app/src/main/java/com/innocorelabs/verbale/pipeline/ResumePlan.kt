@@ -31,6 +31,21 @@ object ResumePlan {
   )
 
   /**
+   * Whether a meeting in [status] is past the speech-detection stage: capture has ended and it is
+   * not in the crash state, which starts again from VAD. The ONE definition of "VAD has run" —
+   * [remaining] and the allowance (AudioDb.settleAllowance) both read it, so "no speech" means the
+   * same thing to the pipeline, the Library and the Free slot.
+   */
+  fun pastVad(status: String): Boolean = status != "captured" && status != "failed"
+
+  /**
+   * Speech detection has finished for this meeting: it left segments behind, or it is past VAD
+   * and left none (that is "no speech"). A meeting still being recorded has not been looked at.
+   */
+  fun vadDone(status: String, hasSegments: Boolean): Boolean =
+    hasSegments || (status != "recording" && pastVad(status))
+
+  /**
    * [forceNarrate] re-plans narration for a meeting that already has prose — the Summary tab's
    * "Write it again". It only ever ADDS the stage; it cannot resurrect a meeting with no
    * transcript, because the no-speech branch below returns before it is consulted and a stage that
@@ -43,7 +58,7 @@ object ResumePlan {
     // meeting being swept forever instead of being marked terminal.
     // 'failed' is a crash, not a verdict: with no segments it starts again from VAD.
     // 'failed' is a crash, not a verdict: with no segments it starts again from VAD.
-    if (!s.hasSegments && s.status != "captured" && s.status != "failed") return emptyList()
+    if (!s.hasSegments && pastVad(s.status)) return emptyList()
 
     val stages = mutableListOf<Stage>()
     if (!s.hasSegments) stages += Stage.VAD
