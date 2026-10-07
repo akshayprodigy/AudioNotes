@@ -22,7 +22,10 @@ const std::vector<Command>& commands() {
       {"question mark", "?"},
       {"exclamation mark", "!"},
       {"exclamation point", "!"},
-      {"comma", ","},
+      // whisper hears "comma" as a name ("Kama") often enough that spoken commas failed on the
+      // phone (Galaxy A07, 25 Sep); the other two are the spellings it has been seen to choose.
+      // The cost: "coma" in its medical sense becomes a comma. Accepted — see test_dictation.cpp.
+      {"(?:comma|kama|cama|coma)", ","},
   };
   return c;
 }

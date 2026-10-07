@@ -44,6 +44,19 @@ int main() {
   // A command inside a word is not a command.
   EQ(applySpokenPunctuation("the commander said"), "the commander said");
 
+  // whisper hears "comma" as a name: "Kama" (Galaxy A07 run, 25 Sep). The three spellings it has
+  // been heard to produce are accepted as the command, whole word and any case, so spoken commas
+  // work on the phone's own model.
+  EQ(applySpokenPunctuation("tell finance Kama the invoice is late"), "Tell finance, the invoice is late");
+  EQ(applySpokenPunctuation("tell finance kama, the invoice is late"), "Tell finance, the invoice is late");
+  EQ(applySpokenPunctuation("one cama two COMA three"), "One, two, three");
+  // Whole words only: a longer word that merely contains an alias is untouched.
+  EQ(applySpokenPunctuation("the comas and the kamala"), "the comas and the kamala");
+  // KNOWN, ACCEPTED LIMITATION: a sentence that uses "coma" in its medical sense ("he was in a
+  // coma") is read as the command, and gets a comma where the word was. Whisper's "Kama" mishearing
+  // is the common case in dictation; the medical word is rare in meetings, and the alias list
+  // stays short rather than guessing from context.
+
   if (failures) { std::fprintf(stderr, "test_dictation: %d failure(s)\n", failures); return 1; }
   std::puts("test_dictation: ok");
   return 0;
