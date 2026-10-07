@@ -80,7 +80,10 @@ export default function SummaryTab({
    onConfirmVoices,
   transcriptChars,
   stale,
+  ask,
 }: {
+  /** The "Ask this meeting" entry, drawn under the counts. */
+  ask?: React.ReactNode;
   /**
    * Taken for the COUNTERS alone — the prose still comes from `minutes`, which is where it lives.
    *
@@ -621,6 +624,8 @@ export default function SummaryTab({
           />
         </View>
       ) : null}
+
+      {ask ?? null}
 
       {/* Offered once there IS prose too. A summary is a judgement call, not a lookup, and the
           only recourse when the model has written a poor one is to ask it again — there is

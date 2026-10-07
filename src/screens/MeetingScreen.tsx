@@ -43,6 +43,8 @@ import {
   type SheetAction,
 } from '../components/ui';
 import SummaryTab from './meeting/SummaryTab';
+import AskEntry, { useAskState } from './meeting/AskEntry';
+import { askExplainer } from './meeting/askAccess';
 import MinutesTab from './meeting/MinutesTab';
 import ActionsTab from './meeting/ActionsTab';
 import TranscriptTab, { type Turn } from './meeting/TranscriptTab';
@@ -165,6 +167,33 @@ export default function MeetingScreen({ route, navigation }: Props) {
     () => navigation.navigate('Paywall', { meetingId }),
     [navigation, meetingId],
   );
+
+  /**
+   * "Ask this meeting", from the header, the overflow sheet and the labelled entry on the tabs.
+   *
+   * Pro on a capable phone goes to Ask. Anyone else is told, in a dialog, what Ask is and why it is
+   * not available to them — with one Upgrade button where Pro would change that, and none where it
+   * would not (a phone that cannot run the writer is not sold Ask).
+   */
+  const ask = useAskState();
+  const onAsk = useCallback(() => {
+    const e = askExplainer(ask.state, ask.writerBlocked);
+    if (!e) {
+      navigation.navigate('Ask', { meetingId });
+      return;
+    }
+    Alert.alert(
+      e.title,
+      e.body,
+      e.upgrade
+        ? [
+            { text: 'Not now', style: 'cancel' },
+            { text: e.upgrade, onPress: openPaywall },
+          ]
+        : [{ text: 'OK', style: 'cancel' }],
+    );
+  }, [ask.state, ask.writerBlocked, navigation, meetingId, openPaywall]);
+  const askEntry = <AskEntry onPress={onAsk} pro={ask.state === 'free' || ask.state === 'free-weak'} />;
 
   /**
    * Offer Pro once, on the first meeting that finishes.
@@ -912,7 +941,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
       icon: 'chat',
       label: 'Ask this meeting',
       hint: 'A question, answered from the transcript, with the moments it came from.',
-      onPress: () => navigation.navigate('Ask', { meetingId }),
+      onPress: onAsk,
     },
     {
       icon: 'users',
@@ -1157,7 +1186,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
         {meeting?.status === 'done' ? (
           <Badge label="READY" color={colors.success} soft={colors.successSoft} small />
         ) : null}
-        <IconButton icon="chat" label="Ask this meeting" onPress={() => navigation.navigate('Ask', { meetingId })} />
+        <IconButton icon="chat" label="Ask this meeting" onPress={onAsk} />
         <IconButton icon="more" label="More actions" onPress={() => setSheet(true)} />
       </View>
 
@@ -1310,6 +1339,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
           <View style={st.flex}>
             {tab === 'summary' ? (
               <SummaryTab
+                ask={askEntry}
                 items={items}
                 minutes={minutes}
                 speakers={speakers}
@@ -1346,6 +1376,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
                />
             ) : tab === 'mom' ? (
               <MinutesTab
+                ask={askEntry}
                 meetingId={meetingId}
                 items={items}
                 minutes={minutes}

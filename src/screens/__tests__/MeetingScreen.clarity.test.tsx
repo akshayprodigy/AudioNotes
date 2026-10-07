@@ -9,6 +9,8 @@ import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 import MeetingScreen from '../MeetingScreen';
 import { db } from '../../db/queries';
+import AskEntry from '../meeting/AskEntry';
+import { IconButton, Sheet } from '../../components/ui';
 
 jest.mock('../../db/queries');
 jest.mock('react-native-safe-area-context', () => ({
@@ -177,6 +179,113 @@ describe('the Summary tab shows what is in each count', () => {
     expect(all).toContain('We agreed to go with the agency quote of $4,500.');
     expect(all).toContain('Next steps · 3');
     expect(all).toContain('I will send the signed quote');
+    await act(async () => tree.unmount());
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Item 3 — Ask is discoverable and labelled
+// ---------------------------------------------------------------------------------------------
+
+describe('the "Ask this meeting" entry', () => {
+  const trial = require('../../billing/trial');
+  const ModelManager = require('../../native/NativeModelManager').default;
+  const { Alert } = require('react-native');
+  const WEAK = 'The writer needs 4 GB of memory; this phone has 2 GB.';
+
+  const setup = (paid: boolean, models: unknown[] = []) => {
+    jest.spyOn(trial, 'entitlement').mockResolvedValue({ paid, licence: null });
+    (ModelManager.list as jest.Mock).mockResolvedValue(JSON.stringify(models));
+    jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  };
+  afterEach(() => jest.restoreAllMocks());
+
+  /** The labelled entry on a tab, not the header icon or the overflow row. */
+  const labelled = (t: renderer.ReactTestRenderer) =>
+    t.root.findAll(n => String(n.type) === 'Text' && [n.props.children].flat().join('') === 'Ask this meeting');
+  const tap = async (t: renderer.ReactTestRenderer) => {
+    await act(async () => {
+      t.root.findByType(AskEntry).props.onPress();
+    });
+  };
+
+  it('is visible, in words, on the Minutes and Summary tabs', async () => {
+    setup(true);
+    for (const tab of ['mom', 'summary']) {
+      const tree = await open({ tab });
+      expect(labelled(tree).length).toBeGreaterThan(0);
+      await act(async () => tree.unmount());
+    }
+  });
+
+  it('takes Pro on a capable phone straight to Ask', async () => {
+    setup(true);
+    const tree = await open({ tab: 'mom' });
+    await tap(tree);
+    expect(nav.navigate).toHaveBeenCalledWith('Ask', { meetingId: 'm1' });
+    expect(Alert.alert).not.toHaveBeenCalled();
+    await act(async () => tree.unmount());
+  });
+
+  it('tells a Free person what Ask is, with one Upgrade that opens the paywall', async () => {
+    setup(false);
+    const tree = await open({ tab: 'mom' });
+    await tap(tree);
+    expect(nav.navigate).not.toHaveBeenCalledWith('Ask', expect.anything());
+    const [title, body, buttons] = (Alert.alert as jest.Mock).mock.calls[0];
+    expect(title).toBe('Ask this meeting');
+    expect(body).toMatch(/transcript/);
+    expect(buttons.map((b: { text: string }) => b.text)).toEqual(['Not now', 'Upgrade to Pro']);
+    await act(async () => buttons[1].onPress());
+    expect(nav.navigate).toHaveBeenCalledWith('Paywall', { meetingId: 'm1' });
+    await act(async () => tree.unmount());
+  });
+
+  it('on a phone that cannot run the writer names what Pro offers and does not promise Ask', async () => {
+    setup(false, [{ id: 'qwen', kind: 'llm', sizeBytes: 1, installed: false, unsupportedReason: WEAK }]);
+    const tree = await open({ tab: 'mom' });
+    await tap(tree);
+    const [, body] = (Alert.alert as jest.Mock).mock.calls[0];
+    expect(body).toContain(WEAK);
+    expect(body).toContain('Search by meaning');
+    expect(body).toMatch(/cannot answer/);
+    expect(body).not.toMatch(/is part of Pro/);
+    await act(async () => tree.unmount());
+  });
+
+  it('for Pro on such a phone explains and sells nothing', async () => {
+    setup(true, [{ id: 'qwen', kind: 'llm', sizeBytes: 1, installed: false, unsupportedReason: WEAK }]);
+    const tree = await open({ tab: 'mom' });
+    await tap(tree);
+    const [, body, buttons] = (Alert.alert as jest.Mock).mock.calls[0];
+    expect(body).toContain(WEAK);
+    expect(buttons.map((b: { text: string }) => b.text)).toEqual(['OK']);
+    await act(async () => tree.unmount());
+  });
+
+  it('is the same entry from the header icon and the overflow sheet', async () => {
+    setup(false);
+    const tree = await open({ tab: 'mom' });
+    const header = tree.root.findAllByType(IconButton).find(b => b.props.label === 'Ask this meeting')!;
+    await act(async () => header.props.onPress());
+    expect(Alert.alert).toHaveBeenCalledTimes(1);
+    const row = tree.root
+      .findAllByType(Sheet)
+      .flatMap(sh => sh.props.actions as { label: string; onPress: () => void }[])
+      .find(a => a.label === 'Ask this meeting')!;
+    await act(async () => row.onPress());
+    expect(Alert.alert).toHaveBeenCalledTimes(2);
+    await act(async () => tree.unmount());
+  });
+
+  it('marks the entry Pro for a Free person, in words, and not for Pro', async () => {
+    setup(false);
+    let tree = await open({ tab: 'mom' });
+    expect(texts(tree)).toContain('Pro');
+    await act(async () => tree.unmount());
+    setup(true);
+    tree = await open({ tab: 'mom' });
+    expect(texts(tree)).not.toContain('Pro');
     await act(async () => tree.unmount());
   });
 });

@@ -60,7 +60,10 @@ export default function MinutesTab({
   onOpenProvenance,
   canPlay,
   speakers,
+  ask,
 }: {
+  /** The "Ask this meeting" entry, drawn right after the takeaway. */
+  ask?: React.ReactNode;
   /** Which meeting's ticks to read, so a next step shows whether it is done. */
   meetingId?: string;
   items: Item[];
@@ -182,6 +185,8 @@ export default function MinutesTab({
           {takeaway}
         </Heading>
       ) : null}
+
+      {ask ?? null}
 
       {decisions.length === 0 && onAdd ? (
         <ToolButton
