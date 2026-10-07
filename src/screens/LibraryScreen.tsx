@@ -9,6 +9,7 @@ import type { MeetingSort } from '../db/queries';
 import { loadActions, tally } from './actionsData';
 import { emptyFollowUp, loadFollowUp, type FollowUp } from './followUpData';
 import FollowUpCard, { followUpVisible } from './FollowUpCard';
+import AddToProjectSheet, { ADD_TO_PROJECT } from '../projects/AddToProjectSheet';
 import { useImport } from './useImport';
 import { refreshAllowance, useAllowance } from '../billing/allowance';
 import { AllowanceLine } from './AllowanceNote';
@@ -242,6 +243,8 @@ export default function LibraryScreen({ navigation }: Props) {
   const [work, setWork] = useState({ total: 0, open: 0, meetings: 0 });
   /** The follow-up card's three lists (Pro). Drawn only when `paid`; read for everyone, shown to Pro. */
   const [follow, setFollow] = useState<FollowUp>(emptyFollowUp);
+  /** The meeting "Add to project" is open for, from its long-press menu. */
+  const [projectFor, setProjectFor] = useState<Meeting | null>(null);
   /** Meetings the pipeline has paused for the phone's sake; their badge reads PAUSED. */
   const [pausedIds, setPausedIds] = useState<Set<string>>(new Set());
   useEffect(
@@ -376,6 +379,10 @@ export default function LibraryScreen({ navigation }: Props) {
       ];
     }
     return [
+      {
+        ...ADD_TO_PROJECT,
+        onPress: () => setProjectFor(m),
+      },
       {
         icon: 'archive',
         label: 'Archive',
@@ -889,6 +896,15 @@ export default function LibraryScreen({ navigation }: Props) {
         title={sheetFor?.title || 'Meeting'}
         actions={sheetFor ? sheetActions(sheetFor) : []}
         onClose={() => setSheetFor(null)}
+      />
+
+      <AddToProjectSheet
+        visible={projectFor !== null}
+        meetingId={projectFor?.id ?? ''}
+        meetingTitle={projectFor?.title}
+        onClose={() => setProjectFor(null)}
+        onChanged={() => refresh()}
+        onUpgrade={() => navigation.navigate('Paywall')}
       />
 
       {/* Sits just above the Record dock while a meeting is recording: tap to jump back into the
