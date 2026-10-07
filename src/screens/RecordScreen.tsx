@@ -572,9 +572,6 @@ export default function RecordScreen({ navigation }: Props) {
               </Raised>
             ) : null}
 
-            <Mascot mood="idle" size={sv(104)} />
-            <Mascot mood="idle" size={sv(104)} />
-            <Mascot mood="idle" size={sv(104)} />
             {capWarning ? (
               <Raised edge={colors.line} fill={colors.card} rad={radius.lg} depth={4}>
                 <View style={st.capNote}>
