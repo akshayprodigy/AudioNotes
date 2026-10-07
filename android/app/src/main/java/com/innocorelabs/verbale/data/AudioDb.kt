@@ -103,7 +103,7 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    */
   fun searchJson(ctx: Context, term: String, meetingId: String? = null): String {
     val out = JSONArray()
-    for (h in searchHits(ctx, term, meetingId)) {
+    for (h in searchHits(ctx, term, meetingId, Retriever.MEANING_MIN_SIMILARITY)) {
       out.put(
         JSONObject().put("meetingId", h.meetingId).put("kind", h.kind).put("refId", h.refId ?: JSONObject.NULL)
           .put("startMs", h.startMs).put("snippet", h.snippet).put("score", h.score).put("byMeaning", h.byMeaning),
@@ -117,11 +117,17 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
    * be used — the closest vectors, one list by reciprocal rank. `meetingId` narrows both to one
    * meeting, which is how Ask retrieves. Without Pro or the model this is exactly the old
    * keyword search.
+   *
+   * `minSimilarity` drops meaning hits whose cosine is below it, before fusion (F25). The search
+   * screen passes [Retriever.MEANING_MIN_SIMILARITY]; Ask keeps the default (no floor) because its
+   * retrieval shares this function but the floor was measured on search queries only.
    */
-  fun searchHits(ctx: Context, term: String, meetingId: String? = null): List<Retriever.Hit> {
+  fun searchHits(
+    ctx: Context, term: String, meetingId: String? = null, minSimilarity: Double = Retriever.NO_FLOOR,
+  ): List<Retriever.Hit> {
     val keyword = keywordHits(term, meetingId)
     val meaning = meaningHits(ctx, term, meetingId, MEANING_TOP)
-    return Retriever.fuse(keyword, meaning)
+    return Retriever.search(keyword, meaning, minSimilarity)
   }
 
   private fun keywordHits(term: String, meetingId: String?): List<Retriever.Hit> {
