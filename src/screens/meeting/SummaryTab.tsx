@@ -170,7 +170,7 @@ export default function SummaryTab({
   // Checked even when prose EXISTS, because a lapsed subscriber keeps every summary already
   // written and must not be offered a "Write it again" that would silently do nothing.
   const [reason, setReason] = React.useState<
-    'checking' | 'expired' | 'locked' | 'no-model' | 'weak-device' | 'not-run' | 'too-short'
+    'checking' | 'error' | 'expired' | 'locked' | 'no-model' | 'weak-device' | 'not-run' | 'too-short'
   >('checking');
   const [lapsedCopy, setLapsedCopy] = React.useState('');
   // "Pro is off" is often "this phone could not check" — offline for a fortnight, or a refresh
@@ -277,7 +277,9 @@ export default function SummaryTab({
                 : 'not-run',
         );
       } catch {
-        if (alive) setReason('not-run');
+        // Not 'not-run': that claims something about the meeting, and a check that threw learned
+        // nothing about it. Say so, and let the person ask again (D19).
+        if (alive) setReason('error');
       }
     })();
     return () => {
@@ -469,7 +471,12 @@ export default function SummaryTab({
               </>
             ) : (
               <Txt variant="prose" color={colors.onPrimary}>
-                {reason === 'expired'
+                {reason === 'checking'
+                  ? // No claim at all until the check has answered.
+                    'Checking…'
+                  : reason === 'error'
+                    ? "Couldn't check this phone — try again."
+                    : reason === 'expired'
                   ? lapsedCopy
                   : reason === 'locked'
                     ? // Describes what they would GET, on the meeting in front of them, rather
@@ -490,6 +497,11 @@ export default function SummaryTab({
               </Txt>
             ) : null}
             {!prose && reason === 'expired' ? lapsedActions : null}
+            {!prose && reason === 'error' ? (
+              <View style={st.cta}>
+                <SoftButton icon="refresh" label="Try again" onPress={() => setRecheck(n => n + 1)} />
+              </View>
+            ) : null}
             {!prose && reason === 'locked' && onUpgrade ? (
               <View style={st.cta}>
                 <SoftButton

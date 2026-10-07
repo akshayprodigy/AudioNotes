@@ -438,3 +438,64 @@ describe('a licence that has lapsed on this phone', () => {
     expect(syncEntitlement).toHaveBeenCalled();
   });
 });
+
+/**
+ * F22c (D19): the card said "This meeting was processed before summaries were written" while it was
+ * still CHECKING, and again when the check itself threw — claims about the meeting made before
+ * anything was known. Only a real 'not-run' may say it; the other two say what is true.
+ */
+describe('the summary card before and after a check that did not finish', () => {
+  const ALL_TEXT = (tree: renderer.ReactTestRenderer) =>
+    tree.root
+      .findAll(n => typeof n.props.children === 'string')
+      .map(n => n.props.children as string)
+      .join('|');
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (entitlement as jest.Mock).mockResolvedValue({ paid: true });
+    (Llm.available as jest.Mock).mockResolvedValue(true);
+    (Llm.capable as jest.Mock).mockResolvedValue(true);
+    (ModelManager.list as jest.Mock).mockResolvedValue('[]');
+  });
+
+  test('while the check is running it says Checking… and claims nothing', async () => {
+    (Licence.status as jest.Mock).mockReturnValue(new Promise(() => {})); // never settles
+    const tree = await renderTab({ minutes: [] });
+    const t = ALL_TEXT(tree);
+    expect(t).toContain('Checking…');
+    expect(t).not.toContain('processed before summaries were written');
+    expect(t).not.toContain('Run it again');
+  });
+
+  test('a check that throws says it could not check, and Try again re-runs it', async () => {
+    (Licence.status as jest.Mock).mockRejectedValue(new Error('native gone'));
+    const tree = await renderTab({ minutes: [] });
+    let t = ALL_TEXT(tree);
+    expect(t).toContain("Couldn't check this phone — try again.");
+    expect(t).not.toContain('processed before summaries were written');
+    expect(tree.root.findAllByProps({ label: 'Write the summary' }, { deep: false })).toHaveLength(0);
+
+    // It works the second time: the card moves on to its real answer.
+    (Licence.status as jest.Mock).mockResolvedValue({
+      state: 'active', paid: true, expiresAt: 0, lapsedCopy: '',
+    });
+    const calls = (Licence.status as jest.Mock).mock.calls.length;
+    await act(async () => {
+      tree.root.findByProps({ label: 'Try again' }).props.onPress();
+    });
+    expect((Licence.status as jest.Mock).mock.calls.length).toBeGreaterThan(calls);
+    t = ALL_TEXT(tree);
+    expect(t).not.toContain("Couldn't check this phone");
+    expect(t).toContain('Run it again and one will be.');
+  });
+
+  test('the Free copy is unchanged', async () => {
+    (Licence.status as jest.Mock).mockResolvedValue({
+      state: 'none', paid: false, expiresAt: 0, lapsedCopy: '',
+    });
+    (entitlement as jest.Mock).mockResolvedValue({ paid: false });
+    const tree = await renderTab({ minutes: [] });
+    expect(ALL_TEXT(tree)).toContain('Pro writes the meeting up in plain English on this phone');
+  });
+});
