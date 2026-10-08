@@ -887,10 +887,20 @@ class AudioDb private constructor(private val db: SQLiteDatabase) {
       while (!found && c.moveToNext()) found = AllowancePolicy.isUsableText(c.getString(0))
       found
     }
+    val isDictation = mode(meetingId) == "dictation"
+    val vadDone = ResumePlan.vadDone(status, speechFound)
+    // One line per decision, no content: the ledger is the one table nobody can read on a release
+    // phone, and "why did this session (not) take a slot" has only this to be answered from.
+    android.util.Log.i(
+      "Allowance",
+      "settle ${meetingId.take(8)} status=$status captured=${capturedMs}ms dictation=$isDictation vadDone=$vadDone " +
+        "speech=$speechFound usable=$usable processingDone=$processingDone -> " +
+        AllowancePolicy.settleAction(capturedMs, isDictation, vadDone, speechFound, usable, processingDone),
+    )
     Allowance.settle(
       allowanceStore(), meetingId, capturedMs,
-      isDictation = mode(meetingId) == "dictation",
-      vadDone = ResumePlan.vadDone(status, speechFound),
+      isDictation = isDictation,
+      vadDone = vadDone,
       speechFound = speechFound,
       usableTranscript = usable,
       processingDone = processingDone,
