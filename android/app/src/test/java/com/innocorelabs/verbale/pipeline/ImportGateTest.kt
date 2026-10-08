@@ -48,6 +48,16 @@ class ImportGateTest {
     assertFalse(ImportGate.blocksStart)
   }
 
+  @Test fun `peek answers before the picker opens and never takes the gate`() {
+    assertNull(ImportGate.peek(recording = false))
+    assertFalse(ImportGate.running)
+    assertEquals(Refusal.RECORDING_IN_PROGRESS, ImportGate.peek(recording = true))
+    assertFalse(ImportGate.running)
+    ImportGate.enter(recording = false)
+    assertEquals(Refusal.IMPORT_IN_PROGRESS, ImportGate.peek(recording = false))
+    assertEquals(Refusal.RECORDING_IN_PROGRESS, ImportGate.peek(recording = true))
+  }
+
   @Test fun `the codes and messages JS matches on`() {
     assertEquals("recording_in_progress", Refusal.RECORDING_IN_PROGRESS.code)
     assertEquals("Finish recording first", Refusal.RECORDING_IN_PROGRESS.message)

@@ -77,6 +77,12 @@ class ImportModule(private val ctx: ReactApplicationContext) : ReactContextBaseJ
       promise.reject("busy", "Already importing")
       return
     }
+    // Say so before the picker opens, not after a file has been chosen. enter() still decides for
+    // real once there is a file; this is only the early answer.
+    ImportGate.peek(CaptureController.isRecording)?.let {
+      promise.reject(it.code, it.message)
+      return
+    }
     pending = promise
     val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
       addCategory(Intent.CATEGORY_OPENABLE)

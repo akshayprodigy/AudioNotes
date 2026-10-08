@@ -23,15 +23,21 @@ object ImportGate {
   /** True while an import holds the gate: a recording must not start. */
   val blocksStart: Boolean get() = running
 
+  /**
+   * Why an import could not start right now, without taking the gate. The file picker asks this
+   * BEFORE it opens: choosing a file only to be told "Finish recording first" wastes the choice.
+   */
+  fun peek(recording: Boolean): Refusal? = when {
+    recording -> Refusal.RECORDING_IN_PROGRESS
+    running -> Refusal.IMPORT_IN_PROGRESS
+    else -> null
+  }
+
   /** Take the gate for one import, or say why not. [recording] is `CaptureController.isRecording`. */
   fun enter(recording: Boolean): Refusal? = synchronized(lock) {
-    when {
-      recording -> Refusal.RECORDING_IN_PROGRESS
-      running -> Refusal.IMPORT_IN_PROGRESS
-      else -> {
-        running = true
-        null
-      }
+    peek(recording) ?: run {
+      running = true
+      null
     }
   }
 
