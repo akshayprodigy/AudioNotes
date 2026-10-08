@@ -109,14 +109,17 @@ const WORDS = /[A-Za-z0-9]+/g;
 //
 // (a) Meeting flow. "Let's start the weekly check-in." is the chair opening the meeting, not a
 // task anybody owes, and `let's` in ACTION_FIRST_PERSON made it one (A07, defect 12a). When the
-// ONLY cue is let's start/begin/get started/kick off, the sentence is flow - unless it also
+// ONLY cue is let's start/begin/get started/kick off/move on/get going/call it a day, or a
+// closing "let's wrap up" with nothing after it to wrap ("there", "here", "the meeting"), the
+// sentence is flow (A07-class, Nothing A069 8 Oct: "Let's wrap up there." was listed as an action;
+// "Let's wrap up the migration" has an object and stays one) - unless it also
 // carries a time marker ("Let's start the migration on Monday." is a real commitment).
 // The phrase is replaced by a placeholder rather than deleted so the remainder is judged on its
 // own: "Let's start, and I'll send the notes" keeps its second cue, and a remainder that happens
 // to begin with an imperative verb cannot become an action by losing its first words.
 // Mirrored in cpp/minutes/minutes_extractor.cpp; the goldens keep the two in step.
-const FLOW_START = /\blet['’]s (start|begin|get started|kick off)\b/i;
-const FLOW_START_ALL = /\blet['’]s (start|begin|get started|kick off)\b/gi;
+const FLOW_START = /\blet['’]s (?:(?:start|begin|get started|kick off|move on|get going)\b|call it a day\b|wrap (?:this |things )?up(?= (?:there|here|now|the (?:meeting|call|session|discussion))\b|\s*[.,!?]|\s*$))/i;
+const FLOW_START_ALL = /\blet['’]s (?:(?:start|begin|get started|kick off|move on|get going)\b|call it a day\b|wrap (?:this |things )?up(?= (?:there|here|now|the (?:meeting|call|session|discussion))\b|\s*[.,!?]|\s*$))/gi;
 const FLOW_TIME = /\b(tomorrow|next \w+|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|by \w+|after \w+)\b/i;
 
 // A first-person future that is a refusal. "We will not ship Friday" matched ACTION_FIRST_PERSON

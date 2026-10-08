@@ -27,6 +27,28 @@ describe('F16 (a): meeting-flow "let\'s start" is not an action', () => {
   ])('"%s" is flow, not an action', s => {
     expect(action(s)).toBe(false);
   });
+  // Nothing A069, 8 Oct: the chair closing the meeting was listed as a to-do ("Let's wrap up there.",
+  // Owner Speaker 1). Same class as "Let's start the weekly check-in", so the same rule.
+  it.each([
+    "Let's wrap up there.",
+    "Let's wrap up",
+    "Okay, let's wrap this up now.",
+    "Alright, let's wrap things up.",
+    "Let's wrap up the meeting.",
+    "Let's move on.",
+    "Okay let's get going.",
+    "Let's call it a day.",
+  ])('"%s" closes or moves the meeting, not an action', s => {
+    expect(action(s)).toBe(false);
+  });
+  it.each([
+    "Let's wrap up the migration.",
+    "Let's wrap up the report by Friday.",
+    "Let's wrap up there, and I'll send the notes.",
+    "Let's wrap up the migration on Monday.",
+  ])('"%s" wraps up a piece of work (or has a time or a second cue), so it stays an action', s => {
+    expect(action(s)).toBe(true);
+  });
   it.each([
     "Let's start the migration on Monday.",
     "Let's start the migration tomorrow.",

@@ -136,6 +136,30 @@
         "endMs": 70500,
         "speakerId": "S1",
         "text": "Let's start the audit in 3 days."
+      },
+      {
+        "id": "u17",
+        "meetingId": "m",
+        "startMs": 70500,
+        "endMs": 74500,
+        "speakerId": "S0",
+        "text": "Let's wrap up there."
+      },
+      {
+        "id": "u18",
+        "meetingId": "m",
+        "startMs": 74500,
+        "endMs": 78500,
+        "speakerId": "S1",
+        "text": "Okay, let's wrap this up now. Let's move on."
+      },
+      {
+        "id": "u19",
+        "meetingId": "m",
+        "startMs": 78500,
+        "endMs": 82500,
+        "speakerId": "S1",
+        "text": "Let's wrap up the migration."
       }
     ],
     "speakers": [
@@ -258,6 +282,21 @@
       ],
       "anchorStartMs": 66500,
       "anchorEndMs": 70500
+    },
+    {
+      "kind": "action",
+      "text": "Let's wrap up the migration. — Speaker 2",
+      "sources": [
+        {
+          "utteranceId": "u19",
+          "startMs": 78500,
+          "endMs": 82500,
+          "charStart": 0,
+          "charEnd": 28
+        }
+      ],
+      "anchorStartMs": 78500,
+      "anchorEndMs": 82500
     }
   ]
 }

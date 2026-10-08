@@ -50,8 +50,11 @@ const std::regex DUE(
     std::regex::icase);
 
 // ---- F16: three corrections to what counts as an action (see minutes.ts for the reasoning) ----
-// JS: /\blet['’]s (start|begin|get started|kick off)\b/i  (meeting flow, F16a)
-const std::regex FLOW_START(R"rx(\blet's (start|begin|get started|kick off)\b)rx", std::regex::icase);
+// JS: FLOW_START in minutes.ts (meeting flow, F16a): let's start/begin/get started/kick off/move on/
+// get going/call it a day, and a closing "let's wrap up" with nothing after it to wrap.
+const std::regex FLOW_START(
+    R"rx(\blet's (?:(?:start|begin|get started|kick off|move on|get going)\b|call it a day\b|wrap (?:this |things )?up(?= (?:there|here|now|the (?:meeting|call|session|discussion))\b|\s*[.,!?]|\s*$)))rx",
+    std::regex::icase);
 // JS: /\b(tomorrow|next \w+|on (monday|...|sunday)|by \w+|after \w+)\b/i
 const std::regex FLOW_TIME(
     R"rx(\b(tomorrow|next \w+|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|by \w+|after \w+)\b)rx",
