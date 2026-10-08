@@ -80,6 +80,14 @@
    {
     "text": "Let's wrap up the migration.",
     "speakerId": "S1"
+   },
+   {
+    "text": "Okay, let's wrap up that.",
+    "speakerId": "S0"
+   },
+   {
+    "text": "Let's wrap up that migration.",
+    "speakerId": "S0"
    }
   ],
   "speakers": [
@@ -96,7 +104,7 @@
  "output": [
   {
    "kind": "summary",
-   "content": "Next: Rahul will recruit ten more testers by Monday. — Rahul (due by Monday); Sam should send the invoices before Wednesday. — Sam (due before Wednesday); Let's start the migration on Monday. — Speaker 1 (due on Monday). 8 action items, 0 decisions, 0 open questions.",
+   "content": "Next: Rahul will recruit ten more testers by Monday. — Rahul (due by Monday); Sam should send the invoices before Wednesday. — Sam (due before Wednesday); Let's start the migration on Monday. — Speaker 1 (due on Monday). 9 action items, 0 decisions, 0 open questions.",
    "source": "rule"
   },
   {
@@ -137,6 +145,11 @@
   {
    "kind": "action",
    "content": "Let's wrap up the migration. — Speaker 2",
+   "source": "rule"
+  },
+  {
+   "kind": "action",
+   "content": "Let's wrap up that migration. — Speaker 1",
    "source": "rule"
   }
  ]

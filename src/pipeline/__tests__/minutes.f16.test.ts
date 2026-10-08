@@ -38,6 +38,10 @@ describe('F16 (a): meeting-flow "let\'s start" is not an action', () => {
     "Let's move on.",
     "Okay let's get going.",
     "Let's call it a day.",
+    // What whisper (base) actually wrote for "Let's wrap up there." on the Nothing A069:
+    "Okay, let's wrap up that.",
+    "Okay, let's wrap this up.",
+    "Let's wrap up this",
   ])('"%s" closes or moves the meeting, not an action', s => {
     expect(action(s)).toBe(false);
   });
@@ -46,6 +50,8 @@ describe('F16 (a): meeting-flow "let\'s start" is not an action', () => {
     "Let's wrap up the report by Friday.",
     "Let's wrap up there, and I'll send the notes.",
     "Let's wrap up the migration on Monday.",
+    "Let's wrap up that migration.",
+    "Let's wrap up this report.",
   ])('"%s" wraps up a piece of work (or has a time or a second cue), so it stays an action', s => {
     expect(action(s)).toBe(true);
   });

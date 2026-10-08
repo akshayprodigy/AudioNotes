@@ -53,6 +53,9 @@ const F16 = [
   { text: "Let's wrap up there.", speakerId: 'S0' },
   { text: "Okay, let's wrap this up now. Let's move on.", speakerId: 'S1' },
   { text: "Let's wrap up the migration.", speakerId: 'S1' },
+  // Whisper wrote "that" for "there"; a bare that/this/it ends the sentence, a noun after it does not:
+  { text: "Okay, let's wrap up that.", speakerId: 'S0' },
+  { text: "Let's wrap up that migration.", speakerId: 'S0' },
 ];
 
 const DEDUP = [
@@ -190,6 +193,7 @@ test('write golden files for the C++ parity tests', () => {
     'Meera will triage tomorrow. — Meera (due tomorrow)',
     "Let's start the audit in 3 days. — Speaker 2 (due in 3 days)",
     "Let's wrap up the migration. — Speaker 2", // wrapping up a piece of work is a task; "Let's wrap up there." is not
+    "Let's wrap up that migration. — Speaker 1",
   ]);
 
   const decisionDedup = extractMinutes(DECISION_DEDUP as any, SPEAKERS as any);
@@ -382,7 +386,7 @@ it('writes the evidence goldens', () => {
   expect(a07.find(i => i.kind === 'action')!.text).toContain('due by Friday');
 
   const f16 = writeEvidenceGolden('evidence_f16.json', F16);
-  expect(f16.filter(i => i.kind === 'action')).toHaveLength(8); // the same eight extractMinutes keeps
+  expect(f16.filter(i => i.kind === 'action')).toHaveLength(9); // the same nine extractMinutes keeps
 
   const spans = writeEvidenceGolden('evidence_spans.json', SPANS);
   const decisions = spans.filter(i => i.kind === 'decision');

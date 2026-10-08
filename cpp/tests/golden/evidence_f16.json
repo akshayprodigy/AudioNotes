@@ -160,6 +160,22 @@
         "endMs": 82500,
         "speakerId": "S1",
         "text": "Let's wrap up the migration."
+      },
+      {
+        "id": "u20",
+        "meetingId": "m",
+        "startMs": 82500,
+        "endMs": 86500,
+        "speakerId": "S0",
+        "text": "Okay, let's wrap up that."
+      },
+      {
+        "id": "u21",
+        "meetingId": "m",
+        "startMs": 86500,
+        "endMs": 90500,
+        "speakerId": "S0",
+        "text": "Let's wrap up that migration."
       }
     ],
     "speakers": [
@@ -297,6 +313,21 @@
       ],
       "anchorStartMs": 78500,
       "anchorEndMs": 82500
+    },
+    {
+      "kind": "action",
+      "text": "Let's wrap up that migration. — Speaker 1",
+      "sources": [
+        {
+          "utteranceId": "u21",
+          "startMs": 86500,
+          "endMs": 90500,
+          "charStart": 0,
+          "charEnd": 29
+        }
+      ],
+      "anchorStartMs": 86500,
+      "anchorEndMs": 90500
     }
   ]
 }
