@@ -217,7 +217,7 @@ test('the header and the privacy footer wrap rather than run off the screen at l
   const [privacy] = tree.root.findAllByProps({ accessibilityLabel: 'Show the room a card' });
   expect(StyleSheet.flatten(privacy.props.style).flexWrap).toBe('wrap');
   const bar = tree.root.find(
-    n => n.type === 'View' && StyleSheet.flatten(n.props.style)?.justifyContent === 'space-between',
+    n => (n.type as unknown) === 'View' && StyleSheet.flatten(n.props.style)?.justifyContent === 'space-between',
   );
   expect(StyleSheet.flatten(bar.props.style).flexWrap).toBe('wrap');
   await act(async () => tree.unmount());
