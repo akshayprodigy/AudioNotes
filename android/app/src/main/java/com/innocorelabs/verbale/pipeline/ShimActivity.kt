@@ -70,6 +70,16 @@ class ShimActivity : Activity() {
       // The tile used to start an uncapped recording without asking anyone. Now it asks the same
       // ledger the app does, and a spent month opens the app, which says why.
       Log.i(TAG, "quick start refused: allowance used up until ${e.resetsOn}; opening the app")
+      // Say it on the spot: the app opens on the Library, which only carries a small count line.
+      try {
+        android.widget.Toast.makeText(
+          applicationContext,
+          QuickStartNotice.exhausted(e.resetsOn),
+          android.widget.Toast.LENGTH_LONG,
+        ).show()
+      } catch (e3: Exception) {
+        Log.w(TAG, "could not show the notice", e3)
+      }
       try {
         startActivity(
           android.content.Intent(this, com.innocorelabs.verbale.MainActivity::class.java)
