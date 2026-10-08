@@ -4,6 +4,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { radius, s, useTheme } from '../theme';
 import { Txt } from './ui';
 import { useRecordingStore } from '../state/recordingStore';
+import { PipelineController } from '../pipeline/PipelineController';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 
 /** Just the slice of the navigation prop this bar needs — enough to accept the real screen prop. */
@@ -57,7 +58,13 @@ export default function RecordingBar({ navigation }: { navigation: Nav }) {
         accessibilityLabel="Stop recording"
         hitSlop={12}
         onPress={() => {
-          stop();
+          // Stop, then queue it - the Record screen's Stop does both. Stopping alone left the meeting
+          // "captured" with nothing to process it until some other screen's sweep ran (Nothing A069).
+          stop()
+            .then(meetingId => {
+              if (meetingId) PipelineController.process(meetingId, { model: 'base' }).catch(() => {});
+            })
+            .catch(() => {});
         }}
         style={[styles.stop, { backgroundColor: colors.danger }]}
       />
