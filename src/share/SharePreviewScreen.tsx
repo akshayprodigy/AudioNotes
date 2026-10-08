@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -150,14 +150,21 @@ export default function SharePreviewScreen({ navigation, route }: Props) {
 
       <View style={st.pad}>
         <View style={st.attr}>
-          <View style={st.flex}>
+          {/* The words toggle it too: a 48 dp switch is a small target for a label that big. The
+              switch stays the one control a screen reader announces, so this row is not a second. */}
+          <Pressable
+            style={st.flex}
+            accessible={false}
+            disabled={!carriesAttribution(format)}
+            onPress={onToggle}
+            testID="credit-label">
             <Txt variant="sub">Add a small credit at the bottom</Txt>
             <Txt variant="chipSoft" color={colors.inkSoft}>
               {carriesAttribution(format)
                 ? `“${ATTRIBUTION}”, once, after everything else.`
                 : 'Subtitle files never carry it.'}
             </Txt>
-          </View>
+          </Pressable>
           {carriesAttribution(format) ? <Switch on={attribution} onToggle={onToggle} /> : null}
         </View>
         <Button label="Share" icon="share" full disabled={sharing || !ready} onPress={onShare} />

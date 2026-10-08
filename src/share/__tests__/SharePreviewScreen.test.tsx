@@ -151,6 +151,17 @@ describe('the attribution toggle', () => {
     expect(shareWith).toHaveBeenCalledWith('m1', 'md', true);
   });
 
+  it('touching the words toggles it, as the switch does; on subtitles they do nothing', async () => {
+    const tree = await open();
+    await act(async () => {
+      tree.root.findByProps({ testID: 'credit-label' }).props.onPress();
+    });
+    expect(db.setSetting).toHaveBeenCalledWith(ATTRIBUTION_KEY, '1');
+    expect(preview).toHaveBeenLastCalledWith('m1', 'pdf', true);
+    await press(tree, 'Subtitles');
+    expect(tree.root.findByProps({ testID: 'credit-label' }).props.disabled).toBe(true);
+  });
+
   it('starts on when the person left it on', async () => {
     (db.getSetting as jest.Mock).mockResolvedValue('1');
     await open();
