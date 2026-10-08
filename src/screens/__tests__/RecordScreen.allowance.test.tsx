@@ -211,6 +211,18 @@ test('the first seconds of a recording ask for a pause for the announcement, the
   await act(async () => later.unmount());
 });
 
+test('the header and the privacy footer wrap rather than run off the screen at large text', async () => {
+  const tree = await render();
+  const { StyleSheet } = require('react-native');
+  const [privacy] = tree.root.findAllByProps({ accessibilityLabel: 'Show the room a card' });
+  expect(StyleSheet.flatten(privacy.props.style).flexWrap).toBe('wrap');
+  const bar = tree.root.find(
+    n => n.type === 'View' && StyleSheet.flatten(n.props.style)?.justifyContent === 'space-between',
+  );
+  expect(StyleSheet.flatten(bar.props.style).flexWrap).toBe('wrap');
+  await act(async () => tree.unmount());
+});
+
 test('in the warning phase the card replaces the mascot, inside the scrolling band, and the controls stay fixed', async () => {
   recordingFor(56 * MIN);
   const tree = await render();

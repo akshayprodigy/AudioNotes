@@ -732,7 +732,15 @@ function makeStyles(c: Colors) {
     recPad: { flex: 1, paddingHorizontal: s(22) },
     consentPad: { flex: 1, paddingHorizontal: s(22) },
 
-    topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    // Wraps: at 200% text the pill and the date no longer fit side by side, and the date was cut
+    // off at the screen's edge (Nothing A069, 384 dp).
+    topBar: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: s(6),
+    },
     statusPill: { paddingHorizontal: s(13), paddingVertical: s(8), borderRadius: radius.pill },
     modeRow: { marginTop: s(14), gap: s(8) },
     modeDim: { opacity: 0.45 },
@@ -761,7 +769,15 @@ function makeStyles(c: Colors) {
       maxWidth: '92%',
     },
     warnText: { flexShrink: 1 },
-    privacy: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: s(6) },
+    // Wraps for the same reason: "Stays on this device. Show the room" ran off both edges at 200%.
+    privacy: {
+      flex: 1,
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: s(6),
+    },
 
     consentScroll: { flexGrow: 1, justifyContent: 'center', paddingBottom: s(8) },
     consentHero: {
