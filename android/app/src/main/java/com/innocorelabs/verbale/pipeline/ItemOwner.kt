@@ -67,6 +67,26 @@ object ItemOwner {
   }
 
   /**
+   * A rule-composed overview with each renamed item's stored wording swapped for its current one.
+   *
+   * The overview ("Decided: …. Next: Send the report — Speaker 1 (due by Friday).") is composed once,
+   * at processing time, out of the items' stored text, so the owner token inside it is whatever the
+   * speaker was called then. [resolve] fixes the items; nothing fixed this paragraph, and every
+   * export carried the old name at the top of a document whose list below said the new one (found
+   * on the Nothing A069, 8 Oct). [renames] is `(stored text, resolved text)` per item whose owner
+   * changed; the stored text is what the overview embeds, verbatim.
+   *
+   * Never applied to a summary a person typed or a model wrote: those say what they say.
+   */
+  fun renameWithin(text: String, renames: List<Pair<String, String>>): String {
+    var out = text
+    for ((from, to) in renames) {
+      if (from.isNotEmpty() && from != to) out = out.replace(from, to)
+    }
+    return out
+  }
+
+  /**
    * The owner_json a freshly extracted rule item should carry, or null when its owner is not the
    * speaker of the line it came from.
    *

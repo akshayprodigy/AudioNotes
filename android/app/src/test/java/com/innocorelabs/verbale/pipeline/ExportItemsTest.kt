@@ -638,6 +638,45 @@ class ExportItemsTest {
   }
 
   /**
+   * The overview is composed once, out of the items' stored text, so it still said "Speaker 1" after the
+   * speaker was renamed — at the top of a document whose list below said "Priya" (Nothing A069, 8 Oct).
+   */
+  @Test fun aRenameReachesTheRuleOverviewNotJustTheListBelowIt() {
+    val stored = "I'll send the report by Friday. — Speaker 1 (due by Friday)"
+    val items = rows(
+      itemRow("i1", "action", stored, 1_000).put("owner_json", """{"kind":"speaker","id":"s1"}"""),
+      itemRow("i2", "action", "Book the room. — Maya", 2_000),
+    )
+    val names = mapOf<String, String?>("s1" to "Priya")
+    val summary = FileExportModule.summaryOf(
+      rows(minuteRow("summary", "Next: $stored; Book the room. — Maya. 2 action items.")),
+      emptyMap(),
+      FileExportModule.ownerRenames(items, names),
+    )
+    assertEquals(
+      "Next: I'll send the report by Friday. — Priya (due by Friday); Book the room. — Maya. 2 action items.",
+      summary,
+    )
+  }
+
+  /** What a person typed and what the model wrote say what they say; only the rule overview is rewritten. */
+  @Test fun aRenameNeverRewritesAHandWrittenOrAModelWrittenSummary() {
+    val renames = listOf("Send it — Speaker 1" to "Send it — Priya")
+    assertEquals(
+      "Speaker 1 sends it — Send it — Speaker 1",
+      FileExportModule.summaryOf(
+        rows(minuteRow("summary", "x")), mapOf("summary/doc" to "Speaker 1 sends it — Send it — Speaker 1"), renames,
+      ),
+    )
+    assertEquals(
+      "Send it — Speaker 1 is what the model quoted.",
+      FileExportModule.summaryOf(
+        rows(minuteRow("summary", "Send it — Speaker 1 is what the model quoted.", source = "llm")), emptyMap(), renames,
+      ),
+    )
+  }
+
+  /**
    * A summary somebody typed wins outright, whatever the model did or did not manage.
    *
    * Keyed on `summary/doc` because there is exactly one summary per meeting, so the kind already

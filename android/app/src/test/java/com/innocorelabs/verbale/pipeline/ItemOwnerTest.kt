@@ -77,4 +77,20 @@ class ItemOwnerTest {
     assertEquals("(due next week)", p.dueSuffix)
     assertNull(ItemOwner.split("No suffix here").owner)
   }
+
+  // ---- The rule overview embeds the stored text; a rename has to reach it too -------------------
+
+  @Test fun aRenamedOwnerReachesTheRuleOverviewToo() {
+    val overview = "Next: Send the report. — Speaker 1 (due by Friday); Book the room. — Maya. 2 action items."
+    val out = ItemOwner.renameWithin(
+      overview,
+      listOf("Send the report. — Speaker 1 (due by Friday)" to "Send the report. — Priya (due by Friday)"),
+    )
+    assertEquals("Next: Send the report. — Priya (due by Friday); Book the room. — Maya. 2 action items.", out)
+  }
+
+  @Test fun aRenameWithNothingToSwapLeavesTheOverviewAlone() {
+    assertEquals("Decided: ship Monday.", ItemOwner.renameWithin("Decided: ship Monday.", emptyList()))
+    assertEquals("same", ItemOwner.renameWithin("same", listOf("same" to "same", "" to "x")))
+  }
 }

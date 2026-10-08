@@ -212,7 +212,7 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
     val content = Content(
       title = title,
       createdAt = createdAt,
-      summary = summaryOf(minutes, edits),
+      summary = summaryOf(minutes, edits, ownerRenames(items, nameById)),
       narrative = narrativeOf(minutes, edits),
       items = exportItems(items, minutes, edits, nameById, doneIds, doneKeys),
       turns = turns,
@@ -532,7 +532,12 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
      * which is what this used to do — handed a paying subscriber the rule row, because that one was
      * written first.
      */
-    fun summaryOf(minutes: JSONArray, edits: Map<String, String>): String? {
+    fun summaryOf(
+      minutes: JSONArray,
+      edits: Map<String, String>,
+      /** `(stored text, current text)` for each item whose owner was renamed; see [ownerRenames]. */
+      renames: List<Pair<String, String>> = emptyList(),
+    ): String? {
       edits["summary/doc"]?.let { return it }
       var fallback: String? = null
       for (i in 0 until minutes.length()) {
@@ -542,7 +547,25 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
         if (o.optString("source") == "llm") return content
         if (fallback == null) fallback = content
       }
-      return fallback
+      // Only the RULE overview embeds item text, composed at processing time with the owner as it
+      // was then. A rename since has to reach it here, or the document's first paragraph says
+      // "Speaker 1" above a list that says "Priya".
+      return fallback?.let { ItemOwner.renameWithin(it, renames) }
+    }
+
+    /**
+     * For each item whose owner resolves to a speaker's current name, its stored text paired with the
+     * text as it reads now. What [ItemOwner.renameWithin] swaps inside the rule overview.
+     */
+    fun ownerRenames(items: JSONArray, nameById: Map<String, String?>): List<Pair<String, String>> {
+      val out = ArrayList<Pair<String, String>>()
+      for (i in 0 until items.length()) {
+        val o = items.getJSONObject(i)
+        val text = o.getString("text")
+        val now = ItemOwner.resolve(text, if (o.isNull("owner_json")) null else o.optString("owner_json"), nameById)
+        if (now != text) out.add(text to now)
+      }
+      return out
     }
 
     /**
