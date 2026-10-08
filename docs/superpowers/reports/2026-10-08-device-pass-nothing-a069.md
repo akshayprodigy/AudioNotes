@@ -9,6 +9,9 @@
 | `d05d36b`, `6f3b6dd` | "Let's wrap up there." (whisper wrote "…wrap up that.") was listed as an action owned by Speaker 1 | closing/flow phrases (wrap up there/here/that/this/it at the end, move on, get going, call it a day) are not actions; "wrap up the migration" still is. TS and C++ together, F16 goldens +5 rows. **The second commit was written because the first was tested against typed text; whisper wrote something else.** |
 | `bf1fba2` | after renaming Speaker 1 → Priya the Share preview's top paragraph still said "— Speaker 1" above a list saying "— Priya" | the stored rule overview is re-resolved with the renamed owners at export time. **Re-checked on the phone with the new build: reads "— Priya".** |
 | `f20c212` | an 8 s dictation "Call Priya at five o'clock tomorrow and send her the budget." was transcribed as **"And punch it."** | Dictation mode played the "this meeting is being recorded" clip and ASR cut the first ~5.7 s with it. A dictation is now never announced. **Re-checked on the phone: whole sentence transcribed** ("Call PrehiHot 5 o'clock tomorrow and center the budget" — proper nouns misheard, nothing missing). |
+| `81884db` | **App crashed ("Application Error") when the font size was changed with it open** — `IllegalStateException: Screen fragments should never be restored`, from `MainActivity.onCreate` | `super.onCreate(null)`, the react-native-screens documented fix. It also covers Android restoring the activity after killing the app in the background (not simulated successfully — see below). **Re-checked: font scale, display size and density changed with the app open — no crash.** |
+| `1223316` | stopping a recording with the **stop button on the strip** shown on the Library ended the capture and **nothing queued it for processing** (no pipeline lines; meeting left "captured", slot RESERVED until some other screen's sweep ran) | the strip now queues processing after stopping, as the Record screen does. **Re-checked: stop from the strip → processing starts at once → COMMIT.** |
+| `79475b4` | (not a defect) no way to see why a session did or did not take a slot on a release phone | one log line per settle decision. |
 
 ## Results
 
@@ -23,7 +26,7 @@
 | A3 tile with 0 left, app killed | **PASS** | `ShimActivity: quick start refused: allowance used up until 2026-11-01; opening the app`; no recording service. The app lands on the Library (not the Record screen's explanation). |
 | A5 silence | **PASS** | 11 s silent meeting → log "ASR skipped (no speech detected)", count unchanged (4 of 5), meeting says "Nothing to show". |
 | A5 dictation | **PASS** | 8 s dictation with real words → count unchanged. |
-| A5 short meeting with words | **not shown cleanly** | a 22 s meeting did not take a slot — but its words were lost to the announcement clip (see dictation fix), so the transcript was not "usable" and the refund is the designed outcome. **Re-test after the announcement fix is not done** (phone disconnected). |
+| A5 short meeting with words | **PASS** | A 21.5 s Meeting-mode recording (speech from 8 s): log `WAIT` at capture end, `WAIT` after speech detection, `COMMIT` when processing finished with a usable transcript; Library 4 → 3 of 5. **Correction to an earlier version of this log:** two short "meetings" that appeared not to count (22 s and 18 s) were recorded in **Dictation** mode — the Record screen remembers the last mode and my script never switched back; a dictation under a minute is free by your decision, so the slots were right. |
 | A9 clock back to 15 Sep with 5 used | **PASS** | still "0 of 5 … resets 1 November", Record refused. |
 | A10 one session under Jan 2027, clock back to Oct | **PASS** | at Jan: "5 of 5 … resets 1 February"; after recording "4 of 5"; back in Oct: "0 of 5 … resets 1 November" (read as this month), never "1 February 2027". |
 | rollover, clock 1 Nov 00:05 | **PASS** | "4 of 5 free meetings left · resets 1 December." — October no longer counts; the January entry is read as November. The midnight-crossing-during-a-recording variant (A11) was not run. |
@@ -32,6 +35,15 @@
 | H1/H3 Share, formats, credit | **PASS (partly)** | Share screen shows PDF/Markdown/Text/Subtitles; Markdown preview; the credit toggle puts "*Created with Verbale — private meeting notes*" last. The label does not toggle the switch (only the switch does). The system share sheet opens with "Good morning everyone l…the weekly check-in.md"; nothing was sent. PDF/Subtitles file contents, H4, H6 not checked. |
 | Processing speed | observed | 171 s of audio: VAD 1.4 s, ASR 21.8 s (0.13×), diarization 21.2 s, minutes 0.1 s. An 8 s dictation took 11.4 s of ASR (1.42×). |
 | Consent clip | **PASS** | `announcement check: heard=true found=true … lag=300ms`; banner "Announced at the start of the recording." |
+
+| R1/R2 Record screen at 384×853 dp and at font scale 2.0 | **PASS (recording and idle); clipped text** | At 384 dp: idle shows the clock, hint, mic and the remaining line; recording shows the clock, hint, big Stop, Pause and Mark, all on screen. At 200% text on top of that: Stop, Pause and Mark still on screen and reachable; but the header "Meeting · Thu 8 Oct" and the footer "Stays on this device. Show the room" are clipped at the edges, and the remaining-meetings line is not shown. The **warning-phase** layout (R1 proper: card under the clock at 5 minutes left) needs the short-cap build and was not run. R3 (exhausted card at both sizes) not run. |
+| Library at 200% text, 384 dp | **layout defects** | the title breaks mid-word ("Meetin / gs"), the header wraps to six lines, the initials chip on a card is clipped, titles truncate to "budge..". |
+| A17 import over the Free hour | **PASS** | 61-minute file: "That recording is longer than the 1 hour Free limit. Pro has no length limit." with Not now / Get Pro; no meeting row, no slot. |
+| A18 corrupt file | **PASS** | "Could not import that — That file could not be opened"; no meeting row, no slot. |
+| Import of a valid file | **PASS** | 17 s spoken file → decoded 17.0 s, WAIT, WAIT, COMMIT; one slot; the app opened the new meeting. |
+| A19 import while recording | **PASS, with a nit** | "Could not import that — Finish recording first" (after choosing a file; the picker itself still opens). The reverse (record while importing) was not run. |
+| A20 / C11 force-stop mid-recording | **PASS** | `recovered 1 meeting(s) stranded in 'recording'` on the next launch; 18.4 s kept; processed without a tap; one slot committed (4 → 3). |
+
 
 ## Findings not yet fixed
 
@@ -46,10 +58,15 @@
 9. **The Pro screen opened by itself once** (11:36, first processed meeting); not reproduced in five later recordings and no automatic trigger exists in code; treat as a stray tap until seen again.
 10. **Phone locks while idle**; adb cannot unlock it. `svc power stayon true` while plugged in avoids it. adb connection to the phone dropped twice (cable); at the end of the session it did not come back.
 
+11. **Record screen remembers its last mode** (Meeting/Dictation). Easy to start a meeting in Dictation by accident; the only cue is the highlighted tab and "Tap to dictate".
+12. **Two jest suites failed once each in a full run** (`MeetingScreen` F15 "does not re-read the items…", `AddToProjectSheet`) and pass 3 of 3 alone and on the previous commit: timing-sensitive tests that flake when the machine is loaded.
+13. **Restore-from-background was not exercised:** with "don't keep activities" on, the activity was not actually destroyed (the task was just brought to front). The crash fix is verified for the font/size/density path only.
+14. **Notifications and other apps took focus several times** (a WhatsApp heads-up, YouTube, the launcher) while the phone was in use; my tap guard refused each time, which is why some steps were repeated.
+
 ## An incident to know about
 
 While driving the phone I pressed Back three times from the Library without checking where I was; that left Verbale for the launcher and three coordinate taps then landed in the **Google/Gemini app** (the phone owner's personal chat). Nothing was typed or sent; one screenshot of the conversation was taken by the tool. A sentence I spoke from the Mac ("Call Priya at five o'clock tomorrow and send her the budget.") may have been heard if Gemini's microphone was active. I left the app, confirmed nothing was playing, and every tap now goes through `g.sh`, which refuses unless Verbale (or its own permission/share dialogs) has focus.
 
 ## Not done yet in this pass
 
-Clock midnight crossing (A11), imports (A17–A19), kill/recover (A20, C11, C12), disk-full (A22, C13), Record layout at large text and 384×853 (R1–R3), PDF/Subtitles contents and large text on Share, corrections (X3–X5), follow-up card, Add to project, Settings, dark mode, TalkBack, the real one-hour cap (A14), the short-cap timing build (A4, A12, A13). Not possible with one phone and no second person: C9, C15, C16, C18, billing (B1–B6), the Play-installed migration (A23).
+Clock midnight crossing during a recording (A11), disk-full (A22, C13), the warning-phase Record layout and the exhausted card at small sizes (R1, R3), PDF/Subtitles contents and Share at large text, corrections (X3–X5), Add to project, Settings, dark mode, TalkBack, the real one-hour cap (A14), the short-cap build (A4, A12, A13), record-while-importing, and the restore-from-recents crash path. Follow-up card and Ask need Pro. Not possible with one phone and no second person: C9, C15, C16, C18, billing (B1–B6), the Play-installed migration (A23).
