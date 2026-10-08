@@ -299,6 +299,19 @@ describe('the voice banner', () => {
 });
 
 describe('why there is no summary', () => {
+  test('on Free a dictated note is not told it was a meeting with speakers', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: false });
+    (Llm.available as jest.Mock).mockResolvedValue(true);
+    (Llm.capable as jest.Mock).mockResolvedValue(true);
+    const note = await renderTab({ minutes: [], template: 'dictation', speakers: [] });
+    const meeting = await renderTab({ minutes: [], template: 'standup' });
+    const words = (t: renderer.ReactTestRenderer) =>
+      t.root.findAll(n => typeof n.props.children === 'string').map(n => n.props.children as string);
+    expect(words(note).some(t => t.startsWith('Your note is below'))).toBe(true);
+    expect(words(note).some(t => t.includes('who said what'))).toBe(false);
+    expect(words(meeting).some(t => t.includes('who said what'))).toBe(true);
+  });
+
   test('a phone under the gate hears the memory sentence, not "Settings → Models"', async () => {
     (entitlement as jest.Mock).mockResolvedValue({ paid: true });
     (Llm.available as jest.Mock).mockResolvedValue(false);

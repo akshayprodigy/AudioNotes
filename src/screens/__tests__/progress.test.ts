@@ -156,3 +156,21 @@ describe('a retry before its first stage event', () => {
     expect(p.etaSec).toBeLessThan(40 * 60);
   });
 });
+
+describe('a run that skips a stage (a dictation never separates speakers)', () => {
+  const audioSec = 100;
+  const rates = { vad: 0.01, asr: 0.3, diarize: 0.6, minutes: 0.1, narrate: 0.3, embed: 0.01 };
+
+  it('prices only the stages that will run', () => {
+    const full = progressFor({ liveStage: 'asr', status: null, audioSec, rates, fraction: 0 });
+    const skipped = progressFor({ liveStage: 'asr', status: null, audioSec, rates, fraction: 0, skip: ['diarize'] });
+    expect(full.etaSec - skipped.etaSec).toBe(60);
+  });
+
+  it('moves the running stage past the skipped one when ASR has finished', () => {
+    const p = progressFor({ liveStage: null, status: 'asr', audioSec, rates, skip: ['diarize'] });
+    expect(STAGES[p.index].key).toBe('minutes');
+    const q = progressFor({ liveStage: null, status: 'asr', audioSec, rates });
+    expect(STAGES[q.index].key).toBe('diarize');
+  });
+});

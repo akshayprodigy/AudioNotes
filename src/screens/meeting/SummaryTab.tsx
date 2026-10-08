@@ -539,7 +539,11 @@ export default function SummaryTab({
                   : reason === 'locked'
                     ? // Describes what they would GET, on the meeting in front of them, rather
                       // than what they lack. The decisions and actions below are already theirs.
-                      'The minutes below were pulled out of what was said. Pro writes the meeting up in plain English on this phone — who said what, what was settled, what is still open.'
+                      // A dictation has one voice and no meeting to settle: "who said what" is
+                      // meeting copy, and was shown on a note (Nothing A069, 8 Oct).
+                      template === DICTATION_TEMPLATE
+                      ? 'Your note is below, as you said it. Pro tidies it into clean writing on this phone, and pulls out anything you need to do.'
+                      : 'The minutes below were pulled out of what was said. Pro writes the meeting up in plain English on this phone — who said what, what was settled, what is still open.'
                     : reason === 'no-model'
                       ? 'The summary is written on your phone by a language model that has not been downloaded yet.'
                       : reason === 'weak-device'

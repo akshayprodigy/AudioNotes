@@ -88,6 +88,12 @@ export interface ProgressInput {
    * ends this; it has no effect once one has arrived.
    */
   resuming?: boolean;
+  /**
+   * Stage keys this run never does. A dictation skips diarization (one voice by definition), so
+   * pricing it made a short note advertise time that was never going to be spent. The stage keeps
+   * its position in STAGES; it just costs nothing.
+   */
+  skip?: readonly string[];
 }
 
 export interface Progress {
@@ -116,14 +122,16 @@ const RUNNING_GUESS = 0.4;
  * than assuming the first stage. Assuming was the bug: for a 90-minute meeting the next event was
  * half an hour away, so the screen claimed the first stage for half an hour.
  */
-export function progressFor({ liveStage, status, audioSec, rates, fraction, resuming }: ProgressInput): Progress {
+export function progressFor({ liveStage, status, audioSec, rates, fraction, resuming, skip }: ProgressInput): Progress {
   if (resuming && liveStage === null) return { index: -1, pct: 0, etaSec: 0, resuming: true };
   const key = liveStage ?? stageFromStatus(status);
   const found = STAGES.findIndex(x => x.key === key);
-  const index = found < 0 ? 0 : found;
+  let index = found < 0 ? 0 : found;
+  // After ASR a dictation's status names diarization as next; it is not coming, minutes is.
+  while (skip?.includes(STAGES[index].key) && index < STAGES.length - 1) index++;
   const through = typeof fraction === 'number' ? Math.min(1, Math.max(0, fraction)) : RUNNING_GUESS;
 
-  const rate = (x: Stage) => rateFor(x, rates);
+  const rate = (x: Stage) => (skip?.includes(x.key) ? 0 : rateFor(x, rates));
   const total = STAGES.reduce((a, x) => a + rate(x), 0);
   const doneRate = STAGES.slice(0, index).reduce((a, x) => a + rate(x), 0);
   const runningRate = rate(STAGES[index]);

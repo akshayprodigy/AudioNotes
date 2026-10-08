@@ -1072,6 +1072,8 @@ export default function MeetingScreen({ route, navigation }: Props) {
       fraction: counts ? counts.done / counts.total : undefined,
       // A retry that has not reported a stage yet has no honest ETA (F21).
       resuming: reprocessing,
+      // A dictation is one voice: diarization never runs, so it is neither listed nor priced.
+      skip: meeting?.mode === 'dictation' ? ['diarize'] : undefined,
     });
 
     return (
@@ -1114,6 +1116,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
             <Raised edge={colors.line} fill={colors.card} rad={radius.card} depth={6}>
               <View style={st.checkInner}>
                 {STAGES.map((x, i) => {
+                  if (meeting?.mode === 'dictation' && x.key === 'diarize') return null;
                   const state = i < idx ? 'done' : i === idx ? 'active' : 'todo';
                   return (
                     <View key={x.key}>
