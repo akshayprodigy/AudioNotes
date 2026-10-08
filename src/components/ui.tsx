@@ -45,16 +45,24 @@ export function Txt({
   style,
   children,
   numberOfLines,
+  fit,
 }: {
   variant?: TypeKey;
   color?: string;
   style?: StyleProp<TextStyle>;
   children: React.ReactNode;
   numberOfLines?: number;
+  /** One line that shrinks to fit, for a short title beside buttons: at 200% text it would
+   *  otherwise break mid-word ("Meetin / gs"). */
+  fit?: boolean;
 }) {
   const { colors } = useTheme();
   return (
-    <Text numberOfLines={numberOfLines} style={[text(variant, color ?? colors.ink), style]}>
+    <Text
+      numberOfLines={fit ? 1 : numberOfLines}
+      adjustsFontSizeToFit={fit}
+      minimumFontScale={fit ? 0.5 : undefined}
+      style={[text(variant, color ?? colors.ink), style]}>
       {children}
     </Text>
   );

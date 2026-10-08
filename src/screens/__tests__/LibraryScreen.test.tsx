@@ -78,6 +78,17 @@ beforeEach(() => {
   useLibraryStore.setState({ backfillItems: sweepItems, backfillSearch: sweepSearch, tag: null });
 });
 
+describe('the title at large text', () => {
+  test('"Meetings" stays on one line and shrinks to fit rather than breaking mid-word', async () => {
+    const { Text } = require('react-native');
+    const tree = await focusTheLibrary();
+    const title = tree.root.find(n => n.type === Text && n.props.children === 'Meetings');
+    expect(title.props.numberOfLines).toBe(1);
+    expect(title.props.adjustsFontSizeToFit).toBe(true);
+    await act(async () => tree.unmount());
+  });
+});
+
 describe('the thread door and the Pro-gated worklist (Phase 3)', () => {
   test('no "Open thread" without a selected tag', async () => {
     (db.allTags as jest.Mock).mockResolvedValue([{ name: 'client', n: 2 }]);

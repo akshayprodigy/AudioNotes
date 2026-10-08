@@ -694,7 +694,9 @@ export default function LibraryScreen({ navigation }: Props) {
 
         <View style={st.header}>
           <View style={st.flex}>
-            <Txt variant="screenTitle">Meetings</Txt>
+            <Txt variant="screenTitle" fit>
+              Meetings
+            </Txt>
             <Txt variant="sub" color={colors.inkDim} style={st.sub}>
               {own.length === 0
                 ? 'Nothing recorded yet'
