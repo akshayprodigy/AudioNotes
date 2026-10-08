@@ -54,3 +54,12 @@ describe('AllowanceExhausted', () => {
     expect(onUpgrade).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('AllowanceExhausted: the upgrade button', () => {
+  // Nothing A069: the button read "Get Pro" beside a tick, which says "done", not "upgrade".
+  it('carries the Pro mark, not a tick', async () => {
+    const tree = await render(<AllowanceExhausted resetsOn="2026-11-01" onUpgrade={() => {}} />);
+    const button = tree.root.findAll(n => n.props.label === 'Get Pro' && n.props.icon !== undefined)[0];
+    expect(button.props.icon).toBe('ai');
+  });
+});

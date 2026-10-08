@@ -38,7 +38,7 @@ export function AllowanceExhausted({ resetsOn, onUpgrade }: { resetsOn: string; 
         <Txt variant="chip" color={colors.ink}>
           {exhaustedCopy(resetsOn)}
         </Txt>
-        <SoftButton icon="check" label="Get Pro" onPress={onUpgrade} />
+        <SoftButton icon="ai" label="Get Pro" onPress={onUpgrade} />
       </View>
     </Raised>
   );

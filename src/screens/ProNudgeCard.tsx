@@ -47,7 +47,9 @@ export default function ProNudgeCard({
 
 function makeStyles(c: Colors) {
   return StyleSheet.create({
-    card: { padding: s(16), marginBottom: s(14), backgroundColor: c.card },
+    // marginHorizontal: the Library's list has no side padding of its own - each child adds s(20), as
+    // `cards` does - and without it this card ran edge to edge above inset meeting cards (Nothing A069).
+    card: { padding: s(16), marginHorizontal: s(20), marginBottom: s(14), backgroundColor: c.card },
     body: { marginTop: s(6), marginBottom: s(12) },
     row: { flexDirection: 'row', gap: s(10), alignItems: 'center' },
     grow: { flex: 1 },
