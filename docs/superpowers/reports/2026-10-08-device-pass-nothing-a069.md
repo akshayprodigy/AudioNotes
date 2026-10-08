@@ -11,6 +11,8 @@
 | `f20c212` | an 8 s dictation "Call Priya at five o'clock tomorrow and send her the budget." was transcribed as **"And punch it."** | Dictation mode played the "this meeting is being recorded" clip and ASR cut the first ~5.7 s with it. A dictation is now never announced. **Re-checked on the phone: whole sentence transcribed** ("Call PrehiHot 5 o'clock tomorrow and center the budget" — proper nouns misheard, nothing missing). |
 | `81884db` | **App crashed ("Application Error") when the font size was changed with it open** — `IllegalStateException: Screen fragments should never be restored`, from `MainActivity.onCreate` | `super.onCreate(null)`, the react-native-screens documented fix. It also covers Android restoring the activity after killing the app in the background (not simulated successfully — see below). **Re-checked: font scale, display size and density changed with the app open — no crash.** |
 | `1223316` | stopping a recording with the **stop button on the strip** shown on the Library ended the capture and **nothing queued it for processing** (no pipeline lines; meeting left "captured", slot RESERVED until some other screen's sweep ran) | the strip now queues processing after stopping, as the Record screen does. **Re-checked: stop from the strip → processing starts at once → COMMIT.** |
+| `b498a7d` | the Pro nudge card on the Library spanned the full width while the cards below were inset; the exhausted card's "Get Pro" had a tick icon | card inset like the meeting cards; the button carries the Pro mark. |
+| `aabaa1f` | the exhausted Record screen: the card cut the mascot's head off, the mic looked live, and the hint still said "Tap to start recording · up to 1 hour on Free" above a card saying you can't | no mascot while spent; the hint reads "Free meetings are used up until <date>"; the mic is dimmed. **Jest only - not looked at on the phone yet.** |
 | `79475b4` | (not a defect) no way to see why a session did or did not take a slot on a release phone | one log line per settle decision. |
 
 ## Results
@@ -45,14 +47,19 @@
 | A20 / C11 force-stop mid-recording | **PASS** | `recovered 1 meeting(s) stranded in 'recording'` on the next launch; 18.4 s kept; processed without a tap; one slot committed (4 → 3). |
 
 
+| X3 correct a word | **PASS** | a corrected word reached the action, the minutes and the Library card; search "Rahul" found 3 matches; the auto-title stays "Rattle…" (not rewritten). |
+| Settings | **PASS** | "Free allowance: 1 of 5 left · resets 1 December", theme, crash reports. |
+| Dark mode | **PASS** on Settings, Library, Record | consistent. Meeting screen in dark not checked. |
+| Short-cap run (A4/A12/A13) | **PARTLY** | a 7-minute-cap build was installed. The first three minutes ran and a pause at 3:01 was taken; the rest of the scripted run (warning card, final minute, stop at the limit) produced **empty screenshots and no log lines**: the phone's owner had started using it (YouTube had focus, so the tap guard refused). The limit logic is covered by jest only; **not seen on a phone**. |
+
 ## Findings not yet fixed
 
 1. **Speech in the first ~5.7 s of a meeting is cut from the transcript** (checklist C10 / D16 hypothesis, now observed): the announcement clip's window is excluded from ASR and overlapping words go with it. Audio keeps it. The Record screen says nothing about waiting for the clip. Product call: say "Announcing…" and hold a "start speaking" hint, or trim only the clip's own samples.
 2. **Progress estimate overstated:** "10% · about 4 min left" for a 171 s recording that took ~45 s; "about 34s left" for 64 s that took ~16 s.
 3. **Record screen idle shows no "N of 5 left" line on the Meeting tab at 5 of 5**; the Dictation tab does show it at 4 of 5. Probably "hidden while full" — confirm it is intended.
-4. **Exhausted Record screen:** the mascot's head is clipped under the Meeting/Dictation switch; "Get Pro" has a tick icon; the big blue mic still looks live and the hint still says "Tap to start recording · up to 1 hour on Free" above a card saying you can't.
+4. ~~Exhausted Record screen~~ fixed in `aabaa1f` (see above); needs a look on the phone.
 5. **Tile refusal lands on the Library**, which carries only the small grey count line; the card that explains is on the Record screen.
-6. **Pro nudge card on the Library** ("Your 5 meetings, written up") spans the full screen width while the cards below are inset.
+6. ~~Pro nudge card full width~~ fixed in `b498a7d`.
 7. **A dictation's Summary tab** shows the meeting boilerplate and "Try it free for 7 days"; and the processing screen lists "Speakers separated" for a dictation.
 8. **Header title cut to "Weekly c…"** on the sample; label of the credit switch is not tappable.
 9. **The Pro screen opened by itself once** (11:36, first processed meeting); not reproduced in five later recordings and no automatic trigger exists in code; treat as a stray tap until seen again.
@@ -69,4 +76,4 @@ While driving the phone I pressed Back three times from the Library without chec
 
 ## Not done yet in this pass
 
-Clock midnight crossing during a recording (A11), disk-full (A22, C13), the warning-phase Record layout and the exhausted card at small sizes (R1, R3), PDF/Subtitles contents and Share at large text, corrections (X3–X5), Add to project, Settings, dark mode, TalkBack, the real one-hour cap (A14), the short-cap build (A4, A12, A13), record-while-importing, and the restore-from-recents crash path. Follow-up card and Ask need Pro. Not possible with one phone and no second person: C9, C15, C16, C18, billing (B1–B6), the Play-installed migration (A23).
+Clock midnight crossing during a recording (A11), disk-full (A22, C13), the warning-phase Record layout and the exhausted card at small sizes (R1, R3), PDF/Subtitles contents and Share at large text, X4–X5, Add to project, dark mode on the meeting screen, TalkBack, the real one-hour cap (A14), the short-cap run to the end (A4, A12, A13), record-while-importing, and the restore-from-recents crash path. Follow-up card and Ask need Pro. Not possible with one phone and no second person: C9, C15, C16, C18, billing (B1–B6), the Play-installed migration (A23).
