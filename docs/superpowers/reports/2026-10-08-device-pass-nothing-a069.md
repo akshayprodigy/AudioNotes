@@ -50,6 +50,10 @@
 | X3 correct a word | **PASS** | a corrected word reached the action, the minutes and the Library card; search "Rahul" found 3 matches; the auto-title stays "Rattle…" (not rewritten). |
 | Settings | **PASS** | "Free allowance: 1 of 5 left · resets 1 December", theme, crash reports. |
 | Dark mode | **PASS** on Settings, Library, Record | consistent. Meeting screen in dark not checked. |
+| R3 exhausted Record screen (`aabaa1f`) | **PASS at 408 dp; usable but cramped at 384 dp + 200% text** | At normal size: no mascot, card with the Pro-mark button, hint "Free meetings are used up until 1 December", dimmed mic. At 384 dp and 200% text the card's band is only ~10% of the screen high, so the text and "Get Pro" are reached by scrolling inside it (works), with a large empty gap above the mic; header "Meeting · Thu 8 Oct" and the footer are clipped as before. The card also touches the Meeting/Dictation switch with no gap. |
+| Meeting screen in dark mode | **PASS** | Summary, Decisions/Next steps/Open questions, player bar, menu sheet all legible. |
+| Add to project (Free) | **PASS** | sheet says "Projects are part of Pro", points to "Add a tag", Upgrade / Not now. Nothing created. |
+| Theme restored | done | Settings → Theme is System again; real time, automatic time on, density and font scale reset. |
 | Short-cap run (A4/A12/A13) | **PARTLY** | a 7-minute-cap build was installed. The first three minutes ran and a pause at 3:01 was taken; the rest of the scripted run (warning card, final minute, stop at the limit) produced **empty screenshots and no log lines**: the phone's owner had started using it (YouTube had focus, so the tap guard refused). The limit logic is covered by jest only; **not seen on a phone**. |
 
 ## Findings not yet fixed
