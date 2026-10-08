@@ -13,6 +13,12 @@
 | `1223316` | stopping a recording with the **stop button on the strip** shown on the Library ended the capture and **nothing queued it for processing** (no pipeline lines; meeting left "captured", slot RESERVED until some other screen's sweep ran) | the strip now queues processing after stopping, as the Record screen does. **Re-checked: stop from the strip → processing starts at once → COMMIT.** |
 | `b498a7d` | the Pro nudge card on the Library spanned the full width while the cards below were inset; the exhausted card's "Get Pro" had a tick icon | card inset like the meeting cards; the button carries the Pro mark. |
 | `aabaa1f` | the exhausted Record screen: the card cut the mascot's head off, the mic looked live, and the hint still said "Tap to start recording · up to 1 hour on Free" above a card saying you can't | no mascot while spent; the hint reads "Free meetings are used up until <date>"; the mic is dimmed. **Jest only - not looked at on the phone yet.** |
+| `65af7b4` | **(founder's call: a hint, not a trim)** speech in the first ~5.7 s of a meeting is cut from the transcript by the announcement clip | for the first 6.5 s of a Meeting recording (announcement on) the line under the clock reads "Announcing the recording — start speaking after it", then "Listening — tap to finish". Dictation and an announcement switched off never show it. Jest only. |
+| `e58f5f7` | a dictation's Free Summary tab said "who said what, what was settled"; its processing list showed "Speakers separated" and priced it | dictation copy for the locked summary; diarization is neither listed nor priced for a dictation (and the running stage skips past it). Jest only. |
+| `7af3987` | the credit switch's label did nothing when touched | the words toggle it too. Jest only. |
+| `d01acf8` | importing while recording opened the file picker first and refused after a file was chosen | refused before the picker opens (`ImportGate.peek`). Kotlin test only. |
+| `18bfe30` | the Quick Settings tile with the allowance spent opened the app on the Library and said nothing | a toast "Free meetings are used up until <date>". Kotlin test only; not seen on the phone. |
+| (next two) | Library title broke "Meetin / gs" at 200% text; Record header date and footer ran off the screen | title shrinks to one line; header and footer wrap. Jest only. |
 | `79475b4` | (not a defect) no way to see why a session did or did not take a slot on a release phone | one log line per settle decision. |
 
 ## Results
@@ -58,13 +64,13 @@
 
 ## Findings not yet fixed
 
-1. **Speech in the first ~5.7 s of a meeting is cut from the transcript** (checklist C10 / D16 hypothesis, now observed): the announcement clip's window is excluded from ASR and overlapping words go with it. Audio keeps it. The Record screen says nothing about waiting for the clip. Product call: say "Announcing…" and hold a "start speaking" hint, or trim only the clip's own samples.
-2. **Progress estimate overstated:** "10% · about 4 min left" for a 171 s recording that took ~45 s; "about 34s left" for 64 s that took ~16 s.
+1. ~~Speech in the first ~5.7 s cut~~ the audio still keeps it and the transcript still leaves the clip's window out; the Record screen now asks the speaker to wait (`65af7b4`, founder's call).
+2. **Progress estimate overstated (left as it is):** "10% · about 4 min left" for a 171 s recording that took ~45 s; "about 34s left" for 64 s that took ~16 s. The first run on a phone uses the shipped (Pixel/A07-measured) rates and the phone learns its own after each run; on a slow phone the estimate is right, on this fast one it errs the safe way. Not changed.
 3. **Record screen idle shows no "N of 5 left" line on the Meeting tab at 5 of 5**; the Dictation tab does show it at 4 of 5. Probably "hidden while full" — confirm it is intended.
 4. ~~Exhausted Record screen~~ fixed in `aabaa1f` (see above); needs a look on the phone.
-5. **Tile refusal lands on the Library**, which carries only the small grey count line; the card that explains is on the Record screen.
+5. ~~Tile refusal lands on the Library~~ now toasts the reason (`18bfe30`).
 6. ~~Pro nudge card full width~~ fixed in `b498a7d`.
-7. **A dictation's Summary tab** shows the meeting boilerplate and "Try it free for 7 days"; and the processing screen lists "Speakers separated" for a dictation.
+7. ~~A dictation's Summary tab / "Speakers separated"~~ fixed in `e58f5f7`; the Free Summary still offers "Try it free for 7 days".
 8. **Header title cut to "Weekly c…"** on the sample; label of the credit switch is not tappable.
 9. **The Pro screen opened by itself once** (11:36, first processed meeting); not reproduced in five later recordings and no automatic trigger exists in code; treat as a stray tap until seen again.
 10. **Phone locks while idle**; adb cannot unlock it. `svc power stayon true` while plugged in avoids it. adb connection to the phone dropped twice (cable); at the end of the session it did not come back.
