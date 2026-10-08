@@ -37,7 +37,13 @@ class MainActivity : ReactActivity() {
       DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled)
 
   override fun onCreate(savedInstanceState: Bundle?) {
-    super.onCreate(savedInstanceState)
+    // null, deliberately: react-native-screens throws "Screen fragments should never be restored"
+    // when Android hands the saved fragment state back, and Android does that whenever it recreates
+    // this activity - a font-size or display-size change with the app open (found on the Nothing
+    // A069 at font scale 2.0: "Application Error"), or the app returned to from recents after the
+    // system killed it in the background. React's own state lives in JS, so nothing is lost; the
+    // screens are simply built afresh. This is the fix the library documents.
+    super.onCreate(null)
     current = this
     intent?.getStringExtra("openMeetingId")?.let {
       DeepLink.pendingMeetingId = it
