@@ -31,3 +31,24 @@ export function idleHint(mode: RecordMode, capMs: number): string {
 /** Shown under the mode switch in dictation only: the marks are spoken, and this is the list. */
 export const DICTATION_TIP =
   'Say “full stop”, “comma”, “question mark”, “new line” and “new paragraph” — they become the marks.';
+
+/**
+ * How long the spoken "this meeting is being recorded" clip occupies the start of a meeting: about
+ * 5.7 s of clip after a ~0.3 s lag. The transcriber leaves that window out, so words said inside it
+ * are kept in the audio but missing from the transcript (Nothing A069, 8 Oct) - hence the hint.
+ */
+export const ANNOUNCE_WINDOW_MS = 6500;
+
+/** The standing line under the clock while recording. */
+export function recordingHint(o: {
+  paused: boolean;
+  mode: RecordMode;
+  announceOn: boolean;
+  elapsedMs: number;
+}): string {
+  if (o.paused) return 'Paused — tap resume to continue';
+  if (o.mode === 'meeting' && o.announceOn && o.elapsedMs < ANNOUNCE_WINDOW_MS) {
+    return 'Announcing the recording — start speaking after it';
+  }
+  return 'Listening — tap to finish';
+}

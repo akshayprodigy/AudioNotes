@@ -198,6 +198,19 @@ test('while recording normally the mascot is shown and the stop control is not i
   await act(async () => tree.unmount());
 });
 
+test('the first seconds of a recording ask for a pause for the announcement, then go back to listening', async () => {
+  recordingFor(2 * 1000);
+  const tree = await render();
+  expect(texts(tree)).toContain('Announcing the recording — start speaking after it');
+  expect(texts(tree)).not.toContain('Listening — tap to finish');
+  await act(async () => tree.unmount());
+  recordingFor(20 * 1000);
+  const later = await render();
+  expect(texts(later)).toContain('Listening — tap to finish');
+  expect(texts(later).some(t => /Announcing/.test(t))).toBe(false);
+  await act(async () => later.unmount());
+});
+
 test('in the warning phase the card replaces the mascot, inside the scrolling band, and the controls stay fixed', async () => {
   recordingFor(56 * MIN);
   const tree = await render();

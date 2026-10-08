@@ -32,6 +32,7 @@ import {
   RECORD_MODES,
   RECORD_MODE_KEY,
   idleHint,
+  recordingHint,
   modeLabel,
   recordModeOf,
   type RecordMode,
@@ -662,9 +663,7 @@ export default function RecordScreen({ navigation }: Props) {
               ? spent
                 ? exhaustedHint(refusedOn || allowance?.resetsOn || '')
                 : idleHint(mode, capMs)
-              : paused
-              ? 'Paused — tap resume to continue'
-              : 'Listening — tap to finish'}
+              : recordingHint({ paused, mode, announceOn, elapsedMs: elapsed })}
           </Txt>
 
           {/* Reserved band, toggled by opacity rather than unmounted: removing it would shift the

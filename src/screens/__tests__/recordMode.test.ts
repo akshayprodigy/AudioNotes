@@ -1,4 +1,12 @@
-import { DICTATION_TIP, RECORD_MODES, idleHint, modeLabel, recordModeOf } from '../recordMode';
+import {
+  ANNOUNCE_WINDOW_MS,
+  DICTATION_TIP,
+  RECORD_MODES,
+  idleHint,
+  modeLabel,
+  recordModeOf,
+  recordingHint,
+} from '../recordMode';
 
 describe('recordModeOf', () => {
   it('reads dictation, and meeting for everything else', () => {
@@ -33,5 +41,32 @@ describe('the words', () => {
     }
     expect(DICTATION_TIP).not.toContain('period');
     expect(DICTATION_TIP).not.toContain('colon');
+  });
+});
+
+describe('the hint while recording', () => {
+  const base = { paused: false, mode: 'meeting' as const, announceOn: true, elapsedMs: 0 };
+
+  it('asks a meeting to wait out the announcement, then goes back to listening', () => {
+    expect(recordingHint(base)).toBe('Announcing the recording — start speaking after it');
+    expect(recordingHint({ ...base, elapsedMs: ANNOUNCE_WINDOW_MS - 1 })).toBe(
+      'Announcing the recording — start speaking after it',
+    );
+    expect(recordingHint({ ...base, elapsedMs: ANNOUNCE_WINDOW_MS })).toBe(
+      'Listening — tap to finish',
+    );
+  });
+
+  it('covers the whole clip: the window is longer than the 5.7 s the transcriber leaves out', () => {
+    expect(ANNOUNCE_WINDOW_MS).toBeGreaterThan(5_700 + 300);
+  });
+
+  it('says nothing about an announcement that is not made', () => {
+    expect(recordingHint({ ...base, mode: 'dictation' })).toBe('Listening — tap to finish');
+    expect(recordingHint({ ...base, announceOn: false })).toBe('Listening — tap to finish');
+  });
+
+  it('a pause is still a pause', () => {
+    expect(recordingHint({ ...base, paused: true })).toBe('Paused — tap resume to continue');
   });
 });
