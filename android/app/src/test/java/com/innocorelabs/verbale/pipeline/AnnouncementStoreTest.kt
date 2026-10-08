@@ -41,4 +41,17 @@ class AnnouncementStoreTest {
   @Test fun theLagIsInMillisecondsFromTenMillisecondFrames() {
     assertEquals(0L, AnnouncementStore.plan(verdict(heard = true, found = true, lagFrames = 0)).lagMs)
   }
+
+  // A dictation is one person's own voice. The clip played into it and took the first seconds of what
+  // they said (Nothing A069: "Call Priya at five o'clock tomorrow and send her the budget." became
+  // "And punch it.").
+  @Test fun aMeetingIsAnnouncedButADictationNeverIs() {
+    assertEquals(true, AnnouncementStore.announces(resumed = false, mode = null))
+    assertEquals(false, AnnouncementStore.announces(resumed = false, mode = "dictation"))
+  }
+
+  @Test fun aResumedCaptureIsNeverAnnouncedAgain() {
+    assertEquals(false, AnnouncementStore.announces(resumed = true, mode = null))
+    assertEquals(false, AnnouncementStore.announces(resumed = true, mode = "dictation"))
+  }
 }

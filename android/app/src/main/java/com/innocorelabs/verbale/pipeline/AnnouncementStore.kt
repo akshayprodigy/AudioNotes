@@ -18,6 +18,18 @@ object AnnouncementStore {
   fun plan(verdict: AnnouncementVerifier.Verdict): Plan =
     Plan(lagMs = AnnouncementSpan.lagToExclude(verdict), stampHeard = verdict.heard)
 
+  /**
+   * Whether this capture speaks the "this meeting is being recorded" clip at all.
+   *
+   * Not when it resumes an earlier capture (it would talk over the middle of a meeting), and not for
+   * a dictation: a dictation is one person's own voice, there is no room to tell, and the clip plays
+   * into the recording and takes the first ~5.7 seconds of what they say with it (ASR keeps the clip
+   * out of its windows, and a word that overlaps the clip goes too). Found on the Nothing A069: an
+   * 8-second dictation, "Call Priya at five o'clock tomorrow and send her the budget.", was
+   * transcribed as "And punch it.".
+   */
+  fun announces(resumed: Boolean, mode: String?): Boolean = !resumed && mode != "dictation"
+
   /** Writes the lag through [write] when the plan has one, and only then. */
   fun applyLag(plan: Plan, write: (Long) -> Unit) {
     plan.lagMs?.let(write)

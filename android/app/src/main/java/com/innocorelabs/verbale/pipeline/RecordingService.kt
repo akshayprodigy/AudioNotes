@@ -369,7 +369,8 @@ class RecordingService : Service(), CaptureListener {
         // Off this thread so the read loop starts immediately — a blocking announce here would
         // drop the first seconds of the room. The outcome still gates the stamp: nothing is
         // claimed until playback has actually finished.
-        if (!resumed && prefix != null) {
+        val mode = meetingId?.let { runCatching { AudioDb.get(applicationContext).mode(it) }.getOrNull() }
+        if (AnnouncementStore.announces(resumed, mode) && prefix != null) {
           announcer = thread(name = "audionotes-announce") {
             val db = AudioDb.get(applicationContext)
             val enabled = db.getSetting("announceRecording") != "0"
