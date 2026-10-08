@@ -38,7 +38,7 @@ import {
 } from './recordMode';
 import { entitlement } from '../billing/trial';
 import { refreshAllowance, useAllowance } from '../billing/allowance';
-import { finishImportFirst } from '../billing/allowanceCopy';
+import { exhaustedHint, finishImportFirst } from '../billing/allowanceCopy';
 import { AllowanceExhausted, AllowanceLine, isExhausted } from './AllowanceNote';
 import ReadinessCard from '../setup/ReadinessCard';
 import FirstRecordingNote from '../setup/FirstRecordingNote';
@@ -136,6 +136,7 @@ export default function RecordScreen({ navigation }: Props) {
     // A purchase, or a new month, ends the refusal.
     if (allowance && (allowance.paid || allowance.remaining > 0)) setRefusedOn(null);
   }, [allowance]);
+  const spent = refusedOn !== null || isExhausted(allowance);
   // F13: the newest meeting ended for a reason that was not the person's own Stop (the Free limit,
   // a lost mic, a full disk, a forgotten pause) and they have not yet been told why. The live alert
   // below covers an ending seen happening; this covers the one that happened while the app was
@@ -634,15 +635,15 @@ export default function RecordScreen({ navigation }: Props) {
                   ) : null}
                 </View>
               </Raised>
-            ) : (
+            ) : isRecording || !spent ? (
               <Mascot
                 mood={isRecording && !paused ? 'listening' : isRecording ? 'thinking' : 'idle'}
                 size={sv(104)}
               />
-            )}
+            ) : null}
 
             {!isRecording ? (
-              refusedOn !== null || isExhausted(allowance) ? (
+              spent ? (
                 <AllowanceExhausted
                   resetsOn={refusedOn || allowance?.resetsOn || ''}
                   onUpgrade={() => navigation.navigate('Paywall')}
@@ -658,7 +659,9 @@ export default function RecordScreen({ navigation }: Props) {
           </Txt>
           <Txt variant="bodyStrong" color={colors.inkDim} style={st.hint}>
             {!isRecording
-              ? idleHint(mode, capMs)
+              ? spent
+                ? exhaustedHint(refusedOn || allowance?.resetsOn || '')
+                : idleHint(mode, capMs)
               : paused
               ? 'Paused — tap resume to continue'
               : 'Listening — tap to finish'}
@@ -678,7 +681,9 @@ export default function RecordScreen({ navigation }: Props) {
             </View>
           ) : null}
 
-          <MicVisualizer active={isRecording} paused={paused} onPress={onToggle} size={148} />
+          <View style={{ opacity: spent && !isRecording ? 0.4 : 1 }}>
+            <MicVisualizer active={isRecording} paused={paused} onPress={onToggle} size={148} />
+          </View>
         </View>
 
         <View style={st.footer}>

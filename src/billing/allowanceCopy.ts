@@ -58,6 +58,14 @@ export function exhaustedCopy(resetsOn: string): string {
   );
 }
 
+/**
+ * The Record screen's hint when the month's meetings are used up. The idle hint says "Tap to start
+ * recording" and the card above it says you cannot - two statements that cannot both be true.
+ */
+export function exhaustedHint(resetsOn: string): string {
+  return `Free meetings are used up until ${formatReset(resetsOn)}`;
+}
+
 /** The quiet line for Library, import and Record; null for Pro, and until native has answered. */
 export function statusLine(s: AllowanceStatus | null): string | null {
   if (!s || s.paid) return null;

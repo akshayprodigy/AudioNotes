@@ -7,9 +7,9 @@ import Licence from '../../native/NativeLicence';
 import AudioPipeline from '../../native/NativeAudioPipeline';
 import { useRecordingStore } from '../../state/recordingStore';
 import { refreshAllowance, useAllowanceStore } from '../../billing/allowance';
-import { exhaustedCopy, remainingCopy } from '../../billing/allowanceCopy';
-import { playAvailable, playPlans } from '../../billing/subscription';
+import { exhaustedCopy, exhaustedHint, remainingCopy } from '../../billing/allowanceCopy';
 import Mascot from '../../components/Mascot';
+import { playAvailable, playPlans } from '../../billing/subscription';
 
 jest.mock('../../db/queries');
 jest.mock('react-native-safe-area-context', () => ({
@@ -83,6 +83,24 @@ test('a spent allowance shows the exhausted card with an upgrade button before a
   allowance.mockResolvedValue({ ...FREE, used: 5, remaining: 0 });
   const tree = await render();
   expect(texts(tree)).toContain(exhaustedCopy('2026-11-01'));
+  await act(async () => tree.unmount());
+});
+
+// Nothing A069: the exhausted card sat in the same scrolling band as the mascot and cut its head off
+// under the Meeting/Dictation switch, and the hint under the clock still said "Tap to start recording".
+test('a spent allowance replaces the mascot with the card, and the hint stops inviting a tap', async () => {
+  allowance.mockResolvedValue({ ...FREE, used: 5, remaining: 0 });
+  const tree = await render();
+  expect(tree.root.findAllByType(Mascot)).toHaveLength(0);
+  expect(texts(tree)).toContain(exhaustedHint('2026-11-01'));
+  expect(texts(tree).some(t => t.startsWith('Tap to start recording'))).toBe(false);
+  await act(async () => tree.unmount());
+});
+
+test('with meetings left the mascot and the invitation are still there', async () => {
+  const tree = await render();
+  expect(tree.root.findAllByType(Mascot)).toHaveLength(1);
+  expect(texts(tree).some(t => t === exhaustedHint('2026-11-01'))).toBe(false);
   await act(async () => tree.unmount());
 });
 
