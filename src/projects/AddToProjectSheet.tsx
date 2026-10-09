@@ -13,6 +13,7 @@ import Icon, { type IconName } from '../components/Icon';
 import { Button, SoftButton, Txt, type SheetAction } from '../components/ui';
 import { entitlement } from '../billing/trial';
 import { db, normaliseTag } from '../db/queries';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { radius, s, useTheme, type Colors } from '../theme';
 import {
   PROJECT_EXPLAINER,
@@ -55,6 +56,7 @@ export default function AddToProjectSheet({
   onUpgrade: () => void;
 }) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const st = useMemo(() => makeStyles(colors), [colors]);
   const { height } = useWindowDimensions();
   // null until entitlement has answered: a Pro user must not see the upsell flash first.
@@ -117,7 +119,12 @@ export default function AddToProjectSheet({
       </Pressable>
       {/* Padding behaviour, not adjustResize: a Modal is its own window and edge-to-edge kills resize. */}
       <KeyboardAvoidingView style={st.wrap} behavior="padding" pointerEvents="box-none">
-        <View style={[st.card, { backgroundColor: colors.card, maxHeight: height * 0.85 }]}>
+        <View
+          style={[
+            st.card,
+            // The navigation bar sits over the bottom of a Modal: the Create button was half behind it.
+            { backgroundColor: colors.card, maxHeight: height * 0.85, paddingBottom: s(20) + Math.max(insets.bottom, s(16)) },
+          ]}>
           <View style={[st.grip, { backgroundColor: colors.line }]} />
           <Txt variant="sectionTitle">Add to project</Txt>
           {meetingTitle ? (

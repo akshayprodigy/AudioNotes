@@ -9,6 +9,9 @@ jest.mock('../../db/queries', () => ({
   ...jest.requireActual('../../db/queries'),
   db: { allTags: jest.fn(), tagsFor: jest.fn(), addTag: jest.fn() },
 }));
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 34, left: 0, right: 0 }),
+}));
 jest.mock('../../billing/trial', () => ({ __esModule: true, entitlement: jest.fn() }));
 
 const onClose = jest.fn();

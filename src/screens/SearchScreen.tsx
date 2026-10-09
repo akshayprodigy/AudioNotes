@@ -523,7 +523,7 @@ export default function SearchScreen({ navigation }: Props) {
         <Icon name="search" size={s(19)} color={colors.inkFaint} strokeWidth={2.4} />
         <TextInput
           style={st.input}
-          placeholder="Search everything that was said or decided"
+          placeholder="Search what was said or decided"
           placeholderTextColor={colors.inkFaint}
           autoFocus
           autoCorrect={false}

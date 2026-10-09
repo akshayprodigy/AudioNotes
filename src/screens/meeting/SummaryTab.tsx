@@ -768,7 +768,8 @@ function makeStyles(c: Colors) {
     hero: { borderRadius: radius.card24, overflow: 'hidden' },
     panelPad: { paddingHorizontal: s(14) },
     gist: { padding: s(18), gap: s(12) },
-    headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: s(6) },
+    // Wraps: at 200% text "1 min · 2 speakers" was cut to "1 mi.." beside the type chip.
+    headRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: s(6) },
     templateChip: {
       flexShrink: 0,
       paddingHorizontal: s(8),

@@ -4,6 +4,7 @@ import {
   Linking,
   NativeEventEmitter,
   NativeModules,
+  PixelRatio,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -125,6 +126,7 @@ const THEME_CHOICES: { key: ThemeMode; label: string }[] = [
 
 export default function SettingsScreen({ navigation }: Props) {
   const { colors, isDark, mode, setMode } = useTheme();
+  const bigText = PixelRatio.getFontScale() > 1.3;
   // Subscription. The app never advertises a price or links to a checkout — it signs in, and
   // buying happens on the web. That separation is deliberate; see the licence server's README.
   const [lic, setLic] = React.useState<LicenceStatus | null>(null);
@@ -509,7 +511,10 @@ export default function SettingsScreen({ navigation }: Props) {
                         free up 190 MB is served by "writes down what was said, more accurately",
                         not by "Whisper small (q5_1)" — but the name still has to be here, because
                         it is what makes the open-source notices and the privacy claim checkable. */}
-                    <View style={st.row}>
+                    {/* At large text the Remove/Get button beside the words left them about a third of
+                        the width ("Finds the / speech" a word to a line, on a Galaxy A07 at 200%):
+                        it goes under them instead. */}
+                    <View style={[st.row, bigText && { flexDirection: 'column', alignItems: 'stretch', gap: s(10) }]}>
                       <View style={st.flex}>
                         <Txt variant="bodyStrong">{m.purpose}</Txt>
                         <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
