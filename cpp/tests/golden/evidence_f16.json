@@ -176,6 +176,22 @@
         "endMs": 90500,
         "speakerId": "S0",
         "text": "Let's wrap up that migration."
+      },
+      {
+        "id": "u22",
+        "meetingId": "m",
+        "startMs": 90500,
+        "endMs": 94500,
+        "speakerId": "S0",
+        "text": "Let's go through the launch plan."
+      },
+      {
+        "id": "u23",
+        "meetingId": "m",
+        "startMs": 94500,
+        "endMs": 98500,
+        "speakerId": "S1",
+        "text": "Let's go through the contract by Friday."
       }
     ],
     "speakers": [
@@ -328,6 +344,21 @@
       ],
       "anchorStartMs": 86500,
       "anchorEndMs": 90500
+    },
+    {
+      "kind": "action",
+      "text": "Let's go through the contract by Friday. — Speaker 2 (due by Friday)",
+      "sources": [
+        {
+          "utteranceId": "u23",
+          "startMs": 94500,
+          "endMs": 98500,
+          "charStart": 0,
+          "charEnd": 40
+        }
+      ],
+      "anchorStartMs": 94500,
+      "anchorEndMs": 98500
     }
   ]
 }

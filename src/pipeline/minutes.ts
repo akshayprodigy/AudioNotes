@@ -109,7 +109,7 @@ const WORDS = /[A-Za-z0-9]+/g;
 //
 // (a) Meeting flow. "Let's start the weekly check-in." is the chair opening the meeting, not a
 // task anybody owes, and `let's` in ACTION_FIRST_PERSON made it one (A07, defect 12a). When the
-// ONLY cue is let's start/begin/get started/kick off/move on/get going/call it a day, or a
+// ONLY cue is let's start/begin/get started/kick off/move on/get going/go through/go over/walk through/run through/call it a day, or a
 // closing "let's wrap up" with nothing after it to wrap ("there", "here", "the meeting", and a bare
 // "that"/"this"/"it" at the end - whisper writes "wrap up that" for "wrap up there"), the
 // sentence is flow (A07-class, Nothing A069 8 Oct: "Let's wrap up there." was listed as an action;
@@ -119,8 +119,8 @@ const WORDS = /[A-Za-z0-9]+/g;
 // own: "Let's start, and I'll send the notes" keeps its second cue, and a remainder that happens
 // to begin with an imperative verb cannot become an action by losing its first words.
 // Mirrored in cpp/minutes/minutes_extractor.cpp; the goldens keep the two in step.
-const FLOW_START = /\blet['’]s (?:(?:start|begin|get started|kick off|move on|get going)\b|call it a day\b|wrap (?:this |things )?up(?= (?:there|here|now|the (?:meeting|call|session|discussion))\b| (?:that|this|it)\s*[.,!?]*\s*$|\s*[.,!?]|\s*$))/i;
-const FLOW_START_ALL = /\blet['’]s (?:(?:start|begin|get started|kick off|move on|get going)\b|call it a day\b|wrap (?:this |things )?up(?= (?:there|here|now|the (?:meeting|call|session|discussion))\b| (?:that|this|it)\s*[.,!?]*\s*$|\s*[.,!?]|\s*$))/gi;
+const FLOW_START = /\blet['’]s (?:(?:start|begin|get started|kick off|move on|get going|go through|go over|walk through|run through)\b|call it a day\b|wrap (?:this |things )?up(?= (?:there|here|now|the (?:meeting|call|session|discussion))\b| (?:that|this|it)\s*[.,!?]*\s*$|\s*[.,!?]|\s*$))/i;
+const FLOW_START_ALL = /\blet['’]s (?:(?:start|begin|get started|kick off|move on|get going|go through|go over|walk through|run through)\b|call it a day\b|wrap (?:this |things )?up(?= (?:there|here|now|the (?:meeting|call|session|discussion))\b| (?:that|this|it)\s*[.,!?]*\s*$|\s*[.,!?]|\s*$))/gi;
 const FLOW_TIME = /\b(tomorrow|next \w+|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|by \w+|after \w+)\b/i;
 
 // A first-person future that is a refusal. "We will not ship Friday" matched ACTION_FIRST_PERSON

@@ -45,6 +45,22 @@ describe('F16 (a): meeting-flow "let\'s start" is not an action', () => {
   ])('"%s" closes or moves the meeting, not an action', s => {
     expect(action(s)).toBe(false);
   });
+  // Galaxy A07, 9 Oct: the chair opening the agenda was listed as a to-do.
+  it.each([
+    "Let's go through the launch plan.",
+    "Okay, let's go over the agenda.",
+    "Let's walk through the budget.",
+    "Let's run through the numbers.",
+  ])('"%s" opens an item of the agenda, not an action', s => {
+    expect(action(s)).toBe(false);
+  });
+  it.each([
+    "Let's go through the contract by Friday.",
+    "Let's go over the draft tomorrow.",
+    "Let's go through the plan, and I'll send the notes.",
+  ])('"%s" has a time or a second cue, so it stays an action', s => {
+    expect(action(s)).toBe(true);
+  });
   it.each([
     "Let's wrap up the migration.",
     "Let's wrap up the report by Friday.",
