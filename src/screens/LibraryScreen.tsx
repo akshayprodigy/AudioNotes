@@ -13,6 +13,7 @@ import AddToProjectSheet, { ADD_TO_PROJECT } from '../projects/AddToProjectSheet
 import { useImport } from './useImport';
 import { refreshAllowance, useAllowance } from '../billing/allowance';
 import { AllowanceLine } from './AllowanceNote';
+import LibrarySummary from './LibrarySummary';
 import { PipelineController } from '../pipeline/PipelineController';
 import { db } from '../db/queries';
 import ProNudgeCard from './ProNudgeCard';
@@ -697,12 +698,16 @@ export default function LibraryScreen({ navigation }: Props) {
             <Txt variant="screenTitle" fit>
               Meetings
             </Txt>
-            <Txt variant="sub" color={colors.inkDim} style={st.sub}>
-              {own.length === 0
-                ? 'Nothing recorded yet'
-                : `${own.length} saved${totalMin > 0 ? ` · ${totalMin} min captured` : ''}`}
-            </Txt>
-            <AllowanceLine status={allowance} />
+            {/* With something recorded the numbers live in the strip below the header, where they
+                have the full width; the narrow column beside the buttons only ever fit a title. */}
+            {own.length === 0 ? (
+              <>
+                <Txt variant="sub" color={colors.inkDim} style={st.sub}>
+                  Nothing recorded yet
+                </Txt>
+                <AllowanceLine status={allowance} />
+              </>
+            ) : null}
           </View>
           <View style={st.headBtns}>
             {/* Sits with search and settings rather than beside the record button: importing is
@@ -727,6 +732,10 @@ export default function LibraryScreen({ navigation }: Props) {
             <IconButton icon="sliders" label="Settings" onPress={() => navigation.navigate('Settings')} />
           </View>
         </View>
+
+        {own.length > 0 ? (
+          <LibrarySummary saved={own.length} capturedMin={totalMin} allowance={allowance} />
+        ) : null}
 
         <ReadinessCard setup={setup} />
 
@@ -1009,7 +1018,8 @@ function makeStyles(c: Colors) {
     },
 
     cardPad: { padding: s(18) },
-    cardTop: { flexDirection: 'row', alignItems: 'center', gap: s(10) },
+    // Wraps: at 200% text the time and length would otherwise run off the card's right edge.
+    cardTop: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: s(10), rowGap: s(4) },
     cardLine: { marginTop: s(4) },
     cardTitle: { marginTop: s(12) },
     liveChip: {

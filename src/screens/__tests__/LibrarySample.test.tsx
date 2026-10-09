@@ -91,7 +91,8 @@ describe('the sample in the Library', () => {
       meeting('b', { durationMs: 1_200_000 }),
     ]);
     const tree = await show();
-    expect(texts(tree)).toContain('2 saved · 30 min captured');
+    const strip = tree.root.findAll(n => n.props.testID === 'library-summary')[0];
+    expect(strip.props.accessibilityLabel).toContain('2 meetings saved. 30 min captured');
     await act(async () => tree.unmount());
   });
 

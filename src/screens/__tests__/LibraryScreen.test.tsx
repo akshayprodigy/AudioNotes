@@ -395,16 +395,23 @@ describe('the Free allowance', () => {
     importer.pick.mockResolvedValue(null);
   });
 
-  test('the header says what is left and when it resets', async () => {
+  const summary = (tree: renderer.ReactTestRenderer) =>
+    tree.root.findAll(n => n.props.testID === 'library-summary')[0]?.props.accessibilityLabel as string | undefined;
+
+  test('the summary strip says what is left and when it resets', async () => {
+    (db.listMeetings as jest.Mock).mockResolvedValue([saved]);
     const tree = await focusTheLibrary();
-    expect(texts(tree)).toContain('3 of 5 free meetings left · resets 1 November.');
+    expect(summary(tree)).toContain('3 of 5 free meetings left, resets 1 November');
+    expect(texts(tree)).toEqual(expect.arrayContaining(['SAVED', 'CAPTURED', 'FREE LEFT', 'Resets 1 Nov']));
     await act(async () => tree.unmount());
   });
 
   test('Pro sees no allowance line', async () => {
     allowance.mockResolvedValue({ ...FREE, paid: true });
+    (db.listMeetings as jest.Mock).mockResolvedValue([saved]);
     const tree = await focusTheLibrary();
-    expect(texts(tree).some(t => /free meetings left/.test(t))).toBe(false);
+    expect(texts(tree).some(t => /free meetings left|FREE LEFT/.test(t))).toBe(false);
+    expect(summary(tree)).toBe('1 meeting saved. 10 min captured.');
     await act(async () => tree.unmount());
   });
 
@@ -412,7 +419,7 @@ describe('the Free allowance', () => {
     allowance.mockResolvedValue({ ...FREE, used: 5, remaining: 0 });
     (db.listMeetings as jest.Mock).mockResolvedValue([saved]);
     const tree = await focusTheLibrary();
-    expect(texts(tree)).toContain('0 of 5 free meetings left · resets 1 November.');
+    expect(summary(tree)).toContain('0 of 5 free meetings left, resets 1 November');
     const card = tree.root.find(n => typeof n.props.onPress === 'function' && n.props.onLongPress);
     await act(async () => card.props.onPress());
     expect((nav as any).navigate).toHaveBeenCalledWith('Meeting', { meetingId: 'm1' });
