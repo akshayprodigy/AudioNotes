@@ -208,6 +208,40 @@ ItemRecord validateRecord(const ItemRecord& in, const std::vector<ClassifyTurn>&
     }
     if (!second) r.status = "open";
   }
+  // "Contradicted" needs a reply that is a turn of its own. A pause can split one sentence in two
+  // — on a Galaxy A07 "we decided to keep the budget ... and review" was marked contradicted by
+  // its own tail, "the numbers again on 5th of November" — and a tail is not a disagreement. A tail
+  // begins in lower case and follows a turn that never reached its full stop. (Speaker is no
+  // guide: diarization often gives one label to everybody. Qualified and withdrawn stay, since
+  // a speaker may qualify or take back their own words.)
+  if (r.status == "contradicted") {
+    auto text_of = [&](int ordinal) -> const std::string* {
+      for (const auto& t : window) if (t.ordinal == ordinal) return &t.text;
+      return nullptr;
+    };
+    auto trimmed_end = [](const std::string& s) {
+      size_t e = s.size();
+      while (e > 0 && std::isspace(static_cast<unsigned char>(s[e - 1]))) --e;
+      return e;
+    };
+    auto is_tail = [&](int ordinal) {
+      const std::string* me = text_of(ordinal);
+      const std::string* before = text_of(ordinal - 1);
+      if (!me || !before) return false;
+      size_t i = 0;
+      while (i < me->size() && !std::isalpha(static_cast<unsigned char>((*me)[i]))) ++i;
+      if (i >= me->size() || !std::islower(static_cast<unsigned char>((*me)[i]))) return false;
+      const size_t e = trimmed_end(*before);
+      if (e == 0) return false;
+      const char last = (*before)[e - 1];
+      return last != '.' && last != '?' && last != '!';
+    };
+    bool reply = false;
+    for (int o : r.cited) {
+      if (o != 0 && !is_tail(o)) reply = true;
+    }
+    if (!reply) r.status = "open";
+  }
   return r;
 }
 

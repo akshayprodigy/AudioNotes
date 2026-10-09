@@ -64,7 +64,11 @@ std::string askGrammar(int n_passages) {
   if (n == 1) digits = "\"1\"";
   return "root ::= nothing | answer\n"
          "nothing ::= \"" + std::string(kAskNothing) + "\"\n"
-         "answer ::= body cite+\n"
+         // At most three cites. `cite+` had no ceiling, so a small model that began citing could not
+         // stop: on a Galaxy A07 an unanswerable question came back as "... but doesnot [1] [2] [3]
+         // [5] [6] [7] [8] [1] [2] ..." until the 200-token cap. Three is what the prompt asks for
+         // (at most three sentences) and what the screen can show beside one answer.
+         "answer ::= body cite{1,3}\n"
          "body ::= [^\\[\\]\\n]{1,400}\n"
          "cite ::= \" [\" " + digits + " \"]\"\n";
 }

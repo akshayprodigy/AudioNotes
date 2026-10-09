@@ -2,7 +2,9 @@ package com.innocorelabs.verbale.pipeline
 
 import org.json.JSONArray
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -144,5 +146,16 @@ class AskerTest {
   @Test fun aCiteThePassagesDoNotHaveIsDropped() {
     val ps = listOf(Asker.Passage("Priya", 5000, "a", "u1"))
     assertEquals(1, JSONArray(Asker.citesJson(listOf(1, 3), ps)).length())
+  }
+
+  // Galaxy A07, 9 Oct: "what is the CEO salary" came back as a cited non-answer about the passages.
+  @Test fun anAnswerAboutThePassagesIsNotAnAnswer() {
+    assertTrue(Asker.talksAboutThePassages("The passage focuses on financial matters but doesnot [1] [2] [3]"))
+    assertTrue(Asker.talksAboutThePassages("These passages do not mention a salary [2]."))
+    assertTrue(Asker.talksAboutThePassages("None of the passages say. [1]"))
+    // A real answer, including one that says "does not" or talks about a passage of a bill, stays.
+    assertFalse(Asker.talksAboutThePassages("Dana will call the vendor. [1]"))
+    assertFalse(Asker.talksAboutThePassages("Marcus does not want to cut the advertising budget [3]."))
+    assertFalse(Asker.talksAboutThePassages("They discussed the passage of the bill before the vote [2]."))
   }
 }

@@ -99,7 +99,7 @@ static void grammarBoundsTheCitesToThePassages() {
   CHECK(g.find(kAskNothing) != std::string::npos);
   CHECK(askGrammar(1).find("\"1\"") != std::string::npos);
   CHECK(askGrammar(12).find("[1-9]") != std::string::npos);  // never a two-digit range the grammar cannot spell
-  CHECK(g.find("cite+") != std::string::npos);                // at least one citation, or the refusal
+  CHECK(g.find("cite{1,3}") != std::string::npos);            // one to three citations, or the refusal: never an unbounded run
 }
 
 static void bracketsThatAreNotCitesAreLeftAlone() {

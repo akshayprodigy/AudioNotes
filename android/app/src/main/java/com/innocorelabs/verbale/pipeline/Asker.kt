@@ -102,6 +102,20 @@ object Asker {
       if (n != null && ps.getOrNull(n - 1)?.anchored == false) "" else m.value
     }
 
+  private val META = Regex("\\b(the|these|those|this|given|provided) (passages?|excerpts?)\\b(?! of\\b)", RegexOption.IGNORE_CASE)
+
+  /**
+   * The answer is about the passages the model was shown, not about the meeting.
+   *
+   * Asked something the meeting never covers ("what is the CEO salary"), the 1.5B writer does not
+   * always take the refusal the prompt offers: on a Galaxy A07 it wrote "The passage focuses on
+   * financial matters ... but doesnot [1] [2] [3]". That is cited, so the validator keeps it, and
+   * it is not an answer. The model has no reason to use these words in a real answer — the
+   * passages are the prompt's word for the meeting's own sentences — so an answer that does is the
+   * model failing to find one, and it is the "nothing" state like any other.
+   */
+  fun talksAboutThePassages(answer: String): Boolean = META.containsMatchIn(answer)
+
   /** The "nothing" state's pointers: the closest passages that HAVE a moment, up to three. */
   fun closestResolvable(ps: List<Passage>): List<Int> =
     ps.indices.filter { ps[it].anchored }.take(3).map { it + 1 }
@@ -145,7 +159,7 @@ object Asker {
     // A cite to a minutes/summary/title passage has no moment and is removed first; the validator
     // then drops any sentence left uncited and calls an answer left with nothing "nothing".
     val v = JSONObject(NativeBridge.nativeValidateAnswer(withoutUnresolvableCites(raw, ps), ps.size))
-    val isNothing = v.getBoolean("nothing")
+    val isNothing = v.getBoolean("nothing") || talksAboutThePassages(raw)
     val cites = if (isNothing) {
       closestResolvable(ps)   // the closest passages that have a moment, so the screen has somewhere to point
     } else {

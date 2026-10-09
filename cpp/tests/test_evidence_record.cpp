@@ -94,6 +94,35 @@ static void validatorNeedsASecondTurnForAStatus() {
   CHECK(v.status == "open");
 }
 
+// Galaxy A07, 9 Oct: a pause split one sentence in two. The "reply" is the sentence's own tail, which
+// is not somebody disagreeing — so it is not "contradicted". Speaker labels do not decide this:
+// diarization often gives everyone the same one.
+static void aSentencesOwnTailDoesNotContradictIt() {
+  const std::vector<ClassifyTurn> w = {
+      {0, "Speaker 1", "In the end we decided to keep the advertising budget the same, and review"},
+      {1, "Speaker 1", "the numbers again on fifth of November."},
+  };
+  ItemRecord r;
+  parseRecord(
+      R"({"type":"commitment","status":"contradicted","owner":{"kind":"unassigned","name":""},"date_said":"","cited":[0,1],"confidence":"high"})",
+      &r);
+  CHECK(r.status == "contradicted");  // parsed as written
+  CHECK(validateRecord(r, w).status == "open");
+  // A complete next sentence, even under the same label, is a genuine reply and stays.
+  const std::vector<ClassifyTurn> reply = {
+      {0, "Speaker 1", "Can you send the proposal Friday?"},
+      {1, "Speaker 1", "Only a draft, the final version needs another week."},
+  };
+  CHECK(validateRecord(r, reply).status == "contradicted");
+  // Capital letter after an unfinished turn is still a new utterance.
+  const std::vector<ClassifyTurn> capital = {w[0], {1, "Speaker 1", "No, we should not keep it."}};
+  CHECK(validateRecord(r, capital).status == "contradicted");
+  // A speaker may take back or qualify their own words.
+  ItemRecord q = r;
+  q.status = "withdrawn";
+  CHECK(validateRecord(q, w).status == "withdrawn");
+}
+
 static void theLeadExampleValidatesWhole() {
   ItemRecord r;
   parseRecord(
@@ -135,6 +164,7 @@ int main() {
   validatorBlanksANonVerbatimName();
   validatorNeedsTheSourceCited();
   validatorNeedsASecondTurnForAStatus();
+  aSentencesOwnTailDoesNotContradictIt();
   theLeadExampleValidatesWhole();
   grammarNamesEveryEnumAndNothingElse();
   toJsonRoundTrips();
