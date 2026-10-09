@@ -28,9 +28,10 @@ class CaptureEndTest {
   }
 
   @Test fun aFlushThatThrowsOnAnOtherwiseNormalEndIsAWriteFailure() {
+    // (A "no space left" error is its own reason now: see aFullDiskIsReportedAsAFullDiskNotAnUnsavedFile.)
     assertEquals(
       RecordingService.END_WRITE_FAILED,
-      CaptureEnd.afterFlush(RecordingService.END_NORMAL) { throw IOException("ENOSPC (No space left on device)") },
+      CaptureEnd.afterFlush(RecordingService.END_NORMAL) { throw IOException("input/output error (EIO)") },
     )
   }
 
@@ -79,14 +80,14 @@ class CaptureEndTest {
     val s = Steps()
     val r = CaptureLoopClose.run(RecordingService.END_NORMAL, s.flush(throws = true), s.close(), s.stopSelf)
     assertEquals(listOf("flush", "close", "stopSelf"), s.order)
-    assertEquals(RecordingService.END_WRITE_FAILED, r)
+    assertEquals(RecordingService.END_DISK_FULL, r) // the fakes throw a no-space error
   }
 
   @Test fun aCloseThatThrowsStillStopsTheService() {
     val s = Steps()
     val r = CaptureLoopClose.run(RecordingService.END_NORMAL, s.flush(), s.close(throws = true), s.stopSelf)
     assertEquals(listOf("flush", "close", "stopSelf"), s.order)
-    assertEquals(RecordingService.END_WRITE_FAILED, r)
+    assertEquals(RecordingService.END_DISK_FULL, r) // the fakes throw a no-space error
   }
 
   @Test fun bothThrowingStillStopsTheServiceAndKeepsTheLoopsOwnReason() {
@@ -101,5 +102,17 @@ class CaptureEndTest {
     val r = CaptureLoopClose.run(RecordingService.END_NORMAL, s.flush(), s.close(), s.stopSelf)
     assertEquals(listOf("flush", "close"), s.order)
     assertEquals(RecordingService.END_NORMAL, r)
+  }
+
+  @Test fun aFullDiskIsReportedAsAFullDiskNotAnUnsavedFile() {
+    val noSpace = java.io.IOException("write failed: ENOSPC (No space left on device)")
+    assertEquals(RecordingService.END_DISK_FULL, CaptureEnd.reasonAfterFailure(RecordingService.END_NORMAL, noSpace))
+    // The OS often wraps it.
+    val wrapped = RuntimeException("capture loop error", noSpace)
+    assertEquals(RecordingService.END_DISK_FULL, CaptureEnd.reasonAfterFailure(RecordingService.END_NORMAL, wrapped))
+    // Any other failure stays a write failure, and a reason already chosen is never replaced.
+    assertEquals(RecordingService.END_WRITE_FAILED, CaptureEnd.reasonAfterFailure(RecordingService.END_NORMAL, java.io.IOException("EIO")))
+    assertEquals(RecordingService.END_CAP_REACHED, CaptureEnd.reasonAfterFailure(RecordingService.END_CAP_REACHED, noSpace))
+    assertEquals(RecordingService.END_DISK_FULL, CaptureEnd.afterFlush(RecordingService.END_NORMAL) { throw noSpace })
   }
 }

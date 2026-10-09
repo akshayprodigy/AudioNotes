@@ -355,7 +355,7 @@ class RecordingService : Service(), CaptureListener {
         BufferedOutputStream(FileOutputStream(File(path), true), 1 shl 16)
       } catch (e: Exception) {
         Log.e(TAG, "opening the audio file failed", e)
-        endReason = CaptureEnd.reasonAfterFailure(endReason)
+        endReason = CaptureEnd.reasonAfterFailure(endReason, e)
         null
       }
       try {
@@ -531,7 +531,7 @@ class RecordingService : Service(), CaptureListener {
           Log.e(TAG, "capture loop error", e)
           // End it: before this the loop died and the service stayed up, showing "Recording"
           // over a recorder that was no longer writing anything.
-          if (endReason == END_NORMAL) endReason = END_WRITE_FAILED
+          endReason = CaptureEnd.reasonAfterFailure(endReason, e)
           recording = false
         } finally {
           try { record.stop() } catch (_: Exception) {}

@@ -22,12 +22,34 @@ object CaptureEnd {
       endReason
     } catch (e: Exception) {
       try { Log.e("RecordingService", "closing flush failed", e) } catch (_: Throwable) {}
-      reasonAfterFailure(endReason)
+      reasonAfterFailure(endReason, e)
     }
 
-  /** The end reason once the audio file failed to write or close: write_failed, unless one is already set. */
-  fun reasonAfterFailure(endReason: String): String =
-    if (endReason == RecordingService.END_NORMAL) RecordingService.END_WRITE_FAILED else endReason
+  /**
+   * The end reason once the audio file failed to write or close: write_failed, unless one is already
+   * set — or unless the cause was a full disk, which is what the person should be told. The free-space
+   * check runs every half minute, so a phone that fills faster than that reaches this path first:
+   * on a Galaxy A07 a recording that ran the disk to zero was reported as "the audio could not be
+   * saved" instead of "the phone ran out of space".
+   */
+  fun reasonAfterFailure(endReason: String, cause: Throwable? = null): String =
+    when {
+      endReason != RecordingService.END_NORMAL -> endReason
+      isOutOfSpace(cause) -> RecordingService.END_DISK_FULL
+      else -> RecordingService.END_WRITE_FAILED
+    }
+
+  /** Whether [e], or anything it was caused by, is the OS saying the disk is full (ENOSPC). */
+  fun isOutOfSpace(e: Throwable?): Boolean {
+    var c = e
+    var depth = 0
+    while (c != null && depth++ < 8) {
+      val m = c.message ?: ""
+      if (m.contains("ENOSPC") || m.contains("No space left", ignoreCase = true)) return true
+      c = c.cause
+    }
+    return false
+  }
 }
 
 /**
@@ -48,7 +70,7 @@ object CaptureLoopClose {
       reason
     } catch (e: Exception) {
       try { Log.e("RecordingService", "closing the audio file failed", e) } catch (_: Throwable) {}
-      CaptureEnd.reasonAfterFailure(reason)
+      CaptureEnd.reasonAfterFailure(reason, e)
     }
     if (reason != RecordingService.END_NORMAL) stopSelf()
     return reason
