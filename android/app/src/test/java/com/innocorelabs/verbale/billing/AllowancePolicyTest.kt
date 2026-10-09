@@ -134,6 +134,15 @@ class AllowancePolicyTest {
     assertEquals(Settle.COMMIT, s(60_000L, true, true, true, false, false))   // a minute counts like any session
   }
 
+  @Test fun `settle - a meeting no longer than its own announcement is refunded, whatever the transcript says`() {
+    val s = AllowancePolicy::settleAction
+    // 5 s on a Galaxy A07: the whole transcript was the announcement, three-plus words, "usable".
+    assertEquals(Settle.REFUND, s(5_000L, false, true, true, true, true))
+    assertEquals(Settle.REFUND, s(6_999L, false, false, false, false, false)) // before anything ran
+    assertEquals(Settle.WAIT, s(7_000L, false, false, false, false, false))   // past it, the usual rules
+    assertEquals(Settle.COMMIT, s(8_000L, false, true, true, true, true))
+  }
+
   @Test fun `settle - no speech found refunds at any length`() {
     val s = AllowancePolicy::settleAction
     assertEquals(Settle.REFUND, s(10_000L, false, true, false, false, false))

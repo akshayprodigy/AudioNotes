@@ -23,6 +23,14 @@ object AllowancePolicy {
   /** A session with this much audio is a real one: it takes a slot whatever processing does. */
   const val COMMIT_AFTER_MS = 60_000L
 
+  /**
+   * A meeting this short holds the room announcement and next to nothing else: the announcement
+   * itself runs about 6.5 s. Found on a Galaxy A07, where an accidental tap and stop made a 5 s
+   * "meeting" whose entire transcript was "This meeting is being recorded by Verbale" — three or
+   * more words, so it was usable, so it took one of the month's five slots.
+   */
+  const val ANNOUNCEMENT_ONLY_MS = 7_000L
+
   /** A Free import may overrun the hour by this much: the cap's own one-second check cadence (GAP-6). */
   const val IMPORT_TOLERANCE_MS = 1_000L
 
@@ -102,6 +110,7 @@ object AllowancePolicy {
    * wins (addendum R1-R2):
    *  - nothing captured: REFUND;
    *  - a dictation under a minute: REFUND at once, whatever it said (founder, GAP-2);
+   *  - a meeting no longer than its own announcement: REFUND, because that is all it can hold;
    *  - speech detection has run and found no speech: REFUND, at any length ("empty");
    *  - a minute or more of audio with speech found: COMMIT; speech detection not yet done: WAIT;
    *  - a shorter meeting: the transcript decides once processing has finished (COMMIT if usable,
@@ -120,6 +129,7 @@ object AllowancePolicy {
   ): Settle = when {
     capturedMs <= 0L -> Settle.REFUND
     isDictation && capturedMs < COMMIT_AFTER_MS -> Settle.REFUND
+    capturedMs < ANNOUNCEMENT_ONLY_MS -> Settle.REFUND
     vadDone && !speechFound -> Settle.REFUND
     capturedMs >= COMMIT_AFTER_MS && vadDone && speechFound -> Settle.COMMIT
     capturedMs >= COMMIT_AFTER_MS -> Settle.WAIT
