@@ -31,6 +31,14 @@ object AllowancePolicy {
    */
   const val ANNOUNCEMENT_ONLY_MS = 7_000L
 
+  /**
+   * Whether a capture is nothing but its own announcement: made in the app (so it carries one —
+   * an import does not, and a 5 s imported voice note is a real recording), a meeting rather than
+   * a dictation (which is never announced), and no longer than the announcement runs.
+   */
+  fun isAnnouncementOnly(capturedMs: Long, recordedInApp: Boolean, isDictation: Boolean): Boolean =
+    recordedInApp && !isDictation && capturedMs in 1 until ANNOUNCEMENT_ONLY_MS
+
   /** A Free import may overrun the hour by this much: the cap's own one-second check cadence (GAP-6). */
   const val IMPORT_TOLERANCE_MS = 1_000L
 

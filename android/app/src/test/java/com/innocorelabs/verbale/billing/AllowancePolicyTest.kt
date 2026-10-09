@@ -143,6 +143,15 @@ class AllowancePolicyTest {
     assertEquals(Settle.COMMIT, s(8_000L, false, true, true, true, true))
   }
 
+  @Test fun `a capture is only its announcement when it was recorded in the app, is a meeting, and is shorter than the clip`() {
+    assertTrue(AllowancePolicy.isAnnouncementOnly(5_000L, recordedInApp = true, isDictation = false))
+    assertFalse(AllowancePolicy.isAnnouncementOnly(7_000L, recordedInApp = true, isDictation = false))
+    // A 5 s imported voice note is a real recording; so is a short dictation.
+    assertFalse(AllowancePolicy.isAnnouncementOnly(5_000L, recordedInApp = false, isDictation = false))
+    assertFalse(AllowancePolicy.isAnnouncementOnly(5_000L, recordedInApp = true, isDictation = true))
+    assertFalse(AllowancePolicy.isAnnouncementOnly(0L, recordedInApp = true, isDictation = false))
+  }
+
   @Test fun `settle - no speech found refunds at any length`() {
     val s = AllowancePolicy::settleAction
     assertEquals(Settle.REFUND, s(10_000L, false, true, false, false, false))

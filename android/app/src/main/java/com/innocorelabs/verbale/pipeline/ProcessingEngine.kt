@@ -2,6 +2,7 @@ package com.innocorelabs.verbale.pipeline
 
 import android.content.Context
 import android.util.Log
+import com.innocorelabs.verbale.billing.AllowancePolicy
 import com.innocorelabs.verbale.billing.LicenceStore
 import com.innocorelabs.verbale.data.AudioDb
 import com.innocorelabs.verbale.data.ModelCatalog
@@ -113,7 +114,24 @@ class ProcessingEngine(
       // Then keep the spoken consent clip out of them: whisper cannot read it, and a window that
       // opens with it drops the speech after it (AnnouncementSpan). The stored spans and the audio
       // are untouched; this is only what the recogniser is asked to read.
-      val spans = announcementFree(db, meetingId, db.segments(meetingId))
+      val announcementFreeSpans = announcementFree(db, meetingId, db.segments(meetingId))
+      // A tap and a stop leave a few seconds that are only the announcement, which whisper then
+      // transcribes as a meeting ("This meeting is being recorded by Verbale"). It is not one:
+      // read it as the empty recording it is, so it ends as "no speech found" and the Settings
+      // sweep can clear it. Its slot was already handed back (AllowancePolicy.ANNOUNCEMENT_ONLY_MS).
+      val capturedMs = File(audioPath).length() / 2 * 1000 / RecordingService.SAMPLE_RATE
+      val spans = if (
+        AllowancePolicy.isAnnouncementOnly(
+          capturedMs,
+          recordedInApp = db.announceOutcome(meetingId) != null,
+          isDictation = db.mode(meetingId) == "dictation",
+        )
+      ) {
+        Log.i(TAG, "$meetingId is ${capturedMs}ms of announcement and nothing else — not transcribed")
+        LongArray(0)
+      } else {
+        announcementFreeSpans
+      }
 
       // ---- ASR (whisper.cpp) over the VAD spans, if the chosen model is installed ----
       // Stage.ASR not being in `remaining` means utterances already exist from a prior session —
