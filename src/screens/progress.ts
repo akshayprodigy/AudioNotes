@@ -135,7 +135,16 @@ export function progressFor({ liveStage, status, audioSec, rates, fraction, resu
   const total = STAGES.reduce((a, x) => a + rate(x), 0);
   const doneRate = STAGES.slice(0, index).reduce((a, x) => a + rate(x), 0);
   const runningRate = rate(STAGES[index]);
-  const pct = Math.min(99, Math.round(((doneRate + runningRate * through) / total) * 100));
+  const weighted = Math.round(((doneRate + runningRate * through) / total) * 100);
+  // The weights are this phone's own learned rates, which come from whatever it has run so far —
+  // on a Galaxy A07 that was short clips with no diarization to speak of, so a 7-minute meeting
+  // read "99%" with speaker separation 29 of 129 done and two stages not started. The number
+  // must never run ahead of the checklist under it: it is capped at the share of the visible
+  // stages that are done, counting the running one by how far through it is.
+  const shown = STAGES.filter(x => !skip?.includes(x.key));
+  const position = shown.findIndex(x => x.key === STAGES[index].key);
+  const ahead = position < 0 ? 1 : (position + through) / shown.length;
+  const pct = Math.min(99, weighted, Math.round(ahead * 100));
 
   // Remaining work priced from the recording's own length rather than from elapsed time, which is
   // what made a transcript-only re-run promise a finish it was nowhere near.

@@ -164,46 +164,33 @@ test('the migration is attempted once per opening, not once per poll', async () 
 });
 
 /**
- * The once-ever Pro offer, and the one entry point it must not fire on.
- *
- * `shouldOfferPaywall` decides WHETHER; these pin WHEN. Opened from inside the app, a first
- * finished meeting gets the sheet after a short delay, over the notes. Opened from the "Your notes
- * are ready" notification — whose text is "tap to see the summary and transcript" — it must not:
- * on the Galaxy A07 that tap landed on a price 900 ms later. The offer is not spent by that visit,
- * so the in-app case still fires afterwards.
+ * No Pro sheet opens over a finished meeting by itself — not the first one, not from the app, not
+ * from the "Your notes are ready" notification (founder, 9 Oct 2026). It used to, once ever, 900 ms
+ * after the first finished meeting opened; on the Galaxy A07 that covered the very first notes.
  */
-describe('the first-meeting Pro offer', () => {
-  const trial = require('../../billing/trial');
-
-  beforeEach(() => {
-    jest.useFakeTimers();
-    jest.spyOn(trial, 'shouldOfferPaywall').mockResolvedValue(true);
-  });
-  afterEach(() => {
-    jest.useRealTimers();
-    jest.restoreAllMocks();
-  });
+describe('a finished meeting never opens the Pro sheet by itself', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
 
   async function renderWith(params: Record<string, unknown>) {
     const r = { key: 'meeting', name: 'Meeting', params: { meetingId: 'm1', ...params } } as any;
     await act(async () => {
       renderer.create(<MeetingScreen navigation={nav} route={r} />);
     });
-    // Let the offer's promise settle, then its delay elapse.
     await act(async () => {
       await Promise.resolve();
     });
     await act(async () => {
-      jest.advanceTimersByTime(1_000);
+      jest.advanceTimersByTime(5_000);
     });
   }
 
-  test('opened from inside the app, a finished meeting gets the offer', async () => {
+  test('opened from inside the app', async () => {
     await renderWith({});
-    expect(nav.navigate).toHaveBeenCalledWith('Paywall', { meetingId: 'm1' });
+    expect(nav.navigate).not.toHaveBeenCalledWith('Paywall', expect.anything());
   });
 
-  test('opened from the notes-ready notification, it shows the notes and nothing else', async () => {
+  test('opened from the notes-ready notification', async () => {
     await renderWith({ fromNotification: true });
     expect(nav.navigate).not.toHaveBeenCalledWith('Paywall', expect.anything());
   });
@@ -436,11 +423,11 @@ test('a dictated note wears Dictation in the header', async () => {
 
 /** The processing screen, mid-run: what the running stage's own counts do to it. */
 describe('progress inside a stage', () => {
-  /** The "10% · about 13 min left" pill, from the rendered tree rather than component props. */
+  /** The "10% · In progress" pill, from the rendered tree rather than component props. */
   const pill = (tree: renderer.ReactTestRenderer) =>
     JSON.stringify(tree.toJSON()).match(/"children":\["(\d+)","%","([^"]*)"\]/)?.[0];
 
-  it("shows the running stage's own counts and prices the wait from them", async () => {
+  it("shows the running stage's own counts and moves the percentage with them", async () => {
     (db.getMeeting as jest.Mock).mockResolvedValue({
       id: 'm1', title: 'Standup', createdAt: 1, durationMs: 600_000, status: 'vad',
       tierUsed: 'free', language: 'en', audioPath: null, audioRetained: 1,
@@ -453,7 +440,7 @@ describe('progress inside a stage', () => {
       emit('onStageProgress', { meetingId: 'm1', stage: 'asr', chunk: 14, total: 40 });
     });
     expect(JSON.stringify(tree.toJSON())).toContain('14 of 40');
-    // 14 of 40 through ASR is less than the 40% guess, so the ETA grew and the pill moved.
+    // 14 of 40 through ASR is less than the 40% guess, so the percentage moved.
     expect(pill(tree)).not.toEqual(before);
   });
 
@@ -483,9 +470,9 @@ describe('progress inside a stage', () => {
   });
 });
 
-/** The pipeline stopped for the phone's sake; the screen has to say so, and stop promising a time. */
+/** The pipeline stopped for the phone's sake; the screen has to say so, and stop saying it is working. */
 describe('a paused pipeline', () => {
-  it('says why it is paused and hides the ETA until it resumes', async () => {
+  it('says why it is paused and says nothing is in progress until it resumes', async () => {
     (db.getMeeting as jest.Mock).mockResolvedValue({
       id: 'm1', title: 'Standup', createdAt: 1, durationMs: 600_000, status: 'vad',
       tierUsed: 'free', language: 'en', audioPath: null, audioRetained: 1,
@@ -495,11 +482,12 @@ describe('a paused pipeline', () => {
     await act(async () => { emit('onProcessingPause', { meetingId: 'm1', reason: 'heat' }); });
     let text = JSON.stringify(tree.toJSON());
     expect(text).toContain('Paused to let the phone cool');
-    expect(text).not.toContain('min left');
+    expect(text).not.toContain('In progress');
     await act(async () => { emit('onProcessingPause', { meetingId: 'm1', reason: null }); });
     text = JSON.stringify(tree.toJSON());
     expect(text).not.toContain('Paused');
-    expect(text).toContain('min left');
+    expect(text).toContain('In progress');
+    expect(text).not.toMatch(/min left|s left/);
   });
 });
 
@@ -829,7 +817,7 @@ describe('what a meeting with nothing written says', () => {
 });
 
 describe('a retry before the pipeline reports a stage', () => {
-  it('says Resuming… with no time or percentage, then prices the stage it is on', async () => {
+  it('says Resuming… with no percentage, then shows the stage it is on', async () => {
     (db.getMeeting as jest.Mock).mockResolvedValue(
       meetingWith({ status: 'failed', failReason: 'The phone ran out of memory while processing.', durationMs: 5_400_000 }),
     );
@@ -840,7 +828,7 @@ describe('a retry before the pipeline reports a stage', () => {
     await pressLabel(tree, 'Try again');
     let text = JSON.stringify(tree.toJSON());
     expect(text).toContain('Resuming…');
-    expect(text).not.toContain('min left');
+    expect(text).not.toContain('In progress');
     expect(text).not.toMatch(/"%"/);
 
     await act(async () => {
@@ -848,7 +836,8 @@ describe('a retry before the pipeline reports a stage', () => {
     });
     text = JSON.stringify(tree.toJSON());
     expect(text).not.toContain('Resuming…');
-    expect(text).toContain('min left');
+    expect(text).toContain('In progress');
+    expect(text).not.toMatch(/min left|s left/);
   });
 });
 
@@ -873,5 +862,50 @@ describe('Write it again', () => {
     expect(db.clearNarration).not.toHaveBeenCalled();
     expect(pipeline().process).toHaveBeenCalledWith('m1', { model: 'base', force: true });
     expect(JSON.stringify(tree.toJSON())).toContain('A short meeting about the report.');
+  });
+});
+
+/**
+ * Galaxy A07 at 200% text: the READY badge sat in the header row beside the title and left the
+ * title about 40 dp, so "Let's" broke after "Let'". It moves under the title at large text; at
+ * normal text it stays in the row. Either way it is shown exactly once.
+ */
+describe('the READY badge at large text', () => {
+  const { PixelRatio } = require('react-native');
+  const ready = (tree: renderer.ReactTestRenderer) => (JSON.stringify(tree.toJSON()).match(/"READY"/g) ?? []).length;
+
+  afterEach(() => jest.restoreAllMocks());
+
+  /**
+   * The header row is the deepest rendered node holding both the Back and the Ask buttons; whether
+   * READY is inside it is the whole point. Walks toJSON() — plain data, no component instances.
+   */
+  const inHeaderRow = (tree: renderer.ReactTestRenderer) => {
+    const has = (n: any, pred: (n: any) => boolean): boolean =>
+      !!n && typeof n === 'object' && (pred(n) || (n.children ?? []).some((c: any) => has(c, pred)));
+    const labelled = (l: string) => (n: any) => n.props?.accessibilityLabel === l;
+    const isReady = (n: any) => (n.children ?? []).includes('READY');
+    let row: any = null;
+    const find = (n: any) => {
+      if (!n || typeof n !== 'object') return;
+      if (has(n, labelled('Back')) && has(n, labelled('Ask this meeting'))) row = n;
+      (n.children ?? []).forEach(find);
+    };
+    find(tree.toJSON());
+    return has(row, isReady);
+  };
+
+  it('is shown once beside the title at normal text', async () => {
+    jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(1);
+    const tree = await render();
+    expect(ready(tree)).toBe(1);
+    expect(inHeaderRow(tree)).toBe(true);
+  });
+
+  it('is shown once, outside the header row, at large text', async () => {
+    jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(2);
+    const tree = await render();
+    expect(ready(tree)).toBe(1);
+    expect(inHeaderRow(tree)).toBe(false);
   });
 });

@@ -21,12 +21,10 @@ const nav = {
   setOptions: jest.fn(),
   addListener: jest.fn(() => () => {}),
 } as any;
-const trial = require('../../billing/trial');
 
 beforeEach(() => {
   jest.clearAllMocks();
   jest.useFakeTimers();
-  jest.spyOn(trial, 'shouldOfferPaywall').mockResolvedValue(true);
   (db.ensureItems as jest.Mock).mockResolvedValue(undefined);
   (db.getMeeting as jest.Mock).mockImplementation(async (id: string) => ({
     id, title: 'Weekly check-in (sample)', createdAt: 1, durationMs: 64_000, status: 'done', tierUsed: 'free',
@@ -98,15 +96,11 @@ describe('the sample meeting screen', () => {
     await act(async () => tree.unmount());
   });
 
-  it('opening the sample does not spend the once-ever Pro offer', async () => {
-    const tree = await open(SAMPLE_ID);
-    expect(nav.navigate).not.toHaveBeenCalledWith('Paywall', expect.anything());
-    await act(async () => tree.unmount());
-  });
-
-  it('...while a meeting the person recorded still gets it, so that is not vacuous', async () => {
-    const tree = await open('3f2a9c1e-0b7d-4c55-9a52-61d0f4c0a1de');
-    expect(nav.navigate).toHaveBeenCalledWith('Paywall', { meetingId: '3f2a9c1e-0b7d-4c55-9a52-61d0f4c0a1de' });
-    await act(async () => tree.unmount());
+  it('opening the sample, or a meeting the person recorded, never opens the Pro sheet', async () => {
+    for (const id of [SAMPLE_ID, '3f2a9c1e-0b7d-4c55-9a52-61d0f4c0a1de']) {
+      const tree = await open(id);
+      expect(nav.navigate).not.toHaveBeenCalledWith('Paywall', expect.anything());
+      await act(async () => tree.unmount());
+    }
   });
 });

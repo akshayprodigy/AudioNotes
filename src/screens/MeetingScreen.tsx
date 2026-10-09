@@ -4,6 +4,7 @@ import {
   Alert,
   Animated,
   Easing,
+  PixelRatio,
   Platform,
   Pressable,
   StyleSheet,
@@ -23,7 +24,7 @@ import { db } from '../db/queries';
 import { countsExcluding } from './threadData';
 import { PipelineController } from '../pipeline/PipelineController';
 import { namesOf, resolveOwnerText } from '../pipeline/itemOwner';
-import { entitlement, shouldOfferPaywall } from '../billing/trial';
+import { entitlement } from '../billing/trial';
 import SampleBanner from '../sample/SampleBanner';
 import { isSampleId } from '../sample/sampleId';
 import FileExport from '../native/NativeFileExport';
@@ -81,12 +82,13 @@ import type { PauseReason } from '../pipeline/PipelineController';
 type Props = NativeStackScreenProps<RootStackParamList, 'Meeting'>;
 
 
-/** Seconds into a human wait. "480s left" is a number; "about 8 min left" is an answer. */
-function etaLabel(sec: number): string {
-  if (sec <= 0) return '';
-  if (sec < 90) return ` · about ${sec}s left`;
-  return ` · about ${Math.round(sec / 60)} min left`;
-}
+/**
+ * What the pill says beside the percentage while the phone is working. A time was tried ("about 13
+ * min left") and was wrong in both directions: 4 min promised for a run that took 45 s on a fast
+ * phone, and 236 min for a healthy 90-minute run. A wrong number reads as a fault, so the pill
+ * says the true thing — it is in progress — and the stage list below carries the detail.
+ */
+const IN_PROGRESS = ' · In progress';
 
 export default function MeetingScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
@@ -199,45 +201,9 @@ export default function MeetingScreen({ route, navigation }: Props) {
   }, [ask.state, ask.writerBlocked, navigation, meetingId, openPaywall]);
   const askEntry = <AskEntry onPress={onAsk} pro={ask.state === 'free' || ask.state === 'free-weak'} />;
 
-  /**
-   * Offer Pro once, on the first meeting that finishes.
-   *
-   * This is the only moment in the app where the paid half can be explained honestly: the user has
-   * just watched it do its work, on their own meeting, and can see the shape of what is missing.
-   * Before that it is a feature list; after it, on the fifth meeting, it is a nag.
-   *
-   * `shouldOfferPaywall` is what keeps it to once EVER — never to a subscriber, never to somebody
-   * who already decided by starting the trial, and never twice, because the second showing is not
-   * persuasion and this app's whole pitch is that it does not behave like that. The delay lets the
-   * meeting render first, so the sheet arrives over the notes rather than instead of them.
-   *
-   * Not when the meeting was opened from the "Your notes are ready" notification. That notification
-   * says "tap to see the summary and transcript", and on the Galaxy A07 the tap landed on this
-   * sheet 900 ms later — a promise of notes answered with a price. The offer is not spent by that
-   * visit: `shouldOfferPaywall` stays true until the sheet is actually shown, so it is made on the
-   * next finished meeting the person opens from inside the app, which is a moment they chose.
-   */
-  useEffect(() => {
-    if (meeting?.status !== 'done') return;
-    if (fromNotification) return;
-    // The sample is not a meeting the person recorded, so it is not "the first meeting that
-    // finished": opening it must not spend the once-ever Pro offer.
-    if (isSampleId(meetingId)) return;
-    let alive = true;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    shouldOfferPaywall()
-      .then(offer => {
-        if (!alive || !offer) return;
-        timer = setTimeout(() => {
-          if (alive) openPaywall();
-        }, 900);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-      if (timer) clearTimeout(timer);
-    };
-  }, [meeting?.status, openPaywall, fromNotification, meetingId]);
+  // No Pro sheet opens by itself here. It used to appear once, over the first finished meeting;
+  // founder's call (9 Oct 2026): a person's first notes are theirs to read, and Pro is reached from
+  // the places that already offer it (Summary, Ask, Settings, the allowance card).
 
   // `atMs` — the moment a search hit matched — only scrolls the transcript to that line; it does
   // NOT move the playhead. Seeking would mean opening the audio device merely to look at a search
@@ -1064,7 +1030,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
     // is the common case — so the persisted status decides, rather than assuming the first stage.
     // Assuming was the bug: a 90-minute meeting showed stage one for 78 minutes because the next
     // event was half an hour away. See src/screens/progress.ts.
-    const { index: idx, pct, etaSec: eta, resuming } = progressFor({
+    const { index: idx, pct, resuming } = progressFor({
       liveStage: stage,
       status: meeting?.status,
       audioSec: (meeting?.durationMs ?? 0) / 1000,
@@ -1097,7 +1063,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
             <Txt variant="display" style={st.procTitle}>
               {paused ? 'Paused for a moment' : 'Writing your notes…'}
             </Txt>
-            {/* No ETA while paused: a time that is not counting down is a promise, not an estimate. */}
+            {/* While paused the pill carries the percentage alone: nothing is in progress. */}
             <Txt variant="sub" color={colors.inkDim} style={st.procBody}>
               {paused === 'heat'
                 ? 'Paused to let the phone cool — it resumes on its own.'
@@ -1107,7 +1073,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
             </Txt>
             <View style={st.pctPill}>
               <Txt variant="metaBlack" color={colors.primary}>
-                {resuming ? 'Resuming…' : [pct, '%', paused ? '' : etaLabel(eta)]}
+                {resuming ? 'Resuming…' : [pct, '%', paused ? '' : IN_PROGRESS]}
               </Txt>
             </View>
           </View>
@@ -1184,6 +1150,9 @@ export default function MeetingScreen({ route, navigation }: Props) {
   // The tabs, their order and their words live in meeting/meetingTabs.ts.
   const TABS = MEETING_TABS;
 
+  const bigText = PixelRatio.getFontScale() > 1.3;
+  const readyBadge = <Badge label="READY" color={colors.success} soft={colors.successSoft} small />;
+
   return (
     <View style={[st.root, { paddingTop: insets.top + s(6) }]}>
       <View style={st.navRowDetail}>
@@ -1195,7 +1164,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
           onPress={() => setRenaming(true)}
           accessibilityRole="button"
           accessibilityLabel={`Rename ${meeting?.title || 'this meeting'}`}>
-          <Txt variant="sectionTitle" numberOfLines={1}>
+          <Txt variant="sectionTitle" numberOfLines={2}>
             {meeting?.title || 'Meeting'}
           </Txt>
           <Txt variant="chipSoft" color={colors.inkFaint}>
@@ -1210,12 +1179,13 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 : '')}
           </Txt>
         </Pressable>
-        {meeting?.status === 'done' ? (
-          <Badge label="READY" color={colors.success} soft={colors.successSoft} small />
-        ) : null}
+        {meeting?.status === 'done' && !bigText ? readyBadge : null}
         <IconButton icon="chat" label="Ask this meeting" onPress={onAsk} />
         <IconButton icon="more" label="More actions" onPress={() => setSheet(true)} />
       </View>
+      {/* At large text the badge no longer fits in the row: it left the title about 40 dp, which
+          broke "Let's" mid-word. It sits on its own line under the title instead. */}
+      {meeting?.status === 'done' && bigText ? <View style={st.readyRow}>{readyBadge}</View> : null}
 
       {tags.length > 0 ? (
         <View style={st.tagRow}>
@@ -1677,6 +1647,7 @@ function makeStyles(c: Colors) {
     },
 
     tabs: { marginHorizontal: s(16), marginBottom: s(10) },
+    readyRow: { paddingHorizontal: s(20), marginTop: s(6), flexDirection: 'row' },
     navRowDetail: {
       flexDirection: 'row',
       alignItems: 'center',

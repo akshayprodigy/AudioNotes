@@ -174,3 +174,24 @@ describe('a run that skips a stage (a dictation never separates speakers)', () =
     expect(STAGES[q.index].key).toBe('diarize');
   });
 });
+
+describe('the percentage never runs ahead of the checklist', () => {
+  // Galaxy A07, 9 Oct: learned rates from short clips made later stages nearly free, so a 7-minute
+  // meeting showed "99%" with speaker separation 29 of 129 done and two stages not started.
+  const learned = { vad: 0.01, asr: 0.34, diarize: 0.001, minutes: 0.0001, narrate: 0.0001, embed: 0.0001 };
+
+  it('caps a middle stage at its share of the visible stages', () => {
+    const p = progressFor({ liveStage: 'diarize', status: 'asr', audioSec: 420, rates: learned, fraction: 29 / 129 });
+    // Third of six stages, a fifth through it: (2 + 0.22) / 6 = 37%.
+    expect(p.pct).toBeLessThanOrEqual(38);
+    expect(p.pct).toBeGreaterThan(30);
+  });
+
+  it('counts only the stages that will run: a dictation has five, not six', () => {
+    const p = progressFor({
+      liveStage: 'minutes', status: 'asr', audioSec: 30, rates: learned, fraction: 0, skip: ['diarize'],
+    });
+    // Minutes is the third visible stage of five: 2 / 5 = 40%.
+    expect(p.pct).toBeLessThanOrEqual(40);
+  });
+});
