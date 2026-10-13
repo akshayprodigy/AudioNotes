@@ -259,34 +259,44 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
         val doc = document(meetingId, format, attribution && format != "srt")
 
         val dir = File(ctx.cacheDir, "exports").apply { mkdirs() }
+        Mp3Export.sweep(dir)
         val safe = doc.title.replace(Regex("[^A-Za-z0-9-_ ]"), "").trim().ifEmpty { "meeting" }
         val out = File(dir, "$safe.${doc.ext}")
         if (doc.blocks != null) PdfExport.write(doc.blocks, out) else out.writeText(doc.body)
 
-        val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".fileprovider", out)
-        val send = Intent(Intent.ACTION_SEND).apply {
-          type = when (doc.ext) {
+        launchShare(
+          out,
+          when (doc.ext) {
             "srt" -> "application/x-subrip"
             "pdf" -> "application/pdf"
             else -> "text/plain"
-          }
-          putExtra(Intent.EXTRA_STREAM, uri)
-          putExtra(Intent.EXTRA_SUBJECT, doc.title)
-          addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        val chooser = Intent.createChooser(send, "Share minutes")
-        val activity = ctx.currentActivity
-        if (activity != null) {
-          activity.startActivity(chooser)
-        } else {
-          chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-          ctx.startActivity(chooser)
-        }
+          },
+          doc.title,
+        )
         promise.resolve(null)
       } catch (e: Exception) {
         promise.reject("export_failed", e)
       }
     }.start()
+  }
+
+  /** Hand a file in the export cache to the Android share sheet. */
+  private fun launchShare(file: File, mime: String, subject: String) {
+    val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".fileprovider", file)
+    val send = Intent(Intent.ACTION_SEND).apply {
+      type = mime
+      putExtra(Intent.EXTRA_STREAM, uri)
+      putExtra(Intent.EXTRA_SUBJECT, subject)
+      addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    val chooser = Intent.createChooser(send, "Share minutes")
+    val activity = ctx.currentActivity
+    if (activity != null) {
+      activity.startActivity(chooser)
+    } else {
+      chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      ctx.startActivity(chooser)
+    }
   }
 
   /** The same document, returned rather than shared — see NativeFileExport.ts. */
@@ -326,6 +336,94 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
       }
     }.start()
   }
+
+  // ---- MP3: the original recording ---------------------------------------------------------
+
+  @Volatile private var mp3Cancel = false
+  private val mp3Busy = java.util.concurrent.atomic.AtomicBoolean(false)
+
+  /**
+   * Encode the meeting's ORIGINAL recording to MP3 and hand it to the share sheet.
+   *
+   * Pro (gated first, like every file export). Refuses with AUDIO_DELETED and a sentence when the
+   * recording is gone — never a silent failure, never a crash. Streams `audio.pcm` through LAME in
+   * fixed chunks, so memory is flat however long the meeting; reports `onMp3Progress` and honours
+   * [cancelMp3]. The file is written to the export cache and swept at the next export and at app
+   * start (the share sheet is asynchronous, so it cannot be deleted the moment it is handed over).
+   */
+  @ReactMethod
+  fun exportMp3(meetingId: String, promise: Promise) {
+    if (refuseFree("exportMp3", "mp3", promise)) return
+    if (!mp3Busy.compareAndSet(false, true)) {
+      promise.reject("busy", "An MP3 is already being made")
+      return
+    }
+    mp3Cancel = false
+    Thread {
+      var out: File? = null
+      try {
+        val db = AudioDb.get(ctx)
+        val row = JSONArray(
+          db.rawQueryJson(
+            "SELECT title,created_at,audio_retained FROM meetings WHERE id=?", arrayOf(meetingId),
+          ),
+        ).optJSONObject(0)
+        val retained = row != null && (row.isNull("audio_retained") || row.optInt("audio_retained", 1) != 0)
+        val src = db.getAudioPath(meetingId)?.let { File(it) }
+        if (Mp3Export.audioState(retained, src) == Mp3Export.AudioState.DELETED) {
+          promise.reject(Mp3Export.AUDIO_DELETED, Mp3Export.DELETED_MESSAGE)
+          return@Thread
+        }
+        val title = row?.optString("title", "Meeting") ?: "Meeting"
+        val at = row?.optLong("created_at", 0L) ?: 0L
+        val dir = File(ctx.cacheDir, "exports").apply { mkdirs() }
+        Mp3Export.sweep(dir)
+        val target = File(dir, Mp3Export.safeName(title) + ".mp3")
+        out = target
+        val year = SimpleDateFormat("yyyy", Locale.US).format(Date(at))
+        var last = -1.0
+        val outcome = LameEncoder(title, year, "Recorded " + dateStr(at)).use { enc ->
+          src!!.inputStream().buffered(Mp3Export.CHUNK_BYTES).use { input ->
+            target.outputStream().buffered().use { sink ->
+              Mp3Export.encode(input, src.length(), enc, sink, { mp3Cancel }) { f ->
+                if (f - last >= 0.01 || f >= 1.0) { last = f; emitMp3Progress(f) }
+              }
+            }
+          }
+        }
+        if (outcome == Mp3Export.Outcome.CANCELLED) {
+          target.delete()
+          promise.reject("cancelled", "Cancelled")
+          return@Thread
+        }
+        launchShare(target, "audio/mpeg", title)
+        promise.resolve(null)
+      } catch (e: Throwable) {
+        out?.delete()
+        promise.reject("export_failed", e)
+      } finally {
+        mp3Busy.set(false)
+      }
+    }.start()
+  }
+
+  @ReactMethod
+  fun cancelMp3(promise: Promise) {
+    mp3Cancel = true
+    promise.resolve(null)
+  }
+
+  private fun emitMp3Progress(fraction: Double) {
+    try {
+      ctx.getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+        .emit("onMp3Progress", com.facebook.react.bridge.Arguments.createMap().apply { putDouble("fraction", fraction) })
+    } catch (_: Throwable) {
+      // No JS context: nobody is watching the bar.
+    }
+  }
+
+  @ReactMethod fun addListener(eventName: String) {}
+  @ReactMethod fun removeListeners(count: Double) {}
 
   /**
    * Put text on the clipboard.

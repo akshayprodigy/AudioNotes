@@ -95,6 +95,10 @@ CLASSES=(
   # A transcript correction writes through to utterances (first raw text kept), re-derives items through
   # the Reconciler and survives a re-transcription by time overlap. Same reason: real SQLCipher.
   com.innocorelabs.verbale.CorrectionsDbTest
+  # MP3 export: the real LAME, through the JNI shim, decoded again by the platform. A tone in must
+  # be the same length and pitch out, and an hour must stay inside a memory bound. Needs the
+  # phone's libmp3lame.so, so not a JVM test.
+  com.innocorelabs.verbale.Mp3EncoderTest
 )
 
 if ! "$ADB" devices | grep -qE "device$"; then

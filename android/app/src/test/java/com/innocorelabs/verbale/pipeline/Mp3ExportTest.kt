@@ -41,6 +41,20 @@ class Mp3ExportTest {
     assertEquals(Mp3Export.AudioState.DELETED, Mp3Export.audioState(true, pcm(0)))
   }
 
+  /**
+   * The module must look before it encodes: a deleted recording is a sentence, not a crash or an
+   * empty file. Source-level for the same reason as ExportGateTest — the module needs a React context.
+   */
+  @Test fun theModuleChecksTheAudioBeforeItEncodesAndSaysSo() {
+    val src = File("src/main/java/com/innocorelabs/verbale/pipeline/FileExportModule.kt").readText()
+    val body = src.substring(src.indexOf("fun exportMp3("))
+    val check = body.indexOf("Mp3Export.audioState(retained, src) == Mp3Export.AudioState.DELETED")
+    assertTrue("exportMp3 never asks audioState", check > 0)
+    assertTrue(check < body.indexOf("LameEncoder("))
+    val reject = body.substring(check).substringBefore("return@Thread")
+    assertTrue(reject.contains("promise.reject(Mp3Export.AUDIO_DELETED, Mp3Export.DELETED_MESSAGE)"))
+  }
+
   // ---- the chunked loop ---------------------------------------------------------------------
 
   /** Counts what it is fed and writes one byte per sample, so output size is checkable. */

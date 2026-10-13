@@ -23,6 +23,9 @@ class MainApplication : Application(), ReactApplication {
   override fun onCreate() {
     super.onCreate()
     loadReactNative(this)
+    // Exported files wait in the cache for the receiving app to read them; at a fresh start nothing
+    // can be, so whatever is left is stale. Off the main thread: it is disk.
+    Thread { com.innocorelabs.verbale.pipeline.Mp3Export.sweep(java.io.File(cacheDir, "exports")) }.start()
   }
 
   /**

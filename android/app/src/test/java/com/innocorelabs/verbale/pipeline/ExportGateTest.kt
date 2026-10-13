@@ -46,6 +46,8 @@ class ExportGateTest {
    */
   @Test fun shareWithAsksTheGateBeforeAnyWork() = entryPointAsksFirst("fun shareWith(", "shareWith")
 
+  @Test fun exportMp3AsksTheGateBeforeAnyWork() = entryPointAsksFirst("fun exportMp3(", "exportMp3")
+
   @Test fun shareCannotGrowAPathAroundTheGate() {
     // `share` delegates to shareWith, and must not grow a path of its own around it.
     assertTrue(moduleSource().contains("shareWith(meetingId, format, savedAttribution(), promise)"))
@@ -63,5 +65,6 @@ class ExportGateTest {
     assertTrue(helper.contains("ExportGate.refusal(op, format, LicenceStore.current(ctx).isPaid)"))
     val work = body.indexOf("document(").let { if (it < 0) Int.MAX_VALUE else it }
     assertTrue("$fn must ask before it reads or writes", gate < work)
+    assertTrue("$fn must ask before it starts a thread", gate < body.indexOf("Thread {"))
   }
 }
