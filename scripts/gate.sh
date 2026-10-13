@@ -54,7 +54,7 @@ stage_scans() {
   python3 scripts/check-live-transcript.py
 }
 
-stage_mutations() { python3 scripts/mutate-reconciler.py; }
+stage_mutations() { python3 scripts/mutate-reconciler.py && python3 scripts/mutate-export.py; }
 
 stage_kotlin() { (cd android && ./gradlew :app:testDebugUnitTest -q); }
 

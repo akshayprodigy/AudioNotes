@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.content.FileProvider
 import com.facebook.react.bridge.UiThreadUtil
+import com.innocorelabs.verbale.billing.LicenceStore
 import com.innocorelabs.verbale.data.AudioDb
 import com.innocorelabs.verbale.data.ItemKey
 import com.facebook.react.bridge.Promise
@@ -230,6 +231,16 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
   private fun savedAttribution(): Boolean =
     try { AudioDb.get(ctx).getSetting(ATTRIBUTION_KEY) == "1" } catch (_: Exception) { false }
 
+  /**
+   * Rejects with PRO_REQUIRED and returns true when this install is not paid. The licence read is a
+   * signature check over a few hundred bytes, so it is done inline rather than on a worker thread.
+   */
+  private fun refuseFree(op: String, format: String, promise: Promise): Boolean {
+    val code = ExportGate.refusal(op, format, LicenceStore.current(ctx).isPaid) ?: return false
+    promise.reject(code, "Exporting a file is a Pro feature")
+    return true
+  }
+
   /** Share with whatever the person last chose for the attribution line. */
   @ReactMethod
   fun share(meetingId: String, format: String, promise: Promise) =
@@ -241,6 +252,8 @@ class FileExportModule(private val ctx: ReactApplicationContext) :
    */
   @ReactMethod
   fun shareWith(meetingId: String, format: String, attribution: Boolean, promise: Promise) {
+    // First, before a byte is read or written: every file that leaves the app is Pro. See ExportGate.
+    if (refuseFree("shareWith", format, promise)) return
     Thread {
       try {
         val doc = document(meetingId, format, attribution && format != "srt")
