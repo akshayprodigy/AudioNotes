@@ -739,7 +739,7 @@ class NativePipelineTest {
       )
       assertTrue("sanity: chunking works", chunks.isNotEmpty())
 
-      val sentinel = "The group settled the ZZSENTINELZZ protocol and moved on."
+      val sentinel = "The group talked about the ZZSENTINELZZ protocol."
       db.putNote(id, 0, sentinel)
       assertEquals(sentinel, db.notes(id)[0])
 
