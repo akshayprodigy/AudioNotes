@@ -78,7 +78,7 @@ How to use it: tick a box when done, and write the date and one line of result n
 
 **Fix the Console text and prices (A07 defect 13)**
 - [ ] Prices: the A07 saw ₹300 / ₹2,500 on the Pro screen. Set ₹299 / month and ₹2,499 / year in India, $4.99 / $39.99 elsewhere.
-- [ ] Subscription benefits: remove "Export meetings (MP3, SRT, PDF)" — there is no MP3 export, and export is free. List what Pro actually adds: AI prose summaries and narrated minutes, Ask this meeting with citations, semantic search, remembered voices, vocabulary across meetings, project threads and decision history, the action worklist, and the larger transcription model where supported. Do **not** list follow-up reminders or the digest until they ship.
+- [ ] Subscription benefits: **keep** "Export meetings (MP3, SRT, PDF)" — superseded 13 Oct 2026: every file export is now Pro and the MP3 export exists (`docs/superpowers/specs/2026-10-13-pro-export-mp3-design.md`), so that line is accurate. Also list what Pro adds: AI prose summaries and narrated minutes, Ask this meeting with citations, semantic search, remembered voices, vocabulary across meetings, project threads and decision history, the action worklist, and the larger transcription model where supported. Do **not** list follow-up reminders or the digest until they ship.
 
 **Listing and store copy — after the 60-minute allowance is built**
 - [ ] Replace "Record meetings of up to 15 minutes, as many as you like" (`docs/play-console.md:270`) with the new Free offer: 5 meetings a month, up to 1 hour each.

@@ -36,6 +36,9 @@ BODIES = {
     "Apache-2.0": ("cpp/third_party/sherpa-onnx/LICENSE", None),
     "BSD-3-Clause": ("node_modules/ieee754/LICENSE", r"^Copyright[^\n]*\n"),
     "OFL-1.1": ("assets/fonts/OFL.txt", r"^Copyright[^\n]*\n"),
+    # LAME's own COPYING: the GNU LIBRARY General Public License, version 2. Whole, because the LGPL
+    # asks for the licence to travel and for the recipient to be told they may replace the library.
+    "LGPL-2.0": ("cpp/third_party/lame/COPYING", None),
 }
 
 # name, copyright holder, licence, what it does here, and whether it ships in the app or arrives
@@ -68,6 +71,14 @@ COMPONENTS = [
      "Keeps the layout clear of the notch", "app"),
     ("Zustand", "Copyright (c) 2019 Paul Henschel", "MIT", "Holds the app's state", "app"),
     ("Nunito", "Copyright 2014 The Nunito Project Authors", "OFL-1.1", "The typeface", "app"),
+    # LGPL, so two more obligations than the rest: it ships as its OWN library (libmp3lame.so, built
+    # from cpp/third_party/lame) that can be swapped for another build, and the source and the project
+    # are named. The wording below says both; Settings -> Open-source notices is where it is read.
+    ("LAME 3.100", "Copyright (c) 1999-2017 Mark Taylor, Takehiro Tominaga, Robert Hegemann, "
+     "Gabriel Bouvigne, Alexander Leidinger and others", "LGPL-2.0",
+     "Writes the MP3 when you export a recording. Source and project: https://lame.sourceforge.io. "
+     "It is a separate library inside the app (libmp3lame.so), so it can be replaced with your own build",
+     "app"),
 
     ("Silero VAD", "Copyright (c) 2024 Silero Team", "MIT",
      "Finds the speech and skips the silence", "model"),

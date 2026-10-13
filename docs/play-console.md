@@ -274,10 +274,11 @@ Avoid going to exactly 80; Play's counting and yours will not always agree.
 > • Mark a moment while recording and it becomes a highlight
 > • Dictation mode, with spoken punctuation
 > • Search every word across your saved meetings
-> • Export as text, Markdown, subtitles or PDF
+> • Copy any meeting's write-up to the clipboard
 >
 > **Pro, by subscription — monthly or yearly**
 > • As many meetings as you like, of any length
+> • Export: MP3, PDF, SRT, Markdown, text — the minutes as a document, or the original recording as an MP3
 > • The summary and the minutes written in plain English by a language model that also runs on
 >   your phone — shaped to the kind of meeting: stand-up, client call, interview, lecture
 > • Ask a meeting a question; the answer points at the moment it was said, or says plainly that
@@ -299,7 +300,7 @@ Avoid going to exactly 80; Play's counting and yours will not always agree.
 > anything is downloaded or bought.
 >
 > Your notes stay yours if you stop paying: everything already written stays readable and you can
-> export it all at any time.
+> copy it all at any time.
 >
 > Please respect the law and the room. Recording rules differ by country, and telling people they
 > are being recorded is both the decent thing and often the legal one. Verbale can say so out loud

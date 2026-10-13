@@ -2,7 +2,7 @@
  * How long a free recording may run.
  *
  * The free tier gives away the whole pipeline — record, transcribe, tell the speakers apart,
- * rule-based minutes, export — because somebody has to see it work before they will pay for more
+ * rule-based minutes, copy — because somebody has to see it work before they will pay for more
  * of it. What it does not give away is LENGTH, and length is the right lever for this product:
  * real meetings run sixty to ninety minutes, so a long one reaches the cap while a trial of the
  * app does not. (The month's five-session allowance is native too: AllowancePolicy.)

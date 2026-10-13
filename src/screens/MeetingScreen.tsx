@@ -959,7 +959,7 @@ export default function MeetingScreen({ route, navigation }: Props) {
     {
       icon: 'share',
       label: 'Export',
-      hint: 'Share the minutes as a PDF, Markdown, plain text or subtitles.',
+      hint: 'Pro. Share the minutes as a PDF, Markdown, text or subtitles, or the original recording as an MP3.',
       onPress: onExport,
     },
     {

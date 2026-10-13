@@ -54,16 +54,23 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Paywall'>;
  *     each one shipped and run on a phone before its row went in here. There is no roadmap on
  *     this page.
  *   - Nothing free is dressed up as paid. The free tier's floor — record, transcribe, tell the
- *     speakers apart, rule-based minutes, export — is stated on the page that is trying to take
- *     money, because that is where it is worth something. Export stays free deliberately: the
- *     document a free user forwards to five colleagues is the acquisition loop, and charging for
- *     it would be charging for our own marketing.
+ *     speakers apart, rule-based minutes, copy to the clipboard — is stated on the page that is
+ *     trying to take money, because that is where it is worth something. Exporting a FILE (MP3,
+ *     PDF, SRT, Markdown, text) is Pro, by the founder's decision of 13 Oct 2026, and is listed
+ *     below like any other paid row; Copy and the preview stay free.
  *   - Nothing is promised to a phone that cannot keep the promise. The rows the writer delivers
  *     say "Not on this phone" — with the memory it needs and has — on a phone under the gate,
  *     before the trial and the price. The rows that need no writer (search, voices, threads, the
  *     vocabulary, the transcriber) stay promised, because the phone can keep them.
  */
 const INCLUDED: { icon: IconName; title: string; body: string; needsWriter?: boolean }[] = [
+  {
+    icon: 'share',
+    title: 'Export: MP3, PDF, SRT, Markdown, text',
+    body:
+      'Send the minutes as a PDF, Markdown, text or subtitles, or the original recording as an ' +
+      'MP3. Looking at the preview and copying the write-up to the clipboard stay free.',
+  },
   {
     icon: 'inbox',
     title: 'More meetings, any length',
@@ -142,7 +149,7 @@ const INCLUDED: { icon: IconName; title: string; body: string; needsWriter?: boo
 ];
 
 const FREE_FOREVER =
-  'Recording, transcripts, who-said-what, export and rule-based minutes stay free — with or ' +
+  'Recording, transcripts, who-said-what, copying the write-up and rule-based minutes stay free — with or ' +
   `without a subscription, before or after a trial. ${freeHeadline} ${explainer}`;
 
 export default function PaywallScreen({ navigation, route }: Props) {

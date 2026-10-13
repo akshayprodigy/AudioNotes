@@ -167,7 +167,7 @@ def body(device_limit: int) -> str:
              "happen on the phone, with no network at all.", "d1")}
       {_step("03", "Read the minutes",
              "Decisions, action items and open questions, pulled out of what was actually said "
-             "and ready to export or send on.", "d2")}
+             "and ready to copy or send on.", "d2")}
     </div>
   </div>
 </section>
@@ -237,7 +237,7 @@ def body(device_limit: int) -> str:
           <li><span class="tick">{TICK}</span>Full transcript, separated by speaker</li>
           <li><span class="tick">{TICK}</span>Decisions, actions and open questions</li>
           <li><span class="tick">{TICK}</span>Search every word across your saved meetings</li>
-          <li><span class="tick">{TICK}</span>Export to PDF, Markdown, text and subtitles</li>
+          <li><span class="tick">{TICK}</span>Copy any meeting's write-up to the clipboard</li>
           <li><span class="tick">{TICK}</span>No account, nothing expires</li>
         </ul>
         <a class="btn btn-ghost" href="#how">See how it works</a>
@@ -249,6 +249,8 @@ def body(device_limit: int) -> str:
           <li><span class="tick">{TICK}</span>Everything in Free</li>
           <li><span class="tick">{TICK}</span>As many meetings as you like, of any length &mdash; a
               ninety-minute meeting in one go</li>
+          <li><span class="tick">{TICK}</span>Export: MP3, PDF, SRT, Markdown, text &mdash; the
+              minutes as a document, or the original recording as an MP3</li>
           <li><span class="tick">{TICK}</span>Search by meaning, so a question finds the answer even
               when the words differ</li>
           <li><span class="tick">{TICK}</span>The summary and the minutes written in plain
@@ -287,7 +289,7 @@ def body(device_limit: int) -> str:
             "with no connection at all. Starting a Pro trial adds a larger writer model, about "
             "1.1 GB, and that one is only fetched if you ask for it.")}
       {_faq("What happens if I stop paying?",
-            "Recording, transcripts, speakers, export and the rule-based minutes keep working "
+            "Recording, transcripts, speakers, copying and the rule-based minutes keep working "
             "&mdash; those are the free tier and they do not expire, and every meeting you have "
             "already recorded stays exactly as it is, at whatever length it was. New recordings go "
             "back to the free allowance of five meetings a month, up to an hour each, and search by "
@@ -296,10 +298,10 @@ def body(device_limit: int) -> str:
             "Because the alternative was advertising, and an app that reads your meetings should "
             "not also be selling your attention. Five meetings of up to an hour each is roughly "
             "one a week, enough to see the whole thing work &mdash; transcript, speakers, "
-            "minutes, export &mdash; on your own meetings before deciding. Imports and "
+            "minutes &mdash; on your own meetings before deciding. Imports and "
             "dictations count as meetings. A recording that reaches the hour stops there and is "
             "still transcribed in full, and when the month's five are used your saved meetings "
-            "stay open to listen to, search, edit and share. Nothing you recorded is ever thrown "
+            "stay open to listen to, search, edit and copy. Nothing you recorded is ever thrown "
             "away. The count starts again on the first of the month.")}
       {_faq("Do I need an account?",
             "No. There is nothing to sign up for. Subscribing happens in the app through Google "
