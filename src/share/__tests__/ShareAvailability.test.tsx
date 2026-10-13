@@ -10,8 +10,10 @@ import { useAllowanceStore, isExhausted } from '../../billing/allowance';
 import { db } from '../../db/queries';
 
 /**
- * Sharing is free, for everyone, always: when the monthly Free allowance is spent and when Pro has
- * lapsed. Nothing on this path asks a licence or an allowance anything.
+ * WHO MAY SHARE IS NOT THIS SCREEN'S QUESTION. Every file export is Pro, and the gate is native
+ * (ExportGate.kt, pinned by ExportGateTest and ShareProGate.test.tsx). The screen opens, previews
+ * and offers Share to everybody — with the allowance spent and Pro lapsed too — and asks neither
+ * a licence nor an allowance anything; it only reacts to the module's PRO_REQUIRED refusal.
  */
 jest.mock('../../db/queries');
 jest.mock('../../native/NativeFileExport', () => ({
@@ -34,14 +36,14 @@ jest.mock('react-native-safe-area-context', () => ({
 const flat = (c: any): string =>
   Array.isArray(c) ? c.map(flat).join('') : typeof c === 'string' ? c : c?.props ? flat(c.props.children) : '';
 
-describe('sharing with the allowance spent and Pro lapsed', () => {
+describe('the Share screen with the allowance spent and Pro lapsed', () => {
   let tree: renderer.ReactTestRenderer | undefined;
   afterEach(() => {
     if (tree) act(() => tree!.unmount());
     tree = undefined;
   });
 
-  it('keeps the Share button enabled, builds the document, and shares it', async () => {
+  it('keeps the Share button enabled and leaves the decision to the native module', async () => {
     (db.getSetting as jest.Mock).mockResolvedValue(null);
     useAllowanceStore.setState({
       status: { limit: 5, used: 5, remaining: 0, period: '2026-10', resetsOn: '2026-11-01', paid: false } as any,

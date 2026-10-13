@@ -68,6 +68,10 @@ const mockNativeModules = {
     share: jest.fn(async () => {}),
     render: jest.fn(async () => '# Test meeting\n'),
     copy: jest.fn(async () => {}),
+    exportMp3: jest.fn(async () => {}),
+    cancelMp3: jest.fn(async () => {}),
+    addListener: jest.fn(),
+    removeListeners: jest.fn(),
   },
   Import: {
     pick: jest.fn(async () => null),

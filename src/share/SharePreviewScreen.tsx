@@ -1,12 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, NativeEventEmitter, NativeModules, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import FileExport from '../native/NativeFileExport';
+import Player from '../native/NativePlayer';
 import { Button, IconButton, Segmented, Switch, Txt } from '../components/ui';
 import { radius, s, text as textStyle, useTheme, type Colors } from '../theme';
-import { carriesAttribution, SHARE_FORMATS, type ShareFormat } from './formats';
+import {
+  AUDIO_DELETED_MESSAGE,
+  carriesAttribution,
+  MP3,
+  MP3_HINT,
+  MP3_LABEL,
+  SHARE_FORMATS,
+  type ShareChoice,
+  type ShareFormat,
+} from './formats';
 import { loadAttribution, saveAttribution } from './attribution';
 import { ATTRIBUTION, segmentLine } from './markers';
 
@@ -20,10 +30,15 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Share'>;
  * Markdown, text, PDF and this preview are all written from it). Nothing here describes the
  * document in JavaScript, so the preview cannot say something the file does not.
  *
- * WHAT IT DOES NOT DEPEND ON: a licence, a plan, the Free allowance. Sharing and every format are
- * free for everyone, always — including when the monthly allowance is spent and when Pro has
- * lapsed. Nothing in `src/share/` imports from `src/billing/`, and `ShareAvailability.test.tsx`
+ * WHO MAY SHARE IS NOT DECIDED HERE. Every file export is Pro, and the gate is in the native module
+ * (ExportGate.kt) so a bug in a screen cannot hand a file to a Free user. This screen opens for
+ * everybody and shows the preview — seeing what you would get is the point — and when the module
+ * refuses with PRO_REQUIRED it sends the person to the Pro sheet. It reads a rejection code and
+ * nothing else: nothing in `src/share/` imports from `src/billing/`, and `ShareAvailability.test.tsx`
  * keeps it that way.
+ *
+ * MP3 is the other thing offered here: the original recording, not a document. It has no preview and
+ * no credit line, and it is disabled — with the reason — once the recording has been deleted.
  *
  * What the meeting did not settle is written into the document in words ("Owner not set", "No
  * date given", "Needs a look") and drawn apart here. Nothing is ever filled in to look complete.
@@ -34,7 +49,13 @@ export default function SharePreviewScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const st = useMemo(() => makeStyles(colors), [colors]);
 
-  const [format, setFormat] = useState<ShareFormat>('pdf');
+  const [choice, setChoice] = useState<ShareChoice>('pdf');
+  const isMp3 = choice === MP3;
+  // The document formats only: the preview and the credit line are not defined for a recording.
+  const format: ShareFormat = choice === MP3 ? 'pdf' : choice;
+  // null until the file has been looked for. The MP3 row waits for a yes; it is never offered on a guess.
+  const [hasAudio, setHasAudio] = useState<boolean | null>(null);
+  const [progress, setProgress] = useState<number | null>(null);
   const [attribution, setAttribution] = useState(false);
   const [remembered, setRemembered] = useState(false);
   const [shown, setShown] = useState<string | null>(null);
@@ -56,10 +77,27 @@ export default function SharePreviewScreen({ navigation, route }: Props) {
     };
   }, []);
 
-  const stamped = attribution && carriesAttribution(format);
+  const stamped = attribution && carriesAttribution(choice);
 
   useEffect(() => {
-    if (!remembered) return;
+    let alive = true;
+    Player.hasAudio(meetingId)
+      .then(has => alive && setHasAudio(has))
+      .catch(() => alive && setHasAudio(false));
+    return () => {
+      alive = false;
+    };
+  }, [meetingId]);
+
+  useEffect(() => {
+    const emitter = new NativeEventEmitter(NativeModules.FileExport);
+    const sub = emitter.addListener('onMp3Progress', (e: { fraction: number }) => setProgress(e.fraction));
+    return () => sub.remove();
+  }, []);
+
+  // A recording needs no preview. The effect still runs when the screen opens on a document.
+  useEffect(() => {
+    if (!remembered || isMp3) return;
     const mine = ++seq.current;
     setShown(null);
     setFailed(false);
@@ -70,7 +108,7 @@ export default function SharePreviewScreen({ navigation, route }: Props) {
       .catch(() => {
         if (mine === seq.current) setFailed(true);
       });
-  }, [meetingId, format, stamped, remembered]);
+  }, [meetingId, format, stamped, remembered, isMp3]);
 
   const onToggle = useCallback(() => {
     const next = !attribution;
@@ -81,21 +119,38 @@ export default function SharePreviewScreen({ navigation, route }: Props) {
   const onShare = useCallback(async () => {
     setSharing(true);
     try {
-      await FileExport.shareWith(meetingId, format, stamped);
+      if (isMp3) {
+        setProgress(0);
+        await FileExport.exportMp3(meetingId);
+      } else {
+        await FileExport.shareWith(meetingId, format, stamped);
+      }
     } catch (e: any) {
-      Alert.alert('Could not share', String(e?.message ?? e));
+      if (e?.code === 'PRO_REQUIRED') {
+        // The native gate said no: this is a Pro feature. Show the Pro sheet, not an error.
+        navigation.navigate('Paywall', { meetingId });
+      } else if (e?.code === 'AUDIO_DELETED') {
+        setHasAudio(false);
+      } else if (e?.code !== 'cancelled') {
+        Alert.alert('Could not share', String(e?.message ?? e));
+      }
     } finally {
       setSharing(false);
+      setProgress(null);
     }
-  }, [meetingId, format, stamped]);
+  }, [meetingId, format, stamped, isMp3, navigation]);
+
+  const onCancel = useCallback(() => {
+    FileExport.cancelMp3().catch(() => {});
+  }, []);
 
   const lines = useMemo(() => (shown === null ? [] : shown.split('\n')), [shown]);
   const hasOpen = useMemo(
     () => lines.some(l => segmentLine(l, format === 'pdf').some(g => g.kind === 'unresolved')),
     [lines, format],
   );
-  const hint = SHARE_FORMATS.find(f => f.key === format)?.hint ?? '';
-  const ready = shown !== null || failed;
+  const hint = isMp3 ? MP3_HINT : (SHARE_FORMATS.find(f => f.key === format)?.hint ?? '');
+  const ready = isMp3 ? hasAudio === true : shown !== null || failed;
 
   return (
     <View style={[st.root, { paddingTop: insets.top + s(8), paddingBottom: insets.bottom + s(12) }]}>
@@ -112,9 +167,25 @@ export default function SharePreviewScreen({ navigation, route }: Props) {
       <View style={st.pad}>
         <Segmented
           items={SHARE_FORMATS.map(f => ({ key: f.key, label: f.label }))}
-          value={format}
-          onChange={k => setFormat(k as ShareFormat)}
+          value={choice}
+          onChange={k => setChoice(k as ShareFormat)}
         />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={MP3_LABEL}
+          accessibilityState={{ selected: isMp3, disabled: hasAudio !== true }}
+          disabled={hasAudio !== true}
+          onPress={() => setChoice(MP3)}
+          style={[st.mp3, isMp3 && st.mp3On, hasAudio !== true && st.mp3Off]}>
+          <Txt variant={isMp3 ? 'chip' : 'chipSoft'} color={isMp3 ? colors.primaryDeep : colors.inkDim}>
+            {MP3_LABEL}
+          </Txt>
+        </Pressable>
+        {hasAudio === false ? (
+          <Txt variant="chipSoft" color={colors.warningDeep}>
+            {AUDIO_DELETED_MESSAGE}
+          </Txt>
+        ) : null}
         <Txt variant="chipSoft" color={colors.inkSoft}>
           {hint}
         </Txt>
@@ -125,7 +196,11 @@ export default function SharePreviewScreen({ navigation, route }: Props) {
         contentContainerStyle={st.preview}
         showsVerticalScrollIndicator
         accessibilityLabel="Preview of what will be shared">
-        {failed ? (
+        {isMp3 ? (
+          <Txt variant="body" color={colors.inkSoft}>
+            This sends the recording itself, as an MP3 — what was said, not the minutes.
+          </Txt>
+        ) : failed ? (
           <Txt variant="body" color={colors.inkSoft}>
             The preview could not be made. You can still share.
           </Txt>
@@ -155,19 +230,30 @@ export default function SharePreviewScreen({ navigation, route }: Props) {
           <Pressable
             style={st.flex}
             accessible={false}
-            disabled={!carriesAttribution(format)}
+            disabled={!carriesAttribution(choice)}
             onPress={onToggle}
             testID="credit-label">
             <Txt variant="sub">Add a small credit at the bottom</Txt>
             <Txt variant="chipSoft" color={colors.inkSoft}>
-              {carriesAttribution(format)
+              {carriesAttribution(choice)
                 ? `“${ATTRIBUTION}”, once, after everything else.`
-                : 'Subtitle files never carry it.'}
+                : isMp3
+                  ? 'A recording never carries it.'
+                  : 'Subtitle files never carry it.'}
             </Txt>
           </Pressable>
-          {carriesAttribution(format) ? <Switch on={attribution} onToggle={onToggle} /> : null}
+          {carriesAttribution(choice) ? <Switch on={attribution} onToggle={onToggle} /> : null}
         </View>
-        <Button label="Share" icon="share" full disabled={sharing || !ready} onPress={onShare} />
+        {isMp3 && progress !== null ? (
+          <>
+            <Txt variant="chipSoft" color={colors.inkSoft}>
+              {`Making the MP3… ${Math.round(progress * 100)}%`}
+            </Txt>
+            <Button label="Cancel" full onPress={onCancel} />
+          </>
+        ) : (
+          <Button label="Share" icon="share" full disabled={sharing || !ready} onPress={onShare} />
+        )}
       </View>
     </View>
   );
@@ -215,5 +301,15 @@ function makeStyles(c: Colors) {
     preview: { padding: s(14), gap: s(2) },
     legend: { paddingHorizontal: s(20), marginBottom: s(8) },
     attr: { flexDirection: 'row', alignItems: 'center', gap: s(12) },
+    mp3: {
+      alignItems: 'center',
+      paddingVertical: s(10),
+      borderRadius: radius.ctl,
+      borderWidth: 1,
+      borderColor: c.line,
+      backgroundColor: c.cardAlt,
+    },
+    mp3On: { backgroundColor: c.card },
+    mp3Off: { opacity: 0.5 },
   });
 }

@@ -2,6 +2,9 @@
 import type { TurboModule } from 'react-native';
 import { TurboModuleRegistry } from 'react-native';
 
+// EVERY FILE EXPORT IS PRO: share, shareWith and exportMp3 reject with code 'PRO_REQUIRED' for a
+// Free install — enforced natively (ExportGate.kt), so a screen bug cannot hand a file to a Free
+// user. render, copy and preview are not exports and stay free.
 export interface Spec extends TurboModule {
   // Render a meeting and hand it to the OS share sheet.
   //
@@ -27,6 +30,15 @@ export interface Spec extends TurboModule {
   // return the file's own body byte for byte; 'pdf' returns the words of its pages in order. The
   // SAME path as shareWith, so the preview cannot say something the file does not.
   preview(meetingId: string, format: 'md' | 'txt' | 'srt' | 'pdf', attribution: boolean): Promise<string>;
+
+  // The meeting's ORIGINAL recording as a 64 kbps mono MP3, handed to the share sheet. Encoded on the
+  // phone by LAME in fixed chunks, so a long meeting never sits in memory. Emits 'onMp3Progress'
+  // { fraction: 0..1 }. Rejects with code 'AUDIO_DELETED' (and a sentence to show) when the recording
+  // is gone, and 'cancelled' after cancelMp3.
+  exportMp3(meetingId: string): Promise<void>;
+  cancelMp3(): Promise<void>;
+  addListener(eventName: string): void;
+  removeListeners(count: number): void;
 
   // Put text on the clipboard. Native because React Native core dropped its Clipboard module and
   // the project carries no third-party dependency for it.
