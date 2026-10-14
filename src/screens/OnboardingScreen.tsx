@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -9,7 +9,7 @@ import Icon, { type IconName } from '../components/Icon';
 import Mascot from '../components/Mascot';
 import { Button, Pop, ProgressBar, Raised, SoftButton, Switch, Txt } from '../components/ui';
 import { downloadLabel, downloadPct } from './downloadLabel';
-import { runDownloads, useDownloadStore } from '../setup/essentialDownload';
+import { autoStartDownloads, runDownloads, useDownloadStore } from '../setup/essentialDownload';
 import { SAMPLE_ID } from '../sample/sampleId';
 import { seedSample } from '../sample/seedSample';
 import FirstRecordingNote from '../setup/FirstRecordingNote';
@@ -181,6 +181,32 @@ export default function OnboardingScreen({ navigation }: Props) {
     fit !== null && pendingBytes > 0 && !spaceFits(pendingBytes, fit.freeBytes)
       ? spaceReason(proChosen ? 'the Pro models' : 'the speech models', pendingBytes, fit.freeBytes)
       : null;
+  // The download starts by itself as soon as the catalog and the phone's fit are known. It is not
+  // a choice: skipping it only ever led to an error after the first recording.
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (autoStarted.current || status !== 'intro' || !fit || fit.cpuReason || spaceShort) return;
+    const todo = essentials.filter(m => !m.installed);
+    if (todo.length === 0) return;
+    autoStarted.current = true;
+    autoStartDownloads(todo);
+    setStatus('downloading');
+  }, [essentials, fit, status, spaceShort]);
+
+  // The run lives outside this screen, so its end is read from the store.
+  const wasRunning = useRef(false);
+  useEffect(() => {
+    if (run.running) wasRunning.current = true;
+    else if (wasRunning.current && status === 'downloading') {
+      wasRunning.current = false;
+      if (run.failed) setStatus('failed');
+      else {
+        db.setSetting('onboarded', '1').catch(() => {});
+        setStatus('done');
+      }
+    }
+  }, [run.running, run.failed, status]);
+
   // More options is for what is relevant: a phone that can run the writer, or a subscriber.
   const hasMore = (writer.length > 0 && !writerBlocked) || proChosen;
 
@@ -236,10 +262,10 @@ export default function OnboardingScreen({ navigation }: Props) {
       <View style={[st.root, st.center, pad]}>
         <Mascot mood="thinking" size={sv(140)} />
         <Txt variant="display" style={st.mt}>
-          Getting things ready
+          Preparing your app
         </Txt>
         <Txt variant="meta" color={colors.inkDim} style={st.sub}>
-          Downloading once. After this, recording and transcription never need the network.
+          Setting up the on-device speech models, one time only. Keep the app open; recording works offline after this.
         </Txt>
         <View style={st.progress}>
           <View style={st.progressHead}>
@@ -532,9 +558,6 @@ export default function OnboardingScreen({ navigation }: Props) {
             ) : null}
           </>
         ) : null}
-        <View style={st.skipRow}>
-          <SoftButton label="Later, from Settings" onPress={skip} />
-        </View>
       </Pop>
     </ScrollView>
   );

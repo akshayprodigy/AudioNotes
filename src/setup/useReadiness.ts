@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import ModelManager from '../native/NativeModelManager';
-import { useDownloadStore, runDownloads } from './essentialDownload';
+import { useDownloadStore, runDownloads, autoStartDownloads } from './essentialDownload';
 import { essentialRows, readiness, type Readiness, type SetupRow } from './readiness';
-import type { DeviceFit } from '../screens/deviceFit';
+import { spaceFits, type DeviceFit } from '../screens/deviceFit';
 
 /** What a screen showing the readiness card needs: the state, the phone's fit, and the one action. */
 export type Setup = {
@@ -47,6 +47,15 @@ export function useSetupReadiness(): Setup {
   useEffect(() => {
     if (!run.running) reload();
   }, [run.running, reload]);
+
+  // A launch after a skipped, stopped or interrupted first download carries it on by itself.
+  useEffect(() => {
+    if (!fit || fit.cpuReason) return;
+    const pending = rows.filter(r => !r.installed);
+    if (pending.length === 0) return;
+    if (!spaceFits(pending.reduce((a, r) => a + r.sizeBytes, 0), fit.freeBytes)) return;
+    autoStartDownloads(pending);
+  }, [rows, fit]);
 
   const start = useCallback(() => runDownloads(rows.filter(r => !r.installed)), [rows]);
 

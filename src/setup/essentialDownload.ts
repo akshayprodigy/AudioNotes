@@ -56,6 +56,7 @@ function listen() {
 /** Test seam: forget everything, including a run that never settled. */
 export function resetDownloadsForTest() {
   inFlight = null;
+  autoTried = false;
   useDownloadStore.setState(IDLE);
 }
 
@@ -93,4 +94,21 @@ export function runDownloads(queue: RunRow[]): Promise<boolean> {
     }
   })();
   return inFlight;
+}
+
+let autoTried = false;
+
+/**
+ * Start the essential download without being asked, once per app process.
+ *
+ * First run used to wait for a tap on a button that could be skipped, and a person who skipped
+ * recorded a meeting and then met an error. The download is not a choice: nothing the app
+ * promises works without it. So the app starts it itself, the way a game fetches its data after
+ * install, and a later launch picks up a stopped one. Once per process, so a download that failed
+ * is not retried in a loop behind the person's back; the Retry button is how it goes again.
+ */
+export function autoStartDownloads(queue: RunRow[]): Promise<boolean> | null {
+  if (autoTried || inFlight || queue.length === 0) return null;
+  autoTried = true;
+  return runDownloads(queue);
 }

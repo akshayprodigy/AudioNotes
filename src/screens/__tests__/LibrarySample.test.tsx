@@ -148,17 +148,18 @@ describe('the readiness card in the Library', () => {
     ]);
 
   beforeEach(() => {
+    resetDownloadsForTest();
     (ModelManager as any).deviceFit = jest.fn(async () => JSON.stringify({ cpuReason: null, freeBytes: 10_000 * MB }));
   });
 
-  it('says how far an interrupted download got and resumes it', async () => {
+  it('carries on an interrupted download by itself, saying how far it got', async () => {
     (ModelManager.list as jest.Mock).mockResolvedValue(catalog(30 * MB));
+    (ModelManager.download as jest.Mock).mockImplementation(() => new Promise(() => {}));
     (db.listMeetings as jest.Mock).mockResolvedValue([meeting('a')]);
     const tree = await show();
-    expect(texts(tree)).toContain('Finish setup — 28% of 114 MB downloaded');
-    await act(async () => tree.root.findByProps({ accessibilityLabel: 'Resume setup' }).props.onPress());
     // Only what is not installed, in catalog order: native resumes the partial file.
-    expect((ModelManager.download as jest.Mock).mock.calls.map(c => c[0])).toEqual(['asr', 'diar']);
+    expect((ModelManager.download as jest.Mock).mock.calls.map(c => c[0])).toEqual(['asr']);
+    expect(texts(tree)).toContain('Downloading — 28% of 114 MB');
     await act(async () => tree.unmount());
   });
 

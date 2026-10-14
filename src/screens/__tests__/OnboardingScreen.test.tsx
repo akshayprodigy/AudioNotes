@@ -77,12 +77,16 @@ beforeEach(() => {
 });
 
 describe('the first screen leads with value', () => {
-  it('has exactly one primary action, and its label carries the ESSENTIAL download size only', async () => {
+  it('starts the essential download by itself and shows "Preparing your app", with no button to skip it', async () => {
+    let release!: () => void;
+    (ModelManager.download as jest.Mock).mockImplementation(() => new Promise<void>(r => { release = r; }));
     const tree = await show();
-    const primaries = tree.root.findAllByType(Button);
-    expect(primaries).toHaveLength(1);
+    expect(texts(tree)).toContain('Preparing your app');
     // 2 + 60 + 52 MB; the 1.1 GB writer is not in it.
-    expect(primaries[0].props.label).toBe('Set up private recording — 114 MB');
+    expect((ModelManager.download as jest.Mock).mock.calls.map(c => c[0])).toEqual(['vad']);
+    expect(tree.root.findAllByType(Button)).toHaveLength(0);
+    expect(texts(tree).some(x => /Later, from Settings|Continue without it/.test(x))).toBe(false);
+    release();
     await act(async () => tree.unmount());
   });
 
@@ -92,6 +96,8 @@ describe('the first screen leads with value', () => {
   });
 
   it('keeps an accessible Pro entry in the header that opens the existing Pro screen', async () => {
+    setNative(catalog({ installed: true }));
+    setNative(catalog({ installed: true }));
     const tree = await show();
     const pro = tree.root.findByProps({ accessibilityLabel: 'See Verbale Pro' });
     expect(pro.props.accessibilityRole).toBe('button');
@@ -101,6 +107,7 @@ describe('the first screen leads with value', () => {
   });
 
   it('opens the sample with no download', async () => {
+    setNative(catalog({ installed: true }));
     const tree = await show();
     await pressLabel(tree, 'See a sample meeting first');
     expect(seedSample).toHaveBeenCalledTimes(1);
@@ -111,15 +118,16 @@ describe('the first screen leads with value', () => {
 
   it('says so, and still offers setup, when the sample cannot be opened', async () => {
     (seedSample as jest.Mock).mockRejectedValueOnce(new Error('disk'));
+    setNative(catalog({ installed: true }));
     const tree = await show();
     await pressLabel(tree, 'See a sample meeting first');
     expect(nav.navigate).not.toHaveBeenCalledWith('Meeting', expect.anything());
     expect(texts(tree)).toContain('The sample could not be opened. Setting up still works.');
-    expect(tree.root.findAllByType(Button)).toHaveLength(1);
     await act(async () => tree.unmount());
   });
 
   it('hides advanced choices behind "More options", on a phone that can run the writer', async () => {
+    setNative(catalog({ installed: true }));
     const tree = await show();
     expect(texts(tree).some(x => /Write the minutes in plain English/.test(x))).toBe(false);
     await act(async () => tree.root.findByProps({ accessibilityLabel: 'More options' }).props.onPress());
@@ -155,9 +163,8 @@ describe('the first screen leads with value', () => {
 });
 
 describe('setup, and what comes after', () => {
-  it('downloads only the essentials, then offers "Start recording", which opens the recorder', async () => {
+  it('downloads only the essentials on its own, then offers "Start recording", which opens the recorder', async () => {
     const tree = await show();
-    await pressLabel(tree, 'Set up private recording — 114 MB');
     expect((ModelManager.download as jest.Mock).mock.calls.map(c => c[0])).toEqual(['vad', 'asr', 'diar']);
     expect(texts(tree)).toContain('All set');
 
@@ -169,7 +176,6 @@ describe('setup, and what comes after', () => {
 
   it('explains English and the Free allowance before the first recording', async () => {
     const tree = await show();
-    await pressLabel(tree, 'Set up private recording — 114 MB');
     expect(texts(tree)).toContain(`Verbale works in English. ${freeHeadline}`);
     await act(async () => tree.unmount());
   });
@@ -178,7 +184,6 @@ describe('setup, and what comes after', () => {
     (Licence.status as jest.Mock).mockResolvedValue({ plan: 'pro', state: 'active', paid: true, expiresAt: 0, account: null, lapsedCopy: '' });
     setNative(catalog({}).map(r => (r.id === 'llm' ? { ...r, unsupportedReason: 'Needs 4 GB.' } : r)));
     const tree = await show();
-    await pressLabel(tree, 'Set up private recording — 114 MB');
     expect(texts(tree)).toContain('Verbale works in English.');
     expect(texts(tree).some(x => x.includes(freeHeadline))).toBe(false);
     await act(async () => tree.unmount());
@@ -199,7 +204,6 @@ describe('setup, and what comes after', () => {
   it('a failed essential download is never a dead end: retry resumes, or continue to the Library', async () => {
     (ModelManager.download as jest.Mock).mockRejectedValueOnce(new Error('offline'));
     const tree = await show();
-    await pressLabel(tree, 'Set up private recording — 114 MB');
     expect(texts(tree)).toContain('That download stopped');
     expect(texts(tree).some(x => x.includes('Voice detection'))).toBe(true);
 
@@ -211,17 +215,8 @@ describe('setup, and what comes after', () => {
     resetDownloadsForTest();
     (ModelManager.download as jest.Mock).mockRejectedValueOnce(new Error('offline'));
     const tree2 = await show();
-    await pressLabel(tree2, 'Set up private recording — 114 MB');
     await pressLabel(tree2, 'Continue without it');
     expect(nav.replace).toHaveBeenCalledWith('Library');
     await act(async () => tree2.unmount());
-  });
-
-  it('"Later, from Settings" goes to the Library without downloading', async () => {
-    const tree = await show();
-    await pressLabel(tree, 'Later, from Settings');
-    expect(nav.replace).toHaveBeenCalledWith('Library');
-    expect(ModelManager.download).not.toHaveBeenCalled();
-    await act(async () => tree.unmount());
   });
 });
