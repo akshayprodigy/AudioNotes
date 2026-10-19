@@ -28,6 +28,7 @@ import {
   restorePlayPurchase,
 } from '../billing/subscription';
 import { trialLength, trialTerms } from '../billing/trialTerms';
+import { proHighlights } from '../billing/proHighlights';
 import { purchaseNotice } from '../billing/purchaseNotice';
 import { explainer, freeHeadline } from '../billing/allowanceCopy';
 import type { PlayPlan } from '../native/NativeBilling';
@@ -183,8 +184,8 @@ export default function PaywallScreen({ navigation, route }: Props) {
   // Bytes, not a percentage. See downloadLabel: on a 1.1 GB model the percentage barely
   // moves, and a still number reads as a stalled download.
   const [dl, setDl] = useState<{ downloaded: number; total: number } | null>(null);
-  // The trial's confirmation is the hero line at the top of the scroll, and the button that starts
-  // it is near the bottom. Without this the screen answers somewhere the reader is not looking.
+  // The trial's download progress shows in the pinned dock; the scroll goes back to the top so the
+  // highlights and the headline ("You are on Pro") are what the buyer sees next to it.
   const scroller = useRef<ScrollView>(null);
 
   const load = useCallback(async () => {
@@ -350,13 +351,18 @@ export default function PaywallScreen({ navigation, route }: Props) {
   /** The one line under the title, which is the only line most people will read. */
   const headline = bought
     ? 'You are on Pro. Everything below is already on.'
-    : 'More meetings with no length limit, and minutes the phone writes for you in sentences.';
+    : 'Everything Free does, without the limits.';
 
+  // With no trial to lead with, the button carries the price and how often it is charged, so the
+  // one thing a buyer reads before Play's sheet is the whole cost.
+  const per = chosen?.period === 'P1Y' ? ' a year' : chosen?.period === 'P1M' ? ' a month' : '';
   const priceLabel = chosenFree
     ? `Try it free for ${chosenFree}`
     : playCost
-      ? `Subscribe — ${playCost}`
+      ? `Subscribe — ${playCost}${per}`
       : 'Subscribe';
+
+  const highlights = proHighlights(route.params?.from, writerBlocked === null);
 
   return (
     <View style={[st.root, { paddingTop: insets.top + s(8) }]}>
@@ -366,22 +372,36 @@ export default function PaywallScreen({ navigation, route }: Props) {
 
       <ScrollView
         ref={scroller}
+        style={st.flex}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[st.body, { paddingBottom: insets.bottom + s(28) }]}>
-        <View style={st.hero}>
-          <Pop>
-            <Mascot mood={bought ? 'happy' : 'idle'} size={sv(112)} />
-          </Pop>
-          <Pop index={1} style={st.heroText}>
-            <Txt variant="display" style={st.centerText}>
-              Verbale Pro
-            </Txt>
-            <Txt variant="body" color={colors.inkSoft} style={[st.centerText, st.heroSub]}>
+        contentContainerStyle={st.body}>
+        <Pop style={st.hero}>
+          <Mascot mood={bought ? 'happy' : 'idle'} size={sv(56)} />
+          <View style={st.flex}>
+            <Txt variant="display">Verbale Pro</Txt>
+            <Txt variant="sub" color={colors.inkSoft}>
               {headline}
             </Txt>
-          </Pop>
-        </View>
+          </View>
+        </Pop>
 
+        {/* The pitch for somebody who reads nothing else: three lines, all above the fold. */}
+        <Pop index={1} style={st.highlights}>
+          {highlights.map(h => (
+            <View key={h.key} style={st.highlight} testID={`highlight-${h.key}`}>
+              <View style={[st.highlightIcon, { backgroundColor: colors.primarySoft }]}>
+                <Icon name={h.icon} size={s(18)} color={colors.primary} strokeWidth={2.4} />
+              </View>
+              <Txt variant="bodyBlack" style={st.flex}>
+                {h.text}
+              </Txt>
+            </View>
+          ))}
+        </Pop>
+
+        <Txt variant="overlineSm" color={colors.inkFaint} style={st.allTitle}>
+          EVERYTHING IN PRO
+        </Txt>
         <View style={st.list}>
           {INCLUDED.map((f, i) => {
             const off = f.needsWriter === true && writerBlocked !== null;
@@ -421,6 +441,52 @@ export default function PaywallScreen({ navigation, route }: Props) {
           </View>
         </Pop>
 
+        {/* Restore and sign-in are for the few who already paid. They stay findable, below the
+            list, and out of the pinned dock, which is for people deciding. */}
+        {!bought ? (
+          <View style={st.after}>
+            {playCan && !bought ? (
+              <SoftButton
+                icon="download"
+                label={restoring ? 'Checking…' : 'Restore purchase'}
+                onPress={onRestore}
+                disabled={busy !== null || restoring}
+              />
+            ) : null}
+
+            {/*
+              The way in for somebody who already paid — on the website, or on a phone they no
+              longer have. Until this existed, the one screen in the app that explains Pro gave
+              them nothing to do about it but go hunting through Settings, which is exactly where
+              the product review said the purchase had been hiding all along.
+
+              Collapsed by default: this screen is for people deciding, and a login form at the
+              top of it reads as a wall. It only has to be findable by the minority who need it.
+            */}
+            {!ent?.licence?.paid ? (
+              <View style={st.signIn}>
+                {showSignIn ? (
+                  <SignInForm onSignedIn={res => { if (res.paid) navigation.goBack(); }} />
+                ) : (
+                  <SoftButton
+                    icon="lock"
+                    label="Subscribed on the web? Sign in"
+                    onPress={() => setShowSignIn(true)}
+                  />
+                )}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+      </ScrollView>
+
+      {/* Pinned: the plan, the button and the terms never scroll away. Play's policy wants the
+          price and the trial terms beside the offer, and a buyer should not have to hunt for it. */}
+      <View
+        style={[
+          st.dock,
+          { backgroundColor: colors.card, borderTopColor: colors.line, paddingBottom: insets.bottom + s(12) },
+        ]}>
         {dl !== null ? (
           <View style={st.dl}>
             <Txt variant="chip" color={colors.inkSoft}>
@@ -429,133 +495,94 @@ export default function PaywallScreen({ navigation, route }: Props) {
             <ProgressBar pct={downloadPct(dl.downloaded, dl.total)} color={colors.primary} track={colors.cardAlt} />
           </View>
         ) : null}
-
-        <View style={st.cta}>
-          {bought ? (
-            <SoftButton icon="check" label="Close" onPress={() => navigation.goBack()} />
-          ) : (
-            <>
-              {playCan ? (
-                <>
-                  {plans.length > 1 ? (
-                    <View style={st.plans}>
-                      {plans.map(pl => {
-                        const ref = referencePrice(pl, plans);
-                        const on = pl.basePlanId === chosenPlan;
-                        return (
-                          <Pressable
-                            key={pl.basePlanId}
-                            accessibilityRole="radio"
-                            accessibilityState={{ selected: on }}
-                            accessibilityLabel={
-                              `${pl.period === 'P1Y' ? 'Yearly' : 'Monthly'}, ${pl.price ?? ''}` +
-                              (ref ? `, was ${ref.was}, saving ${ref.savedPercent} percent` : '')
-                            }
-                            onPress={() => {
-                              setChosenPlan(pl.basePlanId);
-                              setPlayCost(pl.price);
-                            }}
-                            style={[st.plan, on && st.planOn]}>
-                            <Txt variant="chip" color={on ? colors.ink : colors.inkFaint}>
-                              {pl.period === 'P1Y' ? 'Yearly' : 'Monthly'}
-                            </Txt>
-                            <Txt variant="body" color={colors.ink}>
-                              {pl.price ?? '—'}
-                            </Txt>
-                            {trialLength(pl) ? (
-                              <Txt variant="chip" color={colors.primary}>
-                                {trialLength(pl)} free
-                              </Txt>
-                            ) : null}
-                            {/* Struck through ONLY from referencePrice, which draws on Play's own
-                                full price or on twelve times the monthly rate. Never a constant:
-                                a "was" nobody was charged is a fabricated anchor. */}
-                            {ref ? (
-                              <Txt variant="chip" color={colors.inkFaint}>
-                                <Txt variant="chip" color={colors.inkFaint} style={st.wasPrice}>
-                                  {ref.was}
-                                </Txt>
-                                {ref.savedPercent > 0 ? `  save ${ref.savedPercent}%` : ''}
-                              </Txt>
-                            ) : null}
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  ) : null}
-                  <Button
-                    label={busy === 'buy' ? 'One moment…' : priceLabel}
-                    icon="check"
-                    onPress={onBuy}
-                    disabled={busy !== null}
-                    full
-                  />
-                  {terms ? (
-                    <Txt variant="chip" color={colors.inkFaint} style={st.note}>
-                      {terms}
-                    </Txt>
-                  ) : null}
-                  {!bought && !writerInstalled && writerMb > 0 ? (
-                    <Txt variant="chip" color={colors.inkFaint} style={st.note}>
-                      Pro downloads a {writerMb} MB model once you start, so start on wifi.
-                    </Txt>
-                  ) : null}
-                  {spaceShort ? (
-                    <Txt variant="chip" color={colors.warning} style={st.note}>
-                      {spaceShort}
-                    </Txt>
-                  ) : null}
-                  {/* A blank where a price should be is the thing people distrust most on a paid
-                      screen, so the absence is explained instead of hidden. */}
-                  {!playCost && priceAsked ? (
-                    <Txt variant="chip" color={colors.inkFaint} style={st.note}>
-                      The Play Store has not sent the price yet — you will see it, and be able to
-                      change your mind, before anything is charged.
-                    </Txt>
-                  ) : null}
-                </>
-              ) : (
-                <Txt variant="chip" color={colors.inkFaint} style={st.note}>
-                  This install cannot buy through the Play Store. If you already subscribed
-                  elsewhere, sign in below and it will be picked up here.
-                </Txt>
-              )}
-
-              {playCan && !bought ? (
-                <SoftButton
-                  icon="download"
-                  label={restoring ? 'Checking…' : 'Restore purchase'}
-                  onPress={onRestore}
-                  disabled={busy !== null || restoring}
-                />
-              ) : null}
-
-              {/*
-                The way in for somebody who already paid — on the website, or on a phone they no
-                longer have. Until this existed, the one screen in the app that explains Pro gave
-                them nothing to do about it but go hunting through Settings, which is exactly where
-                the product review said the purchase had been hiding all along.
-
-                Collapsed by default: this screen is for people deciding, and a login form at the
-                top of it reads as a wall. It only has to be findable by the minority who need it.
-              */}
-              {!ent?.licence?.paid ? (
-                <View style={st.signIn}>
-                  {showSignIn ? (
-                    <SignInForm onSignedIn={res => { if (res.paid) navigation.goBack(); }} />
-                  ) : (
-                    <SoftButton
-                      icon="lock"
-                      label="Subscribed on the web? Sign in"
-                      onPress={() => setShowSignIn(true)}
-                    />
-                  )}
-                </View>
-              ) : null}
-            </>
-          )}
-        </View>
-      </ScrollView>
+        {bought ? (
+          <SoftButton icon="check" label="Close" onPress={() => navigation.goBack()} />
+        ) : playCan ? (
+          <>
+            {plans.length > 1 ? (
+              <View style={st.plans}>
+                {plans.map(pl => {
+                  const ref = referencePrice(pl, plans);
+                  const on = pl.basePlanId === chosenPlan;
+                  return (
+                    <Pressable
+                      key={pl.basePlanId}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: on }}
+                      accessibilityLabel={
+                        `${pl.period === 'P1Y' ? 'Yearly' : 'Monthly'}, ${pl.price ?? ''}` +
+                        (ref ? `, was ${ref.was}, saving ${ref.savedPercent} percent` : '')
+                      }
+                      onPress={() => {
+                        setChosenPlan(pl.basePlanId);
+                        setPlayCost(pl.price);
+                      }}
+                      style={[st.plan, on && st.planOn]}>
+                      <Txt variant="chip" color={on ? colors.ink : colors.inkFaint}>
+                        {pl.period === 'P1Y' ? 'Yearly' : 'Monthly'}
+                      </Txt>
+                      <Txt variant="body" color={colors.ink}>
+                        {pl.price ?? '—'}
+                      </Txt>
+                      {trialLength(pl) ? (
+                        <Txt variant="chip" color={colors.primary}>
+                          {trialLength(pl)} free
+                        </Txt>
+                      ) : null}
+                      {/* Struck through ONLY from referencePrice, which draws on Play's own
+                          full price or on twelve times the monthly rate. Never a constant:
+                          a "was" nobody was charged is a fabricated anchor. */}
+                      {ref ? (
+                        <Txt variant="chip" color={colors.inkFaint}>
+                          <Txt variant="chip" color={colors.inkFaint} style={st.wasPrice}>
+                            {ref.was}
+                          </Txt>
+                          {ref.savedPercent > 0 ? `  save ${ref.savedPercent}%` : ''}
+                        </Txt>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+            <Button
+              label={busy === 'buy' ? 'One moment…' : priceLabel}
+              icon="check"
+              onPress={onBuy}
+              disabled={busy !== null}
+              full
+            />
+            {terms ? (
+              <Txt variant="chip" color={colors.inkFaint} style={st.note}>
+                {terms}
+              </Txt>
+            ) : null}
+            {!bought && !writerInstalled && writerMb > 0 ? (
+              <Txt variant="chip" color={colors.inkFaint} style={st.note}>
+                Pro downloads a {writerMb} MB model once you start, so start on wifi.
+              </Txt>
+            ) : null}
+            {spaceShort ? (
+              <Txt variant="chip" color={colors.warning} style={st.note}>
+                {spaceShort}
+              </Txt>
+            ) : null}
+            {/* A blank where a price should be is the thing people distrust most on a paid
+                screen, so the absence is explained instead of hidden. */}
+            {!playCost && priceAsked ? (
+              <Txt variant="chip" color={colors.inkFaint} style={st.note}>
+                The Play Store has not sent the price yet — you will see it, and be able to
+                change your mind, before anything is charged.
+              </Txt>
+            ) : null}
+          </>
+        ) : (
+          <Txt variant="chip" color={colors.inkFaint} style={st.note}>
+            This install cannot buy through the Play Store. If you already subscribed elsewhere, use
+            "Subscribed on the web? Sign in" above and it will be picked up here.
+          </Txt>
+        )}
+      </View>
     </View>
   );
 }
@@ -565,14 +592,19 @@ function makeStyles(c: Colors) {
     root: { flex: 1, backgroundColor: c.canvas },
     flex: { flex: 1 },
     nav: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: s(20) },
-    body: { paddingHorizontal: s(20), paddingTop: s(4) },
-    hero: { alignItems: 'center', gap: s(6) },
-    // Stretched rather than centred, for the same reason onboarding's hero is: a shrink-to-fit
-    // block gets measured at one width and laid out at another, and the subtitle clips.
-    heroText: { alignSelf: 'stretch' },
-    heroSub: { marginTop: s(6) },
-    centerText: { textAlign: 'center' },
-    list: { gap: s(10), marginTop: s(20) },
+    body: { paddingHorizontal: s(20), paddingTop: s(4), paddingBottom: s(24) },
+    hero: { flexDirection: 'row', alignItems: 'center', gap: s(14) },
+    highlights: { marginTop: s(18), gap: s(12) },
+    highlight: { flexDirection: 'row', alignItems: 'center', gap: s(12) },
+    highlightIcon: {
+      width: s(36),
+      height: s(36),
+      borderRadius: radius.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    allTitle: { marginTop: s(26) },
+    list: { gap: s(10), marginTop: s(10) },
     feature: { flexDirection: 'row', alignItems: 'flex-start', gap: s(14), padding: s(16) },
     featureIcon: {
       width: s(44),
@@ -590,31 +622,37 @@ function makeStyles(c: Colors) {
       borderRadius: radius.xl,
       padding: s(16),
     },
-    dl: { marginTop: s(16), gap: s(8) },
-    cta: { marginTop: s(20), gap: s(10) },
+    dl: { gap: s(8) },
+    after: { marginTop: s(20), gap: s(10) },
+    dock: {
+      paddingHorizontal: s(20),
+      paddingTop: s(12),
+      gap: s(8),
+      borderTopWidth: StyleSheet.hairlineWidth,
+    },
     plans: {
-    flexDirection: 'row',
-    gap: s(8),
-    marginBottom: s(12),
-  },
-  plan: {
-    flex: 1,
-    alignItems: 'center',
-    gap: s(2),
-    paddingVertical: s(10),
-    paddingHorizontal: s(8),
-    borderRadius: s(12),
-    borderWidth: 1,
-    borderColor: c.line,
-  },
-  planOn: {
-    borderColor: c.ink,
-    borderWidth: 2,
-  },
-  wasPrice: {
-    textDecorationLine: 'line-through',
-  },
+      flexDirection: 'row',
+      gap: s(8),
+      marginBottom: s(10),
+    },
+    plan: {
+      flex: 1,
+      alignItems: 'center',
+      gap: s(2),
+      paddingVertical: s(10),
+      paddingHorizontal: s(8),
+      borderRadius: s(12),
+      borderWidth: 1,
+      borderColor: c.line,
+    },
+    planOn: {
+      borderColor: c.ink,
+      borderWidth: 2,
+    },
+    wasPrice: {
+      textDecorationLine: 'line-through',
+    },
     note: { marginTop: s(2) },
-    signIn: { marginTop: s(18) },
+    signIn: { marginTop: s(8) },
   });
 }

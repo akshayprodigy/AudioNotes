@@ -57,7 +57,7 @@ const annualTrial = plan({
 const monthly = plan({});
 const annual = plan({ basePlanId: 'annual', price: '₹2,499', priceMicros: 2499e6, period: 'P1Y' });
 
-async function render(params?: { from?: 'onboarding' }) {
+async function render(params?: { from?: 'onboarding' | 'export' }) {
   let tree!: renderer.ReactTestRenderer;
   const route = { key: 'paywall', name: 'Paywall', params } as any;
   await act(async () => {
@@ -90,7 +90,7 @@ describe('PaywallScreen sells Play\'s free trial', () => {
   it('states the price when Play offers this account no trial', async () => {
     sellsPlans([monthly, annual]);
     const tree = await render();
-    expect(tree.root.findAllByProps({ label: 'Subscribe — ₹2,499' }, { deep: false })).toHaveLength(1);
+    expect(tree.root.findAllByProps({ label: 'Subscribe — ₹2,499 a year' }, { deep: false })).toHaveLength(1);
     expect(texts(tree).some(t => t.startsWith('Free for'))).toBe(false);
   });
 
@@ -177,5 +177,50 @@ describe('PaywallScreen leads with meetings (F08)', () => {
   it('does not advertise reminders or a digest, which are not built', async () => {
     const tree = await render();
     expect(texts(tree).join('\n')).not.toMatch(/reminder|digest/i);
+  });
+});
+
+describe('PaywallScreen can be bought from without scrolling', () => {
+  const { ScrollView } = require('react-native');
+
+  it('keeps the buy button and the trial terms outside the scroll', async () => {
+    sellsPlans([monthlyTrial, annualTrial]);
+    const tree = await render();
+    const scroll = tree.root.findByType(ScrollView);
+    expect(tree.root.findAllByProps({ label: 'Try it free for 7 days' }, { deep: false })).toHaveLength(1);
+    expect(scroll.findAllByProps({ label: 'Try it free for 7 days' }, { deep: false })).toHaveLength(0);
+    const terms = 'Free for 7 days, then ₹2,499 a year until you cancel. Cancel in Google Play before the trial ends and you pay nothing.';
+    expect(texts(tree)).toContain(terms);
+    expect(scroll.findAll(n => n.props.children === terms)).toHaveLength(0);
+  });
+
+  it('keeps Restore inside the scroll, not in the pinned dock', async () => {
+    sellsPlans([monthlyTrial, annualTrial]);
+    const tree = await render();
+    const scroll = tree.root.findByType(ScrollView);
+    expect(scroll.findAllByProps({ label: 'Restore purchase' }, { deep: false })).toHaveLength(1);
+  });
+
+  const highlightKeys = (tree: renderer.ReactTestRenderer) =>
+    tree.root
+      .findAll(n => typeof n.props.testID === 'string' && n.props.testID.startsWith('highlight-'), { deep: false })
+      .map(n => n.props.testID as string);
+
+  it('leads with three highlights, meetings first', async () => {
+    const tree = await render();
+    expect(highlightKeys(tree)).toEqual(['highlight-meetings', 'highlight-writer', 'highlight-export']);
+  });
+
+  it('sent by the export gate, export leads', async () => {
+    const tree = await render({ from: 'export' });
+    expect(highlightKeys(tree)[0]).toBe('highlight-export');
+  });
+
+  it('still lists every Pro feature below the highlights', async () => {
+    const tree = await render();
+    const all = texts(tree);
+    for (const title of ['Export: MP3, PDF, SRT, Markdown, text', 'More meetings, any length', 'The larger transcriber']) {
+      expect(all).toContain(title);
+    }
   });
 });
