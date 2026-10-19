@@ -89,7 +89,7 @@ describe('a Free person on the Share screen', () => {
     const tree = await open();
     expect(preview).toHaveBeenCalledWith('m1', 'pdf', false); // free to look
     await press(tree, 'Share');
-    expect(nav.navigate).toHaveBeenCalledWith('Paywall', { meetingId: 'm1' });
+    expect(nav.navigate).toHaveBeenCalledWith('Paywall', { meetingId: 'm1', from: 'export' });
     expect(Alert.alert).not.toHaveBeenCalled();
   });
 
@@ -98,7 +98,7 @@ describe('a Free person on the Share screen', () => {
     const tree = await open();
     await choose(tree);
     await press(tree, 'Share');
-    expect(nav.navigate).toHaveBeenCalledWith('Paywall', { meetingId: 'm1' });
+    expect(nav.navigate).toHaveBeenCalledWith('Paywall', { meetingId: 'm1', from: 'export' });
     expect(Alert.alert).not.toHaveBeenCalled();
   });
 
