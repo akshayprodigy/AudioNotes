@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { SoftButton, Raised, Txt } from '../components/ui';
 import { exhaustedCopy, statusLine } from '../billing/allowanceCopy';
 import type { AllowanceStatus } from '../native/NativeLicence';
@@ -14,15 +14,35 @@ import { radius, s, useTheme } from '../theme';
  * Pro never sees either: [AllowanceLine] draws nothing for a paid phone.
  */
 
-/** "3 of 5 free meetings left · resets 1 November." — nothing for Pro. */
-export function AllowanceLine({ status }: { status: AllowanceStatus | null }) {
+/**
+ * "3 of 5 free meetings left · resets 1 November." — nothing for Pro. With [onPress] (the Library)
+ * it is also the way to Pro: the line people read when they wonder how many are left is the right
+ * place to say there is a version without a count. Record passes none and stays a plain line.
+ */
+export function AllowanceLine({ status, onPress }: { status: AllowanceStatus | null; onPress?: () => void }) {
   const { colors } = useTheme();
   const line = statusLine(status);
   if (!line) return null;
+  if (!onPress) {
+    return (
+      <Txt variant="chip" color={colors.inkDim} style={styles.line}>
+        {line}
+      </Txt>
+    );
+  }
   return (
-    <Txt variant="chip" color={colors.inkDim} style={styles.line}>
-      {line}
-    </Txt>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${line} Go unlimited with Pro.`}
+      onPress={onPress}
+      style={styles.line}>
+      <Txt variant="chip" color={colors.inkDim}>
+        {line}
+      </Txt>
+      <Txt variant="chip" color={colors.primaryDeep} style={styles.link}>
+        Go unlimited with Pro ›
+      </Txt>
+    </Pressable>
   );
 }
 
@@ -46,5 +66,6 @@ export function AllowanceExhausted({ resetsOn, onUpgrade }: { resetsOn: string; 
 
 const styles = StyleSheet.create({
   line: { marginTop: s(4) },
+  link: { marginTop: s(2) },
   card: { padding: s(14), gap: s(10) },
 });

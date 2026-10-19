@@ -709,7 +709,7 @@ export default function LibraryScreen({ navigation }: Props) {
                 <Txt variant="sub" color={colors.inkDim} style={st.sub}>
                   Nothing recorded yet
                 </Txt>
-                <AllowanceLine status={allowance} />
+                <AllowanceLine status={allowance} onPress={() => navigation.navigate('Paywall')} />
               </>
             ) : null}
           </View>
@@ -740,7 +740,12 @@ export default function LibraryScreen({ navigation }: Props) {
         </View>
 
         {own.length > 0 ? (
-          <LibrarySummary saved={own.length} capturedMin={totalMin} allowance={allowance} />
+          <LibrarySummary
+            saved={own.length}
+            capturedMin={totalMin}
+            allowance={allowance}
+            onUpgrade={() => navigation.navigate('Paywall')}
+          />
         ) : null}
 
         <ReadinessCard setup={setup} />

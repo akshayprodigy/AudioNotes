@@ -418,6 +418,27 @@ describe('the Free allowance', () => {
     await act(async () => tree.unmount());
   });
 
+  test('with nothing recorded, the allowance line opens the Pro screen', async () => {
+    const tree = await focusTheLibrary();
+    const [line] = tree.root.findAllByProps(
+      { accessibilityLabel: '3 of 5 free meetings left · resets 1 November. Go unlimited with Pro.' },
+      { deep: false },
+    );
+    await act(async () => line.props.onPress());
+    expect((nav as any).navigate).toHaveBeenCalledWith('Paywall');
+    await act(async () => tree.unmount());
+  });
+
+  test('with meetings saved, the summary strip opens the Pro screen on Free', async () => {
+    (db.listMeetings as jest.Mock).mockResolvedValue([saved]);
+    const tree = await focusTheLibrary();
+    const strip = tree.root.findAll(n => n.props.testID === 'library-summary', { deep: false })[0];
+    expect(strip.props.accessibilityLabel).toContain('Go unlimited with Pro.');
+    await act(async () => strip.props.onPress());
+    expect((nav as any).navigate).toHaveBeenCalledWith('Paywall');
+    await act(async () => tree.unmount());
+  });
+
   test('with none left the line is still calm, and a saved meeting still opens', async () => {
     allowance.mockResolvedValue({ ...FREE, used: 5, remaining: 0 });
     (db.listMeetings as jest.Mock).mockResolvedValue([saved]);
