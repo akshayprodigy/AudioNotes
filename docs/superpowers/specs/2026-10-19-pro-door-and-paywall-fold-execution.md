@@ -613,14 +613,14 @@ Commit: `docs(report): 19 Oct - Pro door on the Library, paywall bought without 
 ## 7. Acceptance criteria
 
 - Every command in §6 shows what it must.
-- `git diff --stat 4fb28d5..HEAD` names only: `src/billing/proHighlights.ts`,
+- `git diff --stat 5d3b306..HEAD` names only: `src/billing/proHighlights.ts`,
   `src/billing/__tests__/proHighlights.test.ts`, `src/navigation/RootNavigator.tsx`,
   `src/share/SharePreviewScreen.tsx`, `src/screens/PaywallScreen.tsx`,
   `src/screens/__tests__/PaywallScreen.test.tsx`, `src/screens/ProPill.tsx`,
   `src/screens/LibraryScreen.tsx`, `src/screens/__tests__/LibraryScreen.test.tsx`,
   `src/screens/AllowanceNote.tsx`, `src/screens/LibrarySummary.tsx`, and the report.
 - `grep -c "Actions (Pro)" src/screens/LibraryScreen.tsx` prints `0`.
-- `INCLUDED` and `FREE_FOREVER` in `PaywallScreen.tsx` are unchanged: `git diff 4fb28d5..HEAD -- src/screens/PaywallScreen.tsx | grep -E "^[-+].*(title:|body:|FREE_FOREVER)"` prints nothing.
+- `INCLUDED` and `FREE_FOREVER` in `PaywallScreen.tsx` are unchanged: `git diff 5d3b306..HEAD -- src/screens/PaywallScreen.tsx | grep -E "^[-+].*(title:|body:|FREE_FOREVER)"` prints nothing.
 - Five commits for Steps 1–5 plus the report commit; `git status` clean; nothing pushed.
 
 ## 8. Stop conditions
