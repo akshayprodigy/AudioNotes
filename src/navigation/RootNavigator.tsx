@@ -69,7 +69,7 @@ export type RootStackParamList = {
   /** The follow-up home's filtered lists (Pro): due actions, open decisions, notes to review. */
   FollowUp: { kind: 'due' | 'decisions' | 'review' };
   /** `meetingId` is the meeting that prompted the sell, so the screen can name it. */
-  Paywall: { meetingId?: string; from?: 'onboarding' } | undefined;
+  Paywall: { meetingId?: string; from?: 'onboarding' | 'export' } | undefined;
 };
 
 export type MeetingTab = 'summary' | 'mom' | 'transcript' | 'actions';

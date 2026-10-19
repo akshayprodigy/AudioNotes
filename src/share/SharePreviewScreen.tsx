@@ -128,7 +128,7 @@ export default function SharePreviewScreen({ navigation, route }: Props) {
     } catch (e: any) {
       if (e?.code === 'PRO_REQUIRED') {
         // The native gate said no: this is a Pro feature. Show the Pro sheet, not an error.
-        navigation.navigate('Paywall', { meetingId });
+        navigation.navigate('Paywall', { meetingId, from: 'export' });
       } else if (e?.code === 'AUDIO_DELETED') {
         setHasAudio(false);
       } else if (e?.code !== 'cancelled') {
