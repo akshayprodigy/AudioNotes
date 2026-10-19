@@ -17,6 +17,7 @@ import LibrarySummary from './LibrarySummary';
 import { PipelineController } from '../pipeline/PipelineController';
 import { db } from '../db/queries';
 import ProNudgeCard from './ProNudgeCard';
+import ProPill from './ProPill';
 import ReadinessCard from '../setup/ReadinessCard';
 import { useSetupReadiness } from '../setup/useReadiness';
 import { SAMPLE_ID, isSampleId, withoutSample } from '../sample/sampleId';
@@ -325,7 +326,7 @@ export default function LibraryScreen({ navigation }: Props) {
       db.archivedCount().then(setArchived).catch(() => {});
       // Pro is re-read on every focus, not only when the finished count moves: coming back from
       // the Pro screen after buying must unlock Search, Actions and Threads at once.
-      entitlement().then(e => setPaid(e.paid)).catch(() => {});
+      entitlement().then(e => { setPaid(e.paid); setPaidKnown(true); }).catch(() => {});
       refreshAllowance();
       countActions();
       // The disk may have changed while this screen was away (a download finished or died).
@@ -415,6 +416,9 @@ export default function LibraryScreen({ navigation }: Props) {
   // keyword search is Free. Read here rather than inside the button so the tap is decided from
   // state that is already loaded, not from an await in a press handler.
   const [paid, setPaid] = useState(false);
+  // Until the first answer the header draws neither the pill nor Actions, so a Pro user never
+  // sees "Pro" flash up for a frame before the entitlement lands.
+  const [paidKnown, setPaidKnown] = useState(false);
 
   /**
    * Meetings that actually finished.
@@ -428,7 +432,7 @@ export default function LibraryScreen({ navigation }: Props) {
     let alive = true;
     (async () => {
       const [ent, seen] = await Promise.all([entitlement(), nudgeState()]);
-      if (alive) setPaid(ent.paid);
+      if (alive) { setPaid(ent.paid); setPaidKnown(true); }
       const show = shouldNudgeForPro({
         completed,
         lastShownAt: seen.lastShownAt,
@@ -724,11 +728,13 @@ export default function LibraryScreen({ navigation }: Props) {
               label="Search meetings"
               onPress={() => navigation.navigate('Search')}
             />
-            <IconButton
-              icon="list"
-              label={paid ? 'Actions' : 'Actions (Pro)'}
-              onPress={() => navigation.navigate(paid ? 'Actions' : 'Paywall')}
-            />
+            {paidKnown ? (
+              paid ? (
+                <IconButton icon="list" label="Actions" onPress={() => navigation.navigate('Actions')} />
+              ) : (
+                <ProPill onPress={() => navigation.navigate('Paywall')} />
+              )
+            ) : null}
             <IconButton icon="sliders" label="Settings" onPress={() => navigation.navigate('Settings')} />
           </View>
         </View>
@@ -774,7 +780,7 @@ export default function LibraryScreen({ navigation }: Props) {
         ) : null}
 
         {/* The follow-up card leads: what is still owed matters more than how often you record.
-            Pro only; Free sees nothing new here (the "Actions (Pro)" header button is its door). */}
+            Pro only; Free sees nothing new here (the Pro pill in the header is its door). */}
         {paid && followUpVisible(work, follow) ? (
           <FollowUpCard
             work={work}

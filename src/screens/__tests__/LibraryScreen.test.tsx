@@ -128,12 +128,13 @@ describe('the thread door and the Pro-gated worklist (Phase 3)', () => {
     await act(async () => tree.unmount());
   });
 
-  test('the Actions header button reads "Actions (Pro)" and opens the paywall on free', async () => {
+  test('on free the header has a "Get Pro" pill in place of Actions, and it opens the paywall', async () => {
     (entitlement as jest.Mock).mockResolvedValue({ paid: false });
     const tree = await focusTheLibrary();
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Actions' }, { deep: false })).toHaveLength(0);
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Actions (Pro)' }, { deep: false })).toHaveLength(0);
     await act(async () => {
-      pressIconButton(tree, 'Actions (Pro)');
+      pressIconButton(tree, 'Get Pro');
     });
     expect((nav as any).navigate).toHaveBeenCalledWith('Paywall');
     await act(async () => tree.unmount());
@@ -156,13 +157,14 @@ describe('the thread door and the Pro-gated worklist (Phase 3)', () => {
     const tree = await focusTheLibrary();
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Open actions' }, { deep: false })).toHaveLength(1);
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Actions' }, { deep: false })).toHaveLength(1);
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Get Pro' }, { deep: false })).toHaveLength(0);
     await act(async () => tree.unmount());
   });
 
   test('buying Pro on the Pro screen is noticed when the library is focused again', async () => {
     (entitlement as jest.Mock).mockResolvedValue({ paid: false });
     const tree = await focusTheLibrary();
-    expect(tree.root.findAllByProps({ accessibilityLabel: 'Actions (Pro)' }, { deep: false })).toHaveLength(1);
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Get Pro' }, { deep: false })).toHaveLength(1);
 
     (entitlement as jest.Mock).mockResolvedValue({ paid: true });
     const onFocus = (nav as any).addListener.mock.calls.find((c: any[]) => c[0] === 'focus')[1];
@@ -170,6 +172,7 @@ describe('the thread door and the Pro-gated worklist (Phase 3)', () => {
       onFocus();
     });
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Actions' }, { deep: false })).toHaveLength(1);
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Get Pro' }, { deep: false })).toHaveLength(0);
     await act(async () => tree.unmount());
   });
 });
