@@ -381,6 +381,19 @@ describe('keyword search is Free (F09)', () => {
 });
 
 describe('the Free allowance', () => {
+  test('on an empty library the sub-lines sit under the header row, not squeezed beside the buttons', async () => {
+    const tree = await focusTheLibrary();
+    const row = tree.root.findAll(n => n.props.testID === 'library-header', { deep: false })[0];
+    const inRow = row.findAll(n => typeof n.props.children === 'string').map(n => n.props.children as string);
+    expect(inRow).toContain('Meetings');
+    expect(inRow).not.toContain('Nothing recorded yet');
+    expect(inRow).not.toContain('3 of 5 free meetings left · resets 1 November.');
+    const all = texts(tree);
+    expect(all).toContain('Nothing recorded yet');
+    expect(all).toContain('3 of 5 free meetings left · resets 1 November.');
+    await act(async () => tree.unmount());
+  });
+
   const allowance = Licence.allowance as unknown as jest.Mock;
   const FREE = { limit: 5, used: 2, remaining: 3, period: '2026-10', resetsOn: '2026-11-01', paid: false };
   const importer = (global as any).__TEST_NATIVE_MODULES__.Import;

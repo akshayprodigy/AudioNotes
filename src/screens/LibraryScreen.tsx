@@ -697,21 +697,11 @@ export default function LibraryScreen({ navigation }: Props) {
           </View>
         ) : null}
 
-        <View style={st.header}>
+        <View style={st.header} testID="library-header">
           <View style={st.flex}>
             <Txt variant="screenTitle" fit>
               Meetings
             </Txt>
-            {/* With something recorded the numbers live in the strip below the header, where they
-                have the full width; the narrow column beside the buttons only ever fit a title. */}
-            {own.length === 0 ? (
-              <>
-                <Txt variant="sub" color={colors.inkDim} style={st.sub}>
-                  Nothing recorded yet
-                </Txt>
-                <AllowanceLine status={allowance} onPress={() => navigation.navigate('Paywall')} />
-              </>
-            ) : null}
           </View>
           <View style={st.headBtns}>
             {/* Sits with search and settings rather than beside the record button: importing is
@@ -738,6 +728,18 @@ export default function LibraryScreen({ navigation }: Props) {
             <IconButton icon="sliders" label="Settings" onPress={() => navigation.navigate('Settings')} />
           </View>
         </View>
+
+        {/* Under the row, at full width. Beside the buttons the column is only as wide as what is
+            left after four of them, and on a 360 dp phone that wrapped every one of these lines.
+            With something recorded the numbers move to the summary strip instead. */}
+        {own.length === 0 ? (
+          <View style={st.headSub}>
+            <Txt variant="sub" color={colors.inkDim}>
+              Nothing recorded yet
+            </Txt>
+            <AllowanceLine status={allowance} onPress={() => navigation.navigate('Paywall')} />
+          </View>
+        ) : null}
 
         {own.length > 0 ? (
           <LibrarySummary
@@ -1003,7 +1005,7 @@ function makeStyles(c: Colors) {
       paddingHorizontal: s(20),
       paddingTop: s(6),
     },
-    sub: { marginTop: s(6) },
+    headSub: { paddingHorizontal: s(20), marginTop: s(6) },
     headBtns: { flexDirection: 'row', gap: s(8) },
 
     streakLine: {
