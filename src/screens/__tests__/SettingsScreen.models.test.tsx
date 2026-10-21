@@ -59,7 +59,7 @@ const nav = {
 const lines = (tree: renderer.ReactTestRenderer) =>
   tree.root.findAllByType(Text).map(n => [n.props.children].flat(Infinity).filter(c => typeof c === 'string').join(''));
 const texts = lines;
-const metaText = (tree: renderer.ReactTestRenderer) => lines(tree).find(t => t.startsWith('Qwen3 4B ·'));
+const metaText = (tree: renderer.ReactTestRenderer) => lines(tree).find(t => /^[\d.,]+ (MB|GB)\b/.test(t));
 
 async function render() {
   let tree!: renderer.ReactTestRenderer;
@@ -138,7 +138,7 @@ test('the model meta text shrinks and wraps instead of clipping its percentage',
   await progress(GB / 2, GB);
   const node = tree.root
     .findAllByType(Text)
-    .find(n => [n.props.children].flat(Infinity).join('').startsWith('Qwen3 4B ·'));
+    .find(n => /^[\d.,]+ (MB|GB)\b/.test([n.props.children].flat(Infinity).join('')));
   expect(node).toBeDefined();
   const style = StyleSheet.flatten(node!.props.style) as Record<string, unknown>;
   expect(style.flexShrink).toBe(1);
@@ -158,9 +158,58 @@ test('a model that turns out to be installed does not keep a stale progress entr
   // Remove it: the row must go back to idle, not to the old "50%" with a spinner.
   list.mockResolvedValue(JSON.stringify([model(false)]));
   await act(async () => {
-    tree.root.findByProps({ accessibilityLabel: 'Remove Writes the summary (Qwen3 4B)' }).props.onPress();
+    tree.root.findByProps({ accessibilityLabel: 'Remove Writes the summary' }).props.onPress();
   });
   await act(async () => {});
-  expect(metaText(tree)).toBe('Qwen3 4B · 1100 MB');
+  expect(metaText(tree)).toBe('1100 MB');
   await act(async () => tree.unmount());
+});
+
+test('no row names its model, only what it is for', async () => {
+  const tree = await render();
+  expect(lines(tree).some(t => t.includes('Qwen3 4B'))).toBe(false);
+  expect(lines(tree)).toContain('Writes the summary');
+  await act(async () => tree.unmount());
+});
+
+describe("Pro's models are part of Pro, not downloads to manage", () => {
+  const pro = (installed: boolean) => ({
+    ...model(installed),
+    id: 'whisper-small',
+    name: 'Whisper small',
+    purpose: 'Writes down what was said, more accurately',
+    needsSubscription: true,
+    sizeBytes: 190_085_487,
+  });
+  const removeLabel = 'Remove Writes down what was said, more accurately';
+  const getLabel = 'Download Writes down what was said, more accurately';
+
+  test('on Pro an installed Pro model offers no Remove', async () => {
+    list.mockResolvedValue(JSON.stringify([pro(true)]));
+    const tree = await render();
+    expect(tree.root.findAllByProps({ accessibilityLabel: removeLabel })).toHaveLength(0);
+    await act(async () => tree.unmount());
+  });
+
+  test('on Pro a missing Pro model offers no Download either: it arrives by itself', async () => {
+    list.mockResolvedValue(JSON.stringify([pro(false)]));
+    const tree = await render();
+    expect(tree.root.findAllByProps({ accessibilityLabel: getLabel })).toHaveLength(0);
+    await act(async () => tree.unmount());
+  });
+
+  test('once Pro has lapsed, the file is theirs to remove', async () => {
+    const status = Licence.status as unknown as jest.Mock;
+    const real = status.getMockImplementation()!;
+    const active = await real();
+    status.mockResolvedValue({ ...active, paid: false });
+    try {
+      list.mockResolvedValue(JSON.stringify([pro(true)]));
+      const tree = await render();
+      expect(tree.root.findAllByProps({ accessibilityLabel: removeLabel }).length).toBeGreaterThan(0);
+      await act(async () => tree.unmount());
+    } finally {
+      status.mockImplementation(real);
+    }
+  });
 });

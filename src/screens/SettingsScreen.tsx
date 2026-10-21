@@ -448,7 +448,7 @@ export default function SettingsScreen({ navigation }: Props) {
       // so here is what stops the tap looking broken. The old code swallowed the error entirely,
       // so the button did nothing and explained nothing.
       Alert.alert(
-        `${m.name} is part of the subscription`,
+        'Part of Pro',
         'Sign in with a subscribed account and it will download. Everything else in the app ' +
           'works without it.',
       );
@@ -503,14 +503,15 @@ export default function SettingsScreen({ navigation }: Props) {
             const busy = progress[m.id] !== undefined && !m.installed;
             // Present on disk is still theirs to remove; what the phone cannot run is not offered.
             const off = !m.installed && !!m.unsupportedReason;
+            // Part of Pro while Pro lasts: it downloads by itself (src/setup/proModels), so there is
+            // nothing to get or remove here. Lapsed, it is their storage again.
+            const included = m.needsSubscription && !!lic?.paid;
             return (
               <Pop key={m.id} index={i}>
                 <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={5}>
                   <View style={st.rowPad}>
-                    {/* The job first, the model name after. Someone deciding whether they can
-                        free up 190 MB is served by "writes down what was said, more accurately",
-                        not by "Whisper small (q5_1)" — but the name still has to be here, because
-                        it is what makes the open-source notices and the privacy claim checkable. */}
+                    {/* The job only, never the model's name (founder, 21 Oct). The names live on the open-source
+                        notices screen, which is where the privacy claim is checked. */}
                     {/* At large text the Remove/Get button beside the words left them about a third of
                         the width ("Finds the / speech" a word to a line, on a Galaxy A07 at 200%):
                         it goes under them instead. */}
@@ -521,12 +522,12 @@ export default function SettingsScreen({ navigation }: Props) {
                           {off ? m.unsupportedReason : m.detail}
                         </Txt>
                       </View>
-                      {off ? null : (
+                      {off || included ? null : (
                         <Pressable
                           onPress={() => onToggle(m)}
                           disabled={busy}
                           accessibilityRole="button"
-                          accessibilityLabel={`${m.installed ? 'Remove' : 'Download'} ${m.purpose} (${m.name})`}
+                          accessibilityLabel={`${m.installed ? 'Remove' : 'Download'} ${m.purpose}`}
                           style={[st.pill, { backgroundColor: m.installed ? colors.dangerSoft : colors.primary }]}>
                           <Icon
                             name={m.installed ? 'trash' : 'download'}
@@ -572,7 +573,6 @@ export default function SettingsScreen({ navigation }: Props) {
                       {/* flexShrink so a long name or a large-text setting wraps the line instead of
                           pushing "· 100%" past the edge of the card (D21). */}
                       <Txt variant="chipSoft" color={colors.inkFaint} style={st.metaText}>
-                        {m.name} ·{' '}
                         {busy ? downloadLabel(prog.downloaded, prog.total) : mb(m.sizeBytes)}
                       </Txt>
                     </View>
