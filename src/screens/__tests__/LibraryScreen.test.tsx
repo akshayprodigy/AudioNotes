@@ -7,6 +7,8 @@ import { useLibraryStore } from '../../state/libraryStore';
 import { entitlement } from '../../billing/trial';
 import Licence from '../../native/NativeLicence';
 import { useAllowanceStore } from '../../billing/allowance';
+import { resetProModelsForTest, useProModelsStore } from '../../setup/proModels';
+import ModelManager from '../../native/NativeModelManager';
 import { exhaustedCopy } from '../../billing/allowanceCopy';
 
 jest.mock('../../db/queries');
@@ -60,6 +62,7 @@ async function focusTheLibrary() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  resetProModelsForTest();
   (db.listMeetings as jest.Mock).mockResolvedValue([]);
   (db.allTags as jest.Mock).mockResolvedValue([]);
   (db.getSetting as jest.Mock).mockResolvedValue(null);
@@ -584,5 +587,48 @@ describe('the Free allowance', () => {
     expect(pro).toBe('“Voice note” will be transcribed on this phone. Nothing is uploaded.');
     alert.mockRestore();
     await act(async () => tree2.unmount());
+  });
+});
+
+describe("Pro's models download by themselves", () => {
+  const download = ModelManager.download as unknown as jest.Mock;
+  const list = ModelManager.list as unknown as jest.Mock;
+  const texts = (tree: renderer.ReactTestRenderer) =>
+    tree.root.findAll(n => typeof n.props.children === 'string').map(n => n.props.children as string);
+  afterEach(() => list.mockResolvedValue('[]'));
+
+  test('on Pro the library starts the download without being asked', async () => {
+    list.mockResolvedValue(JSON.stringify([
+      { id: 'whisper-small', kind: 'asr', sizeBytes: 190_085_487, installed: false, needsSubscription: true, unsupportedReason: null },
+    ]));
+    const tree = await focusTheLibrary();
+    await act(async () => {});
+    expect(download).toHaveBeenCalledWith('whisper-small');
+    await act(async () => tree.unmount());
+  });
+
+  test('on Free it does not', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: false });
+    // A Pro model is missing, so a wrongly started run would have something to fetch.
+    list.mockResolvedValue(JSON.stringify([
+      { id: 'whisper-small', kind: 'asr', sizeBytes: 190_085_487, installed: false, needsSubscription: true, unsupportedReason: null },
+    ]));
+    const tree = await focusTheLibrary();
+    await act(async () => {});
+    expect(download).not.toHaveBeenCalled();
+    await act(async () => tree.unmount());
+  });
+
+  test('a download that stopped shows why, with Try again, on the library itself', async () => {
+    // Free, so the automatic start cannot settle after the error is set and overwrite it.
+    (entitlement as jest.Mock).mockResolvedValue({ paid: false });
+    const tree = await focusTheLibrary();
+    await act(async () => {
+      useProModelsStore.setState({ running: false, error: 'No connection', downloaded: 0, total: 0 });
+    });
+    const card = tree.root.findAll(n => n.props.testID === 'pro-models-card', { deep: false });
+    expect(card).toHaveLength(1);
+    expect(texts(tree)).toEqual(expect.arrayContaining(["Pro's models did not finish downloading", 'No connection', 'Try again']));
+    await act(async () => tree.unmount());
   });
 });

@@ -19,6 +19,8 @@ import { db } from '../db/queries';
 import ProNudgeCard from './ProNudgeCard';
 import ProCompareSheet from './ProCompareSheet';
 import ReadinessCard from '../setup/ReadinessCard';
+import ProModelsCard from '../setup/ProModelsCard';
+import { autoStartProModels } from '../setup/proModels';
 import { useSetupReadiness } from '../setup/useReadiness';
 import { SAMPLE_ID, isSampleId, withoutSample } from '../sample/sampleId';
 import { deleteSample, seedSample } from '../sample/seedSample';
@@ -421,6 +423,11 @@ export default function LibraryScreen({ navigation }: Props) {
   const [paidKnown, setPaidKnown] = useState(false);
   // The Free-and-Pro sheet the count opens. Free only: Pro has no count.
   const [proSheet, setProSheet] = useState(false);
+  // Pro's models are part of Pro: on a Pro phone a download that stopped is picked up by itself,
+  // once per launch, so nobody needs Settings for it.
+  useEffect(() => {
+    if (paidKnown) autoStartProModels(paid);
+  }, [paid, paidKnown]);
 
   /**
    * Meetings that actually finished.
@@ -749,6 +756,7 @@ export default function LibraryScreen({ navigation }: Props) {
         ) : null}
 
         <ReadinessCard setup={setup} />
+        <ProModelsCard />
 
         {/* Only once there is something to sort or filter. On a library of three meetings this
             row is furniture in front of the content. */}
