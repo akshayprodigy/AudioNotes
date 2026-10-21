@@ -17,7 +17,7 @@ import LibrarySummary from './LibrarySummary';
 import { PipelineController } from '../pipeline/PipelineController';
 import { db } from '../db/queries';
 import ProNudgeCard from './ProNudgeCard';
-import ProPill from './ProPill';
+import ProCompareSheet from './ProCompareSheet';
 import ReadinessCard from '../setup/ReadinessCard';
 import { useSetupReadiness } from '../setup/useReadiness';
 import { SAMPLE_ID, isSampleId, withoutSample } from '../sample/sampleId';
@@ -416,9 +416,11 @@ export default function LibraryScreen({ navigation }: Props) {
   // keyword search is Free. Read here rather than inside the button so the tap is decided from
   // state that is already loaded, not from an await in a press handler.
   const [paid, setPaid] = useState(false);
-  // Until the first answer the header draws neither the pill nor Actions, so a Pro user never
-  // sees "Pro" flash up for a frame before the entitlement lands.
+  // Until the first answer the header draws no Actions, so a Free user never
+  // sees them flash up for a frame before the entitlement lands.
   const [paidKnown, setPaidKnown] = useState(false);
+  // The Free-and-Pro sheet the count opens. Free only: Pro has no count.
+  const [proSheet, setProSheet] = useState(false);
 
   /**
    * Meetings that actually finished.
@@ -718,12 +720,8 @@ export default function LibraryScreen({ navigation }: Props) {
               label="Search meetings"
               onPress={() => navigation.navigate('Search')}
             />
-            {paidKnown ? (
-              paid ? (
-                <IconButton icon="list" label="Actions" onPress={() => navigation.navigate('Actions')} />
-              ) : (
-                <ProPill onPress={() => navigation.navigate('Paywall')} />
-              )
+            {paidKnown && paid ? (
+              <IconButton icon="list" label="Actions" onPress={() => navigation.navigate('Actions')} />
             ) : null}
             <IconButton icon="sliders" label="Settings" onPress={() => navigation.navigate('Settings')} />
           </View>
@@ -737,7 +735,7 @@ export default function LibraryScreen({ navigation }: Props) {
             <Txt variant="sub" color={colors.inkDim}>
               Nothing recorded yet
             </Txt>
-            <AllowanceLine status={allowance} onPress={() => navigation.navigate('Paywall')} />
+            <AllowanceLine status={allowance} onPress={() => setProSheet(true)} />
           </View>
         ) : null}
 
@@ -746,7 +744,7 @@ export default function LibraryScreen({ navigation }: Props) {
             saved={own.length}
             capturedMin={totalMin}
             allowance={allowance}
-            onUpgrade={() => navigation.navigate('Paywall')}
+            onUpgrade={() => setProSheet(true)}
           />
         ) : null}
 
@@ -787,7 +785,7 @@ export default function LibraryScreen({ navigation }: Props) {
         ) : null}
 
         {/* The follow-up card leads: what is still owed matters more than how often you record.
-            Pro only; Free sees nothing new here (the Pro pill in the header is its door). */}
+            Pro only; Free sees nothing new here (the count's Free-and-Pro sheet is its door). */}
         {paid && followUpVisible(work, follow) ? (
           <FollowUpCard
             work={work}
@@ -929,6 +927,16 @@ export default function LibraryScreen({ navigation }: Props) {
         onClose={() => setProjectFor(null)}
         onChanged={() => refresh()}
         onUpgrade={() => navigation.navigate('Paywall')}
+      />
+
+      <ProCompareSheet
+        visible={proSheet}
+        allowance={allowance}
+        onClose={() => setProSheet(false)}
+        onGetPro={() => {
+          setProSheet(false);
+          navigation.navigate('Paywall');
+        }}
       />
 
       {/* Sits just above the Record dock while a meeting is recording: tap to jump back into the

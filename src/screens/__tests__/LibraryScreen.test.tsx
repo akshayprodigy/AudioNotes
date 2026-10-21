@@ -128,15 +128,11 @@ describe('the thread door and the Pro-gated worklist (Phase 3)', () => {
     await act(async () => tree.unmount());
   });
 
-  test('on free the header has a "Get Pro" pill in place of Actions, and it opens the paywall', async () => {
+  test('on free the header carries neither a Pro pill nor Actions: the count is the way to Pro', async () => {
     (entitlement as jest.Mock).mockResolvedValue({ paid: false });
     const tree = await focusTheLibrary();
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Actions' }, { deep: false })).toHaveLength(0);
-    expect(tree.root.findAllByProps({ accessibilityLabel: 'Actions (Pro)' }, { deep: false })).toHaveLength(0);
-    await act(async () => {
-      pressIconButton(tree, 'Get Pro');
-    });
-    expect((nav as any).navigate).toHaveBeenCalledWith('Paywall');
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Get Pro' }, { deep: false })).toHaveLength(0);
     await act(async () => tree.unmount());
   });
 
@@ -164,7 +160,7 @@ describe('the thread door and the Pro-gated worklist (Phase 3)', () => {
   test('buying Pro on the Pro screen is noticed when the library is focused again', async () => {
     (entitlement as jest.Mock).mockResolvedValue({ paid: false });
     const tree = await focusTheLibrary();
-    expect(tree.root.findAllByProps({ accessibilityLabel: 'Get Pro' }, { deep: false })).toHaveLength(1);
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Actions' }, { deep: false })).toHaveLength(0);
 
     (entitlement as jest.Mock).mockResolvedValue({ paid: true });
     const onFocus = (nav as any).addListener.mock.calls.find((c: any[]) => c[0] === 'focus')[1];
@@ -431,24 +427,35 @@ describe('the Free allowance', () => {
     await act(async () => tree.unmount());
   });
 
-  test('with nothing recorded, the allowance line opens the Pro screen', async () => {
+  const proSheet = (tree: renderer.ReactTestRenderer) =>
+    tree.root.findAll(n => n.props.testID === 'pro-compare', { deep: false });
+
+  test('with nothing recorded, the count opens Free-and-Pro, and Get Pro there opens the Pro screen', async () => {
     const tree = await focusTheLibrary();
+    expect(proSheet(tree)).toHaveLength(0);
     const [line] = tree.root.findAllByProps(
       { accessibilityLabel: '3 of 5 free meetings left · resets 1 November. Go unlimited with Pro.' },
       { deep: false },
     );
     await act(async () => line.props.onPress());
+    expect((nav as any).navigate).not.toHaveBeenCalledWith('Paywall');
+    expect(proSheet(tree)).toHaveLength(1);
+    expect(texts(tree)).toEqual(expect.arrayContaining(['FREE', 'PRO', 'Meetings', '5 a month', 'Unlimited']));
+    await act(async () =>
+      tree.root.findAll(n => n.props.label === 'Get Pro' && typeof n.props.onPress === 'function')[0].props.onPress(),
+    );
     expect((nav as any).navigate).toHaveBeenCalledWith('Paywall');
+    expect(proSheet(tree)).toHaveLength(0);
     await act(async () => tree.unmount());
   });
 
-  test('with meetings saved, the summary strip opens the Pro screen on Free', async () => {
+  test('with meetings saved, the summary strip opens Free-and-Pro on Free', async () => {
     (db.listMeetings as jest.Mock).mockResolvedValue([saved]);
     const tree = await focusTheLibrary();
     const strip = tree.root.findAll(n => n.props.testID === 'library-summary', { deep: false })[0];
-    expect(strip.props.accessibilityLabel).toContain('Go unlimited with Pro.');
     await act(async () => strip.props.onPress());
-    expect((nav as any).navigate).toHaveBeenCalledWith('Paywall');
+    expect((nav as any).navigate).not.toHaveBeenCalledWith('Paywall');
+    expect(proSheet(tree)).toHaveLength(1);
     await act(async () => tree.unmount());
   });
 
