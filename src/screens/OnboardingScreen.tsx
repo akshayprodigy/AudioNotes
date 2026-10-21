@@ -509,13 +509,10 @@ export default function OnboardingScreen({ navigation }: Props) {
                       {writerBlocked
                         ? `${writerBlocked} The minutes here are pulled out by rule, and everything else in Pro works on this phone.`
                         : proChosen
-                          ? `Adds ${writerMb} MB. Without it you still get minutes, pulled out by rule rather than written as prose.`
+                          ? `Included with Pro: ${writerMb} MB, downloaded with the speech models.`
                           : `Part of Pro — a ${writerMb} MB model that runs on your phone. You still get minutes without it, pulled out by rule rather than written as prose.`}
                     </Txt>
                   </View>
-                  {/* No switch when there is nothing to switch on, or when the phone cannot run
-                      the model: an honest sentence beats a control that reports an error. */}
-                  {proChosen && !writerBlocked ? <Switch on={wantWriter} onToggle={() => setWantWriter(v => !v)} /> : null}
                 </View>
               </Raised>
             ) : null}
