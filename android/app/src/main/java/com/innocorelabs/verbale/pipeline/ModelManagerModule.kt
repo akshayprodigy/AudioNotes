@@ -119,7 +119,8 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
     if (ModelCatalog.needsSubscription(spec) && !LicenceStore.entitled(ctx)) {
       promise.reject(
         "subscription_required",
-        "${spec.name} is part of the subscription.",
+        // The job, never the model's name: the screens say what a model is for (founder, 21 Oct).
+        "This is part of Pro.",
       )
       return
     }
@@ -161,7 +162,7 @@ class ModelManagerModule(private val ctx: ReactApplicationContext) :
     }
     val free = DeviceFit.freeBytes(ctx)
     if (!DeviceFit.spaceFits(remaining, free)) {
-      promise.reject("no_space", DeviceFit.spaceReason(spec.name, remaining, free))
+      promise.reject("no_space", DeviceFit.spaceReason("this model", remaining, free))
       return
     }
     Thread {
