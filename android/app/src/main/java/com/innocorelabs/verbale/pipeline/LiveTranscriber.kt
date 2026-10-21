@@ -61,11 +61,10 @@ class LiveTranscriber(
 
   fun start() {
     if (running) return
-    // The SAME expressions ProcessingEngine uses, deliberately. The cache key is the model's file
+    // The SAME choice ProcessingEngine gets, deliberately. The cache key is the model's file
     // name, so if these two ever resolved differently every window would miss and nothing would
-    // fail — it would just look as though the live pass never helped. ProcessingService builds
-    // ProcessingEngine with "base"; that literal is the coupling, and it lives in both places.
-    val asrFile = ModelCatalog.fileFor(ctx, ModelCatalog.asrIdForModel("base"))
+    // fail — it would just look as though the live pass never helped. Both ask AsrChoice.
+    val asrFile = ModelCatalog.fileFor(ctx, ModelCatalog.asrIdForModel(AsrChoice.forDevice(ctx)))
     val vadFile = File(File(ctx.filesDir, "models"), "silero_vad.onnx")
     if (asrFile == null || !asrFile.exists() || !vadFile.exists()) {
       Log.i(TAG, "not starting: models not installed")

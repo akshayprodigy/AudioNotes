@@ -92,6 +92,9 @@ class ProcessingService : Service() {
     val wl = newWakeLock().apply { acquire(6 * 60 * 60 * 1000L) }
     try {
       while (true) {
+        // Read per meeting, outside the lock (it reads the licence): a purchase or a finished
+        // whisper-small download between two meetings applies to the second one.
+        val asr = AsrChoice.forDevice(this)
         // The engine is constructed INSIDE the lock so that currentId and current are published
         // atomically together — a cancel() landing between "currentId is set" and "current is set"
         // would otherwise see currentId == meetingId but current == null and silently no-op,
@@ -104,7 +107,7 @@ class ProcessingService : Service() {
           // Removed as it is consumed: a forced run happens once. Leaving the flag set would make
           // every later sweep of this meeting rewrite the summary it just wrote.
           val force = forced.remove(id)
-          ProcessingEngine(this, id, "base", object : ProcessingEngine.Listener {
+          ProcessingEngine(this, id, asr, object : ProcessingEngine.Listener {
             override fun onStage(stage: String, done: Int, total: Int) {
               try { updateNotification(stageLabel(stage)) } catch (_: Exception) {}
               // The speech check is the cheap stage (about 0.01x real time): once it has run, "no
