@@ -5,6 +5,7 @@ import PaywallScreen from '../PaywallScreen';
 import { entitlement } from '../../billing/trial';
 import { buyWithPlay, playAvailable, playPlans, restorePlayPurchase } from '../../billing/subscription';
 import type { PlayPlan } from '../../native/NativeBilling';
+import { runProModels, useProModelsStore } from '../../setup/proModels';
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
@@ -32,6 +33,14 @@ jest.mock('../../native/NativeModelManager', () => ({
   },
 }));
 jest.mock('../../billing/SignInForm', () => () => null);
+jest.mock('../../setup/proModels', () => {
+  const { create } = jest.requireActual('zustand');
+  return {
+    __esModule: true,
+    useProModelsStore: create(() => ({ running: false, error: null, downloaded: 0, total: 0 })),
+    runProModels: jest.fn(() => Promise.resolve(true)),
+  };
+});
 
 // Fake timers end the Pop entrance animations with the suite; see the other screen tests.
 beforeEach(() => {
@@ -222,5 +231,70 @@ describe('PaywallScreen can be bought from without scrolling', () => {
     for (const title of ['Export: MP3, PDF, SRT, Markdown, text', 'More meetings, any length', 'The larger transcriber']) {
       expect(all).toContain(title);
     }
+  });
+});
+
+describe("after buying, Pro's models download in the background", () => {
+  const idle = { running: false, error: null, downloaded: 0, total: 0 };
+  afterEach(() => useProModelsStore.setState(idle));
+  const closes = (tree: renderer.ReactTestRenderer) =>
+    tree.root.findAll(n => n.props.label === 'Close' && typeof n.props.onPress === 'function');
+
+  async function buy(params?: { from?: 'onboarding' | 'export' }) {
+    sellsPlans([monthlyTrial, annualTrial]);
+    (buyWithPlay as jest.Mock).mockResolvedValue({ paid: true });
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const tree = await render(params);
+    (entitlement as jest.Mock).mockResolvedValue({ paid: true, licence: { paid: true } });
+    await act(async () => {
+      tree.root.findByProps({ label: 'Try it free for 7 days' }).props.onPress();
+    });
+    await act(async () => {});
+    return { tree, alert };
+  }
+
+  it('buying starts the download at once, and says it carries on in the background', async () => {
+    const { tree, alert } = await buy();
+    expect(runProModels).toHaveBeenCalled();
+    expect(alert.mock.calls[0][1]).toContain('carries on in the background');
+    await act(async () => tree.unmount());
+  });
+
+  it('the buyer can leave while it downloads, and is told so', async () => {
+    const { tree } = await buy();
+    await act(async () => {
+      useProModelsStore.setState({ running: true, error: null, downloaded: 1, total: 100 });
+    });
+    expect(closes(tree).length).toBeGreaterThan(0);
+    expect(texts(tree)).toContain('You can leave this screen. The download carries on in the background while you use the app.');
+    await act(async () => tree.unmount());
+  });
+
+  it('a failed download says why and offers Try again', async () => {
+    const { tree } = await buy();
+    (runProModels as jest.Mock).mockClear();
+    await act(async () => {
+      useProModelsStore.setState({ running: false, error: 'No connection', downloaded: 0, total: 0 });
+    });
+    expect(texts(tree)).toContain("Pro's models did not finish downloading: No connection");
+    await act(async () => {
+      tree.root.findAll(n => n.props.label === 'Try again' && typeof n.props.onPress === 'function')[0].props.onPress();
+    });
+    expect(runProModels).toHaveBeenCalled();
+    await act(async () => tree.unmount());
+  });
+
+  it('opened on Pro, the screen picks up a download that stopped', async () => {
+    (entitlement as jest.Mock).mockResolvedValue({ paid: true, licence: { paid: true } });
+    const tree = await render();
+    expect(runProModels).toHaveBeenCalled();
+    await act(async () => tree.unmount());
+  });
+
+  it('from first run, a purchase leaves the download to setup', async () => {
+    const { tree } = await buy({ from: 'onboarding' });
+    expect(nav.goBack).toHaveBeenCalled();
+    expect(runProModels).not.toHaveBeenCalled();
+    await act(async () => tree.unmount());
   });
 });

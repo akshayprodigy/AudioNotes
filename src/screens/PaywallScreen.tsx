@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  NativeEventEmitter,
-  NativeModules,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,9 +14,11 @@ import Icon, { type IconName } from '../components/Icon';
 import Mascot from '../components/Mascot';
 import { Button, IconButton, Pop, ProgressBar, Raised, SoftButton, Txt } from '../components/ui';
 import { downloadLabel, downloadPct } from './downloadLabel';
-import { runnable, sizeMb, spaceFits, spaceReason, writerBlockedReason } from './deviceFit';
+import { sizeMb, spaceFits, spaceReason, writerBlockedReason } from './deviceFit';
 import { entitlement, markPaywallSeen, type Entitlement } from '../billing/trial';
 import SignInForm from '../billing/SignInForm';
+import { proToFetch } from '../billing/proDownload';
+import { runProModels, useProModelsStore } from '../setup/proModels';
 import {
   buyWithPlay,
   playAvailable,
@@ -144,7 +144,7 @@ const INCLUDED: { icon: IconName; title: string; body: string; needsWriter?: boo
     icon: 'ai',
     title: 'The larger transcriber',
     body:
-      'Whisper small instead of base: slower, and noticeably better with strong accents, ' +
+      'A larger model writes down what was said: slower, and noticeably better with strong accents, ' +
       'crosstalk and a bad room.',
   },
 ];
@@ -173,17 +173,14 @@ export default function PaywallScreen({ navigation, route }: Props) {
   const [showSignIn, setShowSignIn] = useState(false);
   const [restoring, setRestoring] = useState(false);
 
-  // The writer model, which is what a trial actually needs on disk. A trial that grants an
-  // entitlement to run a model the phone does not have is a trial of nothing.
-  const [writerMb, setWriterMb] = useState(0);
-  const [writerInstalled, setWriterInstalled] = useState(false);
+  // What buying would fetch on THIS phone, quoted under the button.
+  const [proMb, setProMb] = useState(0);
+  // Pro's background download (src/setup/proModels): its progress and why it stopped.
+  const pro = useProModelsStore();
   // The sentence for a phone under the writer's gate — null when it runs here. From the rows.
   const [writerBlocked, setWriterBlocked] = useState<string | null>(null);
   // The disk sentence for the trial's download — null when it fits, or when nothing is pending.
   const [spaceShort, setSpaceShort] = useState<string | null>(null);
-  // Bytes, not a percentage. See downloadLabel: on a 1.1 GB model the percentage barely
-  // moves, and a still number reads as a stalled download.
-  const [dl, setDl] = useState<{ downloaded: number; total: number } | null>(null);
   // The trial's download progress shows in the pinned dock; the scroll goes back to the top so the
   // highlights and the headline ("You are on Pro") are what the buyer sees next to it.
   const scroller = useRef<ScrollView>(null);
@@ -223,65 +220,28 @@ export default function PaywallScreen({ navigation, route }: Props) {
   useEffect(() => {
     ModelManager.list()
       .then(r => {
-        const all: { id: string; kind: string; sizeBytes: number; installed: boolean; unsupportedReason?: string | null }[] =
-          JSON.parse(r);
-        // The writer's set on THIS phone: the meaning index everywhere, the model itself only
-        // where it fits. What the trial downloads and what the note prices are the same set.
-        const writer = runnable(all.filter(m => m.kind === 'llm'));
+        const all: {
+          id: string;
+          kind: string;
+          sizeBytes: number;
+          installed: boolean;
+          needsSubscription: boolean;
+          unsupportedReason?: string | null;
+        }[] = JSON.parse(r);
         setWriterBlocked(writerBlockedReason(all));
-        setWriterMb(sizeMb(writer));
-        setWriterInstalled(writer.length > 0 && writer.every(m => m.installed));
-        // Then the disk, for what the trial would still fetch. Said under the trial button; the
-        // native refusal repeats it on the tap.
-        const pendingBytes = writer.filter(m => !m.installed).reduce((a, m) => a + m.sizeBytes, 0);
+        const todo = proToFetch(all);
+        setProMb(sizeMb(todo));
+        const pendingBytes = todo.reduce((a, m) => a + m.sizeBytes, 0);
         if (pendingBytes > 0) {
           ModelManager.deviceFit()
             .then(r => {
               const fit: { freeBytes: number } = JSON.parse(r);
-              setSpaceShort(spaceFits(pendingBytes, fit.freeBytes) ? null : spaceReason('the writer', pendingBytes, fit.freeBytes));
+              setSpaceShort(spaceFits(pendingBytes, fit.freeBytes) ? null : spaceReason("Pro's models", pendingBytes, fit.freeBytes));
             })
             .catch(() => {});
         }
       })
       .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    const emitter = new NativeEventEmitter(NativeModules.ModelManager);
-    const sub = emitter.addListener('onModelProgress', (e: { total: number; downloaded: number }) => {
-      if (e.total > 0) setDl({ downloaded: e.downloaded, total: e.total });
-    });
-    return () => sub.remove();
-  }, []);
-
-  /**
-   * Fetch the writer the subscription pays for, straight after the purchase.
-   *
-   * Not silent and not in the background: it is over a gigabyte, and somebody who has just
-   * started a trial and watches nothing happen for ten minutes on hotel wifi has been lied to. A
-   * failure is said plainly and costs nothing — Settings fetches it later.
-   */
-  const fetchWriter = useCallback(async () => {
-    try {
-      scroller.current?.scrollTo({ y: 0, animated: true });
-      const list: { id: string; kind: string; installed: boolean; unsupportedReason?: string | null }[] = JSON.parse(
-        await ModelManager.list(),
-      );
-      const missing = runnable(list).filter(m => m.kind === 'llm' && !m.installed);
-      for (const m of missing) {
-        setDl({ downloaded: 0, total: 0 });
-        await ModelManager.download(m.id);
-      }
-      setWriterInstalled(true);
-    } catch (e: any) {
-      Alert.alert(
-        'The writer could not be downloaded',
-        `${String(e?.message ?? e)}\n\nPro is on and nothing has been lost. You can fetch the ` +
-          'model from Settings once you are on a better connection.',
-      );
-    } finally {
-      setDl(null);
-    }
   }, []);
 
   const onBuy = useCallback(async () => {
@@ -307,10 +267,10 @@ export default function PaywallScreen({ navigation, route }: Props) {
         Alert.alert(
           free ? 'Your free trial has started' : 'You are on Pro',
           free
-            ? `Pro is on, free for ${free}. Cancel in Google Play before then and you pay nothing.`
-            : 'The written summary and the narrated minutes are on.',
+            ? `Pro is on, free for ${free}. Cancel in Google Play before then and you pay nothing. ` +
+              "Pro's models are downloading now. The download carries on in the background while you use the app."
+            : "Pro's models are downloading now. The download carries on in the background while you use the app.",
         );
-        await fetchWriter();
       }
       // Not paid means the buyer backed out or the payment is still authorising. Neither is a
       // failure, and neither earns a dialog.
@@ -319,7 +279,7 @@ export default function PaywallScreen({ navigation, route }: Props) {
     } finally {
       setBusy(null);
     }
-  }, [chosenPlan, plans, load, fetchWriter, navigation, route.params]);
+  }, [chosenPlan, plans, load, navigation, route.params]);
 
   const onRestore = useCallback(async () => {
     setRestoring(true);
@@ -342,6 +302,14 @@ export default function PaywallScreen({ navigation, route }: Props) {
   }, [load]);
 
   const bought = Boolean(ent?.licence?.paid);
+
+  // Bought: start Pro's download at once, straight after a purchase, a restore or a sign-in, and
+  // pick up one that stopped whenever this screen opens on Pro. runProModels does nothing when
+  // everything is already here, and joins a run already going. First run is the exception:
+  // setup's own download fetches Pro's models there, and two runs would race.
+  useEffect(() => {
+    if (bought && route.params?.from !== 'onboarding') runProModels().catch(() => {});
+  }, [bought, route.params]);
   const chosen = plans.find(p => p.basePlanId === chosenPlan) ?? null;
   // Play shows its trial only to an account that has never subscribed, so its presence on the
   // chosen plan is the whole eligibility check.
@@ -466,7 +434,7 @@ export default function PaywallScreen({ navigation, route }: Props) {
             {!ent?.licence?.paid ? (
               <View style={st.signIn}>
                 {showSignIn ? (
-                  <SignInForm onSignedIn={res => { if (res.paid) navigation.goBack(); }} />
+                  <SignInForm onSignedIn={res => { if (res.paid) load(); }} />
                 ) : (
                   <SoftButton
                     icon="lock"
@@ -487,12 +455,23 @@ export default function PaywallScreen({ navigation, route }: Props) {
           st.dock,
           { backgroundColor: colors.card, borderTopColor: colors.line, paddingBottom: insets.bottom + s(12) },
         ]}>
-        {dl !== null ? (
+        {pro.running && pro.total > 0 ? (
           <View style={st.dl}>
             <Txt variant="chip" color={colors.inkSoft}>
-              Downloading the {writerBlocked ? 'meaning index' : 'writer'} — {downloadLabel(dl.downloaded, dl.total)}
+              Downloading Pro's models — {downloadLabel(pro.downloaded, pro.total)}
             </Txt>
-            <ProgressBar pct={downloadPct(dl.downloaded, dl.total)} color={colors.primary} track={colors.cardAlt} />
+            <ProgressBar pct={downloadPct(pro.downloaded, pro.total)} color={colors.primary} track={colors.cardAlt} />
+            <Txt variant="chip" color={colors.inkFaint}>
+              You can leave this screen. The download carries on in the background while you use the app.
+            </Txt>
+          </View>
+        ) : null}
+        {pro.error ? (
+          <View style={st.dl}>
+            <Txt variant="chip" color={colors.warning}>
+              {`Pro's models did not finish downloading: ${pro.error}`}
+            </Txt>
+            <Button label="Try again" icon="download" onPress={() => runProModels().catch(() => {})} full />
           </View>
         ) : null}
         {bought ? (
@@ -557,9 +536,9 @@ export default function PaywallScreen({ navigation, route }: Props) {
                 {terms}
               </Txt>
             ) : null}
-            {!bought && !writerInstalled && writerMb > 0 ? (
+            {!bought && proMb > 0 ? (
               <Txt variant="chip" color={colors.inkFaint} style={st.note}>
-                Pro downloads a {writerMb} MB model once you start, so start on wifi.
+                {`Pro downloads ${proMb} MB of models as soon as you start, so start on wifi.`}
               </Txt>
             ) : null}
             {spaceShort ? (
