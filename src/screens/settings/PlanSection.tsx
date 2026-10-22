@@ -62,7 +62,10 @@ export default function PlanSection({
   );
 
   let body: React.ReactNode;
-  if (!hasServer) {
+  if (!lic) {
+    // The licence has not been read yet: say nothing rather than flash "Free" at a subscriber.
+    body = null;
+  } else if (!hasServer) {
     body = (
       <Txt variant="chip" color={colors.inkFaint} style={st.tiny}>
         This build has no licence server configured.
@@ -144,9 +147,11 @@ export default function PlanSection({
           <Txt variant="overlineSm" color={colors.inkFaint}>
             CURRENT PLAN
           </Txt>
-          <Txt variant="display" style={st.tiny}>
-            {paid ? 'Pro' : 'Free'}
-          </Txt>
+          {lic ? (
+            <Txt variant="display" style={st.tiny}>
+              {paid ? 'Pro' : 'Free'}
+            </Txt>
+          ) : null}
           {body}
         </View>
       </Raised>

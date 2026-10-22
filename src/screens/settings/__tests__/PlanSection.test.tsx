@@ -97,3 +97,9 @@ test('no server: one muted line and nothing interactive', () => {
   expect(t).not.toContain('See Pro plans');
   expect(t).not.toContain('Restore a purchase');
 });
+
+test('until the licence is read nothing but the overline renders', () => {
+  const { tree } = mount({ lic: null, hasServer: false });
+  const t = texts(tree);
+  expect(t).toEqual(['CURRENT PLAN']);
+});
