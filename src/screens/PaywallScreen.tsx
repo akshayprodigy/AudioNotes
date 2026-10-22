@@ -536,13 +536,11 @@ export default function PaywallScreen({ navigation, route }: Props) {
                 {terms}
               </Txt>
             ) : null}
-            {!bought ? (
-              <Txt variant="chip" color={colors.inkFaint} style={st.note}>
-                {chosenFree
-                  ? "Payments aren't refundable — the free week is for trying it."
-                  : "Payments aren't refundable."}
-              </Txt>
-            ) : null}
+            <Txt variant="chip" color={colors.inkFaint} style={st.note}>
+              {chosenFree
+                ? "Payments aren't refundable — the free week is for trying it."
+                : "Payments aren't refundable."}
+            </Txt>
             {!bought && proMb > 0 ? (
               <Txt variant="chip" color={colors.inkFaint} style={st.note}>
                 {`Pro downloads ${proMb} MB of models as soon as you start, so start on wifi.`}
