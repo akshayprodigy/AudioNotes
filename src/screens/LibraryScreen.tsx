@@ -44,7 +44,6 @@ import {
   Pop,
   Raised,
   Sheet,
-  Tile,
   Txt,
   type SheetAction,
 } from '../components/ui';
@@ -128,14 +127,6 @@ function dayLabel(ts: number): string {
   y.setDate(now.getDate() - 1);
   if (d.toDateString() === y.toDateString()) return 'YESTERDAY';
   return d.toLocaleDateString(undefined, { day: 'numeric', month: 'long' }).toUpperCase();
-}
-
-/** Two initials for the card tile, from the meeting's own title. */
-function initials(title: string): string {
-  const w = (title || '').trim().split(/\s+/).filter(x => /[A-Za-z0-9]/.test(x));
-  if (w.length === 0) return '··';
-  if (w.length === 1) return w[0].slice(0, 2).toUpperCase();
-  return (w[0][0] + w[1][0]).toUpperCase();
 }
 
 /**
@@ -501,8 +492,7 @@ export default function LibraryScreen({ navigation, route }: Props) {
           onLongPress={() => setSheetFor(m)}>
           <View style={st.cardPad}>
             <View style={st.cardTop}>
-              <Tile label={initials(m.title)} color={colors.primary} soft={colors.primarySoft} />
-              {status.live ? (
+              {m.status === 'done' ? null : status.live ? (
                 <View style={[st.liveChip, { backgroundColor: status.soft }]}>
                   <LiveDot color={status.color} size={s(6)} />
                   <Txt variant="chip" color={status.color}>
@@ -530,42 +520,9 @@ export default function LibraryScreen({ navigation, route }: Props) {
                 {subtitleOf(m)}
               </Txt>
             ) : null}
-            {m.status === 'done' ? <MiniWave seed={m.id} /> : null}
           </View>
         </Raised>
       </Pop>
-    );
-  };
-
-  /**
-   * The small bar chart the design puts under a finished meeting — a glanceable "this is audio"
-   * mark. Heights are derived from the meeting id so a given meeting always draws the same shape
-   * (a random one would reshuffle on every re-render and read as a live meter, which it is not).
-   */
-  const MiniWave = ({ seed }: { seed: string }) => {
-    let h = 0;
-    for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-    const bars = Array.from({ length: 12 }, (_, _i) => {
-      h = (h * 1103515245 + 12345) >>> 0;
-      return 0.3 + ((h >>> 16) % 71) / 100; // 0.30 - 1.00
-    });
-    // Four steps of the primary ramp rather than four literals: the bars have to sit on the card
-    // in both themes, and a hardcoded pale indigo on a #171A24 card is a white smear.
-    const shades = [colors.primarySoft2, colors.primarySoftEdge, colors.primary, colors.primaryLight];
-    return (
-      <View style={st.wave}>
-        {bars.map((v, i) => (
-          <View
-            key={i}
-            style={{
-              flex: 1,
-              height: `${v * 100}%`,
-              borderRadius: 3,
-              backgroundColor: shades[i % shades.length],
-            }}
-          />
-        ))}
-      </View>
     );
   };
 
@@ -584,7 +541,7 @@ export default function LibraryScreen({ navigation, route }: Props) {
           onLongPress={() => setSheetFor(m)}>
           <View style={st.smallPad}>
             <View style={st.badges}>
-              <Badge label={status.label} color={status.color} soft={status.soft} small />
+              {m.status === 'done' ? null : <Badge label={status.label} color={status.color} soft={status.soft} small />}
               {isSampleId(m.id) ? <Badge label="SAMPLE" color={colors.primaryDeep} soft={colors.primarySoft} small /> : null}
             </View>
             <Txt variant="cardTitleSm" style={st.smallTitle} numberOfLines={2}>
@@ -732,7 +689,7 @@ export default function LibraryScreen({ navigation, route }: Props) {
               label="Search meetings"
               onPress={() => navigation.navigate('Search')}
             />
-            <IconButton icon="sliders" label="Settings" onPress={() => navigation.navigate('Settings')} />
+            <IconButton icon="settings" label="Settings" onPress={() => navigation.navigate('Settings')} />
           </View>
         </View>
 
@@ -841,9 +798,10 @@ export default function LibraryScreen({ navigation, route }: Props) {
           />
         ) : null}
 
-        {/* "Empty" means nothing the person recorded: the sample alone does not fill the library. */}
-        {own.length === 0 ? (
-          <Pop style={[st.empty, meetings.length === 0 && st.emptyGrow]}>
+        {/* Only with no meeting at all: beside the sample card it would contradict it, and the
+            header already says "Nothing recorded yet". */}
+        {meetings.length === 0 ? (
+          <Pop style={[st.empty, st.emptyGrow]}>
             <Mascot mood="asleep" size={s(150)} />
             <Txt variant="display" style={st.emptyTitle}>
               No meetings yet
@@ -1043,13 +1001,6 @@ function makeStyles(c: Colors) {
     // The design's short card: 92% of the column, so the stack's right edge is not a dead
     // straight line all the way down.
     narrow: { width: '92%' },
-    wave: {
-      marginTop: s(12),
-      height: s(26),
-      flexDirection: 'row',
-      alignItems: 'flex-end',
-      gap: s(3),
-    },
 
     cardPad: { padding: s(18) },
     // Wraps: at 200% text the time and length would otherwise run off the card's right edge.

@@ -79,8 +79,34 @@ describe('the sample in the Library', () => {
     expect(t).toContain('SAMPLE');
     expect(t).toContain('Nothing recorded yet');
     expect(t.some(x => /\d+ saved/.test(x))).toBe(false);
-    // The empty welcome still shows: the sample alone does not fill the library.
-    expect(t).toContain('No meetings yet');
+    // The sample card is the welcome: the big empty panel would contradict it.
+    expect(t).not.toContain('No meetings yet');
+    await act(async () => tree.unmount());
+  });
+
+  it('shows the big empty panel only when there is no meeting at all', async () => {
+    const tree = await show();
+    expect(texts(tree)).toContain('No meetings yet');
+    await act(async () => tree.unmount());
+  });
+
+  it('a done meeting card has no READY chip, no initials tile; a processing one keeps its chip', async () => {
+    (db.listMeetings as jest.Mock).mockResolvedValue([
+      meeting('a', { title: 'Weekly Catchup' }),
+      meeting('b', { status: 'transcribing' }),
+    ]);
+    const tree = await show();
+    const t = texts(tree);
+    expect(t).not.toContain('READY');
+    expect(t).not.toContain('WC');
+    expect(t.some(x => /TRANSCRIBING/.test(x))).toBe(true);
+    await act(async () => tree.unmount());
+  });
+
+  it('the Settings header button wears the gear', async () => {
+    const tree = await show();
+    const btn = tree.root.findAll(n => n.props.label === 'Settings' && n.props.icon)[0];
+    expect(btn.props.icon).toBe('settings');
     await act(async () => tree.unmount());
   });
 
