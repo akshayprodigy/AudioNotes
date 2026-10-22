@@ -1,6 +1,6 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
-import { Alert, AppState, PermissionsAndroid, ScrollView } from 'react-native';
+import { Alert, PermissionsAndroid, ScrollView } from 'react-native';
 import RecordScreen from '../RecordScreen';
 import { db } from '../../db/queries';
 import Licence from '../../native/NativeLicence';
@@ -454,16 +454,7 @@ describe('the battery exemption at the first recording', () => {
   const batteryAlert = (alert: jest.SpyInstance) =>
     alert.mock.calls.find(c => c[0] === 'Keep recording with the screen off');
 
-  // The jest AppState mock has no real foreground state (currentState is a mock function); the
-  // wait reads it, so give it one for this block and put it back after.
-  const realState = (AppState as any).currentState;
-  beforeEach(() => {
-    (AppState as any).currentState = 'active';
-  });
-  afterEach(() => {
-    (AppState as any).currentState = realState;
-    jest.restoreAllMocks();
-  });
+  afterEach(() => jest.restoreAllMocks());
 
   it('explains itself first; Continue asks, remembers, and the recording still starts', async () => {
     const alert = jest.spyOn(Alert, 'alert').mockImplementation((_t, _b, buttons) => {

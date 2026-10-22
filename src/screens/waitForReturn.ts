@@ -1,5 +1,5 @@
 export type AppStateLike = {
-  currentState: string | null | undefined;
+  currentState: unknown;
   addEventListener(type: 'change', listener: (state: string) => void): { remove(): void };
 };
 
@@ -11,8 +11,8 @@ export type AppStateLike = {
  */
 export function watchForReturn(appState: AppStateLike, leaveWindowMs = 2000): Promise<void> {
   return new Promise<void>(resolve => {
-    // null/undefined = RN has not reported a state yet; that is not evidence of having left.
-    let left = appState.currentState != null && appState.currentState !== 'active';
+    // Only a real string state counts: before RN reports one it is null/undefined (or a mock).
+    let left = typeof appState.currentState === 'string' && appState.currentState !== 'active';
     const finish = () => {
       clearTimeout(timer);
       sub.remove();

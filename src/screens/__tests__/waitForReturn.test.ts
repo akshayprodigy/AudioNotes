@@ -1,6 +1,6 @@
 import { watchForReturn, type AppStateLike } from '../waitForReturn';
 
-function fake(currentState = 'active') {
+function fake(currentState: unknown = 'active') {
   let cb: ((s: string) => void) | null = null;
   const remove = jest.fn();
   const appState: AppStateLike = {
@@ -60,4 +60,11 @@ test('never leaves: carries on once the window has passed', async () => {
   jest.advanceTimersByTime(1);
   expect(await settled(p)).toBe(true);
   expect(f.remove).toHaveBeenCalled();
+});
+
+test('a non-string state (RN has not reported one) is not evidence of having left', async () => {
+  const f = fake(() => {});
+  const p = watchForReturn(f.appState, 1000);
+  jest.advanceTimersByTime(1000);
+  expect(await settled(p)).toBe(true);
 });
