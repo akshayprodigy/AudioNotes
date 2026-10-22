@@ -25,6 +25,8 @@ Every change is built **subagent-driven**. Do not ask the founder to repeat this
   (its device stage runs on any attached phone). Never run `adb` against a physical phone.
 - The Galaxy A07 (serial R9ZL402YH5A) is the founder's phone with a Play install and real
   meetings: never install to it, never uninstall, never wipe.
+- Run single jest files with `--forceExit` (the Mascot's `Animated.loop` keeps jest alive, and
+  orphaned jest processes make later gate runs flaky). The full gate exits on its own.
 - Indent like the surrounding file (2 spaces). Pipe long output through `tail`/`grep`.
 - `git status` clean at the end; commit messages end with
   `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
