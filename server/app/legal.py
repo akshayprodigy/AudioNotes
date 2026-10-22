@@ -144,6 +144,7 @@ def _terms() -> str:
 <ul>
   <li>Bought in the app through Google Play, monthly or yearly, and renewed automatically until
       cancelled.</li>
+  <!-- The 7 days must match the free-trial offer configured in Play Console. -->
   <li>New subscribers can try it free for 7 days. Cancel in Google Play before the trial ends and
       you are not charged.</li>
   <li>One subscription covers up to {DEVICE_LIMIT} devices at a time. Using it on another one

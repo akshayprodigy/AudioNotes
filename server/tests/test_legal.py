@@ -14,3 +14,7 @@ def test_terms_say_payments_are_final(store, signing_key):
     assert "free for 7 days" in body
     assert "22 October 2026" in body
     assert "within 7 days of a charge" not in body
+    # The source wraps lines, so compare with whitespace collapsed.
+    flat = " ".join(body.split())
+    assert "refund Google Play gives under its own refund policy" in flat
+    assert "consumer law where you live" in flat
