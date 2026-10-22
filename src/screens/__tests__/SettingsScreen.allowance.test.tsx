@@ -45,28 +45,36 @@ beforeEach(() => {
   }
   (db.getSetting as jest.Mock).mockResolvedValue(null);
   allowance.mockResolvedValue(FREE);
+  (Licence.status as jest.Mock).mockResolvedValue({
+    plan: 'free', state: 'none', paid: false, expiresAt: 0, account: null, lapsedCopy: '',
+  });
+  (Licence.baseUrl as jest.Mock).mockResolvedValue('https://licence.example');
 });
 
-test('Settings has a "Free allowance" row with what is left and when it resets', async () => {
+test('Settings shows what is left and when it resets as one line under the plan name', async () => {
   const tree = await render();
-  expect(texts(tree)).toContain('Free allowance');
+  expect(texts(tree)).toContain('Free');
+  expect(texts(tree)).not.toContain('Free allowance');
   expect(texts(tree)).toContain('3 of 5 left · resets 1 November');
-  expect(texts(tree)).toContain('Imports and dictations count as meetings.');
+  expect(texts(tree)).not.toContain('Imports and dictations count as meetings.');
   await act(async () => tree.unmount());
 });
 
-test('for Pro the row says "Unlimited with Pro" and does not explain meetings', async () => {
+test('for Pro the page shows no allowance text at all', async () => {
   allowance.mockResolvedValue({ ...FREE, paid: true });
+  (Licence.status as jest.Mock).mockResolvedValue({
+    plan: 'pro', state: 'active', paid: true, expiresAt: 0, account: null, lapsedCopy: '',
+  });
   const tree = await render();
-  expect(texts(tree)).toContain('Free allowance');
-  expect(texts(tree)).toContain('Unlimited with Pro');
+  expect(texts(tree)).not.toContain('Free allowance');
+  expect(texts(tree)).not.toContain('Unlimited with Pro');
   expect(texts(tree).some(t => /of 5 left|count as meetings/.test(t))).toBe(false);
   await act(async () => tree.unmount());
 });
 
-test('there is no row until native has answered, rather than a guess', async () => {
+test('there is no allowance line until native has answered, rather than a guess', async () => {
   allowance.mockRejectedValue(new Error('not yet'));
   const tree = await render();
-  expect(texts(tree)).not.toContain('Free allowance');
+  expect(texts(tree).some(t => /of 5 left/.test(t))).toBe(false);
   await act(async () => tree.unmount());
 });

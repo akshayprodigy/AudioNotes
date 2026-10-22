@@ -40,6 +40,7 @@ import { featureStatus, STATUS_LABEL } from './featureStatus';
 import { downloadLabel, downloadPct } from './downloadLabel';
 import { dropInstalled, isDownloadComplete } from './modelProgress';
 import VoicesSection from './settings/VoicesSection';
+import PlanSection from './settings/PlanSection';
 import Backup from '../native/NativeBackup';
 import Licence, { type LicenceStatus } from '../native/NativeLicence';
 import {
@@ -50,7 +51,6 @@ import {
 } from '../billing/subscription';
 import { entitlement } from '../billing/trial';
 import { refreshAllowance, useAllowance } from '../billing/allowance';
-import { explainer, settingsValue } from '../billing/allowanceCopy';
 import {
   crashConsent,
   crashReportingAvailable,
@@ -153,9 +153,6 @@ export default function SettingsScreen({ navigation, route }: Props) {
   // the email sign-in never goes away entirely.
   const [playCan, setPlayCan] = React.useState(false);
   const [playBusy, setPlayBusy] = React.useState(false);
-  // Secondary on purpose. Somebody on a Play install should be buying through Play; this is for
-  // the person who already subscribed on the web or, later, on a desktop.
-  const [showEmailSignIn, setShowEmailSignIn] = React.useState(false);
   const [hasServer, setHasServer] = React.useState(false);
 
   const refreshLicence = React.useCallback(async () => {
@@ -665,107 +662,21 @@ export default function SettingsScreen({ navigation, route }: Props) {
         </View>
         </>) : null}
 
-        {section === 'plan' ? (<>
-        <View style={st.ruleWrap}>
-          <SectionRule label="SUBSCRIPTION" />
-        </View>
-        <View style={st.list}>
-          {settingsValue(allowance) ? (
-            <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={5}>
-              <View style={st.rowPad}>
-                <Txt variant="bodyStrong">Free allowance</Txt>
-                <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
-                  {settingsValue(allowance)}
-                </Txt>
-                {allowance?.paid ? null : (
-                  <Txt variant="chip" color={colors.inkFaint} style={st.tiny}>
-                    {explainer}
-                  </Txt>
-                )}
-              </View>
-            </Raised>
-          ) : null}
-          <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={5}>
-            <View style={st.rowPad}>
-              <Txt variant="bodyStrong">
-                {lic?.paid ? 'Pro' : 'Free'}
-              </Txt>
-              <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
-                {lic?.paid
-                  ? 'The summary and the written minutes are on. Everything runs on this phone.'
-                  : 'Recording, transcripts and rule-based minutes are free forever. The written summary needs a subscription.'}
-              </Txt>
-
-              {!hasServer ? (
-                <Txt variant="chip" color={colors.inkFaint} style={st.tiny}>
-                  This build has no licence server configured.
-                </Txt>
-              ) : lic?.paid ? (
-                <View style={st.backupRow}>
-                  <View style={st.flex}>
-                    {playCan ? (
-                      <SoftButton icon="settings" label="Manage subscription" onPress={onManage} />
-                    ) : null}
-                  </View>
-                  {signedInAs ? (
-                    <View style={st.flex}>
-                      <SoftButton icon="x" label="Sign out" onPress={onSignOut} />
-                    </View>
-                  ) : null}
-                </View>
-              ) : playCan ? (
-                <>
-                  <Button
-                    icon="check"
-                    label="See Pro plans"
-                    onPress={() => navigation.navigate('Paywall')}
-                    full
-                  />
-                  <View style={st.backupRow}>
-                    <View style={st.flex}>
-                      <SoftButton
-                        icon="download"
-                        label="Restore purchase"
-                        onPress={onRestorePurchase}
-                        disabled={playBusy}
-                      />
-                    </View>
-                    <View style={st.flex}>
-                      <SoftButton icon="settings" label="Manage in Google Play" onPress={onManage} />
-                    </View>
-                  </View>
-                  {/* Secondary, and phrased as a statement of fact rather than an invitation.
-                      Honouring a subscription bought elsewhere is permitted; steering somebody
-                      there is not, so this says where an existing account can be used and offers
-                      no price, no link and no way to buy. */}
-                  {showEmailSignIn ? (
-                    <>
-                      <Txt variant="chip" color={colors.inkFaint} style={st.tiny}>
-                        For an account that already has a subscription.
-                      </Txt>
-                      {emailSignIn}
-                    </>
-                  ) : (
-                    <SoftButton
-                      icon="users"
-                      label="I already have an account"
-                      onPress={() => setShowEmailSignIn(true)}
-                    />
-                  )}
-                </>
-              ) : signedInAs ? (
-                <View style={st.backupRow}>
-                  <View style={st.flex}>
-                    <SoftButton icon="x" label="Sign out" onPress={onSignOut} />
-                  </View>
-                </View>
-              ) : (
-                emailSignIn
-              )}
-            </View>
-          </Raised>
-        </View>
-        </>) : null}
+        {section === 'plan' ? (
+          <PlanSection
+            lic={lic}
+            allowance={allowance}
+            hasServer={hasServer}
+            playCan={playCan}
+            playBusy={playBusy}
+            signedInAs={signedInAs}
+            onManage={onManage}
+            onRestorePurchase={onRestorePurchase}
+            onSignOut={onSignOut}
+            onSeePlans={() => navigation.navigate('Paywall')}
+            emailSignIn={emailSignIn}
+          />
+        ) : null}
 
         {section === 'storage' ? (<>
         <View style={st.ruleWrap}>
