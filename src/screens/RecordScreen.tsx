@@ -650,7 +650,21 @@ export default function RecordScreen({ navigation }: Props) {
                   onUpgrade={() => navigation.navigate('Paywall')}
                 />
               ) : (
-                <AllowanceLine status={allowance} />
+                <>
+                  <AllowanceLine status={allowance} />
+                  {/* The other way to add a meeting. Here, not on the Library header (founder,
+                      22 Oct: the header had too many buttons). The Library runs the pick. */}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Import a recording"
+                    hitSlop={8}
+                    onPress={() => navigation.navigate('Library', { importNow: Date.now() })}
+                    style={st.importLink}>
+                    <Txt variant="chip" color={colors.primaryDeep}>
+                      Or import a recording ›
+                    </Txt>
+                  </Pressable>
+                </>
               )
             ) : null}
           </ScrollView>
@@ -731,6 +745,7 @@ function makeStyles(c: Colors) {
     root: { flex: 1, backgroundColor: c.canvas },
     recPad: { flex: 1, paddingHorizontal: s(22) },
     consentPad: { flex: 1, paddingHorizontal: s(22) },
+    importLink: { marginTop: s(10), alignSelf: 'center' },
 
     // Wraps: at 200% text the pill and the date no longer fit side by side, and the date was cut
     // off at the screen's edge (Nothing A069, 384 dp).

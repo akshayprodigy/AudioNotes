@@ -410,3 +410,19 @@ describe('ending card', () => {
     alert.mockRestore();
   });
 });
+
+test('with meetings left, Record offers an import, which hands the pick to the Library', async () => {
+  const tree = await render();
+  const link = tree.root.findAll(n => n.props.accessibilityLabel === 'Import a recording' && typeof n.props.onPress === 'function')[0];
+  expect(link).toBeDefined();
+  await act(async () => link.props.onPress());
+  expect(nav.navigate).toHaveBeenCalledWith('Library', { importNow: expect.any(Number) });
+  await act(async () => tree.unmount());
+});
+
+test('with none left there is no import link: an import would be refused too', async () => {
+  allowance.mockResolvedValue({ ...FREE, used: 5, remaining: 0 });
+  const tree = await render();
+  expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Import a recording')).toHaveLength(0);
+  await act(async () => tree.unmount());
+});
