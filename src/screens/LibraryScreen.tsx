@@ -480,6 +480,7 @@ export default function LibraryScreen({ navigation, route }: Props) {
   /** Full-width card: tile + status + time, then title. */
   const BigCard = ({ m, i }: { m: Meeting; i: number }) => {
     const status = badgeFor(m);
+    const showStatus = m.status !== 'done';
     return (
       <Pop index={i}>
         <Raised
@@ -492,16 +493,17 @@ export default function LibraryScreen({ navigation, route }: Props) {
           onLongPress={() => setSheetFor(m)}>
           <View style={st.cardPad}>
             <View style={st.cardTop}>
-              {m.status === 'done' ? null : status.live ? (
+              {showStatus && status.live ? (
                 <View style={[st.liveChip, { backgroundColor: status.soft }]}>
                   <LiveDot color={status.color} size={s(6)} />
                   <Txt variant="chip" color={status.color}>
                     {status.label}
                   </Txt>
                 </View>
-              ) : (
+              ) : null}
+              {showStatus && !status.live ? (
                 <Badge label={status.label} color={status.color} soft={status.soft} />
-              )}
+              ) : null}
               {isSampleId(m.id) ? <Badge label="SAMPLE" color={colors.primaryDeep} soft={colors.primarySoft} /> : null}
               <View style={st.flex} />
               <Txt variant="chipSoft" color={colors.inkFaint}>
@@ -529,6 +531,8 @@ export default function LibraryScreen({ navigation, route }: Props) {
   /** Narrow card used in a two-up row. */
   const SmallCard = ({ m, i, flex }: { m: Meeting; i: number; flex: number }) => {
     const status = badgeFor(m);
+    const showStatus = m.status !== 'done';
+    const showSample = isSampleId(m.id);
     return (
       <Pop index={i} style={{ flex }}>
         <Raised
@@ -540,11 +544,13 @@ export default function LibraryScreen({ navigation, route }: Props) {
           onPress={() => open(m.id)}
           onLongPress={() => setSheetFor(m)}>
           <View style={st.smallPad}>
-            <View style={st.badges}>
-              {m.status === 'done' ? null : <Badge label={status.label} color={status.color} soft={status.soft} small />}
-              {isSampleId(m.id) ? <Badge label="SAMPLE" color={colors.primaryDeep} soft={colors.primarySoft} small /> : null}
-            </View>
-            <Txt variant="cardTitleSm" style={st.smallTitle} numberOfLines={2}>
+            {showStatus || showSample ? (
+              <View style={st.badges} testID="small-badges">
+                {showStatus ? <Badge label={status.label} color={status.color} soft={status.soft} small /> : null}
+                {showSample ? <Badge label="SAMPLE" color={colors.primaryDeep} soft={colors.primarySoft} small /> : null}
+              </View>
+            ) : null}
+            <Txt variant="cardTitleSm" style={[st.smallTitle, !(showStatus || showSample) && st.smallTitleFirst]} numberOfLines={2}>
               {m.title || 'Untitled meeting'}
             </Txt>
             <Txt variant="chipSoft" color={colors.inkFaint} style={st.smallMeta}>
@@ -1019,6 +1025,7 @@ function makeStyles(c: Colors) {
     smallPad: { padding: s(16) },
     badges: { flexDirection: 'row', flexWrap: 'wrap', gap: s(6) },
     smallTitle: { marginTop: s(10) },
+    smallTitleFirst: { marginTop: 0 },
     smallMeta: { marginTop: s(10) },
 
     quietPad: { padding: s(16), gap: s(16), minHeight: s(120), justifyContent: 'space-between' },

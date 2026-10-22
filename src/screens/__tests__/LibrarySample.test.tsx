@@ -103,6 +103,13 @@ describe('the sample in the Library', () => {
     await act(async () => tree.unmount());
   });
 
+  it('a done non-sample small card has no empty badges row', async () => {
+    (db.listMeetings as jest.Mock).mockResolvedValue([meeting('a'), meeting('b'), meeting('c')]);
+    const tree = await show();
+    expect(tree.root.findAll(n => n.props.testID === 'small-badges')).toHaveLength(0);
+    await act(async () => tree.unmount());
+  });
+
   it('the Settings header button wears the gear', async () => {
     const tree = await show();
     const btn = tree.root.findAll(n => n.props.label === 'Settings' && n.props.icon)[0];
