@@ -184,7 +184,9 @@ export default function MinutesTab({
     <ScrollView contentContainerStyle={st.pad} showsVerticalScrollIndicator={false}>
       {/* The one thing to take away, before any section. Nothing when there is nothing to say —
           never a tally of what the app extracted. */}
-      {takeaway ? (
+      {/* Not above a Decisions card when it is the rule-based "Decided: …" lead: that IS the first
+          decision, said twice. The writer's own headline is a different sentence and stays. */}
+      {takeaway && (decisions.length === 0 || minutes.some(m => m.kind === 'headline' && m.content.trim())) ? (
         <Heading variant="cardTitle" style={st.takeaway}>
           {takeaway}
         </Heading>

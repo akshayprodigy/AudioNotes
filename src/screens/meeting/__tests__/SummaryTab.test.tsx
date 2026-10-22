@@ -308,8 +308,8 @@ describe('why there is no summary', () => {
     const words = (t: renderer.ReactTestRenderer) =>
       t.root.findAll(n => typeof n.props.children === 'string').map(n => n.props.children as string);
     expect(words(note).some(t => t.startsWith('Your note is below'))).toBe(true);
-    expect(words(note).some(t => t.includes('who said what'))).toBe(false);
-    expect(words(meeting).some(t => t.includes('who said what'))).toBe(true);
+    expect(words(note).some(t => t.includes('Pro writes the whole meeting'))).toBe(false);
+    expect(words(meeting).some(t => t.includes('Pro writes the whole meeting'))).toBe(true);
   });
 
   test('a phone under the gate hears the memory sentence, not "Settings → Models"', async () => {
@@ -392,8 +392,10 @@ describe('Play\'s trial on the card', () => {
     const tree = await renderTab({ minutes: [] });
     await act(async () => {});
     expect(
-      tree.root.findAllByProps({ label: 'Try it free for 7 days' }, { deep: false }),
+      tree.root.findAllByProps({ accessibilityLabel: 'Try it free for 7 days' }, { deep: false }),
     ).toHaveLength(1);
+    const t = tree.root.findAll(n => typeof n.props.children === 'string').map(n => n.props.children as string);
+    expect(t).toContain('Try it free for 7 days ›');
   });
 
   test('says Get Pro when Play offers no trial', async () => {
@@ -402,7 +404,7 @@ describe('Play\'s trial on the card', () => {
     (playPlans as jest.Mock).mockResolvedValue([]);
     const tree = await renderTab({ minutes: [] });
     await act(async () => {});
-    expect(tree.root.findAllByProps({ label: 'Get Pro' }, { deep: false })).toHaveLength(1);
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Get Pro' }, { deep: false })).toHaveLength(1);
     const t = tree.root
       .findAll(n => typeof n.props.children === 'string')
       .map(n => n.props.children as string);
@@ -509,7 +511,29 @@ describe('the summary card before and after a check that did not finish', () => 
     });
     (entitlement as jest.Mock).mockResolvedValue({ paid: false });
     const tree = await renderTab({ minutes: [] });
-    expect(ALL_TEXT(tree)).toContain('Pro writes the meeting up in plain English on this phone');
+    const t = ALL_TEXT(tree);
+    expect(t).toContain('The minutes below were pulled out of what was said.');
+    expect(t).toContain('Pro writes the whole meeting up in plain English.');
+    expect(t).toContain('Get Pro ›');
+  });
+
+  test('Free leads with the meeting itself, not the pitch', async () => {
+    (Licence.status as jest.Mock).mockResolvedValue({
+      state: 'none', paid: false, expiresAt: 0, lapsedCopy: '',
+    });
+    (entitlement as jest.Mock).mockResolvedValue({ paid: false });
+    const decision = {
+      id: 'd1', meetingId: 'm1', kind: 'decision', text: 'We will ship on Thursday.',
+      review: 'suggested', genVersion: 'rules@1', itemType: null, status: null, ownerJson: null,
+      dateSaid: null, dateNorm: null, anchorStartMs: 1000, anchorEndMs: 1500, sources: [],
+    };
+    const tree = await renderTab({ minutes: [], items: [decision] });
+    const t = ALL_TEXT(tree);
+    expect(t).toContain('Decided: We will ship on Thursday.');
+    expect(t).toContain('Get Pro ›');
+    expect(t).toContain('Pro writes the whole meeting up in plain English.');
+    expect(t).not.toContain('The minutes below were pulled out');
+    expect(tree.root.findAllByProps({ label: 'Get Pro' }, { deep: false })).toHaveLength(0);
   });
 });
 

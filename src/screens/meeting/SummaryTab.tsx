@@ -33,7 +33,7 @@ import {
   toItemRows,
   type EditMap,
 } from './shared';
-import { previewOf } from './takeaway';
+import { previewOf, takeawayOf } from './takeaway';
 import Heading from './Heading';
 import { STALE_SUMMARY_COPY } from './correctionNotices';
 
@@ -216,6 +216,18 @@ export default function SummaryTab({
         return editedText(ed, t.kind, t.key, r.text) ?? r.text;
       }),
     );
+
+  // The meeting itself, in one line, for the Free card to lead with: the same rule-based takeaway
+  // the Minutes tab used to open with, over the person's corrections where there are any.
+  const shownText = (r: (typeof rows)[number]) => {
+    const t = editTargetOf(r);
+    return editedText(ed, t.kind, t.key, r.text) ?? r.text;
+  };
+  const takeaway = takeawayOf({
+    minutes,
+    decisions: decisionRows.map(shownText),
+    actions: actionRows.map(shownText),
+  });
 
   // Why there is no summary decides what we can honestly offer. A lapsed subscription is a
   // sentence, not a fix we can offer from here; a missing model is a Settings trip; a capable
@@ -543,7 +555,7 @@ export default function SummaryTab({
                       // meeting copy, and was shown on a note (Nothing A069, 8 Oct).
                       template === DICTATION_TEMPLATE
                       ? 'Your note is below, as you said it. Pro tidies it into clean writing on this phone, and pulls out anything you need to do.'
-                      : 'The minutes below were pulled out of what was said. Pro writes the meeting up in plain English on this phone — who said what, what was settled, what is still open.'
+                      : (takeaway ?? 'The minutes below were pulled out of what was said.')
                     : reason === 'no-model'
                       ? 'The summary is written on your phone by a language model that has not been downloaded yet.'
                       : reason === 'weak-device'
@@ -564,14 +576,22 @@ export default function SummaryTab({
                 <SoftButton icon="refresh" label="Try again" onPress={() => setRecheck(n => n + 1)} />
               </View>
             ) : null}
+            {!prose && reason === 'locked' && template !== DICTATION_TEMPLATE ? (
+              <Txt variant="chipSoft" color={colors.inkSoft} style={st.note}>
+                Pro writes the whole meeting up in plain English.
+              </Txt>
+            ) : null}
             {!prose && reason === 'locked' && onUpgrade ? (
-              <View style={st.cta}>
-                <SoftButton
-                  icon="ai"
-                  label={trialFree ? `Try it free for ${trialFree}` : 'Get Pro'}
-                  onPress={onUpgrade}
-                />
-              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={trialFree ? `Try it free for ${trialFree}` : 'Get Pro'}
+                onPress={onUpgrade}
+                hitSlop={8}
+                style={st.cta}>
+                <Txt variant="chip" color={colors.primary}>
+                  {trialFree ? `Try it free for ${trialFree} ›` : 'Get Pro ›'}
+                </Txt>
+              </Pressable>
             ) : null}
           </View>
         </View>

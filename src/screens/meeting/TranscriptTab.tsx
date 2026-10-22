@@ -5,7 +5,6 @@ import { Txt } from '../../components/ui';
 import { radius, s, useTheme, type Colors } from '../../theme';
 import type { Speaker, Utterance } from '../../pipeline/types';
 import {
-  EditButton,
   EditedTag,
   Hairline,
   ToolButton,
@@ -135,7 +134,6 @@ export default function TranscriptTab({
   onLineActions,
   onReassignTurn,
   onRevertLine,
-  onEditLine,
   onRenameSpeakers,
   oneVoice = false,
 }: {
@@ -327,14 +325,10 @@ export default function TranscriptTab({
                     ) : null}
                   </View>
                 );
-                const edit = onEditLine ? (
-                  <EditButton label="Edit this line" onPress={() => onEditLine({ id: part.id, text })} colors={colors} />
-                ) : null;
                 if (!onPlayTurn && !onLineActions) {
                   return (
                     <View key={part.id} style={st.lineRow}>
                       <View style={st.flex}>{line}</View>
-                      {edit}
                     </View>
                   );
                 }
@@ -359,8 +353,6 @@ export default function TranscriptTab({
                     }}>
                     {line}
                   </Pressable>
-                  {/* Beside the line and not inside it, so a screen reader reaches it as its own stop. */}
-                  {edit}
                   </View>
                 );
               })}

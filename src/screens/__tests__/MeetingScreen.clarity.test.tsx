@@ -113,10 +113,10 @@ describe('the Minutes tab leads with the takeaway', () => {
     (db.minutes as jest.Mock).mockResolvedValue([]);
   });
 
-  it('opens with one takeaway, then Decisions, Next steps and Questions, in that order', async () => {
+  it('opens with Decisions, then Next steps and Questions, with no repeated headline', async () => {
     const tree = await open({ tab: 'mom' });
-    expect(headers(tree).slice(0, 4)).toEqual([
-      'Decided: We agreed to go with the agency quote of $4,500.',
+    // No "Decided: …" headline above the Decisions card: it would say its first item twice.
+    expect(headers(tree).slice(0, 3)).toEqual([
       'Decisions · 1',
       'Next steps · 3',
       'Questions · 1',
@@ -374,18 +374,17 @@ describe('visible Edit controls', () => {
     await act(async () => tree.unmount());
   });
 
-  it('puts an Edit control on a transcript line that opens the same correction as the long-press sheet', async () => {
+  it('draws no pencil on a transcript line; the long press still opens the correction', async () => {
     (db.utterances as jest.Mock).mockResolvedValue([
       { id: 'u1', meetingId: 'm1', startMs: 0, endMs: 2000, speakerId: 's1', text: 'Hello there.' },
     ]);
     (db.speakers as jest.Mock).mockResolvedValue([{ id: 's1', meetingId: 'm1', clusterLabel: 'S0', displayName: 'Priya' }]);
     const tree = await open({ tab: 'transcript' });
-    await act(async () => withHandler(tree, 'Edit this line')[0].props.onPress());
-    const p = prompt(tree)!;
-    expect(p.props.initial).toBe('Hello there.');
-    expect(p.props.title).toBe('Correct this line');
-    await act(async () => p.props.onSubmit('Hello, Priya.', ''));
-    expect(db.putEdit).toHaveBeenCalledWith('m1', 'utterance', 'u1', 'Hello, Priya.');
+    expect(editBtn(tree, 'Edit this line')).toHaveLength(0);
+    const row = tree.root.find(
+      n => n.props.accessibilityLabel === 'Hello there.' && typeof n.props.onLongPress === 'function',
+    );
+    expect(row.props.accessibilityHint).toMatch(/Long press to correct this line/);
     await act(async () => tree.unmount());
   });
 
@@ -450,13 +449,13 @@ describe('headings, rows and reading order', () => {
     (db.minutes as jest.Mock).mockResolvedValue([]);
   });
 
-  it('reads title, then takeaway, then Decisions, then Next steps, top to bottom', async () => {
+  it('reads title, then Decisions, then Next steps, top to bottom', async () => {
     const tree = await open({ tab: 'mom' });
     const order = texts(tree);
     const at = (s: string) => order.findIndex(x => x.startsWith(s));
     expect(at('Standup')).toBeGreaterThanOrEqual(0);
-    expect(at('Standup')).toBeLessThan(at('Decided:'));
-    expect(at('Decided:')).toBeLessThan(at('Decisions · 1'));
+    expect(at('Decided:')).toBe(-1);
+    expect(at('Standup')).toBeLessThan(at('Decisions · 1'));
     expect(at('Decisions · 1')).toBeLessThan(at('Next steps · 3'));
     expect(at('Next steps · 3')).toBeLessThan(at('Questions · 1'));
     await act(async () => tree.unmount());
@@ -503,12 +502,14 @@ describe('headings, rows and reading order', () => {
     await act(async () => tree.unmount());
   });
 
-  it('keeps the Ask entry a labelled button, in reading order after the takeaway', async () => {
+  it('keeps the Ask entry a labelled button, in reading order after the title', async () => {
     const tree = await open({ tab: 'mom' });
     const buttons = tree.root.findAll(n => typeof n.type === 'string' && n.props.accessibilityLabel === 'Ask this meeting' && n.props.accessibilityRole === 'button');
     expect(buttons.length).toBeGreaterThan(0);
     const order = texts(tree);
-    expect(order.findIndex(x => x.startsWith('Decided:'))).toBeLessThan(order.indexOf('Ask this meeting', order.findIndex(x => x.startsWith('Decided:'))));
+    const title = order.findIndex(x => x.startsWith('Standup'));
+    expect(title).toBeGreaterThanOrEqual(0);
+    expect(title).toBeLessThan(order.indexOf('Ask this meeting', title));
     await act(async () => tree.unmount());
   });
 });
