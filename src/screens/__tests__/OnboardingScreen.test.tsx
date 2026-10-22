@@ -90,6 +90,22 @@ describe('the first screen leads with value', () => {
     await act(async () => tree.unmount());
   });
 
+  it('keeps the welcome readable while the download runs, with the progress beside it', async () => {
+    let release!: () => void;
+    (ModelManager.download as jest.Mock).mockImplementation(() => new Promise<void>(r => { release = r; }));
+    const tree = await show();
+    const t = texts(tree);
+    expect(t).toContain('Your private meeting note-taker');
+    expect(t).toContain('Private by design');
+    expect(t).toContain('Preparing your app');
+    expect(t).toContain('Voice detection');
+    expect(t).toContain('1 of 3');
+    expect(t.some(x => /It carries on if you leave the app/.test(x))).toBe(true);
+    expect(t.some(x => /Keep the app open/.test(x))).toBe(false);
+    release();
+    await act(async () => tree.unmount());
+  });
+
   it('asks no plan decision: no Start free, no trial button', async () => {
     const t = texts(await show());
     expect(t.some(x => /Start free|Try Pro free|Get Pro/.test(x))).toBe(false);

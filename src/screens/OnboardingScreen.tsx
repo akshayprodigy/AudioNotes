@@ -257,36 +257,6 @@ export default function OnboardingScreen({ navigation }: Props) {
 
   const pad = { paddingTop: insets.top + s(10), paddingBottom: insets.bottom + s(20) };
 
-  if (status === 'downloading') {
-    return (
-      <View style={[st.root, st.center, pad]}>
-        <Mascot mood="thinking" size={sv(140)} />
-        <Txt variant="display" style={st.mt}>
-          Preparing your app
-        </Txt>
-        <Txt variant="meta" color={colors.inkDim} style={st.sub}>
-          Setting up the on-device speech models, one time only. Keep the app open; recording works offline after this.
-        </Txt>
-        <View style={st.progress}>
-          <View style={st.progressHead}>
-            <Txt variant="bodyStrong">{run.current}</Txt>
-            <Txt variant="chip" color={colors.inkFaint}>
-              {run.step + 1} of {run.of}
-            </Txt>
-          </View>
-          <ProgressBar
-            pct={downloadPct(bytes.downloaded, bytes.total)}
-            color={colors.primary}
-            track={colors.cardAlt}
-          />
-          <Txt variant="chip" color={colors.inkFaint}>
-            {downloadLabel(bytes.downloaded, bytes.total)}
-          </Txt>
-        </View>
-      </View>
-    );
-  }
-
   if (status === 'failed') {
     return (
       <View style={[st.root, st.center, pad]}>
@@ -425,7 +395,31 @@ export default function OnboardingScreen({ navigation }: Props) {
           downloading anything, and the Pro link above is where the paid half is explained.
       */}
       <Pop index={2} style={st.tierChoice}>
-        {spaceShort && !alreadySetUp ? (
+        {status === 'downloading' ? (
+          // The welcome stays on screen; the run is a compact block where the button was.
+          <View style={st.progress}>
+            <Txt variant="bodyStrong" style={st.centerText}>
+              Preparing your app
+            </Txt>
+            <Txt variant="meta" color={colors.inkDim} style={st.centerText}>
+              Setting up the on-device speech models, one time only. It carries on if you leave the app; recording works offline after this.
+            </Txt>
+            <View style={st.progressHead}>
+              <Txt variant="bodyStrong">{run.current}</Txt>
+              <Txt variant="chip" color={colors.inkFaint}>
+                {run.step + 1} of {run.of}
+              </Txt>
+            </View>
+            <ProgressBar
+              pct={downloadPct(bytes.downloaded, bytes.total)}
+              color={colors.primary}
+              track={colors.cardAlt}
+            />
+            <Txt variant="chip" color={colors.inkFaint}>
+              {downloadLabel(bytes.downloaded, bytes.total)}
+            </Txt>
+          </View>
+        ) : spaceShort && !alreadySetUp ? (
           <Txt variant="chip" color={colors.warning} style={[st.centerText, st.note]}>
             {spaceShort}
           </Txt>
@@ -444,7 +438,7 @@ export default function OnboardingScreen({ navigation }: Props) {
             full
           />
         )}
-        {alreadySetUp ? null : (
+        {alreadySetUp || status === 'downloading' ? null : (
           <Txt variant="chip" color={colors.inkFaint} style={[st.centerText, st.note]}>
             {totalMb > 0 ? `${totalMb} MB, downloaded once. ` : ''}The speech models are not bundled in
             the app. After that your recordings, transcripts and minutes are all made on this phone —
@@ -605,7 +599,7 @@ function makeStyles(c: Colors) {
     doneCard: { marginTop: s(18), marginBottom: s(10) },
     mt: { marginTop: s(22) },
     sub: { marginTop: s(6), textAlign: 'center' },
-    progress: { alignSelf: 'stretch', marginTop: s(30), gap: s(8) },
+    progress: { alignSelf: 'stretch', gap: s(8) },
     progressHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     doneWrap: { alignSelf: 'stretch', marginTop: s(20) },
     cta: { marginTop: s(22) },
