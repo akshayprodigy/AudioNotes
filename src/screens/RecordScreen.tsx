@@ -650,21 +650,7 @@ export default function RecordScreen({ navigation }: Props) {
                   onUpgrade={() => navigation.navigate('Paywall')}
                 />
               ) : (
-                <>
-                  <AllowanceLine status={allowance} />
-                  {/* The other way to add a meeting. Here, not on the Library header (founder,
-                      22 Oct: the header had too many buttons). The Library runs the pick. */}
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Import a recording"
-                    hitSlop={8}
-                    onPress={() => navigation.navigate('Library', { importNow: Date.now() })}
-                    style={st.importLink}>
-                    <Txt variant="chip" color={colors.primaryDeep}>
-                      Or import a recording ›
-                    </Txt>
-                  </Pressable>
-                </>
+                <AllowanceLine status={allowance} />
               )
             ) : null}
           </ScrollView>
@@ -718,21 +704,38 @@ export default function RecordScreen({ navigation }: Props) {
               )}
             </>
           ) : (
-            <Pressable
-              onPress={() => navigation.navigate('ConsentCard')}
-              accessibilityRole="button"
-              accessibilityLabel="Show the room a card"
-              style={st.privacy}>
-              <Icon name="shield" size={s(15)} color={colors.inkFaint} strokeWidth={2.4} />
-              <Txt variant="chip" color={colors.inkFaint}>
-                Stays on this device.
-              </Txt>
-              {/* The consent gate above says this once, before the first recording ever. This is
-                  the only way back to the card for every meeting after that. */}
-              <Txt variant="chip" color={colors.primaryDeep}>
-                Show the room
-              </Txt>
-            </Pressable>
+            <View style={st.idleFooter}>
+              <Pressable
+                onPress={() => navigation.navigate('ConsentCard')}
+                accessibilityRole="button"
+                accessibilityLabel="Show the room a card"
+                style={st.privacy}>
+                <Icon name="shield" size={s(15)} color={colors.inkFaint} strokeWidth={2.4} />
+                <Txt variant="chip" color={colors.inkFaint}>
+                  Stays on this device.
+                </Txt>
+                {/* The consent gate above says this once, before the first recording ever. This is
+                    the only way back to the card for every meeting after that. */}
+                <Txt variant="chip" color={colors.primaryDeep}>
+                  Show the room
+                </Txt>
+              </Pressable>
+              {/* The other way to add a meeting. Here, not on the Library header (founder,
+                  22 Oct: the header had too many buttons) and not in the scroller above, where
+                  the first-run card pushed it out of view. The Library runs the pick. */}
+              {!spent ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Import a recording"
+                  hitSlop={8}
+                  onPress={() => navigation.navigate('Library', { importNow: Date.now() })}
+                  style={st.importLink}>
+                  <Txt variant="chip" color={colors.primaryDeep}>
+                    Or import a recording ›
+                  </Txt>
+                </Pressable>
+              ) : null}
+            </View>
           )}
         </View>
       </View>
@@ -745,6 +748,7 @@ function makeStyles(c: Colors) {
     root: { flex: 1, backgroundColor: c.canvas },
     recPad: { flex: 1, paddingHorizontal: s(22) },
     consentPad: { flex: 1, paddingHorizontal: s(22) },
+    idleFooter: { flex: 1, alignItems: 'center' },
     importLink: { marginTop: s(10), alignSelf: 'center' },
 
     // Wraps: at 200% text the pill and the date no longer fit side by side, and the date was cut
@@ -786,7 +790,7 @@ function makeStyles(c: Colors) {
     warnText: { flexShrink: 1 },
     // Wraps for the same reason: "Stays on this device. Show the room" ran off both edges at 200%.
     privacy: {
-      flex: 1,
+      alignSelf: 'stretch',
       flexDirection: 'row',
       flexWrap: 'wrap',
       alignItems: 'center',

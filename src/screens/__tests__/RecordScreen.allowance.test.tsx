@@ -420,6 +420,16 @@ test('with meetings left, Record offers an import, which hands the pick to the L
   await act(async () => tree.unmount());
 });
 
+test('the import link is outside every ScrollView, so a full first-run card cannot clip it', async () => {
+  const tree = await render();
+  const label = (n: renderer.ReactTestInstance) => n.props.accessibilityLabel === 'Import a recording';
+  expect(tree.root.findAll(label).length).toBeGreaterThan(0);
+  for (const sv of tree.root.findAllByType(ScrollView)) {
+    expect(sv.findAll(label)).toHaveLength(0);
+  }
+  await act(async () => tree.unmount());
+});
+
 test('with none left there is no import link: an import would be refused too', async () => {
   allowance.mockResolvedValue({ ...FREE, used: 5, remaining: 0 });
   const tree = await render();
