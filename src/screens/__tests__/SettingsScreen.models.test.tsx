@@ -1,6 +1,6 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
-import { StyleSheet, Text } from 'react-native';
+import { Alert, StyleSheet, Text } from 'react-native';
 import SettingsScreen from '../SettingsScreen';
 import { db } from '../../db/queries';
 import Licence from '../../native/NativeLicence';
@@ -107,7 +107,7 @@ test('a download that finishes elsewhere clears the row and refreshes the list',
 
   expect(list.mock.calls.length).toBeGreaterThan(callsBefore);
   expect(texts(tree).join('|')).not.toContain('100%');
-  expect(texts(tree)).toContain('Remove');
+  expect(texts(tree)).toContain('ON THIS PHONE');
   await act(async () => tree.unmount());
 });
 
@@ -153,14 +153,7 @@ test('a model that turns out to be installed does not keep a stale progress entr
   await act(async () => {
     (global as any).__TEST_EMIT__('onModelProgress', { id: 'other', downloaded: 5, total: 5 });
   });
-  expect(texts(tree)).toContain('Remove');
-
-  // Remove it: the row must go back to idle, not to the old "50%" with a spinner.
-  list.mockResolvedValue(JSON.stringify([model(false)]));
-  await act(async () => {
-    tree.root.findByProps({ accessibilityLabel: 'Remove Writes the summary' }).props.onPress();
-  });
-  await act(async () => {});
+  expect(texts(tree)).toContain('ON THIS PHONE');
   expect(metaText(tree)).toBe('1100 MB');
   await act(async () => tree.unmount());
 });
@@ -172,7 +165,7 @@ test('no row names its model, only what it is for', async () => {
   await act(async () => tree.unmount());
 });
 
-describe("Pro's models are part of Pro, not downloads to manage", () => {
+describe('features show their status, never a button', () => {
   const pro = (installed: boolean) => ({
     ...model(installed),
     id: 'whisper-small',
@@ -181,35 +174,51 @@ describe("Pro's models are part of Pro, not downloads to manage", () => {
     needsSubscription: true,
     sizeBytes: 190_085_487,
   });
-  const removeLabel = 'Remove Writes down what was said, more accurately';
-  const getLabel = 'Download Writes down what was said, more accurately';
+  const anyButton = (tree: renderer.ReactTestRenderer) =>
+    tree.root.findAll(n => typeof n.props.accessibilityLabel === 'string' && /^(Remove|Download) /.test(n.props.accessibilityLabel));
 
-  test('on Pro an installed Pro model offers no Remove', async () => {
-    list.mockResolvedValue(JSON.stringify([pro(true)]));
+  test('no row offers Get or Remove', async () => {
+    list.mockResolvedValue(JSON.stringify([model(true), pro(false)]));
     const tree = await render();
-    expect(tree.root.findAllByProps({ accessibilityLabel: removeLabel })).toHaveLength(0);
+    expect(anyButton(tree)).toHaveLength(0);
+    expect(texts(tree)).toEqual(expect.arrayContaining(['ON THIS PHONE', 'DOWNLOADS BY ITSELF']));
     await act(async () => tree.unmount());
   });
 
-  test('on Pro a missing Pro model offers no Download either: it arrives by itself', async () => {
-    list.mockResolvedValue(JSON.stringify([pro(false)]));
-    const tree = await render();
-    expect(tree.root.findAllByProps({ accessibilityLabel: getLabel })).toHaveLength(0);
-    await act(async () => tree.unmount());
-  });
-
-  test('once Pro has lapsed, the file is theirs to remove', async () => {
+  test('on Free a Pro feature says it comes with Pro, and the row opens the Pro screen', async () => {
     const status = Licence.status as unknown as jest.Mock;
     const real = status.getMockImplementation()!;
-    const active = await real();
-    status.mockResolvedValue({ ...active, paid: false });
+    status.mockResolvedValue({ ...(await real()), paid: false });
     try {
-      list.mockResolvedValue(JSON.stringify([pro(true)]));
+      list.mockResolvedValue(JSON.stringify([pro(false)]));
       const tree = await render();
-      expect(tree.root.findAllByProps({ accessibilityLabel: removeLabel }).length).toBeGreaterThan(0);
+      expect(texts(tree)).toContain('COMES WITH PRO');
+      const [row] = tree.root.findAllByProps({ accessibilityLabel: 'Writes down what was said, more accurately. Comes with Pro.' }, { deep: false });
+      await act(async () => row.props.onPress());
+      expect(nav.navigate).toHaveBeenCalledWith('Paywall');
       await act(async () => tree.unmount());
     } finally {
       status.mockImplementation(real);
+    }
+  });
+
+  test("once Pro has lapsed, one button frees the space Pro's features take", async () => {
+    const status = Licence.status as unknown as jest.Mock;
+    const real = status.getMockImplementation()!;
+    status.mockResolvedValue({ ...(await real()), paid: false });
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    try {
+      list.mockResolvedValue(JSON.stringify([pro(true)]));
+      const tree = await render();
+      const free = tree.root.findAll(n => n.props.label === "Remove Pro's features (190 MB)" && typeof n.props.onPress === 'function')[0];
+      await act(async () => free.props.onPress());
+      const buttons = alert.mock.calls[0][2] as { text: string; onPress?: () => void }[];
+      await act(async () => buttons.find(b => b.text === 'Remove')!.onPress!());
+      expect(ModelManager.remove).toHaveBeenCalledWith('whisper-small');
+      await act(async () => tree.unmount());
+    } finally {
+      status.mockImplementation(real);
+      alert.mockRestore();
     }
   });
 });

@@ -36,6 +36,7 @@ import {
   Switch,
   Txt,
 } from '../components/ui';
+import { featureStatus, STATUS_LABEL } from './featureStatus';
 import { downloadLabel, downloadPct } from './downloadLabel';
 import { dropInstalled, isDownloadComplete } from './modelProgress';
 import VoicesSection from './settings/VoicesSection';
@@ -442,45 +443,6 @@ export default function SettingsScreen({ navigation, route }: Props) {
     await db.setSetting('asrLanguage', code).catch(() => {});
   };
 
-  const onToggle = async (m: Model) => {
-    // Removing is always allowed, including for a model bought and then cancelled: it is their
-    // storage. Adding one is what the subscription gates.
-    if (m.installed) {
-      await ModelManager.remove(m.id);
-      refresh();
-      return;
-    }
-    if (m.unsupportedReason) {
-      // No button reaches here — the row shows the sentence instead of Get — but the download is
-      // refused natively for the same reason, and a refusal should read the same as the row.
-      Alert.alert('Not on this phone', m.unsupportedReason);
-      return;
-    }
-    if (m.needsSubscription && !lic?.paid) {
-      // ModelManager.download would refuse this anyway — that refusal is the enforcement. Saying
-      // so here is what stops the tap looking broken. The old code swallowed the error entirely,
-      // so the button did nothing and explained nothing.
-      Alert.alert(
-        'Part of Pro',
-        'Sign in with a subscribed account and it will download. Everything else in the app ' +
-          'works without it.',
-      );
-      return;
-    }
-    setProgress(p => ({ ...p, [m.id]: { downloaded: 0, total: m.sizeBytes } }));
-    try {
-      await ModelManager.download(m.id);
-    } catch (e: any) {
-      Alert.alert('Could not download', String(e?.message ?? e));
-    } finally {
-      setProgress(p => {
-        const n = { ...p };
-        delete n[m.id];
-        return n;
-      });
-    }
-    refresh();
-  };
 
   // One form, three places now: here, behind "I already have an account" on a Play install, and
   // on the paywall — which is the screen that explains Pro and, until recently, offered an
@@ -544,13 +506,19 @@ export default function SettingsScreen({ navigation, route }: Props) {
             // read together, so the fallback keeps the render total-free rather than undefined.
             const prog = progress[m.id] ?? { downloaded: 0, total: 0 };
             const busy = progress[m.id] !== undefined && !m.installed;
-            // Present on disk is still theirs to remove; what the phone cannot run is not offered.
-            const off = !m.installed && !!m.unsupportedReason;
-            // Part of Pro while Pro lasts: it downloads by itself (src/setup/proModels), so there is
-            // nothing to get or remove here. Lapsed, it is their storage again.
-            const included = m.needsSubscription && !!lic?.paid;
+            // Where it stands, never a button (founder, 22 Oct): what this phone is entitled to
+            // downloads by itself. A Pro feature on Free opens the Pro screen from its row.
+            const status = featureStatus(m, !!lic?.paid, busy);
+            const off = status === 'unsupported';
+            const sellsPro = status === 'pro';
             return (
               <Pop key={m.id} index={i}>
+                <Pressable
+                  accessible
+                  accessibilityRole={sellsPro ? 'button' : undefined}
+                  accessibilityLabel={`${m.purpose}. ${sellsPro ? 'Comes with Pro.' : STATUS_LABEL[status].toLowerCase()}`}
+                  disabled={!sellsPro}
+                  onPress={() => navigation.navigate('Paywall')}>
                 <Raised edge={colors.line} fill={colors.card} rad={radius.xl} depth={5}>
                   <View style={st.rowPad}>
                     {/* The job only, never the model's name (founder, 21 Oct). The names live on the open-source
@@ -565,24 +533,6 @@ export default function SettingsScreen({ navigation, route }: Props) {
                           {off ? m.unsupportedReason : m.detail}
                         </Txt>
                       </View>
-                      {off || included ? null : (
-                        <Pressable
-                          onPress={() => onToggle(m)}
-                          disabled={busy}
-                          accessibilityRole="button"
-                          accessibilityLabel={`${m.installed ? 'Remove' : 'Download'} ${m.purpose}`}
-                          style={[st.pill, { backgroundColor: m.installed ? colors.dangerSoft : colors.primary }]}>
-                          <Icon
-                            name={m.installed ? 'trash' : 'download'}
-                            size={s(15)}
-                            color={m.installed ? colors.danger : colors.onPrimary}
-                            strokeWidth={2.4}
-                          />
-                          <Txt variant="chip" color={m.installed ? colors.danger : colors.onPrimary}>
-                            {m.installed ? 'Remove' : busy ? '…' : 'Get'}
-                          </Txt>
-                        </Pressable>
-                      )}
                     </View>
 
                     <View style={st.modelMeta}>
@@ -590,27 +540,28 @@ export default function SettingsScreen({ navigation, route }: Props) {
                         style={[
                           st.tag,
                           {
-                            backgroundColor: off
-                              ? colors.warningSoft
-                              : m.needsSubscription
+                            backgroundColor:
+                              status === 'ready'
                                 ? colors.successSoft
-                                : m.required
-                                  ? colors.primarySoft
-                                  : colors.cardAlt,
+                                : status === 'unsupported'
+                                  ? colors.warningSoft
+                                  : status === 'pro'
+                                    ? colors.cardAlt
+                                    : colors.primarySoft,
                           },
                         ]}>
                         <Txt
                           variant="chipSm"
                           color={
-                            off
-                              ? colors.warning
-                              : m.needsSubscription
-                                ? colors.success
-                                : m.required
-                                  ? colors.primary
-                                  : colors.inkFaint
+                            status === 'ready'
+                              ? colors.success
+                              : status === 'unsupported'
+                                ? colors.warning
+                                : status === 'pro'
+                                  ? colors.inkFaint
+                                  : colors.primary
                           }>
-                          {off ? 'NOT ON THIS PHONE' : m.needsSubscription ? 'PRO' : m.required ? 'REQUIRED' : 'OPTIONAL'}
+                          {STATUS_LABEL[status]}
                         </Txt>
                       </View>
                       {/* flexShrink so a long name or a large-text setting wraps the line instead of
@@ -631,10 +582,39 @@ export default function SettingsScreen({ navigation, route }: Props) {
                     ) : null}
                   </View>
                 </Raised>
+                </Pressable>
               </Pop>
             );
           })}
         </View>
+
+        {(() => {
+          // Pro lapsed with its features still here: their storage, freed in one go.
+          const kept = !lic?.paid ? models.filter(m => m.needsSubscription && m.installed) : [];
+          if (kept.length === 0) return null;
+          const bytes = kept.reduce((a, m) => a + m.sizeBytes, 0);
+          return (
+            <View style={st.list}>
+              <SoftButton
+                icon="trash"
+                label={`Remove Pro's features (${mb(bytes)})`}
+                onPress={() =>
+                  Alert.alert("Remove Pro's features?", 'They download again by themselves if you take Pro again.', [
+                    { text: 'Keep', style: 'cancel' },
+                    {
+                      text: 'Remove',
+                      style: 'destructive',
+                      onPress: async () => {
+                        for (const m of kept) await ModelManager.remove(m.id).catch(() => {});
+                        refresh();
+                      },
+                    },
+                  ])
+                }
+              />
+            </View>
+          );
+        })()}
 
         <View style={st.ruleWrap}>
           <SectionRule label="LIBRARY" />
