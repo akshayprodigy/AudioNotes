@@ -430,6 +430,16 @@ test('the import link is outside every ScrollView, so a full first-run card cann
   await act(async () => tree.unmount());
 });
 
+test('while recording, nothing is labelled as the import link (the height placeholder is hidden and unlabelled)', async () => {
+  (AudioPipeline.currentSession as jest.Mock).mockResolvedValueOnce({
+    isRecording: true, meetingId: 'live', elapsedMs: 5000, silenced: false, paused: false,
+  });
+  const tree = await render();
+  expect(useRecordingStore.getState().isRecording).toBe(true);
+  expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Import a recording')).toHaveLength(0);
+  await act(async () => tree.unmount());
+});
+
 test('with none left there is no import link: an import would be refused too', async () => {
   allowance.mockResolvedValue({ ...FREE, used: 5, remaining: 0 });
   const tree = await render();

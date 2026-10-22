@@ -685,26 +685,28 @@ export default function RecordScreen({ navigation }: Props) {
           </View>
         </View>
 
+        {/* A column in both states, so the mic never moves when recording starts: the first row is
+            the privacy line or the two buttons, the second is always one line tall. */}
         <View style={st.footer}>
-          {isRecording ? (
-            <>
-              <SoftButton
-                label={paused ? 'Resume' : 'Pause'}
-                icon={paused ? 'mic' : 'pause'}
-                onPress={togglePause}
-              />
-              {silenced ? (
-                <SoftButton label="Mic unavailable" icon="alert" tone={colors.warning} />
-              ) : (
+          <View style={st.footerRow}>
+            {isRecording ? (
+              <>
                 <SoftButton
-                  label={marked !== null ? `Marked ${provenanceLabel(marked)}` : 'Mark'}
-                  icon="clock"
-                  onPress={onMark}
+                  label={paused ? 'Resume' : 'Pause'}
+                  icon={paused ? 'mic' : 'pause'}
+                  onPress={togglePause}
                 />
-              )}
-            </>
-          ) : (
-            <View style={st.idleFooter}>
+                {silenced ? (
+                  <SoftButton label="Mic unavailable" icon="alert" tone={colors.warning} />
+                ) : (
+                  <SoftButton
+                    label={marked !== null ? `Marked ${provenanceLabel(marked)}` : 'Mark'}
+                    icon="clock"
+                    onPress={onMark}
+                  />
+                )}
+              </>
+            ) : (
               <Pressable
                 onPress={() => navigation.navigate('ConsentCard')}
                 accessibilityRole="button"
@@ -720,21 +722,29 @@ export default function RecordScreen({ navigation }: Props) {
                   Show the room
                 </Txt>
               </Pressable>
-              {/* The other way to add a meeting. Here, not on the Library header (founder,
-                  22 Oct: the header had too many buttons) and not in the scroller above, where
-                  the first-run card pushed it out of view. The Library runs the pick. */}
-              {!spent ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Import a recording"
-                  hitSlop={8}
-                  onPress={() => navigation.navigate('Library', { importNow: Date.now() })}
-                  style={st.importLink}>
-                  <Txt variant="chip" color={colors.primaryDeep}>
-                    Or import a recording ›
-                  </Txt>
-                </Pressable>
-              ) : null}
+            )}
+          </View>
+          {/* The other way to add a meeting. Here, not on the Library header (founder, 22 Oct: the
+              header had too many buttons) and not in the scroller above, where the first-run card
+              pushed it out of view. The Library runs the pick. */}
+          {!isRecording && !spent ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Import a recording"
+              hitSlop={{ top: 4, bottom: 8, left: 8, right: 8 }}
+              onPress={() => navigation.navigate('Library', { importNow: Date.now() })}
+              style={st.importLink}>
+              <Txt variant="chip" color={colors.primaryDeep}>
+                Or import a recording ›
+              </Txt>
+            </Pressable>
+          ) : (
+            <View
+              pointerEvents="none"
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              style={[st.importLink, { opacity: 0 }]}>
+              <Txt variant="chip">Or import a recording ›</Txt>
             </View>
           )}
         </View>
@@ -748,8 +758,7 @@ function makeStyles(c: Colors) {
     root: { flex: 1, backgroundColor: c.canvas },
     recPad: { flex: 1, paddingHorizontal: s(22) },
     consentPad: { flex: 1, paddingHorizontal: s(22) },
-    idleFooter: { flex: 1, alignItems: 'center' },
-    importLink: { marginTop: s(10), alignSelf: 'center' },
+    importLink: { marginTop: s(12), alignSelf: 'center' },
 
     // Wraps: at 200% text the pill and the date no longer fit side by side, and the date was cut
     // off at the screen's edge (Nothing A069, 384 dp).
@@ -775,7 +784,8 @@ function makeStyles(c: Colors) {
     hint: { marginTop: s(4) },
     meter: { marginTop: sv(22), marginBottom: sv(6) },
 
-    footer: { flexDirection: 'row', gap: s(10), minHeight: s(52) },
+    footer: {},
+    footerRow: { flexDirection: 'row', gap: s(10), minHeight: s(52) },
     warn: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -790,7 +800,7 @@ function makeStyles(c: Colors) {
     warnText: { flexShrink: 1 },
     // Wraps for the same reason: "Stays on this device. Show the room" ran off both edges at 200%.
     privacy: {
-      alignSelf: 'stretch',
+      flex: 1,
       flexDirection: 'row',
       flexWrap: 'wrap',
       alignItems: 'center',
