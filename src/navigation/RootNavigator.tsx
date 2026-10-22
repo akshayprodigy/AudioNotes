@@ -28,7 +28,8 @@ import SharePreviewScreen from '../share/SharePreviewScreen';
 
 export type RootStackParamList = {
   Onboarding: undefined;
-  Library: undefined;
+  /** `importNow` (a timestamp): the Record screen's "Or import a recording" hands the pick here. */
+  Library: { importNow?: number } | undefined;
   Record: undefined;
   /**
    * `tab` and `atMs` let something outside the screen say where to land: a search hit opens the

@@ -227,7 +227,7 @@ function Chip({
   );
 }
 
-export default function LibraryScreen({ navigation }: Props) {
+export default function LibraryScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const st = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
@@ -282,6 +282,13 @@ export default function LibraryScreen({ navigation }: Props) {
     ),
     useCallback(() => navigation.navigate('Paywall'), [navigation]),
   );
+  // The Record screen's "Or import a recording" lands here: this screen owns the import, its
+  // progress line and the share-sheet path, so the pick runs here too.
+  const importNow = route.params?.importNow;
+  useEffect(() => {
+    if (importNow) importing.pick();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [importNow]);
   // The month's Free meetings, one quiet line under the count; nothing for Pro.
   const allowance = useAllowance();
 
@@ -713,23 +720,12 @@ export default function LibraryScreen({ navigation }: Props) {
             </Txt>
           </View>
           <View style={st.headBtns}>
-            {/* Sits with search and settings rather than beside the record button: importing is
-                something you do occasionally and deliberately, and putting it next to Record
-                would put a second call to action against the one this screen is built around. */}
-            <IconButton
-              icon={importing.busy ? 'clock' : 'download'}
-              label="Import a recording"
-              onPress={importing.busy ? () => {} : importing.pick}
-            />
             {/* Keyword search is Free; only search by meaning is Pro, and the Search screen says so. */}
             <IconButton
               icon="search"
               label="Search meetings"
               onPress={() => navigation.navigate('Search')}
             />
-            {paidKnown && paid ? (
-              <IconButton icon="list" label="Actions" onPress={() => navigation.navigate('Actions')} />
-            ) : null}
             <IconButton icon="sliders" label="Settings" onPress={() => navigation.navigate('Settings')} />
           </View>
         </View>
@@ -752,6 +748,8 @@ export default function LibraryScreen({ navigation }: Props) {
             capturedMin={totalMin}
             allowance={allowance}
             onUpgrade={() => setProSheet(true)}
+            openActions={paid ? work.open : null}
+            onOpenActions={() => navigation.navigate('Actions')}
           />
         ) : null}
 

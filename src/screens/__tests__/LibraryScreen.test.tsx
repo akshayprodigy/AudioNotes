@@ -52,10 +52,10 @@ const route = { key: 'library', name: 'Library', params: undefined } as never;
 const sweepItems = jest.fn<Promise<boolean>, []>();
 const sweepSearch = jest.fn<Promise<void>, []>();
 
-async function focusTheLibrary() {
+async function focusTheLibrary(params?: { importNow?: number }) {
   let tree!: renderer.ReactTestRenderer;
   await act(async () => {
-    tree = renderer.create(<LibraryScreen navigation={nav} route={route} />);
+    tree = renderer.create(<LibraryScreen navigation={nav} route={{ ...(route as any), params } as never} />);
   });
   return tree;
 }
@@ -139,6 +139,14 @@ describe('the thread door and the Pro-gated worklist (Phase 3)', () => {
     await act(async () => tree.unmount());
   });
 
+  test('the header holds only Search and Settings', async () => {
+    const tree = await focusTheLibrary();
+    const row = tree.root.findAll(n => n.props.testID === 'library-header', { deep: false })[0];
+    const labels = row.findAll(n => typeof n.props.accessibilityLabel === 'string', { deep: false }).map(n => n.props.accessibilityLabel);
+    expect(labels).toEqual(['Search meetings', 'Settings']);
+    await act(async () => tree.unmount());
+  });
+
   test('the outstanding-actions card is not drawn on free', async () => {
     (entitlement as jest.Mock).mockResolvedValue({ paid: false });
     (db.allActions as jest.Mock).mockResolvedValue([
@@ -155,25 +163,29 @@ describe('the thread door and the Pro-gated worklist (Phase 3)', () => {
     ]);
     const tree = await focusTheLibrary();
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Open actions' }, { deep: false })).toHaveLength(1);
-    expect(tree.root.findAllByProps({ accessibilityLabel: 'Actions' }, { deep: false })).toHaveLength(1);
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Actions' }, { deep: false })).toHaveLength(0);
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Get Pro' }, { deep: false })).toHaveLength(0);
     await act(async () => tree.unmount());
   });
 
   test('buying Pro on the Pro screen is noticed when the library is focused again', async () => {
     (entitlement as jest.Mock).mockResolvedValue({ paid: false });
+    (db.listMeetings as jest.Mock).mockResolvedValue([
+      { id: 'm1', title: 'Standup', createdAt: Date.now(), durationMs: 600_000, language: 'en', status: 'done', tierUsed: 'free', audioRetained: 1 },
+    ]);
     const tree = await focusTheLibrary();
-    expect(tree.root.findAllByProps({ accessibilityLabel: 'Actions' }, { deep: false })).toHaveLength(0);
+    const strip = () => tree.root.findAll(n => n.props.testID === 'library-summary', { deep: false })[0];
+    expect(strip().props.accessibilityLabel).not.toContain('open action');
 
     (entitlement as jest.Mock).mockResolvedValue({ paid: true });
     const onFocus = (nav as any).addListener.mock.calls.find((c: any[]) => c[0] === 'focus')[1];
     await act(async () => {
       onFocus();
     });
-    expect(tree.root.findAllByProps({ accessibilityLabel: 'Actions' }, { deep: false })).toHaveLength(1);
-    expect(tree.root.findAllByProps({ accessibilityLabel: 'Get Pro' }, { deep: false })).toHaveLength(0);
+    expect(strip().props.accessibilityLabel).toContain('0 open actions');
     await act(async () => tree.unmount());
   });
+
 });
 
 test('focusing the library sweeps the item migration', async () => {
@@ -327,13 +339,19 @@ describe("the action tracker's front door", () => {
     await act(async () => tree.unmount());
   });
 
-  it('has the tracker one tap away in the header regardless', async () => {
+  it('on Pro the summary strip counts the open actions and opens the tracker', async () => {
+    (db.listMeetings as jest.Mock).mockResolvedValue([
+      { id: 'm1', title: 'Standup', createdAt: Date.now(), durationMs: 600_000, language: 'en', status: 'done', tierUsed: 'pro', audioRetained: 1 },
+    ]);
+    (db.allActions as jest.Mock).mockResolvedValue(rows(3));
     const tree = await focusTheLibrary();
-    const icon = tree.root.findByProps({ label: 'Actions' });
-    await act(async () => { icon.props.onPress(); });
+    const strip = tree.root.findAll(n => n.props.testID === 'library-summary', { deep: false })[0];
+    expect(strip.props.accessibilityLabel).toContain('3 open actions');
+    await act(async () => strip.props.onPress());
     expect((nav as any).navigate).toHaveBeenCalledWith('Actions');
     await act(async () => tree.unmount());
   });
+
 });
 
 test('a crashed meeting reads DIDN\'T FINISH with its reason, not NO SPEECH', async () => {
@@ -426,7 +444,7 @@ describe('the Free allowance', () => {
     (db.listMeetings as jest.Mock).mockResolvedValue([saved]);
     const tree = await focusTheLibrary();
     expect(texts(tree).some(t => /free meetings left|FREE LEFT/.test(t))).toBe(false);
-    expect(summary(tree)).toBe('1 meeting saved. 10 min captured.');
+    expect(summary(tree)).toBe('1 meeting saved. 10 min captured. 0 open actions. Open the action tracker.');
     await act(async () => tree.unmount());
   });
 
@@ -473,13 +491,11 @@ describe('the Free allowance', () => {
     await act(async () => tree.unmount());
   });
 
-  test('with none left the import button explains before it opens the picker, and offers Pro', async () => {
+  test('with none left an import explains before it opens the picker, and offers Pro', async () => {
     allowance.mockResolvedValue({ ...FREE, used: 5, remaining: 0 });
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-    const tree = await focusTheLibrary();
-    await act(async () => {
-      pressIconButton(tree, 'Import a recording');
-    });
+    const tree = await focusTheLibrary({ importNow: 1 });
+    await act(async () => {});
     expect(importer.pick).not.toHaveBeenCalled();
     expect(alert).toHaveBeenCalledTimes(1);
     const [, message, buttons] = alert.mock.calls[0] as [string, string, { text: string; onPress?: () => void }[]];
@@ -492,10 +508,8 @@ describe('the Free allowance', () => {
 
   test('with meetings left the import button goes straight to the picker', async () => {
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-    const tree = await focusTheLibrary();
-    await act(async () => {
-      pressIconButton(tree, 'Import a recording');
-    });
+    const tree = await focusTheLibrary({ importNow: 1 });
+    await act(async () => {});
     expect(importer.pick).toHaveBeenCalledTimes(1);
     expect(alert).not.toHaveBeenCalled();
     alert.mockRestore();
@@ -508,8 +522,9 @@ describe('the Free allowance', () => {
     await act(async () => {
       useAllowanceStore.setState({ status: { ...FREE, used: 5, remaining: 0 } });
     });
+    // The pick now arrives as a param; hand it over after the stale zero is in place.
     await act(async () => {
-      pressIconButton(tree, 'Import a recording');
+      tree.update(<LibraryScreen navigation={nav} route={{ ...(route as any), params: { importNow: 1 } } as never} />);
     });
     expect(importer.pick).toHaveBeenCalledTimes(1);
     await act(async () => tree.unmount());
@@ -518,10 +533,8 @@ describe('the Free allowance', () => {
   test('a file over the hour is refused with the Free limit and an offer of Pro', async () => {
     importer.pick.mockRejectedValue(Object.assign(new Error('That recording is longer than the 1 hour Free limit'), { code: 'import_too_long' }));
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-    const tree = await focusTheLibrary();
-    await act(async () => {
-      pressIconButton(tree, 'Import a recording');
-    });
+    const tree = await focusTheLibrary({ importNow: 1 });
+    await act(async () => {});
     const [, message, buttons] = alert.mock.calls[0] as [string, string, { text: string; onPress?: () => void }[]];
     expect(message).toBe('That recording is longer than the 1 hour Free limit. Pro has no length limit.');
     await act(async () => buttons.find(b => b.text === 'Get Pro')!.onPress!());
@@ -533,10 +546,8 @@ describe('the Free allowance', () => {
   test('an import while recording says to finish recording first, with no upsell', async () => {
     importer.pick.mockRejectedValue(Object.assign(new Error('Finish recording first'), { code: 'recording_in_progress' }));
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-    const tree = await focusTheLibrary();
-    await act(async () => {
-      pressIconButton(tree, 'Import a recording');
-    });
+    const tree = await focusTheLibrary({ importNow: 1 });
+    await act(async () => {});
     const [, message, buttons] = alert.mock.calls[0] as [string, string, { text: string }[]];
     expect(message).toBe('Finish recording first');
     expect(buttons.map(b => b.text)).not.toContain('Get Pro');
@@ -547,10 +558,8 @@ describe('the Free allowance', () => {
   test('a second import while one runs says to finish the import first', async () => {
     importer.pick.mockRejectedValue(Object.assign(new Error('Finish the import first'), { code: 'import_in_progress' }));
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-    const tree = await focusTheLibrary();
-    await act(async () => {
-      pressIconButton(tree, 'Import a recording');
-    });
+    const tree = await focusTheLibrary({ importNow: 1 });
+    await act(async () => {});
     expect((alert.mock.calls[0] as unknown[])[1]).toBe('Finish the import first');
     alert.mockRestore();
     await act(async () => tree.unmount());
@@ -559,10 +568,8 @@ describe('the Free allowance', () => {
   test('any other failure keeps the old title and the native message', async () => {
     importer.pick.mockRejectedValue(Object.assign(new Error('There is no audio in that file'), { code: 'import_failed' }));
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-    const tree = await focusTheLibrary();
-    await act(async () => {
-      pressIconButton(tree, 'Import a recording');
-    });
+    const tree = await focusTheLibrary({ importNow: 1 });
+    await act(async () => {});
     expect(alert).toHaveBeenCalledWith('Could not import that', 'There is no audio in that file');
     alert.mockRestore();
     await act(async () => tree.unmount());
