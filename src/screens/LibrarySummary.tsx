@@ -20,19 +20,26 @@ export default function LibrarySummary({
   capturedMin,
   allowance,
   onUpgrade,
+  openActions,
+  onOpenActions,
 }: {
   saved: number;
   capturedMin: number;
   allowance: AllowanceStatus | null;
   onUpgrade?: () => void;
+  openActions?: number | null;
+  onOpenActions?: () => void;
 }) {
   const { colors } = useTheme();
-  const stats = summaryStats(saved, capturedMin, allowance);
+  const stats = summaryStats(saved, capturedMin, allowance, openActions ?? null);
   const stacked = PixelRatio.getFontScale() > STACK_AT_FONT_SCALE;
   const spoken = stats.map(x => x.spoken).join('. ') + '.';
   // On Free the strip is also the way to Pro: the FREE LEFT figure is where somebody notices the
   // count. Pro has no free cell, so it never gets the link.
   const upgrade = onUpgrade && stats.some(x => x.key === 'free') ? onUpgrade : undefined;
+  // On Pro the strip opens the action tracker instead.
+  const tracker = onOpenActions && stats.some(x => x.key === 'actions') ? onOpenActions : undefined;
+  const press = upgrade ?? tracker;
 
   const figure = (stat: Stat) => (
     <View style={st.figure}>
@@ -55,11 +62,11 @@ export default function LibrarySummary({
     <Pressable
       style={st.wrap}
       accessible
-      accessibilityRole={upgrade ? 'button' : undefined}
-      accessibilityLabel={upgrade ? `${spoken} Go unlimited with Pro.` : spoken}
+      accessibilityRole={press ? 'button' : undefined}
+      accessibilityLabel={upgrade ? `${spoken} Go unlimited with Pro.` : tracker ? `${spoken} Open the action tracker.` : spoken}
       testID="library-summary"
-      disabled={!upgrade}
-      onPress={upgrade}>
+      disabled={!press}
+      onPress={press}>
       <Raised edge={colors.line} fill={colors.card} rad={radius.lg} depth={4} pressable={false}>
         <View style={stacked ? st.col : st.row} importantForAccessibility="no-hide-descendants">
           {stats.map((stat, i) => (

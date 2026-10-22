@@ -13,7 +13,7 @@ export interface StatPart {
 }
 
 export interface Stat {
-  key: 'saved' | 'captured' | 'free';
+  key: 'saved' | 'captured' | 'free' | 'actions';
   label: string;
   parts: StatPart[];
   /** A small line under the figure; only the allowance has one. */
@@ -54,7 +54,7 @@ const speakParts = (parts: StatPart[]) => parts.map(p => `${p.value} ${p.unit ==
  * has answered (Pro never sees allowance copy). The caller passes the person's own meetings only:
  * the sample is neither saved nor captured.
  */
-export function summaryStats(saved: number, capturedMin: number, allowance: AllowanceStatus | null): Stat[] {
+export function summaryStats(saved: number, capturedMin: number, allowance: AllowanceStatus | null, openActions: number | null = null): Stat[] {
   const captured = capturedParts(capturedMin);
   const out: Stat[] = [
     {
@@ -78,6 +78,16 @@ export function summaryStats(saved: number, capturedMin: number, allowance: Allo
       caption: `Resets ${shortReset(allowance.resetsOn)}`,
       spent: allowance.remaining <= 0,
       spoken: `${allowance.remaining} of ${allowance.limit} free meetings left, resets ${formatReset(allowance.resetsOn)}`,
+    });
+  }
+  // Pro's third cell: the open actions, where Free counts its meetings. The strip opens the
+  // tracker, so the header needs no Actions button (founder, 22 Oct).
+  if (openActions !== null) {
+    out.push({
+      key: 'actions',
+      label: 'ACTIONS',
+      parts: [{ value: String(openActions), unit: 'open' }],
+      spoken: `${openActions} open ${openActions === 1 ? 'action' : 'actions'}`,
     });
   }
   return out;

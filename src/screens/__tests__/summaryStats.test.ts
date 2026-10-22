@@ -50,3 +50,18 @@ describe('summaryStats', () => {
     expect(b.spoken).toBe('1 hour 5 min captured');
   });
 });
+
+describe('the actions cell (Pro)', () => {
+  const PRO = { limit: 5, used: 0, remaining: 5, period: '2026-10', resetsOn: '2026-11-01', paid: true };
+  it('on Pro, given the open count, the third cell is ACTIONS', () => {
+    const stats = summaryStats(4, 30, PRO, 3);
+    expect(stats.map(x => x.key)).toEqual(['saved', 'captured', 'actions']);
+    expect(stats[2]).toMatchObject({ label: 'ACTIONS', parts: [{ value: '3', unit: 'open' }], spoken: '3 open actions' });
+  });
+  it('says one action, not one actions', () => {
+    expect(summaryStats(1, 5, PRO, 1)[2].spoken).toBe('1 open action');
+  });
+  it('without an open count there is no actions cell', () => {
+    expect(summaryStats(4, 30, PRO).map(x => x.key)).toEqual(['saved', 'captured']);
+  });
+});
