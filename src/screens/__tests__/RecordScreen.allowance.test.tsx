@@ -410,7 +410,6 @@ describe('ending card', () => {
     expect(db.setSetting).toHaveBeenCalledWith('ending_ack.live', '1');
     expect(texts(tree)).not.toContain(MIC_LOST);
     await act(async () => tree.unmount());
-    alert.mockRestore();
   });
 });
 
@@ -455,6 +454,8 @@ describe('the battery exemption at the first recording', () => {
   const batteryAlert = (alert: jest.SpyInstance) =>
     alert.mock.calls.find(c => c[0] === 'Keep recording with the screen off');
 
+  afterEach(() => jest.restoreAllMocks());
+
   it('explains itself first; Continue asks, remembers, and the recording still starts', async () => {
     const alert = jest.spyOn(Alert, 'alert').mockImplementation((_t, _b, buttons) => {
       buttons?.[0]?.onPress?.();
@@ -471,7 +472,6 @@ describe('the battery exemption at the first recording', () => {
     expect(AudioPipeline.requestBatteryExemption).toHaveBeenCalledTimes(1);
     expect(db.setSetting).toHaveBeenCalledWith('battery_exemption_asked', '1');
     expect(AudioPipeline.start).toHaveBeenCalledTimes(1);
-    alert.mockRestore();
     await act(async () => tree.unmount());
   });
 
@@ -479,13 +479,14 @@ describe('the battery exemption at the first recording', () => {
     (db.getSetting as jest.Mock).mockImplementation(async (k: string) =>
       k === 'consentAck' || k === 'battery_exemption_asked' ? '1' : null,
     );
-    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation((_t, _b, buttons) => {
+      buttons?.[0]?.onPress?.();
+    });
     const tree = await render();
     await tapRecord(tree);
     expect(batteryAlert(alert)).toBeUndefined();
     expect(AudioPipeline.requestBatteryExemption).not.toHaveBeenCalled();
     expect(AudioPipeline.start).toHaveBeenCalledTimes(1);
-    alert.mockRestore();
     await act(async () => tree.unmount());
   });
 });
