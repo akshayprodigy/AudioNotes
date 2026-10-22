@@ -142,3 +142,11 @@ test('Free without Play, not signed in: the sign-in form is in the card', () => 
   expect(texts(tree)).not.toContain('Sign out');
   expect(texts(tree)).not.toContain('Restore a purchase');
 });
+
+test('Pro without Play: the date stays, nothing mentions Google Play', () => {
+  const { tree } = mount({ lic: PRO, playCan: false });
+  const t = texts(tree);
+  expect(t).toContain('Active through 29 October');
+  expect(t).not.toContain('Renews in Google Play unless you cancel.');
+  expect(t).not.toContain('Manage in Google Play');
+});

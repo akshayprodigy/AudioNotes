@@ -25,7 +25,6 @@ import type { LanguageChoice } from './languages';
 import Icon, { type IconName } from '../components/Icon';
 import { confirmDestructive } from '../components/confirm';
 import {
-  Button,
   IconButton,
   Pop,
   ProgressBar,

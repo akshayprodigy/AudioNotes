@@ -79,9 +79,11 @@ export default function PlanSection({
             <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
               {`Active through ${until}`}
             </Txt>
-            <Txt variant="chip" color={colors.inkFaint} style={st.tiny}>
-              Renews in Google Play unless you cancel.
-            </Txt>
+            {playCan ? (
+              <Txt variant="chip" color={colors.inkFaint} style={st.tiny}>
+                Renews in Google Play unless you cancel.
+              </Txt>
+            ) : null}
           </>
         ) : (
           <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
