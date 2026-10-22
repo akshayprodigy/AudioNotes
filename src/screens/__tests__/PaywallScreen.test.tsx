@@ -189,6 +189,33 @@ describe('PaywallScreen leads with meetings (F08)', () => {
   });
 });
 
+describe('PaywallScreen says payments are not refundable where it is bought', () => {
+  const trialLine = "Payments aren't refundable — the free week is for trying it.";
+  const plainLine = "Payments aren't refundable.";
+
+  it('with a trial plan, says the free week is for trying it', async () => {
+    sellsPlans([monthlyTrial, annualTrial]);
+    const tree = await render();
+    expect(texts(tree)).toContain(trialLine);
+    expect(texts(tree)).not.toContain(plainLine);
+  });
+
+  it('with no trial, just says payments are not refundable', async () => {
+    sellsPlans([monthly, annual]);
+    const tree = await render();
+    expect(texts(tree)).toContain(plainLine);
+    expect(texts(tree)).not.toContain(trialLine);
+  });
+
+  it('once bought, says neither', async () => {
+    sellsPlans([monthlyTrial, annualTrial]);
+    (entitlement as jest.Mock).mockResolvedValue({ paid: true, licence: { paid: true } });
+    const tree = await render();
+    expect(texts(tree)).not.toContain(trialLine);
+    expect(texts(tree)).not.toContain(plainLine);
+  });
+});
+
 describe('PaywallScreen can be bought from without scrolling', () => {
   const { ScrollView } = require('react-native');
 
