@@ -190,10 +190,10 @@ describe('PaywallScreen leads with meetings (F08)', () => {
 });
 
 describe('PaywallScreen says payments are not refundable where it is bought', () => {
-  const trialLine = "Payments aren't refundable — the free week is for trying it.";
+  const trialLine = "Payments aren't refundable — the free trial is for trying it.";
   const plainLine = "Payments aren't refundable.";
 
-  it('with a trial plan, says the free week is for trying it', async () => {
+  it('with a trial plan, says the free trial is for trying it', async () => {
     sellsPlans([monthlyTrial, annualTrial]);
     const tree = await render();
     expect(texts(tree)).toContain(trialLine);

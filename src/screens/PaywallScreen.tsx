@@ -538,7 +538,7 @@ export default function PaywallScreen({ navigation, route }: Props) {
             ) : null}
             <Txt variant="chip" color={colors.inkFaint} style={st.note}>
               {chosenFree
-                ? "Payments aren't refundable — the free week is for trying it."
+                ? "Payments aren't refundable — the free trial is for trying it."
                 : "Payments aren't refundable."}
             </Txt>
             {!bought && proMb > 0 ? (
