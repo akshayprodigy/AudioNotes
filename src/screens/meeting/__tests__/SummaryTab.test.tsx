@@ -535,6 +535,22 @@ describe('the summary card before and after a check that did not finish', () => 
     expect(t).not.toContain('The minutes below were pulled out');
     expect(tree.root.findAllByProps({ label: 'Get Pro' }, { deep: false })).toHaveLength(0);
   });
+
+  test('the Get Pro link is a button, at least 44 dp tall, and one press upgrades once', async () => {
+    (Licence.status as jest.Mock).mockResolvedValue({
+      state: 'none', paid: false, expiresAt: 0, lapsedCopy: '',
+    });
+    (entitlement as jest.Mock).mockResolvedValue({ paid: false });
+    const onUpgrade = jest.fn();
+    const tree = await renderTab({ minutes: [], onUpgrade });
+    const link = tree.root.find(
+      n => n.props.accessibilityLabel === 'Get Pro' && n.props.accessibilityRole === 'button' && typeof n.props.onPress === 'function',
+    );
+    const { StyleSheet } = require('react-native');
+    expect(StyleSheet.flatten(link.props.style).minHeight).toBeGreaterThanOrEqual(44);
+    await act(async () => link.props.onPress());
+    expect(onUpgrade).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('a summary written before the transcript was corrected (F15)', () => {

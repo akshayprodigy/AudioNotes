@@ -111,9 +111,9 @@ describe('visible editing controls', () => {
     tree.root.findAll(n => n.props.accessibilityLabel === label && typeof n.props.onPress === 'function');
 
   it('draws no pencil on any line, however it is wired', async () => {
-    const full = await render({ onEditLine: jest.fn(), onLineActions: jest.fn(), onPlayTurn: jest.fn() });
+    const full = await render({ onLineActions: jest.fn(), onPlayTurn: jest.fn() });
     expect(editButtons(full)).toHaveLength(0);
-    const bare = await render({ onEditLine: jest.fn(), oneVoice: true });
+    const bare = await render({ oneVoice: true });
     expect(editButtons(bare)).toHaveLength(0);
     const none = await render({ onPlayTurn: jest.fn() });
     expect(editButtons(none)).toHaveLength(0);
@@ -121,7 +121,7 @@ describe('visible editing controls', () => {
 
   it('leaves the long press where it was', async () => {
     const onLineActions = jest.fn();
-    const tree = await render({ onEditLine: jest.fn(), onLineActions });
+    const tree = await render({ onLineActions });
     const line = tree.root.findAllByProps({ accessibilityLabel: 'Second line.' }, { deep: false })[0];
     await act(async () => line.props.onLongPress());
     expect(onLineActions).toHaveBeenCalledTimes(1);

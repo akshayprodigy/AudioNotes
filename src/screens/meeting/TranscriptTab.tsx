@@ -173,11 +173,6 @@ export default function TranscriptTab({
   /** Tap on the name at the head of a turn: change who said the whole turn. */
   onReassignTurn?: (turn: Turn) => void;
   onRevertLine?: (utteranceId: string) => void;
-  /**
-   * The visible Edit control on every line: the same correction editor the long press offers first.
-   * Takes the line as it reads now (the correction where there is one).
-   */
-  onEditLine?: (part: { id: string; text: string }) => void;
   /** The visible way to rename the people in this transcript: opens the Speakers screen. */
   onRenameSpeakers?: () => void;
 }) {

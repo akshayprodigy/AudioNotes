@@ -18,10 +18,10 @@ const item = (i: number, kind: string, text: string) => ({
   anchorStartMs: i * 1000, anchorEndMs: i * 1000 + 500, sources: [],
 });
 
-const texts = async (items: unknown[]) => {
+const texts = async (items: unknown[], minutes: unknown[] = []) => {
   let tree!: renderer.ReactTestRenderer;
   await act(async () => {
-    tree = renderer.create(<MinutesTab items={items as never} minutes={[]} onExport={() => {}} />);
+    tree = renderer.create(<MinutesTab items={items as never} minutes={minutes as never} onExport={() => {}} />);
   });
   return tree.root
     .findAll(n => typeof n.props.children === 'string')
@@ -38,5 +38,13 @@ describe('the Minutes takeaway headline', () => {
   it('stays when there are no decisions, as the next step', async () => {
     const t = await texts([item(1, 'action', 'Send the deck — Priya')]);
     expect(t.some(s => s.startsWith('Next:'))).toBe(true);
+  });
+
+  it("keeps the writer's own headline above Decisions", async () => {
+    const t = await texts(
+      [item(1, 'decision', 'We will ship on Thursday.')],
+      [{ id: 'h', meetingId: 'm1', kind: 'headline', content: 'The launch is going ahead.', source: 'llm' }],
+    );
+    expect(t).toContain('The launch is going ahead.');
   });
 });

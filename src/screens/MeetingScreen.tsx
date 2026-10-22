@@ -1415,7 +1415,6 @@ export default function MeetingScreen({ route, navigation }: Props) {
                   setPicker({ lineId: turn.parts[0].id, text: turn.parts[0].text, turn, scopes: false })
                 }
                 onRevertLine={id => onRevertEdit('utterance', id)}
-                onEditLine={onCorrectLine}
                 onRenameSpeakers={() => navigation.navigate('Speakers', { meetingId })}
               />
             ) : (

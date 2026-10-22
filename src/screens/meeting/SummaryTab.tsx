@@ -587,7 +587,7 @@ export default function SummaryTab({
                 accessibilityLabel={trialFree ? `Try it free for ${trialFree}` : 'Get Pro'}
                 onPress={onUpgrade}
                 hitSlop={8}
-                style={st.cta}>
+                style={st.link}>
                 <Txt variant="chip" color={colors.primary}>
                   {trialFree ? `Try it free for ${trialFree} ›` : 'Get Pro ›'}
                 </Txt>
@@ -802,6 +802,7 @@ function makeStyles(c: Colors) {
     meta: { flexShrink: 1 },
     tools: { flexDirection: 'row', gap: s(14), flexShrink: 0 },
     cta: { marginTop: s(4) },
+    link: { marginTop: s(4), minHeight: s(44), justifyContent: 'center', alignSelf: 'flex-start' },
     note: { opacity: 0.85 },
     lapsed: { textAlign: 'center', paddingHorizontal: s(12) },
     threads: { gap: s(6), marginBottom: s(2) },
