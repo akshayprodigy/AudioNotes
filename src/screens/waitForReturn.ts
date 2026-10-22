@@ -1,15 +1,18 @@
 export type AppStateLike = {
+  currentState: string | null | undefined;
   addEventListener(type: 'change', listener: (state: string) => void): { remove(): void };
 };
 
 /**
- * Resolves once the app has come back from a system dialog it just opened. If the app does not
- * leave 'active' within leaveWindowMs (nothing was shown, e.g. already exempt) it resolves anyway.
- * If it does leave, it waits for 'active' again.
+ * Starts watching NOW (call it before opening a system dialog) and returns a promise that
+ * resolves once the app is back in the foreground. If the app is already away at the start, or
+ * leaves later, it waits for 'active'. If it never leaves within leaveWindowMs (nothing was shown,
+ * e.g. already exempt) it resolves anyway.
  */
-export function waitForReturn(appState: AppStateLike, leaveWindowMs = 1000): Promise<void> {
+export function watchForReturn(appState: AppStateLike, leaveWindowMs = 2000): Promise<void> {
   return new Promise<void>(resolve => {
-    let left = false;
+    // null/undefined = RN has not reported a state yet; that is not evidence of having left.
+    let left = appState.currentState != null && appState.currentState !== 'active';
     const finish = () => {
       clearTimeout(timer);
       sub.remove();

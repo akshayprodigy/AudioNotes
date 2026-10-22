@@ -45,7 +45,7 @@
 
 ### O. Onboarding and the sample (fresh install, throwaway phone)
 - [ ] **O1** Fresh install → first screen has ONE primary button "Set up private recording — 114 MB" (figure equals the catalog's required models), a secondary "See a sample meeting first", a header link labelled "See Verbale Pro"; no plan choice. [ws-c]
-- [ ] **O2** Airplane mode → "See a sample meeting first" opens "Weekly check-in" (64 s, SAMPLE badge, banner "This is a sample so you can see the notes before recording. It isn't from your phone's microphone."); play it → audio plays (m4a decoded on the phone). [ws-c]
+- [ ] **O2** Airplane mode → "See a sample meeting first" opens "Weekly check-in" (64 s, SAMPLE badge, banner "Sample meeting — not from your microphone."); play it → audio plays (m4a decoded on the phone). [ws-c]
 - [ ] **O3** Tap a source link on the sample's items → audio seeks to and plays the cited sentence (1 decision with "$4,500", 4 actions: Priya by Wednesday, Sam by Friday, Sam today (ticked), one "due before next Monday"). Opening the sample does not trigger a Pro offer and leaves the allowance line unchanged. [ws-c] [row 38]
 - [ ] **O4** Finish setup → done screen says "Verbale works in English. Free: 5 meetings each month · up to 1 hour each." → "Start recording" lands on the Record screen; the same note shows on Record before the first real recording and not after; the sample does not count as one. [ws-c]
 - [ ] **O5** Library: sample is excluded from "N saved · M min" and the streak; long-press offers only "Delete sample"; delete from the banner and from the long-press; "See the sample again" row restores it with audio. [ws-c]

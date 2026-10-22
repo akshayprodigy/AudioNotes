@@ -42,7 +42,7 @@ import { refreshAllowance, useAllowance } from '../billing/allowance';
 import { exhaustedHint, finishImportFirst } from '../billing/allowanceCopy';
 import { AllowanceExhausted, AllowanceLine, isExhausted } from './AllowanceNote';
 import ReadinessCard from '../setup/ReadinessCard';
-import { waitForReturn } from './waitForReturn';
+import { watchForReturn } from './waitForReturn';
 import FirstRecordingNote from '../setup/FirstRecordingNote';
 import { useSetupReadiness } from '../setup/useReadiness';
 import { withoutSample } from '../sample/sampleId';
@@ -76,11 +76,13 @@ async function askBatteryExemptionOnce(): Promise<void> {
           text: 'Continue',
           onPress: () => {
             db.setSetting(BATTERY_ASKED_KEY, '1').catch(() => {});
-            // Native resolves right after launching the system dialog, so wait for the app to
-            // come back before the start goes on to the mic and notification prompts.
+            // Native resolves right after launching the system dialog, so watch the app's state
+            // from BEFORE the request and wait for it to come back before the start goes on to
+            // the mic and notification prompts.
+            const back = watchForReturn(AppState);
             Promise.resolve(AudioPipeline.requestBatteryExemption())
               .catch(() => {})
-              .then(() => waitForReturn(AppState))
+              .then(() => back)
               .then(() => resolve());
           },
         },
