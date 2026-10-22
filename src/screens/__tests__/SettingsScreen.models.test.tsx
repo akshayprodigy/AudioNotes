@@ -64,7 +64,7 @@ const metaText = (tree: renderer.ReactTestRenderer) => lines(tree).find(t => /^[
 async function render() {
   let tree!: renderer.ReactTestRenderer;
   await act(async () => {
-    tree = renderer.create(<SettingsScreen navigation={nav} route={{ key: 's', name: 'Settings' } as any} />);
+    tree = renderer.create(<SettingsScreen navigation={nav} route={{ key: 's', name: 'Settings', params: { section: 'storage' } } as any} />);
   });
   await act(async () => {});
   return tree;

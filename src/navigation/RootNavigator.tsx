@@ -55,7 +55,8 @@ export type RootStackParamList = {
   /** A thread: the meetings sharing one tag, Pro only (Phase 3, decision history + preparation). */
   Thread: { tag: string };
   Search: undefined;
-  Settings: undefined;
+  /** No section: the six headings. A section: that page (founder, 22 Oct: Settings in pages). */
+  Settings: { section?: 'plan' | 'recording' | 'storage' | 'privacy' | 'appearance' | 'about' } | undefined;
   Archive: undefined;
   Notices: undefined;
   /** Phase 5: the correction rules, Pro (Settings › Vocabulary). */

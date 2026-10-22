@@ -22,7 +22,7 @@ import { PipelineController } from '../pipeline/PipelineController';
 import AudioPipeline from '../native/NativeAudioPipeline';
 import { FALLBACK_LANGUAGES, orderLanguages } from './languages';
 import type { LanguageChoice } from './languages';
-import Icon from '../components/Icon';
+import Icon, { type IconName } from '../components/Icon';
 import { confirmDestructive } from '../components/confirm';
 import {
   Button,
@@ -71,6 +71,18 @@ type Model = {
 };
 
 const mb = (bytes: number) => `${(bytes / 1e6).toFixed(0)} MB`;
+
+type Section = NonNullable<NonNullable<RootStackParamList['Settings']>['section']>;
+
+/** The six headings Settings opens on. Each opens its own page of the sections below. */
+const SECTIONS: { key: Section; icon: IconName; title: string; sub: string }[] = [
+  { key: 'plan', icon: 'ai', title: 'Plan & account', sub: 'Your plan, restore a purchase, sign in' },
+  { key: 'recording', icon: 'mic', title: 'Recording', sub: 'Announcing, voices, language and vocabulary' },
+  { key: 'storage', icon: 'download', title: 'Storage & features', sub: 'What is on this phone, backup, archived meetings' },
+  { key: 'privacy', icon: 'shield', title: 'Privacy', sub: 'The audio you keep, and what left this phone' },
+  { key: 'appearance', icon: 'sun', title: 'Appearance', sub: 'Light or dark' },
+  { key: 'about', icon: 'help', title: 'About', sub: 'Open-source notices' },
+];
 
 /**
  * How long a recording is kept after it has been transcribed.
@@ -124,7 +136,8 @@ const THEME_CHOICES: { key: ThemeMode; label: string }[] = [
   { key: 'system', label: 'System' },
 ];
 
-export default function SettingsScreen({ navigation }: Props) {
+export default function SettingsScreen({ navigation, route }: Props) {
+  const section = route.params?.section;
   const { colors, isDark, mode, setMode } = useTheme();
   const bigText = PixelRatio.getFontScale() > 1.3;
   // Subscription. The app never advertises a price or links to a checkout — it signs in, and
@@ -485,14 +498,44 @@ export default function SettingsScreen({ navigation }: Props) {
     <View style={[st.root, { paddingTop: insets.top + s(8) }]}>
       <View style={st.nav}>
         <IconButton icon="chevronLeft" label="Back" onPress={() => navigation.goBack()} />
-        <Txt variant="sectionTitle">Settings</Txt>
+        <Txt variant="sectionTitle">{section ? SECTIONS.find(x => x.key === section)!.title : 'Settings'}</Txt>
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[st.pad, { paddingBottom: insets.bottom + s(30) }]}>
+        {!section ? (
+          <View style={st.list}>
+            {SECTIONS.map(x => (
+              <View key={x.key} accessibilityRole="button" accessibilityLabel={x.title}>
+                <Raised
+                  edge={colors.line}
+                  fill={colors.card}
+                  rad={radius.xl}
+                  depth={5}
+                  onPress={() => navigation.push('Settings', { section: x.key })}>
+                  <View style={st.rowPad}>
+                    <View style={st.row}>
+                      <View style={[st.hubIcon, { backgroundColor: colors.primarySoft }]}>
+                        <Icon name={x.icon} size={s(19)} color={colors.primaryDeep} strokeWidth={2.4} />
+                      </View>
+                      <View style={st.flex}>
+                        <Txt variant="bodyStrong">{x.title}</Txt>
+                        <Txt variant="chip" color={colors.inkSoft} style={st.tiny}>
+                          {x.sub}
+                        </Txt>
+                      </View>
+                      <Icon name="chevronRight" size={s(18)} color={colors.inkFaint} strokeWidth={2.4} />
+                    </View>
+                  </View>
+                </Raised>
+              </View>
+            ))}
+          </View>
+        ) : null}
+        {section === 'storage' ? (<>
         <View style={st.ruleWrap}>
-          <SectionRule label="ON-DEVICE MODELS" />
+          <SectionRule label="FEATURES ON THIS PHONE" />
         </View>
 
         <View style={st.list}>
@@ -640,7 +683,9 @@ export default function SettingsScreen({ navigation }: Props) {
             </View>
           </Raised>
         </View>
+        </>) : null}
 
+        {section === 'plan' ? (<>
         <View style={st.ruleWrap}>
           <SectionRule label="SUBSCRIPTION" />
         </View>
@@ -740,7 +785,9 @@ export default function SettingsScreen({ navigation }: Props) {
             </View>
           </Raised>
         </View>
+        </>) : null}
 
+        {section === 'storage' ? (<>
         <View style={st.ruleWrap}>
           <SectionRule label="MOVING DEVICES" />
         </View>
@@ -791,7 +838,9 @@ export default function SettingsScreen({ navigation }: Props) {
             </View>
           </Raised>
         </View>
+        </>) : null}
 
+        {section === 'recording' ? (<>
         {/* Its own section rather than a row buried inside PRIVACY under the four-option
             retention card, where it was effectively unfindable. These two are what the people
             in the ROOM get — everything under PRIVACY is about what happens to the file
@@ -895,7 +944,9 @@ export default function SettingsScreen({ navigation }: Props) {
             </View>
           </Raised>
         </View>
+        </>) : null}
 
+        {section === 'privacy' ? (<>
         <View style={st.ruleWrap}>
           <SectionRule label="PRIVACY" />
         </View>
@@ -973,7 +1024,9 @@ export default function SettingsScreen({ navigation }: Props) {
             </Txt>
           </View>
         </View>
+        </>) : null}
 
+        {section === 'recording' ? (<>
         <View style={st.ruleWrap}>
           <SectionRule label="TRANSCRIPTION" />
         </View>
@@ -1001,7 +1054,9 @@ export default function SettingsScreen({ navigation }: Props) {
             </View>
           </Raised>
         </View>
+        </>) : null}
 
+        {section === 'appearance' ? (<>
         <View style={st.ruleWrap}>
           <SectionRule label="APPEARANCE" />
         </View>
@@ -1028,7 +1083,9 @@ export default function SettingsScreen({ navigation }: Props) {
             </View>
           </Raised>
         </View>
+        </>) : null}
 
+        {section === 'privacy' ? (<>
         {/* Only shown when the build can actually report a crash. With no DSN configured there is
             nothing behind this switch, and a privacy control that does nothing is worse than an
             absent one — it invites somebody to believe they turned something off. */}
@@ -1064,7 +1121,9 @@ export default function SettingsScreen({ navigation }: Props) {
             </View>
           </>
         ) : null}
+        </>) : null}
 
+        {section === 'about' ? (<>
         <View style={st.ruleWrap}>
           <SectionRule label="ABOUT" />
         </View>
@@ -1088,6 +1147,7 @@ export default function SettingsScreen({ navigation }: Props) {
             </View>
           </Raised>
         </View>
+        </>) : null}
       </ScrollView>
     </View>
   );
@@ -1099,6 +1159,7 @@ function makeStyles(c: Colors) {
     flex: { flex: 1 },
     nav: { flexDirection: 'row', alignItems: 'center', gap: s(12), paddingHorizontal: s(20) },
     pad: { paddingTop: s(6) },
+    hubIcon: { width: s(38), height: s(38), borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', marginRight: s(12) },
     ruleWrap: { marginHorizontal: s(20), marginTop: s(22), marginBottom: s(10) },
     list: { paddingHorizontal: s(20), gap: s(10) },
     rowPad: { padding: s(16) },
