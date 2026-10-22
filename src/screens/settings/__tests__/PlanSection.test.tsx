@@ -1,4 +1,5 @@
 import React from 'react';
+import { Text } from 'react-native';
 import renderer, { act } from 'react-test-renderer';
 import PlanSection from '../PlanSection';
 import type { LicenceStatus, AllowanceStatus } from '../../../native/NativeLicence';
@@ -23,6 +24,13 @@ function mount(over: Record<string, unknown> = {}) {
   act(() => { tree = renderer.create(<PlanSection {...(props as any)} />); });
   return { tree, props };
 }
+const press = (tree: renderer.ReactTestRenderer, label: string) => {
+  const hit = tree.root.find(n => typeof n.props.onPress === 'function' && n.findAll(c => c.props.children === label).length > 0);
+  act(() => hit.props.onPress());
+};
+const pressable = (tree: renderer.ReactTestRenderer, label: string) =>
+  tree.root.findAll(n => typeof n.props.onPress === 'function' && n.findAll(c => c.props.children === label).length > 0);
+
 const texts = (tree: renderer.ReactTestRenderer) =>
   tree.root.findAll(n => typeof n.props.children === 'string').map(n => n.props.children as string);
 
@@ -47,13 +55,6 @@ test('Pro with no expiry says everything is on, with no date line', () => {
   expect(t.some(x => /Active through/.test(x))).toBe(false);
 });
 
-test('Pro signed in offers Sign out', () => {
-  const { tree, props } = mount({ lic: PRO, signedInAs: 'a@b.c' });
-  const link = tree.root.findAll(n => n.props.accessibilityLabel === 'Sign out' || n.props.children === 'Sign out');
-  expect(link.length).toBeGreaterThan(0);
-  expect(props.onSignOut).not.toHaveBeenCalled();
-});
-
 test('Free shows allowance, See Pro plans (pressable), restore and account links, no Manage', () => {
   const { tree, props } = mount();
   const t = texts(tree);
@@ -67,14 +68,6 @@ test('Free shows allowance, See Pro plans (pressable), restore and account links
   const btn = tree.root.findAll(n => typeof n.props.onPress === 'function' && n.findAll(c => c.props.children === 'See Pro plans').length > 0);
   act(() => btn[btn.length - 1].props.onPress());
   expect(props.onSeePlans).toHaveBeenCalled();
-});
-
-test('restore is disabled while Play is busy', () => {
-  const { tree, props } = mount({ playBusy: true });
-  const link = tree.root.findAll(n => n.props.accessibilityRole === 'button' && n.findAll(c => c.props.children === 'Restore a purchase').length > 0);
-  expect(link.length).toBeGreaterThan(0);
-  act(() => link[0].props.onPress?.());
-  expect(props.onRestorePurchase).not.toHaveBeenCalled();
 });
 
 test('I already have an account expands the form with its explanation', () => {
@@ -102,4 +95,50 @@ test('until the licence is read nothing but the overline renders', () => {
   const { tree } = mount({ lic: null, hasServer: false });
   const t = Array.from(new Set(texts(tree)));
   expect(t).toEqual(['CURRENT PLAN']);
+});
+
+test('Pro: Manage in Google Play is pressed and calls onManage once', () => {
+  const { tree, props } = mount({ lic: PRO });
+  press(tree, 'Manage in Google Play');
+  expect(props.onManage).toHaveBeenCalledTimes(1);
+  expect(props.onSignOut).not.toHaveBeenCalled();
+});
+
+test('Pro signed in: Sign out is pressed and calls onSignOut once', () => {
+  const { tree, props } = mount({ lic: PRO, signedInAs: 'a@b.c' });
+  press(tree, 'Sign out');
+  expect(props.onSignOut).toHaveBeenCalledTimes(1);
+});
+
+test('Pro not signed in has no Sign out', () => {
+  const { tree } = mount({ lic: PRO });
+  expect(texts(tree)).not.toContain('Sign out');
+});
+
+test('Free: Restore a purchase is pressed and calls onRestorePurchase once', () => {
+  const { tree, props } = mount();
+  press(tree, 'Restore a purchase');
+  expect(props.onRestorePurchase).toHaveBeenCalledTimes(1);
+});
+
+test('Free while Play is busy: Restore a purchase has no press handler', () => {
+  const { tree, props } = mount({ playBusy: true });
+  expect(texts(tree)).toContain('Restore a purchase');
+  expect(pressable(tree, 'Restore a purchase')).toHaveLength(0);
+  expect(props.onRestorePurchase).not.toHaveBeenCalled();
+});
+
+test('Free without Play, signed in: Sign out is shown and pressed', () => {
+  const { tree, props } = mount({ playCan: false, signedInAs: 'a@b.c', emailSignIn: <Text>FORM-MARKER</Text> });
+  expect(texts(tree)).not.toContain('FORM-MARKER');
+  expect(texts(tree)).not.toContain('See Pro plans');
+  press(tree, 'Sign out');
+  expect(props.onSignOut).toHaveBeenCalledTimes(1);
+});
+
+test('Free without Play, not signed in: the sign-in form is in the card', () => {
+  const { tree } = mount({ playCan: false, emailSignIn: <Text>FORM-MARKER</Text> });
+  expect(texts(tree)).toContain('FORM-MARKER');
+  expect(texts(tree)).not.toContain('Sign out');
+  expect(texts(tree)).not.toContain('Restore a purchase');
 });

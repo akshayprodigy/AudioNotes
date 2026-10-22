@@ -43,7 +43,6 @@ export default function PlanSection({
   emailSignIn: React.ReactNode;
 }) {
   const { colors } = useTheme();
-  const st = React.useMemo(() => makeStyles(), []);
   const [showEmailSignIn, setShowEmailSignIn] = React.useState(false);
   const paid = !!lic?.paid;
   const allowanceLine = settingsValue(allowance);
@@ -72,7 +71,7 @@ export default function PlanSection({
       </Txt>
     );
   } else if (paid) {
-    const until = lic && lic.expiresAt > 0 ? formatReset(localDate(lic.expiresAt)) : '';
+    const until = lic.expiresAt > 0 ? formatReset(localDate(lic.expiresAt)) : '';
     body = (
       <>
         {until ? (
@@ -159,12 +158,11 @@ export default function PlanSection({
   );
 }
 
-const makeStyles = () =>
-  StyleSheet.create({
-    list: { paddingHorizontal: s(20), gap: s(10) },
-    rowPad: { padding: s(16) },
-    tiny: { marginTop: s(4) },
-    gap: { marginTop: s(12) },
-    linkRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', columnGap: s(16), marginTop: s(4) },
-    link: { minHeight: s(44), alignItems: 'center', justifyContent: 'center', paddingHorizontal: s(4) },
-  });
+const st = StyleSheet.create({
+  list: { paddingHorizontal: s(20) },
+  rowPad: { padding: s(16) },
+  tiny: { marginTop: s(4) },
+  gap: { marginTop: s(12) },
+  linkRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', columnGap: s(16), marginTop: s(4) },
+  link: { minHeight: s(44), alignItems: 'center', justifyContent: 'center', paddingHorizontal: s(4) },
+});
