@@ -113,7 +113,7 @@ describe('the sample in the Library', () => {
   it('the Settings header button wears the gear', async () => {
     const tree = await show();
     const btn = tree.root.findAll(n => n.props.label === 'Settings' && n.props.icon)[0];
-    expect(btn.props.icon).toBe('settings');
+    expect(btn.props.icon).toBe('gear');
     await act(async () => tree.unmount());
   });
 

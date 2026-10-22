@@ -695,7 +695,7 @@ export default function LibraryScreen({ navigation, route }: Props) {
               label="Search meetings"
               onPress={() => navigation.navigate('Search')}
             />
-            <IconButton icon="settings" label="Settings" onPress={() => navigation.navigate('Settings')} />
+            <IconButton icon="gear" label="Settings" onPress={() => navigation.navigate('Settings')} />
           </View>
         </View>
 
