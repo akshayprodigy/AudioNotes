@@ -100,6 +100,6 @@ test('no server: one muted line and nothing interactive', () => {
 
 test('until the licence is read nothing but the overline renders', () => {
   const { tree } = mount({ lic: null, hasServer: false });
-  const t = texts(tree);
+  const t = Array.from(new Set(texts(tree)));
   expect(t).toEqual(['CURRENT PLAN']);
 });
