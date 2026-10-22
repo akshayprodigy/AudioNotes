@@ -1,7 +1,6 @@
 import { NativeEventEmitter, NativeModules } from 'react-native';
 import { create } from 'zustand';
 import ModelManager from '../native/NativeModelManager';
-import AudioPipeline from '../native/NativeAudioPipeline';
 
 /**
  * The model download as ONE thing the whole app can see.
@@ -71,8 +70,7 @@ export function runDownloads(queue: RunRow[]): Promise<boolean> {
   if (inFlight) return inFlight;
   listen();
   useDownloadStore.setState({ ...IDLE, running: true, of: queue.length });
-  // The battery exemption is what lets a long download survive the screen going off.
-  AudioPipeline.requestBatteryExemption().catch(() => {});
+  // The battery exemption is asked at the first recording now, not at first launch.
 
   inFlight = (async () => {
     try {

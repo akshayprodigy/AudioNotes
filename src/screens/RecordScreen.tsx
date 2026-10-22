@@ -53,6 +53,39 @@ import { radius, s, sv, useTheme, type Colors } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Record'>;
 
+const BATTERY_ASKED_KEY = 'battery_exemption_asked';
+
+async function askThenEnsurePermissions(): Promise<boolean> {
+  await askBatteryExemptionOnce();
+  return ensurePermissions();
+}
+
+/**
+ * The first recording on this install explains, then asks Android to let the app run with the
+ * screen off. Asked once; the person never sees the system dialog without a reason first.
+ */
+async function askBatteryExemptionOnce(): Promise<void> {
+  if ((await db.getSetting(BATTERY_ASKED_KEY).catch(() => null)) === '1') return;
+  await new Promise<void>(resolve => {
+    Alert.alert(
+      'Keep recording with the screen off',
+      'Android may stop long recordings and note-writing when the screen is off. On the next screen, tap Allow so Verbale can keep going.',
+      [
+        {
+          text: 'Continue',
+          onPress: () => {
+            db.setSetting(BATTERY_ASKED_KEY, '1').catch(() => {});
+            Promise.resolve(AudioPipeline.requestBatteryExemption())
+              .catch(() => {})
+              .then(() => resolve());
+          },
+        },
+      ],
+      { cancelable: false },
+    );
+  });
+}
+
 async function ensurePermissions(): Promise<boolean> {
   if (Platform.OS !== 'android') return true;
   const wanted = [PermissionsAndroid.PERMISSIONS.RECORD_AUDIO];
@@ -371,7 +404,7 @@ export default function RecordScreen({ navigation }: Props) {
             });
           });
         }
-      } else if (await ensurePermissions()) {
+      } else if (await askThenEnsurePermissions()) {
         try {
           setRefusedOn(null);
           await start(null, mode === 'dictation' ? 'dictation' : undefined);

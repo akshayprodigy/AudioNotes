@@ -1,5 +1,6 @@
 import { act } from 'react-test-renderer';
 import ModelManager from '../../native/NativeModelManager';
+import AudioPipeline from '../../native/NativeAudioPipeline';
 import { resetDownloadsForTest, runDownloads, useDownloadStore } from '../essentialDownload';
 
 const download = ModelManager.download as jest.Mock;
@@ -25,6 +26,11 @@ describe('the shared download run', () => {
     await expect(done).resolves.toBe(true);
     expect(download.mock.calls.map(c => c[0])).toEqual(['vad', 'asr', 'llm']);
     expect(useDownloadStore.getState()).toMatchObject({ running: false, failed: false });
+  });
+
+  it('does not ask for the battery exemption; that waits for the first recording', async () => {
+    await runDownloads(Q);
+    expect(AudioPipeline.requestBatteryExemption).not.toHaveBeenCalled();
   });
 
   it('a second request while one is going joins it instead of starting another', async () => {

@@ -42,7 +42,10 @@ beforeEach(() => {
   jest.clearAllMocks();
   useAllowanceStore.setState({ status: null });
   useRecordingStore.setState({ isRecording: false, sessionId: null });
-  (db.getSetting as jest.Mock).mockImplementation(async (k: string) => (k === 'consentAck' ? '1' : null));
+  // The battery explanation is asked once per install; most tests are past it (see its own describe).
+  (db.getSetting as jest.Mock).mockImplementation(async (k: string) =>
+    k === 'consentAck' || k === 'battery_exemption_asked' ? '1' : null,
+  );
   (db.setSetting as jest.Mock).mockResolvedValue(undefined);
   (PermissionsAndroid.requestMultiple as jest.Mock | undefined)?.mockResolvedValue?.({});
   jest.spyOn(PermissionsAndroid, 'requestMultiple').mockResolvedValue({
@@ -445,4 +448,44 @@ test('with none left there is no import link: an import would be refused too', a
   const tree = await render();
   expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Import a recording')).toHaveLength(0);
   await act(async () => tree.unmount());
+});
+
+// UX fix 2 - the battery dialog is asked at the first recording, with a reason, never at first launch.
+describe('the battery exemption at the first recording', () => {
+  const batteryAlert = (alert: jest.SpyInstance) =>
+    alert.mock.calls.find(c => c[0] === 'Keep recording with the screen off');
+
+  it('explains itself first; Continue asks, remembers, and the recording still starts', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation((_t, _b, buttons) => {
+      buttons?.[0]?.onPress?.();
+    });
+    (db.getSetting as jest.Mock).mockImplementation(async (k: string) => (k === 'consentAck' ? '1' : null));
+    const tree = await render();
+    await tapRecord(tree);
+    const call = batteryAlert(alert)!;
+    expect(call[1]).toBe(
+      'Android may stop long recordings and note-writing when the screen is off. On the next screen, tap Allow so Verbale can keep going.',
+    );
+    expect(call[2]).toHaveLength(1);
+    expect(call[2]![0].text).toBe('Continue');
+    expect(AudioPipeline.requestBatteryExemption).toHaveBeenCalledTimes(1);
+    expect(db.setSetting).toHaveBeenCalledWith('battery_exemption_asked', '1');
+    expect(AudioPipeline.start).toHaveBeenCalledTimes(1);
+    alert.mockRestore();
+    await act(async () => tree.unmount());
+  });
+
+  it('is asked once: with the key already set there is no alert and no call', async () => {
+    (db.getSetting as jest.Mock).mockImplementation(async (k: string) =>
+      k === 'consentAck' || k === 'battery_exemption_asked' ? '1' : null,
+    );
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const tree = await render();
+    await tapRecord(tree);
+    expect(batteryAlert(alert)).toBeUndefined();
+    expect(AudioPipeline.requestBatteryExemption).not.toHaveBeenCalled();
+    expect(AudioPipeline.start).toHaveBeenCalledTimes(1);
+    alert.mockRestore();
+    await act(async () => tree.unmount());
+  });
 });
