@@ -31,3 +31,27 @@ Deviations:
 3. Step 5: `ModelManager.list` is reached via the file's existing `ModelManager` import, not
    `__TEST_NATIVE_MODULES__`; the `texts` helper was copied into the describe.
 4. Step 2(c): `row.findAll(..., { deep: false })` returned exactly the two labels; no Set needed.
+
+## B (Steps 6-9)
+
+Commits:
+- 4f05d5e feat(settings): six headings, each its own page
+- eacb103 feat(settings): features show their status, never a button
+
+Gate (`GATE_STAGES="types js scans" scripts/gate.sh`): `gate: all clear in 16s`.
+`git diff --stat 63a3344..HEAD` names only files on the allowed list.
+
+Mutants (each restored afterwards):
+- Step 6a, PRIVACY wrapper `'privacy'` to `'plan'`: killed (hub test 3, "a page shows its own sections").
+- Step 6b, `{!section ? (` to `{true ? (`: killed (hub test 3).
+- Step 7, delete `&& !paid` in featureStatus: killed ("otherwise it is on its way by itself").
+- Step 7a, `sellsPro = false`: killed ("on Free a Pro feature says it comes with Pro").
+- Step 7b, `!lic?.paid ?` to `lic?.paid ?`: killed ("once Pro has lapsed, one button frees the space").
+
+Step 8: the grep printed nothing; no commit.
+
+Deviations: none of substance. Step 6 wrappers were inserted by line number without re-indenting,
+as the sheet says; the group boundaries matched the section table exactly. Step 7's old `onToggle`
+was deleted whole; `Alert` and `Pressable` were already imported in SettingsScreen.
+
+What is left: nothing in Session B.
