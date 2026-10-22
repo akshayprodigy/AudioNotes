@@ -20,6 +20,8 @@ import ProNudgeCard from './ProNudgeCard';
 import ProCompareSheet from './ProCompareSheet';
 import ReadinessCard from '../setup/ReadinessCard';
 import ProModelsCard from '../setup/ProModelsCard';
+import DownloadsStrip from '../setup/DownloadsStrip';
+import { watchDownloads } from '../setup/activeDownloads';
 import { autoStartProModels } from '../setup/proModels';
 import { useSetupReadiness } from '../setup/useReadiness';
 import { SAMPLE_ID, isSampleId, withoutSample } from '../sample/sampleId';
@@ -289,6 +291,10 @@ export default function LibraryScreen({ navigation, route }: Props) {
     if (importNow) importing.pick();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [importNow]);
+  // Every model download, whoever started it, shows on this screen (founder, 22 Oct).
+  useEffect(() => {
+    watchDownloads();
+  }, []);
   // The month's Free meetings, one quiet line under the count; nothing for Pro.
   const allowance = useAllowance();
 
@@ -755,6 +761,7 @@ export default function LibraryScreen({ navigation, route }: Props) {
 
         <ReadinessCard setup={setup} />
         <ProModelsCard />
+        <DownloadsStrip />
 
         {/* Only once there is something to sort or filter. On a library of three meetings this
             row is furniture in front of the content. */}

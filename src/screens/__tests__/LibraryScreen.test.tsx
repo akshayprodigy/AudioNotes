@@ -8,6 +8,7 @@ import { entitlement } from '../../billing/trial';
 import Licence from '../../native/NativeLicence';
 import { useAllowanceStore } from '../../billing/allowance';
 import { resetProModelsForTest, useProModelsStore } from '../../setup/proModels';
+import { resetActiveDownloadsForTest } from '../../setup/activeDownloads';
 import ModelManager from '../../native/NativeModelManager';
 import { exhaustedCopy } from '../../billing/allowanceCopy';
 
@@ -63,6 +64,7 @@ async function focusTheLibrary(params?: { importNow?: number }) {
 beforeEach(() => {
   jest.clearAllMocks();
   resetProModelsForTest();
+  resetActiveDownloadsForTest();
   (db.listMeetings as jest.Mock).mockResolvedValue([]);
   (db.allTags as jest.Mock).mockResolvedValue([]);
   (db.getSetting as jest.Mock).mockResolvedValue(null);
@@ -636,6 +638,30 @@ describe("Pro's models download by themselves", () => {
     const card = tree.root.findAll(n => n.props.testID === 'pro-models-card', { deep: false });
     expect(card).toHaveLength(1);
     expect(texts(tree)).toEqual(expect.arrayContaining(["Pro's models did not finish downloading", 'No connection', 'Try again']));
+    await act(async () => tree.unmount());
+  });
+});
+
+describe('every download is on the front page', () => {
+  const list = ModelManager.list as unknown as jest.Mock;
+  const texts = (tree: renderer.ReactTestRenderer) =>
+    tree.root.findAll(n => typeof n.props.children === 'string').map(n => n.props.children as string);
+  afterEach(() => list.mockResolvedValue('[]'));
+
+  test('a download started anywhere shows on the library, by what it is for', async () => {
+    list.mockResolvedValue(JSON.stringify([{ id: 'llm-qwen', purpose: 'Writes the minutes in plain English', required: false }]));
+    const tree = await focusTheLibrary();
+    await act(async () => {});
+    await act(async () => {
+      emit('onModelProgress', { id: 'llm-qwen', downloaded: 340_000_000, total: 1_117_320_736 });
+    });
+    const strip = tree.root.findAll(n => n.props.testID === 'downloads-strip', { deep: false });
+    expect(strip).toHaveLength(1);
+    expect(texts(tree)).toContain('Writes the minutes in plain English');
+    await act(async () => {
+      emit('onModelProgress', { id: 'llm-qwen', downloaded: 1_117_320_736, total: 1_117_320_736 });
+    });
+    expect(tree.root.findAll(n => n.props.testID === 'downloads-strip', { deep: false })).toHaveLength(0);
     await act(async () => tree.unmount());
   });
 });
