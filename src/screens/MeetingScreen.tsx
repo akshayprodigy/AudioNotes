@@ -4,7 +4,6 @@ import {
   Alert,
   Animated,
   Easing,
-  PixelRatio,
   Platform,
   Pressable,
   StyleSheet,
@@ -32,7 +31,6 @@ import Icon from '../components/Icon';
 import Mascot from '../components/Mascot';
 import { confirmDestructive, quoted } from '../components/confirm';
 import {
-  Badge,
   Button,
   IconButton,
   ProgressRing,
@@ -1150,9 +1148,6 @@ export default function MeetingScreen({ route, navigation }: Props) {
   // The tabs, their order and their words live in meeting/meetingTabs.ts.
   const TABS = MEETING_TABS;
 
-  const bigText = PixelRatio.getFontScale() > 1.3;
-  const readyBadge = <Badge label="READY" color={colors.success} soft={colors.successSoft} small />;
-
   return (
     <View style={[st.root, { paddingTop: insets.top + s(6) }]}>
       <View style={st.navRowDetail}>
@@ -1179,13 +1174,9 @@ export default function MeetingScreen({ route, navigation }: Props) {
                 : '')}
           </Txt>
         </Pressable>
-        {meeting?.status === 'done' && !bigText ? readyBadge : null}
         <IconButton icon="chat" label="Ask this meeting" onPress={onAsk} />
         <IconButton icon="more" label="More actions" onPress={() => setSheet(true)} />
       </View>
-      {/* At large text the badge no longer fits in the row: it left the title about 40 dp, which
-          broke "Let's" mid-word. It sits on its own line under the title instead. */}
-      {meeting?.status === 'done' && bigText ? <View style={st.readyRow}>{readyBadge}</View> : null}
 
       {tags.length > 0 ? (
         <View style={st.tagRow}>
@@ -1647,7 +1638,6 @@ function makeStyles(c: Colors) {
     },
 
     tabs: { marginHorizontal: s(16), marginBottom: s(10) },
-    readyRow: { paddingHorizontal: s(20), marginTop: s(6), flexDirection: 'row' },
     navRowDetail: {
       flexDirection: 'row',
       alignItems: 'center',

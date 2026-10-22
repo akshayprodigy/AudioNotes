@@ -866,46 +866,16 @@ describe('Write it again', () => {
 });
 
 /**
- * Galaxy A07 at 200% text: the READY badge sat in the header row beside the title and left the
- * title about 40 dp, so "Let's" broke after "Let'". It moves under the title at large text; at
- * normal text it stays in the row. Either way it is shown exactly once.
+ * A finished meeting draws no status badge: the READY badge beside the title squeezed it to
+ * "Weekly check-in (...". Nothing in the header means "done"; it is the default.
  */
-describe('the READY badge at large text', () => {
+describe('a finished meeting header', () => {
   const { PixelRatio } = require('react-native');
-  const ready = (tree: renderer.ReactTestRenderer) => (JSON.stringify(tree.toJSON()).match(/"READY"/g) ?? []).length;
-
   afterEach(() => jest.restoreAllMocks());
 
-  /**
-   * The header row is the deepest rendered node holding both the Back and the Ask buttons; whether
-   * READY is inside it is the whole point. Walks toJSON() — plain data, no component instances.
-   */
-  const inHeaderRow = (tree: renderer.ReactTestRenderer) => {
-    const has = (n: any, pred: (n: any) => boolean): boolean =>
-      !!n && typeof n === 'object' && (pred(n) || (n.children ?? []).some((c: any) => has(c, pred)));
-    const labelled = (l: string) => (n: any) => n.props?.accessibilityLabel === l;
-    const isReady = (n: any) => (n.children ?? []).includes('READY');
-    let row: any = null;
-    const find = (n: any) => {
-      if (!n || typeof n !== 'object') return;
-      if (has(n, labelled('Back')) && has(n, labelled('Ask this meeting'))) row = n;
-      (n.children ?? []).forEach(find);
-    };
-    find(tree.toJSON());
-    return has(row, isReady);
-  };
-
-  it('is shown once beside the title at normal text', async () => {
-    jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(1);
+  it.each([1, 2])('draws no READY badge at font scale %s', async scale => {
+    jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(scale);
     const tree = await render();
-    expect(ready(tree)).toBe(1);
-    expect(inHeaderRow(tree)).toBe(true);
-  });
-
-  it('is shown once, outside the header row, at large text', async () => {
-    jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(2);
-    const tree = await render();
-    expect(ready(tree)).toBe(1);
-    expect(inHeaderRow(tree)).toBe(false);
+    expect(JSON.stringify(tree.toJSON())).not.toContain('READY');
   });
 });

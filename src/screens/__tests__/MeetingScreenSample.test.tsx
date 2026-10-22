@@ -70,9 +70,7 @@ describe('the sample meeting screen', () => {
   it('says what it is, in one line, and offers to delete it', async () => {
     const tree = await open(SAMPLE_ID);
     expect(texts(tree)).toContain(sampleBannerText);
-    expect(sampleBannerText).toBe(
-      "This is a sample so you can see the notes before recording. It isn't from your phone's microphone.",
-    );
+    expect(sampleBannerText).toBe('Sample meeting — not from your microphone.');
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Delete sample' }).length).toBeGreaterThan(0);
     await act(async () => tree.unmount());
   });

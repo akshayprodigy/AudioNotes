@@ -37,7 +37,7 @@ export default function SampleBanner({
 
   return (
     <View style={st.banner} accessibilityRole="summary">
-      <Txt variant="sub" color={colors.primaryDeep}>
+      <Txt variant="sub" color={colors.primaryDeep} style={st.line}>
         {sampleBannerText}
       </Txt>
       <Pressable accessibilityRole="button" accessibilityLabel="Delete sample" onPress={remove} style={st.action}>
@@ -55,12 +55,15 @@ function makeStyles(c: Colors) {
       backgroundColor: c.primarySoft,
       borderRadius: radius.lg,
       paddingHorizontal: s(12),
-      paddingVertical: s(10),
+      paddingVertical: s(2),
       marginHorizontal: s(16),
       marginBottom: s(8),
-      gap: s(6),
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: s(8),
     },
-    // 48 dp of touch target, not the text's own height.
-    action: { alignSelf: 'flex-start', minHeight: s(44), justifyContent: 'center' },
+    line: { flex: 1 },
+    // 44 dp of touch target, not the text's own height.
+    action: { minHeight: s(44), justifyContent: 'center' },
   });
 }

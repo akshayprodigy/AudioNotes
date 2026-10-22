@@ -26,6 +26,5 @@ export function withoutSample<T extends { id: string }>(meetings: readonly T[]):
   return meetings.filter(m => !isSampleId(m.id));
 }
 
-/** One line over the top of the sample meeting; the Library says the same thing in a badge. */
-export const sampleBannerText =
-  "This is a sample so you can see the notes before recording. It isn't from your phone's microphone.";
+/** One short line over the top of the sample meeting; the Library says the same thing in a badge. */
+export const sampleBannerText = 'Sample meeting — not from your microphone.';
