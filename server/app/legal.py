@@ -142,7 +142,10 @@ def _terms() -> str:
 
 <h2>The subscription</h2>
 <ul>
-  <li>Bought in the app and billed monthly through Google Play until cancelled.</li>
+  <li>Bought in the app through Google Play, monthly or yearly, and renewed automatically until
+      cancelled.</li>
+  <li>New subscribers can try it free for 7 days. Cancel in Google Play before the trial ends and
+      you are not charged.</li>
   <li>One subscription covers up to {DEVICE_LIMIT} devices at a time. Using it on another one
       signs out the device used least recently.</li>
   <li>Cancel any time in Google Play, under Subscriptions. Deleting your account here cancels it
@@ -153,9 +156,11 @@ def _terms() -> str:
 </ul>
 
 <h2>Refunds</h2>
-<p>Write to <a href="mailto:{CONTACT_EMAIL}">{CONTACT_EMAIL}</a> within 7 days of a charge you did
-   not intend and we will refund it. Beyond that, cancelling stops the next charge rather than
-   reversing the last one.</p>
+<p>Payments are final. We do not refund a period once it has been charged — the free trial is the
+   way to try {PRODUCT_NAME} before paying. Cancelling stops the next renewal; you keep everything
+   you have paid for until the end of that period. This does not take away a refund Google Play
+   gives under its own refund policy, or any right you have under the consumer law where you
+   live.</p>
 
 <h2>Recording other people</h2>
 <p>This is the important one. Laws about recording conversations differ by country and by state,
