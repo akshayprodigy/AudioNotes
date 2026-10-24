@@ -96,3 +96,30 @@ def test_generator_makes_covers_at_the_sizes_pages_expect(tmp_path):
         assert o.stat().st_size <= 300 * 1024
     assert png_size(out / "og.png") == (1200, 630)
     assert len(list((out / "shots").glob("*.webp"))) == 8
+
+
+def test_committed_shots_match_what_the_tool_makes(tmp_path):
+    """
+    Stale committed shots (tool changed, files not regenerated) fail here instead of in review.
+    Compared by pixels, not bytes: lossy WebP bytes differ between Pillow/libwebp versions even
+    for identical input, so a byte check would fail on any machine with another Pillow.
+    """
+    pytest.importorskip("PIL")
+    import importlib.util
+    from PIL import Image, ImageChops, ImageStat
+    spec = importlib.util.spec_from_file_location("make_images", TOOL)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    mod.make_shots(tmp_path)
+
+    def flat(path):
+        im = Image.open(path).convert("RGBA")
+        bg = Image.new("RGBA", im.size, (74, 86, 210, 255))
+        bg.alpha_composite(im)
+        return bg.convert("RGB")
+
+    for name in SHOT_NAMES:
+        a, b = flat(tmp_path / "shots" / f"{name}.webp"), flat(STATIC / "shots" / f"{name}.webp")
+        assert a.size == b.size, f"{name}.webp is stale: rerun tools/make_images.py"
+        diff = sum(ImageStat.Stat(ImageChops.difference(a, b)).mean) / 3
+        assert diff < 1.0, f"{name}.webp is stale: rerun tools/make_images.py"
