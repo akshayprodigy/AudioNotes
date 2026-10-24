@@ -43,7 +43,7 @@ The honest summary: offline note-taking is a property of where the processing ha
 
 ![Verbale's summary screen for a finished meeting, showing a short written summary and counts of actions, decisions and open questions](/static/shots/summary.webp)
 
-*A finished meeting: the summary on top, with counts of actions, decisions and open questions underneath.*
+*A finished meeting: the summary on top, with counts of actions, decisions and open questions underneath (the written summary is part of Pro; the transcript, decisions and actions are free).*
 
 For a closer look at the flow, see [how it works](/#how).
 
@@ -84,4 +84,4 @@ It can be, in some situations, particularly with heavy accents or a noisy room. 
 
 ### What do I still need internet for?
 
-A one-time model download, the subscription check if you are on Pro, and sharing the notes afterwards. Opt-in crash reports are the only other traffic, and they never include meeting content.
+A one-time model download, the subscription check if you are on Pro, and sharing the notes afterwards. Opt-in crash reports are the only other traffic; they are sent by Google's crash reporter and never include meeting content.

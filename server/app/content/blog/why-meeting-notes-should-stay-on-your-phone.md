@@ -54,7 +54,7 @@ A promise is cheap. Here is how to test one, for any app:
 
 1. **Read what it says it sends.** Look for plain statements about audio and transcripts, not just "we take privacy seriously".
 2. **Try airplane mode.** Record a short meeting with the radios off. If the notes still appear, the processing is local. If it waits for a connection, it isn't.
-3. **Look for an inventory of network calls.** Verbale has a screen that counts every network call the app makes, so you can see for yourself. The only traffic is the one-time model download, the subscription check, and opt-in crash reports that never include content.
+3. **Look for an inventory of network calls.** Verbale has a screen that counts every network call the app itself makes: the one-time model download and the subscription check. Crash reports, if you switch them on, are sent by Google's crash reporter and carry no meeting content; the screen says plainly that it can't count those.
 4. **Check the account question.** An app that needs no account has fewer places to attach your data. The free plan needs none.
 
 ## Be fair to everyone in the room
@@ -79,4 +79,4 @@ Yes. Where the data is stored doesn't change whether recording is allowed. Laws 
 
 ### What does Verbale send over the network?
 
-Only the one-time model download, the subscription check, and crash reports if you opt in. Crash reports never contain meeting content, and the app has a screen that counts every network call.
+Only the one-time model download, the subscription check, and crash reports if you opt in. Crash reports never contain meeting content. The app has a screen that counts every network call it makes itself; crash reports are sent by Google's crash reporter, so that screen cannot count them, and says so.

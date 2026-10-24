@@ -75,7 +75,7 @@ Often the answer is both: on-device for sensitive meetings, cloud for the routin
 
 ## What Verbale does
 
-[Verbale](/) is the on-device option. It records English meetings and writes the transcript, speakers and minutes entirely on the phone. Nothing is uploaded, and the app has a screen that counts every network call it makes. Long meetings process in the background and it notifies you when notes are ready. It takes time, and we say so. The [how it works](/#how) section shows the flow.
+[Verbale](/) is the on-device option. It records English meetings and writes the transcript, speakers and minutes entirely on the phone. Nothing is uploaded, and the app has a screen that counts every network call the app itself makes. Long meetings process in the background and it notifies you when notes are ready. It takes time, and we say so. The [how it works](/#how) section shows the flow.
 
 If you are drafting minutes from either kind of transcript, the [minutes of meeting template](/blog/minutes-of-meeting-template) will help.
 
