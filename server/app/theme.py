@@ -19,6 +19,9 @@ HEAD_SCRIPT = (
     "if(s==='dark'||s==='light'){t=s;}"
     "}catch(e){}"
     "document.documentElement.dataset.theme=t;"
+    # Marks "scripts run" so CSS can hide things for an entrance animation only when something
+    # will certainly reveal them; with JS off or blocked, content stays visible.
+    "document.documentElement.classList.add('js');"
     "var m=document.querySelector('meta[name=theme-color]');"
     "if(m){m.content=t==='dark'?'#0A0C15':'#FAFBFE';}"
     "})();</script>"

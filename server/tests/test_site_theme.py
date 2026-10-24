@@ -87,10 +87,11 @@ globalThis.localStorage = {
   getItem(k) { if (throws) throw new Error('blocked'); return k in data ? data[k] : null; },
   setItem(k, v) { if (throws) throw new Error('blocked'); writes[k] = v; data[k] = v; },
 };
-const root = {dataset: {}};
+const classes = new Set();
+const root = {dataset: {}, classList: {add(c) { classes.add(c); }}};
 globalThis.document = {documentElement: root, querySelector: () => meta};
 eval(process.env.SCRIPT);
-console.log(JSON.stringify({theme: root.dataset.theme, writes, meta: meta.content}));
+console.log(JSON.stringify({theme: root.dataset.theme, writes, meta: meta.content, js: classes.has('js')}));
 """
 
 
@@ -129,3 +130,8 @@ def test_executed_unknown_stored_value_is_ignored():
 
 def test_executed_throwing_storage_still_comes_up_light():
     assert run_head(throws=True)["theme"] == "light"
+
+
+def test_executed_marks_html_as_js_even_when_storage_throws():
+    assert run_head()["js"] is True
+    assert run_head(throws=True)["js"] is True

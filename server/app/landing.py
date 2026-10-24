@@ -63,10 +63,10 @@ FAQ: list[tuple[str, str]] = [
      "goes to Google Crashlytics, and because Crashlytics sends it rather than the app, it "
      "is the one thing the network screen cannot count. It says so, there, in those words."),
     ("Why is there a download when I first open it?",
-     "The speech models are around 114 MB and are not bundled into the app, which would "
-     "otherwise be far too large for the store. They download once and then the app works "
-     "with no connection at all. Starting a Pro trial adds a larger writer model, about "
-     "1.1 GB, and that one is only fetched if you ask for it."),
+     "The speech models are not bundled into the app, which would otherwise be far too "
+     "large for the store. They download once and then the app works with no connection "
+     "at all. Starting a Pro trial adds a larger writer model, which is only fetched if "
+     "you ask for it."),
     ("What happens if I stop paying?",
      "Recording, transcripts, speakers, copying and the rule-based minutes keep working "
      "&mdash; those are the free tier and they do not expire, and every meeting you have "
@@ -219,6 +219,77 @@ FOOTER_LINKS = [("About", "/about"), ("FAQ", "/faq"), ("Blog", "/blog"), ("Priva
                 ("Delete your account", "/delete-account")]
 
 
+def money(period: str, cur: str) -> str:
+    """One price as the page shows it, from PRICES: rupees with Indian grouping, dollars as is."""
+    amount = PRICES[period][cur]
+    if cur == "INR":
+        return "&#8377;" + f"{int(amount):,}"
+    return "$" + html.escape(amount)
+
+
+#: The screenshot strip: (file, caption, is_pro, alt). Captions are the Play listing headlines, so
+#: the site and the store say the same thing. The summary write-up and Ask are Pro features, so
+#: they carry the pill rather than implying the free tier has them.
+SHOTS = [
+    ("recording", "Just hit record", False,
+     "The recording screen of the app while a meeting is being captured"),
+    ("summary", "Your meeting, written up", True,
+     "The Summary tab: a plain-English write-up of the meeting"),
+    ("decisions", "Every decision, with proof", False,
+     "The Decisions list, each with a play button that jumps to the moment it was said"),
+    ("actions", "Who owes what, by when", False,
+     "The Actions tab listing each action item with its owner and due date"),
+    ("ask", "Ask the meeting anything", True,
+     "The Ask screen: answers that each cite the part of the meeting they came from"),
+]
+
+
+def shots_section() -> str:
+    figs = "".join(
+        f"""
+      <figure class="shot rise d{i % 3}">
+        <div class="shot-frame"><img src="/static/shots/{f}.webp" alt="{html.escape(alt)}"
+             width="540" height="1135" loading="lazy" decoding="async"></div>
+        <figcaption>{html.escape(cap)}{' <span class="pro-pill">Pro</span>' if pro else ''}</figcaption>
+      </figure>"""
+        for i, (f, cap, pro, alt) in enumerate(SHOTS)
+    )
+    return f"""
+<section id="see">
+  <div class="shell">
+    <div class="section-head center rise">
+      <h2>See it on a real meeting</h2>
+      <p class="sub">Screens from the app itself.</p>
+    </div>
+    <div class="shots">{figs}
+    </div>
+  </div>
+</section>
+"""
+
+
+def blog_section(cards: list[str]) -> str:
+    """
+    The newest posts as cards. `cards` is the blog's own card markup, passed in rather than
+    imported: blog.py already imports this module, and sharing one card means the teaser can never
+    drift from the index. Empty when there are no posts, so the page never shows a heading over
+    nothing.
+    """
+    if not cards:
+        return ""
+    return f"""
+<section id="from-blog">
+  <div class="shell">
+    <div class="section-head blog-head-row rise">
+      <h2>From the blog</h2>
+      <a class="all-posts" href="/blog">All posts &rarr;</a>
+    </div>
+    <div class="from-blog rise d1">{"".join(cards)}</div>
+  </div>
+</section>
+"""
+
+
 def footer_links() -> str:
     return "\n    ".join(f'<a href="{h}">{html.escape(t)}</a>' for t, h in FOOTER_LINKS)
 
@@ -243,7 +314,7 @@ def hero_note() -> str:
     return "Coming to Google Play. The free tier needs no account at all."
 
 
-def body(device_limit: int) -> str:
+def body(device_limit: int, blog_cards: list[str] | None = None) -> str:
     name = html.escape(PRODUCT_NAME)
     return f"""
 <nav class="nav">
@@ -253,8 +324,8 @@ def body(device_limit: int) -> str:
     <div class="nav-links">
       <a class="hide-sm" href="#how">How it works</a>
       <a class="hide-sm" href="#pricing">Pricing</a>
-      <a class="hide-sm" href="/blog">Blog</a>
-      <a class="hide-sm" href="/privacy">Privacy</a>
+      <a href="/blog">Blog</a>
+      <a class="hide-sm" href="/faq">FAQ</a>
       {TOGGLE}
     </div>
   </div>
@@ -325,6 +396,8 @@ def body(device_limit: int) -> str:
   </div>
 </section>
 
+{shots_section()}
+
 <section>
   <div class="shell">
     <div class="section-head rise">
@@ -384,7 +457,7 @@ def body(device_limit: int) -> str:
     <div class="grid g2">
       <div class="card tier rise">
         <h3>Free</h3>
-        <div class="price">&#8377;0<small> / forever</small></div>
+        <div class="price">{money("free", "INR")}<small> / {money("free", "USD")} forever</small></div>
         <ul class="feat">
           <li><span class="tick">{TICK}</span>5 meetings each month, up to 1 hour each</li>
           <li><span class="tick">{TICK}</span>Full transcript, separated by speaker</li>
@@ -397,7 +470,8 @@ def body(device_limit: int) -> str:
       </div>
       <div class="card tier pro rise d1">
         <h3>Pro</h3>
-        <div class="price">7 days free<small> &nbsp;then &#8377;299/month or &#8377;2,499/year</small></div>
+        <div class="price">7 days free<small> &nbsp;then {money("monthly", "INR")}/month or {money("yearly", "INR")}/year</small></div>
+        <p class="price-usd">{money("monthly", "USD")}/month or {money("yearly", "USD")}/year outside India</p>
         <ul class="feat">
           <li><span class="tick">{TICK}</span>Everything in Free</li>
           <li><span class="tick">{TICK}</span>As many meetings as you like, of any length &mdash; a
@@ -419,6 +493,8 @@ def body(device_limit: int) -> str:
     </div>
   </div>
 </section>
+
+{blog_section(blog_cards or [])}
 
 <section>
   <div class="shell">

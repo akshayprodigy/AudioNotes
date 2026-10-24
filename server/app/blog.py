@@ -255,11 +255,19 @@ def _head_links(extra: str = "") -> str:
     )
 
 
-def _card(post: Post) -> str:
-    """A post card. The cover's alt is empty: the title beside it already says what the post is."""
+def _card(post: Post, loading: str = "lazy") -> str:
+    """
+    A post card. The cover's alt is empty: the title beside it already says what the post is.
+
+    `loading` is "lazy" below the fold. The first row of the index is in the viewport on load, so
+    it passes "eager" (the very first also gets fetchpriority=high) -- lazy-loading the largest
+    paint on the page is what delays LCP.
+    """
+    hint = ' fetchpriority="high"' if loading == "high" else ""
+    attr = "eager" if loading == "high" else loading
     media = (
         f'<img src="{html.escape(post.cover_webp)}" alt="" width="{COVER_W}" height="{COVER_H}" '
-        'loading="lazy" decoding="async">' if post.cover else ""
+        f'loading="{attr}"{hint} decoding="async">' if post.cover else ""
     )
     tag = f'<span class="tag">{html.escape(post.tags[0])}</span>' if post.tags else ""
     return (
@@ -311,7 +319,9 @@ def _cta() -> str:
 
 def render_index(posts: list[Post]) -> str:
     if posts:
-        grid = '<div class="post-grid">' + "".join(_card(p) for p in posts) + "</div>"
+        grid = '<div class="post-grid">' + "".join(
+            _card(p, "high" if i == 0 else "eager" if i < 3 else "lazy")
+            for i, p in enumerate(posts)) + "</div>"
     else:
         grid = ('<p class="empty">First posts coming soon. In the meantime, '
                 '<a href="/">see what Verbale does</a>.</p>')
