@@ -30,6 +30,7 @@ HERE = Path(__file__).resolve().parent
 SERVER = HERE.parent
 REPO = SERVER.parent
 FONTS = REPO / "assets" / "fonts"
+MASCOT = HERE / "assets" / "mascot-tile.png"
 STORE = REPO / "docs" / "store" / "screenshots"
 
 #: Store frame file -> name used in `/static/shots/<name>.webp` and in a post's `shot:` field.
@@ -159,11 +160,8 @@ def fit_title(draw, text: str, maxw: float, maxh: float, start: int, max_lines: 
 
 
 def mark(img: Image.Image, x: int, y: int, s: int) -> int:
-    """Small app-icon-style tile with a V, plus the wordmark. Returns the right edge."""
-    tile = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    td = ImageDraw.Draw(tile)
-    td.rounded_rectangle([0, 0, s - 1, s - 1], radius=int(s * 0.3), fill=(255, 255, 255, 255))
-    td.text((s / 2, s / 2 + s * 0.02), "V", font=font("Black", s * 0.66), fill=INDIGO, anchor="mm")
+    """The real mascot on its white tile (tools/assets/mascot-tile.png), plus the wordmark. Returns the right edge."""
+    tile = Image.open(MASCOT).convert("RGBA").resize((s, s), Image.LANCZOS)
     img.alpha_composite(tile, (x, y))
     d = ImageDraw.Draw(img)
     f = font("ExtraBold", s * 0.78)
@@ -214,7 +212,7 @@ def render(w: int, h: int, headline: str, shot: Image.Image, kicker: str,
     ph = phone(shot, pw, angle)
     _paste_clipped(img, ph, round(w * 0.635) - (ph.width - pw) // 2, round(h * 0.10) - (ph.width - pw) // 2)
 
-    mark(img, left, round(70 * s), round(52 * s))
+    mark(img, left, round(62 * s), round(68 * s))
 
     text_w = w * 0.57 - left
     top = 190 * s
