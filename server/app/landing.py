@@ -213,6 +213,16 @@ def home_jsonld(site: str) -> list[dict]:
     ]
 
 
+#: The footer's links, shared with the reading pages' footer so the two cannot drift apart.
+FOOTER_LINKS = [("About", "/about"), ("FAQ", "/faq"), ("Blog", "/blog"), ("Privacy", "/privacy"),
+                ("Terms", "/terms"), ("LLM summary", "/llms.txt"),
+                ("Delete your account", "/delete-account")]
+
+
+def footer_links() -> str:
+    return "\n    ".join(f'<a href="{h}">{html.escape(t)}</a>' for t, h in FOOTER_LINKS)
+
+
 def hero_cta() -> str:
     """The primary call to action, which depends on whether there is an app to send anyone to."""
     url = play_url()
@@ -431,13 +441,7 @@ def body(device_limit: int) -> str:
   <div class="shell foot-in">
     <span>&copy; InnoCore Labs</span>
     <span class="nav-spacer"></span>
-    <a href="/about">About</a>
-    <a href="/faq">FAQ</a>
-    <a href="/blog">Blog</a>
-    <a href="/privacy">Privacy</a>
-    <a href="/terms">Terms</a>
-    <a href="/llms.txt">LLM summary</a>
-    <a href="/delete-account">Delete your account</a>
+    {footer_links()}
   </div>
 </footer>
 """

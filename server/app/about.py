@@ -25,11 +25,12 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, PlainTextResponse
 
 from . import landing, seo
-from .blog import _breadcrumb, _breadcrumb_jsonld, _split_front_matter
-from .theme import site_header
+from .blog import breadcrumb, breadcrumb_jsonld
 from .branding import COMPANY_NAME, CONTACT_EMAIL, PRODUCT_NAME
+from .theme import site_header
 
-#: Bumped when a fact on the about page changes; shown on the page as "Last updated".
+#: Bump whenever DEFINITION or sections() change: it feeds the visible "Last updated" date, the
+#: AboutPage dateModified and the sitemap lastmod.
 ABOUT_UPDATED = "2026-10-24"
 
 SUMMARY = (
@@ -50,7 +51,11 @@ DEFINITION = (
 LLMS_LINK = '<link rel="alternate" type="text/plain" title="LLM summary" href="/llms.txt">\n'
 
 _LINK = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
-_ANCHOR = re.compile(r'<a href="([^"]+)">(.*?)</a>', re.S)
+_ANCHOR = re.compile(r'<a\b[^>]*?\bhref=["\']([^"\']+)["\'][^>]*>(.*?)</a>', re.S)
+#: Link targets an about-page text may use; anything else is left as plain text.
+_SAFE_TARGET = re.compile(r"^(/|https:|mailto:)")
+#: Static, rarely-changing pages: an hour of caching is fresh enough and spares the crawlers.
+CACHE = {"Cache-Control": "public, max-age=3600"}
 _TAG = re.compile(r"<[^>]+>")
 
 
@@ -115,7 +120,7 @@ def sections() -> list[tuple[str, list[str | list[str]]]]:
             ["It works in English only; no other language is supported.",
              "It is Android only; there is no iPhone version.",
              "It does not join video calls as a bot. It records through the phone.",
-             "It does not sync meetings to a cloud. There is no web app to log in to."],
+             "It does not sync meetings to a cloud. You can export an encrypted backup file yourself, protected by a passphrase you choose; nothing is uploaded. There is no web app to log in to."],
         ]),
         ("Pricing", _pricing()),
         ("Requirements", [
@@ -140,7 +145,11 @@ def sections() -> list[tuple[str, list[str | list[str]]]]:
 
 def _inline_html(text: str) -> str:
     """Escape, then turn [label](target) into links (the escaped text cannot contain a tag)."""
-    return _LINK.sub(lambda m: f'<a href="{m.group(2)}">{m.group(1)}</a>', html.escape(text))
+    def link(m: re.Match) -> str:
+        label, target = m.group(1), m.group(2)
+        return f'<a href="{target}">{label}</a>' if _SAFE_TARGET.match(html.unescape(target)) else label
+
+    return _LINK.sub(link, html.escape(text))
 
 
 def _inline_md(text: str) -> str:
@@ -152,7 +161,8 @@ def _abs(target: str) -> str:
 
 
 def _pretty(iso: str) -> str:
-    return date.fromisoformat(iso).strftime("%-d %B %Y")
+    d = date.fromisoformat(iso)
+    return f"{d.day} {d:%B %Y}"
 
 
 def _blocks_html(blocks: list[str | list[str]]) -> str:
@@ -169,12 +179,10 @@ def _blocks_md(blocks: list[str | list[str]]) -> str:
 
 def prose_footer() -> str:
     """The footer for the reading-style pages; the same links as the landing page's."""
-    links = [("About", "/about"), ("FAQ", "/faq"), ("Blog", "/blog"), ("Privacy", "/privacy"),
-             ("Terms", "/terms"), ("LLM summary", "/llms.txt")]
     return (
         '<footer class="site-foot"><div class="site-foot-in">'
         f"<span>&copy; {html.escape(COMPANY_NAME)}</span>"
-        + "".join(f'<a href="{h}">{html.escape(t)}</a>' for t, h in links)
+        + "".join(f'<a href="{h}">{html.escape(t)}</a>' for t, h in landing.FOOTER_LINKS)
         + "</div></footer>"
     )
 
@@ -188,7 +196,7 @@ def render_about() -> str:
     return (
         site_header(html.escape(PRODUCT_NAME))
         + '<main class="blog-wrap"><article class="post">'
-        + _breadcrumb([("Home", "/"), ("About", None)])
+        + breadcrumb([("Home", "/"), ("About", None)])
         + '<header class="post-head"><h1>What is Verbale?</h1>'
           f'<p class="byline">Last updated <time datetime="{ABOUT_UPDATED}">'
           f"{_pretty(ABOUT_UPDATED)}</time></p></header>"
@@ -202,7 +210,7 @@ def render_faq() -> str:
     return (
         site_header(html.escape(PRODUCT_NAME))
         + '<main class="blog-wrap"><article class="post">'
-        + _breadcrumb([("Home", "/"), ("FAQ", None)])
+        + breadcrumb([("Home", "/"), ("FAQ", None)])
         + '<header class="post-head"><h1>Frequently asked questions</h1>'
           f'<p class="byline">About {html.escape(PRODUCT_NAME)}, privacy and pricing. '
           'See also <a href="/about">what it is</a> and <a href="/blog">the blog</a>.</p></header>'
@@ -213,13 +221,15 @@ def render_faq() -> str:
 
 def about_jsonld() -> list[dict]:
     site = seo.site_url()
-    org, app = landing.home_jsonld(site)[0], landing.home_jsonld(site)[2]
+    blocks = landing.home_jsonld(site)
+    org = next(b for b in blocks if b["@type"] == "Organization")
+    app = next(b for b in blocks if b["@type"] == "SoftwareApplication")
     return [
         {"@context": "https://schema.org", "@type": "AboutPage", "name": f"What is {PRODUCT_NAME}?",
          "url": seo.absolute("/about"), "inLanguage": "en", "dateModified": ABOUT_UPDATED,
          "description": SUMMARY, "mainEntity": {k: v for k, v in app.items() if k != "@context"}},
         org,
-        _breadcrumb_jsonld([("Home", "/"), ("About", "/about")]),
+        breadcrumb_jsonld([("Home", "/"), ("About", "/about")]),
     ]
 
 
@@ -272,6 +282,11 @@ def llms_txt(posts) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _absolute_links(markdown_text: str) -> str:
+    """Posts link to `/blog/..` and `/static/..`; a file read off-site needs full URLs."""
+    return re.sub(r"\]\((/[^)]*)\)", lambda m: f"]({seo.site_url()}{m.group(1)})", markdown_text)
+
+
 def llms_full(posts) -> str:
     """
     /llms-full.txt: the about page, the FAQ and every post as one markdown document.
@@ -282,8 +297,7 @@ def llms_full(posts) -> str:
     rule = "\n\n---\n\n"
     chunks = [about_md(), faq_md()]
     for post in posts:
-        _, body = _split_front_matter(post.raw, post.slug)
-        chunks.append(f"# {post.title}\n\n{seo.absolute(post.path)}\n\n{body.strip()}\n")
+        chunks.append(f"# {post.title}\n\n{seo.absolute(post.path)}\n\n{_absolute_links(post.body.strip())}\n")
     return rule.join(c.strip() for c in chunks) + "\n"
 
 
@@ -297,26 +311,26 @@ def register_about(app: FastAPI, layout: Callable[..., str]) -> None:
 
     @app.get("/about", response_class=HTMLResponse)
     def about() -> HTMLResponse:
-        return HTMLResponse(layout(
+        return HTMLResponse(headers=CACHE, content=layout(
             f"What is {PRODUCT_NAME}?", render_about(), SUMMARY, path="/about",
             head_extra=_head(), wrap=False, jsonld=about_jsonld()))
 
     @app.get("/faq", response_class=HTMLResponse)
     def faq() -> HTMLResponse:
-        return HTMLResponse(layout(
+        return HTMLResponse(headers=CACHE, content=layout(
             "Frequently asked questions", render_faq(),
             f"Answers about {PRODUCT_NAME}: privacy, what the app sends over the network, "
             "pricing, and which phones it runs on.",
             path="/faq", head_extra=_head(), wrap=False,
             jsonld=[landing.faq_jsonld(),
-                    _breadcrumb_jsonld([("Home", "/"), ("FAQ", "/faq")])]))
+                    breadcrumb_jsonld([("Home", "/"), ("FAQ", "/faq")])]))
 
     @app.get("/llms.txt")
     def llms() -> PlainTextResponse:
         return PlainTextResponse(llms_txt(app.state.blog.posts()),
-                                 media_type="text/plain; charset=utf-8")
+                                 media_type="text/plain; charset=utf-8", headers=CACHE)
 
     @app.get("/llms-full.txt")
     def llms_full_txt() -> PlainTextResponse:
         return PlainTextResponse(llms_full(app.state.blog.posts()),
-                                 media_type="text/plain; charset=utf-8")
+                                 media_type="text/plain; charset=utf-8", headers=CACHE)

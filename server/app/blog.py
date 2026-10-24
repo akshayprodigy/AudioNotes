@@ -73,6 +73,7 @@ class Post:
     cover_alt: str
     shot: str | None               # read by the image generator, not by any page
     raw: str                       # the file exactly as written, front matter included
+    body: str                      # the markdown after the front matter, split at load
     html: str                      # rendered body
     minutes: int
     toc: list[tuple[str, str]] = field(default_factory=list)  # (id, text) of each h2
@@ -205,7 +206,7 @@ def _load(path: Path) -> Post:
         updated=updated,
         tags=[t.strip() for t in meta.get("tags", "").split(",") if t.strip()],
         cover=meta.get("cover") or None, cover_alt=meta.get("cover_alt", ""),
-        shot=meta.get("shot") or None, raw=raw, html=rendered,
+        shot=meta.get("shot") or None, raw=raw, body=body, html=rendered,
         minutes=reading_minutes(body), toc=_h2s(md.toc_tokens),
     )
 
@@ -272,7 +273,7 @@ def _card(post: Post) -> str:
     )
 
 
-def _breadcrumb(trail: list[tuple[str, str | None]]) -> str:
+def breadcrumb(trail: list[tuple[str, str | None]]) -> str:
     items = []
     for label, href in trail:
         text = html.escape(label)
@@ -281,7 +282,7 @@ def _breadcrumb(trail: list[tuple[str, str | None]]) -> str:
     return f'<nav class="crumbs" aria-label="Breadcrumb"><ol>{"".join(items)}</ol></nav>'
 
 
-def _breadcrumb_jsonld(trail: list[tuple[str, str]]) -> dict:
+def breadcrumb_jsonld(trail: list[tuple[str, str]]) -> dict:
     return {
         "@context": "https://schema.org", "@type": "BreadcrumbList",
         "itemListElement": [
@@ -317,7 +318,7 @@ def render_index(posts: list[Post]) -> str:
     return (
         site_header(html.escape(PRODUCT_NAME))
         + '<main class="blog-wrap">'
-        + _breadcrumb([("Home", "/"), ("Blog", None)])
+        + breadcrumb([("Home", "/"), ("Blog", None)])
         + f'<header class="blog-head"><h1>Blog</h1><p>{html.escape(BLOG_INTRO)}</p>'
           '<a class="rss" href="/blog/feed.xml">RSS feed</a></header>'
         + grid + "</main>"
@@ -349,7 +350,7 @@ def render_article(post: Post, related: list[Post]) -> str:
     return (
         site_header(html.escape(PRODUCT_NAME))
         + '<main class="blog-wrap"><article class="post">'
-        + _breadcrumb([("Home", "/"), ("Blog", "/blog"), (post.title, None)])
+        + breadcrumb([("Home", "/"), ("Blog", "/blog"), (post.title, None)])
         + f'<header class="post-head">{tags}<h1>{html.escape(post.title)}</h1>'
           f'<p class="byline"><time datetime="{post.date}">{_pretty_date(post.date)}</time>'
           f'{updated} &middot; {post.minutes} min read</p></header>'
@@ -425,7 +426,7 @@ def register_blog(app: FastAPI, layout: Callable[..., str],
                  "blogPost": [{"@type": "BlogPosting", "headline": p.title,
                                "url": seo.absolute(p.path), "datePublished": p.date}
                               for p in posts]},
-                _breadcrumb_jsonld([("Home", "/"), ("Blog", "/blog")]),
+                breadcrumb_jsonld([("Home", "/"), ("Blog", "/blog")]),
             ],
         ))
 
@@ -474,7 +475,7 @@ def register_blog(app: FastAPI, layout: Callable[..., str],
             post.title, render_article(post, blog.related(post)), post.description,
             path=post.path, og_type="article", image=post.og_image,
             head_extra=_head_links(head), wrap=False,
-            jsonld=[posting, _breadcrumb_jsonld(
+            jsonld=[posting, breadcrumb_jsonld(
                 [("Home", "/"), ("Blog", "/blog"), (post.title, post.path)])],
         ))
 

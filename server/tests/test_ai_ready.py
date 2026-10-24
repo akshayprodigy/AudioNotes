@@ -1,12 +1,13 @@
 """AI-assistant readiness: /about, /faq, /llms.txt, /llms-full.txt, sitemap, footer, head link."""
 
+import html
 import json
 import re
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app import landing
+from app import about, landing
 from app.main import create_app
 
 SITE = "https://verbale.innocorelabs.com"
@@ -41,6 +42,7 @@ def test_about_has_h1_definition_and_prices(client):
     assert r.status_code == 200
     assert "<h1>What is Verbale?</h1>" in r.text
     assert "Verbale is an Android app by InnoCore Labs that" in r.text
+    assert html.escape(about.DEFINITION) in r.text
     for price in ("299", "2,499", "4.99", "39.99"):
         assert price in r.text
     assert f'<link rel="canonical" href="{SITE}/about">' in r.text
@@ -60,6 +62,8 @@ def test_about_jsonld(client):
     types = {b["@type"]: b for b in _blocks(client.get("/about").text)}
     assert {"AboutPage", "Organization", "BreadcrumbList"} <= set(types)
     assert types["AboutPage"]["mainEntity"]["@type"] == "SoftwareApplication"
+    assert types["AboutPage"]["mainEntity"]["name"] == "Verbale"
+    assert types["Organization"]["url"] == landing.ORG_URL
 
 
 def test_faq_page(client):
@@ -67,7 +71,7 @@ def test_faq_page(client):
     assert r.status_code == 200
     assert "<h1>" in r.text
     for q, _ in landing.FAQ:
-        assert q in r.text.replace("&#x27;", "'")
+        assert html.unescape(q) in html.unescape(r.text)
     types = [b["@type"] for b in _blocks(r.text)]
     assert "FAQPage" in types and "BreadcrumbList" in types
     assert f'<link rel="canonical" href="{SITE}/faq">' in r.text
@@ -93,7 +97,7 @@ def test_llms_txt_shape(client):
 
 def test_every_llms_url_resolves(client):
     urls = re.findall(r"\]\((https?://[^)]+)\)", client.get("/llms.txt").text)
-    assert len(urls) > 10
+    assert len(urls) >= 4 + len(_posts(client))
     for u in urls:
         assert u.startswith(SITE)
         assert client.get(u[len(SITE):]).status_code == 200, u
@@ -140,3 +144,27 @@ def test_prose_pages_have_footer(client):
 @pytest.mark.parametrize("path", ["/about", "/faq", "/llms.txt", "/llms-full.txt"])
 def test_no_banned_words(client, path):
     assert not BANNED.search(client.get(path).text)
+
+
+def test_faq_answer_md_keeps_links_entities_and_drops_tags():
+    out = about.faq_answer_md(
+        "A &mdash; <b>B</b> <a class=\"x\" href='/delete-account'>see <em>this</em></a>.")
+    assert out == f"A \u2014 B [see this]({SITE}/delete-account)."
+
+
+@pytest.mark.parametrize("path", ["/llms.txt", "/llms-full.txt"])
+def test_llms_files_are_clean_markdown(client, path):
+    t = client.get(path).text
+    assert "&mdash;" not in t and "&amp;" not in t
+    assert "](/" not in t
+    if path == "/llms.txt":
+        assert "<" not in t
+
+
+def test_about_pages_are_cacheable(client):
+    for p in ("/about", "/faq", "/llms.txt", "/llms-full.txt"):
+        assert client.get(p).headers["cache-control"] == "public, max-age=3600"
+
+
+def test_about_text_links_are_restricted_to_safe_targets():
+    assert about._inline_html("[x](javascript:evil) [y](/a)") == 'x <a href="/a">y</a>'
