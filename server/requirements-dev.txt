@@ -1,4 +1,4 @@
 -r requirements.txt
 pytest
 httpx
-Pillow
+Pillow==12.2.0

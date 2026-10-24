@@ -83,8 +83,12 @@ def test_default_og_is_1200_by_630():
 def test_generator_makes_covers_at_the_sizes_pages_expect(tmp_path):
     pytest.importorskip("PIL")
     out = tmp_path / "static"
-    subprocess.run([sys.executable, str(TOOL), "--content", str(FIXTURES), "--out", str(out)],
-                   check=True, capture_output=True)
+    # The on-device fixture names a shot that does not exist: everything is still written, but the
+    # run must fail loudly and name the file.
+    run = subprocess.run([sys.executable, str(TOOL), "--content", str(FIXTURES), "--out", str(out)],
+                         capture_output=True, text=True)
+    assert run.returncode == 1
+    assert "on-device-transcription.md" in run.stderr and "record-screen" in run.stderr
     # The fixture post embeds a screenshot that is not one of the eight; covers themselves must exist.
     assert all("shots/" in m for m in missing_images(FIXTURES, out))
     for cover in ("on-device", "action-items"):
@@ -105,16 +109,13 @@ def test_committed_shots_match_what_the_tool_makes(tmp_path):
     for identical input, so a byte check would fail on any machine with another Pillow.
     """
     pytest.importorskip("PIL")
-    import importlib.util
     from PIL import Image, ImageChops, ImageStat
-    spec = importlib.util.spec_from_file_location("make_images", TOOL)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    mod = _tool()
     mod.make_shots(tmp_path)
 
-    def flat(path):
+    def flat(path):  # noqa: E306
         im = Image.open(path).convert("RGBA")
-        bg = Image.new("RGBA", im.size, (74, 86, 210, 255))
+        bg = Image.new("RGBA", im.size, (*mod.INDIGO, 255))
         bg.alpha_composite(im)
         return bg.convert("RGB")
 
@@ -123,3 +124,33 @@ def test_committed_shots_match_what_the_tool_makes(tmp_path):
         assert a.size == b.size, f"{name}.webp is stale: rerun tools/make_images.py"
         diff = sum(ImageStat.Stat(ImageChops.difference(a, b)).mean) / 3
         assert diff < 1.0, f"{name}.webp is stale: rerun tools/make_images.py"
+
+
+def _tool():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("make_images", TOOL)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_tool_and_blog_parse_front_matter_the_same():
+    pytest.importorskip("PIL")
+    mod = _tool()
+    files = sorted(FIXTURES.glob("*.md")) + sorted(CONTENT.glob("*.md"))
+    assert files
+    for md in files:
+        raw = md.read_text(encoding="utf-8")
+        ours, theirs = mod.parse_front_matter(raw), _front(raw)
+        for key in ("title", "cover", "shot"):
+            assert ours.get(key) == theirs.get(key), f"{md.name}: {key}"
+
+
+def test_unknown_shot_makes_main_exit_nonzero(tmp_path):
+    pytest.importorskip("PIL")
+    mod = _tool()
+    (tmp_path / "c").mkdir()
+    (tmp_path / "c" / "p.md").write_text(
+        "---\ntitle: T\ndescription: D\ndate: 2026-01-01\ncover: c1\nshot: typo\n---\nx\n", encoding="utf-8")
+    assert mod.main(["--content", str(tmp_path / "c"), "--out", str(tmp_path / "o")]) == 1
+    assert (tmp_path / "o" / "blog" / "c1.webp").exists()

@@ -15,6 +15,10 @@ Covers share one visual language (brand gradient, soft glows, grain, Nunito titl
 the right bleeding off the bottom edge like the store shots), so a blog index of covers reads as
 one product. Everything is deterministic: re-running rewrites identical files.
 
+Regenerate with Pillow==12.2.0 (the version pinned in requirements-dev.txt): lossy WebP bytes
+differ between Pillow/libwebp versions, so another version dirties git with no real change.
+A post whose `shot` is not one of the eight store shots is a warning and a non-zero exit.
+
     python3 tools/make_images.py [--content DIR] [--out DIR]
 """
 from __future__ import annotations
@@ -45,9 +49,23 @@ SHOT_W = 540
 SHOT_QUALITY = 82
 CARD_RADIUS = 56          # corner radius of the card in the 768px-wide crop
 
-INDIGO = (74, 86, 210)
-VIOLET = (122, 90, 224)
-DEEP = (44, 52, 150)
+INDIGO = (74, 86, 210)                    # brand primary; also the mid stop of the background
+GRAD_START, GRAD_END = (60, 70, 196), (112, 82, 222)   # slightly deeper/lighter than the brand pair
+
+# Layout, in fractions of the canvas width/height, or in px at the 900px-tall design size (the
+# latter are multiplied by s = h/900 so the 1200x630 card is the same design scaled down).
+LEADING = 1.12            # line height of the title as a multiple of its font size
+MARGIN_X = 0.0625         # left edge of all text
+TEXT_RIGHT = 0.57         # text may not run past this fraction of the width (the phone starts there)
+PHONE_W = 0.30            # phone card width
+PHONE_X, PHONE_Y = 0.635, 0.10   # its top-left, before the tilt margin is subtracted
+MARK_Y, MARK_SIZE = 62, 68       # mascot tile position and edge
+KICKER_TOP = 190          # top of the "BLOG" pill
+FOOT_FROM_BOTTOM = 66     # URL baseline distance from the bottom edge
+TITLE_BOTTOM_GAP = 120    # title block must end this far above the bottom edge
+TITLE_START = 88          # largest title size tried
+WEBP_LIMIT = 240_000      # covers stay under the 250 KB budget
+PNG_LIMIT = 300_000
 SITE_URL = "verbale.innocorelabs.com"
 DEFAULT_SHOT = "summary"
 
@@ -104,7 +122,7 @@ def _glow(size: tuple[int, int], center: tuple[float, float], radius: float,
 
 def background(w: int, h: int, grain: int = 7) -> Image.Image:
     ramp = _diagonal(w, h)
-    bg = ImageOps.colorize(ramp, black=(60, 70, 196), white=(112, 82, 222), mid=INDIGO)
+    bg = ImageOps.colorize(ramp, black=GRAD_START, white=GRAD_END, mid=INDIGO)
     for center, radius, color, strength in [
         ((w * 0.82, h * 0.18), h * 0.95, (150, 120, 255), 0.55),   # violet bloom behind the phone
         ((w * 0.05, h * 1.02), h * 0.9, (34, 40, 140), 0.65),      # deep shade bottom-left
@@ -143,7 +161,7 @@ def fit_title(draw, text: str, maxw: float, maxh: float, start: int, max_lines: 
     while True:
         f = font("ExtraBold", size)
         lines = wrap(draw, text, f, maxw)
-        height = len(lines) * size * 1.12
+        height = len(lines) * size * LEADING
         fits = len(lines) <= max_lines and height <= maxh and all(
             draw.textlength(l, font=f) <= maxw for l in lines)
         if fits or size <= 28:
@@ -205,18 +223,18 @@ def render(w: int, h: int, headline: str, shot: Image.Image, kicker: str,
     s = h / 900
     img = background(w, h, grain).convert("RGBA")
     d = ImageDraw.Draw(img)
-    left = round(w * 0.0625)
+    left = round(w * MARGIN_X)
 
     # Phone first so text sits above any shadow overlap.
-    pw = round(w * 0.30)
+    pw = round(w * PHONE_W)
     ph = phone(shot, pw, angle)
-    _paste_clipped(img, ph, round(w * 0.635) - (ph.width - pw) // 2, round(h * 0.10) - (ph.width - pw) // 2)
+    _paste_clipped(img, ph, round(w * PHONE_X) - (ph.width - pw) // 2, round(h * PHONE_Y) - (ph.width - pw) // 2)
 
-    mark(img, left, round(62 * s), round(68 * s))
+    mark(img, left, round(MARK_Y * s), round(MARK_SIZE * s))
 
-    text_w = w * 0.57 - left
-    top = 190 * s
-    bottom = h - 120 * s
+    text_w = w * TEXT_RIGHT - left
+    top = KICKER_TOP * s
+    bottom = h - TITLE_BOTTOM_GAP * s
     kf = font("Bold", 24 * s)
     kick = kicker.upper()
     kw = d.textlength(kick, font=kf) + 40 * s
@@ -235,18 +253,18 @@ def render(w: int, h: int, headline: str, shot: Image.Image, kicker: str,
     if sub:
         sub_lines = wrap(d, sub, sf, text_w)[:3]
         sub_h = len(sub_lines) * 46 * s + 30 * s
-    tf, lines, size = fit_title(d, headline, text_w, bottom - (ky + 48 * s + 36 * s) - sub_h - 40 * s, int(88 * s))
+    tf, lines, size = fit_title(d, headline, text_w, bottom - (ky + 48 * s + 36 * s) - sub_h - 40 * s, int(TITLE_START * s))
     y = ky + 48 * s + 36 * s
     for line in lines:
         d.text((left, y), line, font=tf, fill="white")
-        y += size * 1.12
+        y += size * LEADING
     y += 34 * s
     for line in sub_lines:
         d.text((left, y), line, font=sf, fill=(232, 234, 255, 235))
         y += 46 * s
 
     uf = font("SemiBold", 25 * s)
-    d.text((left, h - 66 * s), SITE_URL, font=uf, fill=(255, 255, 255, 200), anchor="lm")
+    d.text((left, h - FOOT_FROM_BOTTOM * s), SITE_URL, font=uf, fill=(255, 255, 255, 200), anchor="lm")
     return img.convert("RGB")
 
 
@@ -256,20 +274,26 @@ def _paste_clipped(img: Image.Image, layer: Image.Image, x: int, y: int) -> None
                         (max(x, 0), max(y, 0)))
 
 
+def warn(msg: str) -> None:
+    print(f"WARNING: {msg}", file=sys.stderr)
+
+
 def save_webp(img: Image.Image, path: Path, limit: int) -> None:
     for q in (86, 80, 74, 68, 60, 50):
         img.save(path, "WEBP", quality=q, method=6)
         if path.stat().st_size <= limit:
             return
+    warn(f"{path.name} is {path.stat().st_size} bytes at the lowest quality, over the {limit} limit")
 
 
-def save_png(img: Image.Image, path: Path, limit: int = 300_000) -> None:
+def save_png(img: Image.Image, path: Path, limit: int = PNG_LIMIT) -> None:
     """Full-colour first; if it is too heavy, quantise (the grain makes plain PNG ~1 MB)."""
     for colors in (256, 192, 128, 96, 64):
         q = img.quantize(colors=colors, method=Image.MEDIANCUT, dither=Image.FLOYDSTEINBERG)
         q.save(path, "PNG", optimize=True)
         if path.stat().st_size <= limit:
             return
+    warn(f"{path.name} is {path.stat().st_size} bytes at 64 colours, over the {limit} limit")
 
 
 # ---------------------------------------------------------------- posts
@@ -291,8 +315,10 @@ def parse_front_matter(raw: str) -> dict[str, str]:
     return meta
 
 
-def make_covers(content: Path, out: Path) -> list[Path]:
+def make_covers(content: Path, out: Path, problems: list[str] | None = None) -> list[Path]:
+    """Render every cover; a post naming an unknown `shot` is reported into `problems` (and warned)."""
     written = []
+    problems = problems if problems is not None else []
     (out / "blog").mkdir(parents=True, exist_ok=True)
     for md in sorted(content.glob("*.md")):
         meta = parse_front_matter(md.read_text(encoding="utf-8"))
@@ -301,12 +327,15 @@ def make_covers(content: Path, out: Path) -> list[Path]:
             continue
         shot_name = meta.get("shot") or DEFAULT_SHOT
         if not (out / "shots" / f"{shot_name}.webp").exists():
+            msg = f"{md.name}: unknown shot {shot_name!r} (known: {', '.join(SHOTS.values())})"
+            warn(msg)
+            problems.append(msg)
             shot_name = DEFAULT_SHOT
         shot = load_shot(out, shot_name)
         title = meta.get("title", md.stem)
         big = render(1600, 900, title, shot, "Blog")
         p = out / "blog" / f"{cover}.webp"
-        save_webp(big, p, 240_000)
+        save_webp(big, p, WEBP_LIMIT)
         written.append(p)
         og = render(1200, 630, title, shot, "Blog", grain=0)
         p = out / "blog" / f"{cover}-og.png"
@@ -328,10 +357,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--content", type=Path, default=SERVER / "app" / "content" / "blog")
     ap.add_argument("--out", type=Path, default=SERVER / "app" / "static")
     a = ap.parse_args(argv)
-    paths = make_shots(a.out) + make_covers(a.content, a.out) + [make_default_og(a.out)]
+    problems: list[str] = []
+    paths = make_shots(a.out) + make_covers(a.content, a.out, problems) + [make_default_og(a.out)]
     for p in paths:
         print(f"wrote {p} ({p.stat().st_size // 1024} KB)")
-    return 0
+    # Everything else was written first; a non-zero exit stops a typo'd `shot:` slipping through.
+    return 1 if problems else 0
 
 
 if __name__ == "__main__":
