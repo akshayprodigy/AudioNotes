@@ -41,9 +41,10 @@ Bing's index also feeds ChatGPT search and several other assistants, so this mat
 
 ## 4. When the Play listing is public
 
-1. On the server edit `/opt/verbale/.env` and add
+1. On the server edit `/opt/verbale/.env` and set
    `PLAY_URL=https://play.google.com/store/apps/details?id=com.innocorelabs.verbale`
-   (`PLAY_URL` is not in `.env.example` yet; it is read directly from the environment).
+   (already listed in `.env.example`, empty). `docker-compose.yml` has `env_file: .env`, so it
+   reaches the app.
 2. `cd /opt/verbale && docker compose up -d`
 3. What changes: the "Get it on Google Play" button appears on the home page and under each blog
    post (instead of "See how it works"), and `downloadUrl` / `installUrl` are added to the

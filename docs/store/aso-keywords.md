@@ -36,11 +36,11 @@ best terms.
 **Short description (limit 80)**
 
 - Current (79): `Records English meetings, writes the minutes on your phone. Offline, no upload.`
-- Proposed (77): `Meeting recorder that writes minutes (MOM) on your phone. Offline, no upload.`
-- Trade: adds "meeting recorder" and "MOM". It drops "English", which the first paragraph of the
-  full description still says. If you want "English" kept, leave the short description as is and
-  rely on the full description change. Your call, since a refused-language one-star review is the
-  risk the current text guards against.
+- Option A (74): `English meeting recorder: writes the minutes (MOM) on your phone. Offline.`
+- Option B (76): `English meeting recorder that writes minutes (MOM) on your phone. No upload.`
+- Both keep "English" (the one-star-review guard in `docs/play-console.md`) and add "meeting
+  recorder" and "MOM". A keeps "Offline", B keeps "No upload"; each drops the other. Pick A if
+  "offline" matters more in search (it is already in the title).
 
 **Full description, first paragraph (limit 4000, the whole text is far below it)**
 
