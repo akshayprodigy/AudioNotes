@@ -21,7 +21,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 
 from . import admin_auth
-from .pages import _date, _page, esc
+from . import pages
+from .pages import _date, esc
 from .store import AdminRow, Store
 
 COOKIE_NAME = "verbale_admin"
@@ -97,6 +98,11 @@ TABLE_CSS = """
   .admin-bar { display:flex; justify-content:space-between; align-items:center; gap:12px }
 </style>
 """
+
+
+def _page(*args, **kwargs):
+    """The console is never for a search index: every admin page carries noindex."""
+    return pages._page(*args, noindex=True, **kwargs)
 
 
 def register_admin(app: FastAPI, store: Store) -> None:

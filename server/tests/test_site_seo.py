@@ -130,6 +130,31 @@ def test_unknown_path_is_a_styled_404(client):
     assert r.headers["content-type"].startswith("text/html")
     assert "site-header" in r.text and "data-theme-toggle" in r.text
     assert 'href="/"' in r.text
+    assert 'rel="canonical"' not in r.text and 'og:url' not in r.text
+    assert '<meta name="robots" content="noindex, nofollow">' in r.text
+
+
+def test_admin_pages_are_noindex_without_canonical(client):
+    html = client.get("/admin/signin").text
+    assert '<meta name="robots" content="noindex, nofollow">' in html
+    assert 'rel="canonical"' not in html
+
+
+@pytest.mark.parametrize("path", PAGES)
+def test_public_pages_are_indexable(client, path):
+    assert "noindex" not in client.get(path).text
+
+
+def test_pro_offers_carry_a_unit_price_specification(client):
+    app = next(d for d in jsonld(client.get("/").text) if d["@type"] == "SoftwareApplication")
+    pro = [o for o in app["offers"] if o["name"].startswith("Pro")]
+    assert len(pro) == 4
+    for o in pro:
+        spec = o["priceSpecification"]
+        assert o["category"] == "subscription" and spec["@type"] == "UnitPriceSpecification"
+        assert (spec["price"], spec["priceCurrency"]) == (o["price"], o["priceCurrency"])
+        assert (spec["billingDuration"], spec["unitText"]) in {("P1M", "month"), ("P1Y", "year")}
+    assert {o["priceCurrency"] for o in app["offers"] if o["name"] == "Free"} == {"INR", "USD"}
 
 
 def test_unknown_api_path_stays_json(client):

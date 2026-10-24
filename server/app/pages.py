@@ -68,8 +68,8 @@ DEFAULT_DESCRIPTION = (
 
 
 def layout(title: str, body: str, description: str | None = None, *,
-           path: str = "/", og_type: str = "website", image: str | None = None,
-           jsonld: list[dict] | None = None,
+           path: str | None = None, og_type: str = "website", image: str | None = None,
+           jsonld: list[dict] | None = None, noindex: bool = False,
            head_extra: str = "", wrap: bool = True) -> str:
     """
     One page shell.
@@ -80,6 +80,8 @@ def layout(title: str, body: str, description: str | None = None, *,
     makes it absolute (defaulting to the production origin, so dev and tests render the same URLs).
     `path` feeds the canonical link and og:url: without a canonical, search engines pick among
     www/http/query-string variants themselves and split the page's standing between them.
+    `path=None` emits no canonical and no og:url, for pages that are not a public address (the 404,
+    the admin console). `noindex` adds a robots meta that keeps such a page out of search results.
     `jsonld` is a list of schema.org objects, one script block each.
 
     `wrap` and `head_extra` exist for the landing page, which needs the full width of the window
@@ -88,7 +90,7 @@ def layout(title: str, body: str, description: str | None = None, *,
     one page a wider column is how two subtly different sets of meta tags start to exist.
     """
     description = description or DEFAULT_DESCRIPTION
-    url = seo.absolute(path)
+    url = seo.absolute(path) if path is not None else None
     image = image or seo.absolute("/static/og.png")
     full_title = f"{title} · {PRODUCT_NAME}"
     return (
@@ -97,13 +99,14 @@ def layout(title: str, body: str, description: str | None = None, *,
         f"<title>{html.escape(full_title)}</title>\n"
         f"<meta name=\"description\" content=\"{html.escape(description)}\">\n"
         "<meta name=\"theme-color\" content=\"#FAFBFE\">\n"
-        f"<link rel=\"canonical\" href=\"{html.escape(url)}\">\n"
-        "<link rel=\"icon\" href=\"/static/logo.svg\" type=\"image/svg+xml\">\n"
+        + (f"<link rel=\"canonical\" href=\"{html.escape(url)}\">\n" if url else "")
+        + ("<meta name=\"robots\" content=\"noindex, nofollow\">\n" if noindex else "")
+        + "<link rel=\"icon\" href=\"/static/logo.svg\" type=\"image/svg+xml\">\n"
         f"<meta property=\"og:title\" content=\"{html.escape(full_title)}\">\n"
         f"<meta property=\"og:description\" content=\"{html.escape(description)}\">\n"
         f"<meta property=\"og:type\" content=\"{html.escape(og_type)}\">\n"
-        f"<meta property=\"og:url\" content=\"{html.escape(url)}\">\n"
-        f"<meta property=\"og:site_name\" content=\"{html.escape(PRODUCT_NAME)}\">\n"
+        + (f"<meta property=\"og:url\" content=\"{html.escape(url)}\">\n" if url else "")
+        + f"<meta property=\"og:site_name\" content=\"{html.escape(PRODUCT_NAME)}\">\n"
         f"<meta property=\"og:image\" content=\"{html.escape(image)}\">\n"
         "<meta property=\"og:image:width\" content=\"1200\">\n"
         "<meta property=\"og:image:height\" content=\"630\">\n"
@@ -126,8 +129,10 @@ def esc(s: str) -> str:
 
 
 def _page(title: str, body: str, status: int = 200,
-          description: str | None = None, path: str = "/") -> HTMLResponse:
-    return HTMLResponse(layout(title, body, description, path=path), status_code=status)
+          description: str | None = None, path: str | None = None,
+          noindex: bool = False) -> HTMLResponse:
+    return HTMLResponse(layout(title, body, description, path=path, noindex=noindex),
+                        status_code=status)
 
 
 def _date(seconds: int) -> str:
@@ -167,7 +172,7 @@ def register_pages(app: FastAPI, store: Store) -> None:
              <p><a href="/">Back to the home page</a></p>""",
             status=404,
             description=f"That page does not exist on {PRODUCT_NAME}.",
-            path="/",  # no canonical for a URL that does not exist
+            noindex=True,
         )
 
     @app.get("/", response_class=HTMLResponse)

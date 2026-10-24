@@ -163,12 +163,20 @@ def home_jsonld(site: str) -> list[dict]:
     Structured data for the home page: who makes it, what the site is, what the app is and costs,
     and the FAQ. `site` is the absolute origin, because schema.org consumers ignore relative URLs.
     """
-    offers = [{"@type": "Offer", "price": PRICES["free"]["INR"], "priceCurrency": "INR",
-               "name": "Free"}]
-    for period, label in (("monthly", "Pro monthly"), ("yearly", "Pro yearly")):
+    offers = [{"@type": "Offer", "name": "Free", "price": PRICES["free"][cur],
+               "priceCurrency": cur} for cur in ("INR", "USD")]
+    for period, label, iso, unit in (("monthly", "Pro monthly", "P1M", "month"),
+                                     ("yearly", "Pro yearly", "P1Y", "year")):
         for cur in ("INR", "USD"):
-            offers.append({"@type": "Offer", "name": label, "price": PRICES[period][cur],
-                           "priceCurrency": cur})
+            price = PRICES[period][cur]
+            offers.append({
+                "@type": "Offer", "name": label, "category": "subscription",
+                "price": price, "priceCurrency": cur,
+                "priceSpecification": {
+                    "@type": "UnitPriceSpecification", "price": price, "priceCurrency": cur,
+                    "billingDuration": iso, "unitText": unit,
+                },
+            })
     app = {
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
