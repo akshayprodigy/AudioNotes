@@ -4,7 +4,7 @@ description: Cloud meeting assistants upload your audio to process it. What that
 date: 2026-10-24
 tags: Privacy, Meetings
 cover: meeting-privacy
-cover_alt: Brand gradient cover titled "Keep meeting recordings on your phone: the privacy case" with a phone showing the privacy screen: No upload, Encrypted, You delete.
+cover_alt: Private meeting recordings kept on your phone: Verbale's privacy screen with No upload, Encrypted, You delete
 shot: privacy
 ---
 Your meeting recordings shouldn't leave your phone because a recording is the most complete record of what was said. Once it sits on someone else's server, you depend on their policies, their security and their staff. That may be fine for a team stand-up. For a client negotiation, an HR case, a legal briefing or a health conversation, it often isn't.
@@ -42,7 +42,7 @@ When the model runs on your phone, the sentence "we never see your audio" stops 
 
 [Verbale](/) works this way. It records meetings in English and writes the transcript, speakers and minutes entirely on the phone. Nothing is uploaded, and after a one-time model download it works with no signal. The recordings and notes are yours to keep or delete.
 
-![Verbale's privacy screen titled "Before you record", with the badges No upload, Encrypted and You delete, and text saying audio and text never leave the phone](/static/shots/privacy.webp)
+![Private meeting recording: Verbale's Before you record screen with No upload, Encrypted and You delete badges](/static/shots/privacy.webp)
 
 *The screen shown before you record, spelling out that audio and text stay on the phone.*
 

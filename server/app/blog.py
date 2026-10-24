@@ -98,6 +98,16 @@ class Post:
         return seo.absolute(f"/static/blog/{self.cover}-og.png") if self.cover else None
 
 
+_BODY_IMAGE = re.compile(r"!\[[^\]]*\]\((/static/[^)\s]+)\)")
+
+
+def post_images(post: Post) -> tuple[str, ...]:
+    """Site paths of a post's images for the image sitemap: its cover, then each body screenshot."""
+    found = [post.cover_webp] if post.cover else []
+    found += [m for m in _BODY_IMAGE.findall(post.body) if m not in found]
+    return tuple(found)
+
+
 def reading_minutes(text: str) -> int:
     """Whole minutes at 220 words a minute, never less than one -- "0 min read" reads as a bug."""
     return max(1, math.ceil(len(text.split()) / WORDS_PER_MINUTE))
@@ -267,7 +277,8 @@ HOME_POSTS = 3
 
 def post_card(post: Post, *, eager: bool = False, priority: bool = False) -> str:
     """
-    A post card. The cover's alt is empty: the title beside it already says what the post is.
+    A post card. The cover carries the post's `cover_alt`: it is the same picture as on the
+    article, and a keyword-bearing description helps image search where an empty alt gave it nothing.
 
     Lazy by default. The first row of the index is in the viewport on load, so it passes
     `eager=True` (and the very first `priority=True`, which adds fetchpriority=high) --
@@ -276,7 +287,8 @@ def post_card(post: Post, *, eager: bool = False, priority: bool = False) -> str
     hint = ' fetchpriority="high"' if priority else ""
     attr = "eager" if eager or priority else "lazy"
     media = (
-        f'<img src="{html.escape(post.cover_webp)}" alt="" width="{COVER_W}" height="{COVER_H}" '
+        f'<img src="{html.escape(post.cover_webp)}" alt="{html.escape(post.cover_alt)}" '
+        f'width="{COVER_W}" height="{COVER_H}" '
         f'loading="{attr}"{hint} decoding="async">' if post.cover else ""
     )
     tag = f'<span class="tag">{html.escape(post.tags[0])}</span>' if post.tags else ""
@@ -428,8 +440,10 @@ def register_blog(app: FastAPI, layout: Callable[..., str],
 
     def sitemap() -> list[seo.SitemapEntry]:
         latest = max((p.modified for p in blog.posts()), default=None)
-        return [seo.SitemapEntry("/blog", latest)] + [
-            seo.SitemapEntry(p.path, p.modified) for p in blog.posts()]
+        posts = blog.posts()
+        covers = tuple(p.cover_webp for p in posts if p.cover)
+        return [seo.SitemapEntry("/blog", latest, covers)] + [
+            seo.SitemapEntry(p.path, p.modified, post_images(p)) for p in posts]
 
     seo.register_sitemap_entries(app, sitemap)
 
@@ -494,6 +508,7 @@ def register_blog(app: FastAPI, layout: Callable[..., str],
         return HTMLResponse(headers=PAGE_CACHE, content=layout(
             post.title, render_article(post, blog.related(post)), post.description,
             path=post.path, og_type="article", image=post.og_image,
+            image_alt=post.cover_alt or None,
             head_extra=_head_links(head), wrap=False,
             jsonld=[posting, breadcrumb_jsonld(
                 [("Home", "/"), ("Blog", "/blog"), (post.title, post.path)])],

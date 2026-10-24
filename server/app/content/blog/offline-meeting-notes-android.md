@@ -4,7 +4,7 @@ description: Offline meeting notes on Android work when transcription runs on th
 date: 2026-10-24
 tags: Guides, Android
 cover: offline-meeting-notes
-cover_alt: Brand gradient cover titled "Offline meeting notes on Android: no internet needed" with a phone showing the summary screen of a finished meeting.
+cover_alt: Offline meeting notes on Android: the Verbale meeting notes app showing a meeting summary on a phone
 shot: summary
 ---
 Yes, you can take meeting notes on an Android phone with no internet at all, but only if the app that writes the notes runs on the phone itself. Most meeting apps send your audio to a server and wait for text to come back, so they stop working the moment your signal does. An on-device app records, transcribes and writes the minutes locally, which means a basement boardroom, a train or a site visit in the countryside makes no difference.
@@ -41,7 +41,7 @@ In short: offline note-taking is a property of where the processing happens, not
 5. **Stop, and let the phone work.** Long meetings process in the background and you get a notification when the notes are ready.
 6. **Read the result.** You get the transcript separated by speaker, plus decisions, action items and open questions, each linked to the moment it was said.
 
-![Verbale's summary screen for a finished meeting, showing a short written summary and counts of actions, decisions and open questions](/static/shots/summary.webp)
+![Offline meeting summary in Verbale: a short written summary with counts of actions, decisions and open questions](/static/shots/summary.webp)
 
 *A finished meeting: the summary on top, with counts of actions, decisions and open questions underneath (the written summary is part of Pro; the transcript, decisions and actions are free).*
 

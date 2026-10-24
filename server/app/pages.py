@@ -67,10 +67,14 @@ DEFAULT_DESCRIPTION = (
 )
 
 
+#: Alt for the default share card (og.png) on every page that has no image of its own.
+DEFAULT_IMAGE_ALT = "Verbale meeting notes app: meeting notes that never leave your phone"
+
+
 def layout(title: str, body: str, description: str | None = None, *,
            path: str | None = None, og_type: str = "website", image: str | None = None,
            jsonld: list[dict] | None = None, noindex: bool = False,
-           head_extra: str = "", wrap: bool = True) -> str:
+           head_extra: str = "", wrap: bool = True, image_alt: str | None = None) -> str:
     """
     One page shell.
 
@@ -88,10 +92,15 @@ def layout(title: str, body: str, description: str | None = None, *,
     and its own stylesheet. Everything above the <body> tag is shared regardless: the OG card, the
     icon and the description rules are the same job on every page, and forking the shell to give
     one page a wider column is how two subtly different sets of meta tags start to exist.
+
+    `image_alt` describes the share image (og:image:alt / twitter:image:alt), which screen readers
+    and some platforms use for the link card. Pass the alt that matches `image`; the default
+    describes the default og.png.
     """
     description = description or DEFAULT_DESCRIPTION
     url = seo.absolute(path) if path is not None else None
     image = image or seo.absolute("/static/og.png")
+    image_alt = image_alt or DEFAULT_IMAGE_ALT
     full_title = f"{title} · {PRODUCT_NAME}"
     return (
         "<!doctype html>\n<html lang=\"en\"><head>\n"
@@ -110,7 +119,9 @@ def layout(title: str, body: str, description: str | None = None, *,
         f"<meta property=\"og:image\" content=\"{html.escape(image)}\">\n"
         "<meta property=\"og:image:width\" content=\"1200\">\n"
         "<meta property=\"og:image:height\" content=\"630\">\n"
+        f"<meta property=\"og:image:alt\" content=\"{html.escape(image_alt)}\">\n"
         "<meta name=\"twitter:card\" content=\"summary_large_image\">\n"
+        f"<meta name=\"twitter:image:alt\" content=\"{html.escape(image_alt)}\">\n"
         f"{HEAD_SCRIPT}\n"
         f"<style>{CSS}{THEME_CSS}</style>\n"
         "<noscript><style>.theme-toggle{display:none}</style></noscript>\n"
@@ -202,6 +213,9 @@ def register_pages(app: FastAPI, store: Store, blog_dir: Path | str | None = Non
             description=f"That page does not exist on {PRODUCT_NAME}.",
             noindex=True,
         )
+
+    seo.register_sitemap_entries(
+        app, lambda: [seo.SitemapEntry("/", images=landing.home_images())])
 
     @app.get("/", response_class=HTMLResponse)
     def home() -> HTMLResponse:

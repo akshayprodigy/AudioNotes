@@ -238,16 +238,21 @@ def money(period: str, cur: str) -> str:
 #: they carry the pill rather than implying the free tier has them.
 SHOTS = [
     ("recording", "Just hit record", False,
-     "The recording screen of the app while a meeting is being captured"),
+     "Verbale meeting recorder app recording a meeting on an Android phone, with a timer and Pause and Mark buttons"),
     ("summary", "Your meeting, written up", True,
-     "The Summary tab: a plain-English write-up of the meeting"),
+     "AI meeting summary written on the phone by the Verbale meeting notes app, with action and decision counts"),
     ("decisions", "Every decision, with proof", False,
-     "The Decisions list, each with a play button that jumps to the moment it was said"),
+     "Meeting decisions list, each linked to the moment it was said in the recording"),
     ("actions", "Who owes what, by when", False,
-     "The Actions tab: action items with owners, and dates where one was said"),
+     "Action items from a meeting with owners and due dates, extracted by the Verbale meeting notes app"),
     ("ask", "Ask the meeting anything", True,
-     "The Ask screen: answers that each cite the part of the meeting they came from"),
+     "Ask a meeting a question: answers cite the part of the meeting transcript they came from"),
 ]
+
+
+def home_images() -> tuple[str, ...]:
+    """Site paths of the images the home page shows, for the image sitemap: the strip and the card."""
+    return tuple(f"/static/shots/{f}.webp" for f, *_ in SHOTS) + ("/static/og.png",)
 
 
 def shots_section() -> str:
@@ -338,7 +343,7 @@ def body(device_limit: int, blog_cards: list[str] | None = None) -> str:
     return f"""
 <nav class="nav">
   <div class="shell nav-in">
-    <a class="brand" href="/"><img src="/static/logo.svg" alt="">{name}</a>
+    <a class="brand" href="/"><img src="/static/logo.svg" alt="Verbale meeting notes app logo">{name}</a>
     <span class="nav-spacer"></span>
     <div class="nav-links">
       <a class="hide-sm" href="#how">How it works</a>

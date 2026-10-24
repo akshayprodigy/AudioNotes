@@ -46,7 +46,7 @@ def site_header(name: str) -> str:
     """Slim header for the form/legal pages, which have no nav of their own."""
     return (
         '<header class="site-header"><div class="site-header-in">'
-        f'<a class="site-brand" href="/"><img src="/static/logo.svg" alt="">{name}</a>'
+        f'<a class="site-brand" href="/"><img src="/static/logo.svg" alt="Verbale meeting notes app logo">{name}</a>'
         '<span class="site-header-spacer"></span><a class="site-link" href="/blog">Blog</a>'
         + TOGGLE + '</div></header>'
     )

@@ -4,7 +4,7 @@ description: Ask consent, place the phone well, keep it recording and mark key m
 date: 2026-10-24
 tags: Guides, Meetings, Android
 cover: record-a-meeting
-cover_alt: Brand gradient cover titled "How to record a meeting on your phone and get usable notes" with a phone showing the recording screen with a running timer.
+cover_alt: How to record a meeting on your phone: the Verbale meeting recorder app showing the recording screen with a timer
 shot: recording
 ---
 To record a meeting on your phone and end up with usable notes, ask everyone's permission first, put the phone on the table close to the speakers, start recording before anyone talks, and keep it running until the end. Then turn the recording into a transcript and a short list of decisions and actions the same day, while people still remember what was meant.
@@ -55,7 +55,7 @@ You can't fix a room, but you can nudge it.
 
 You will not remember everything that mattered. When something important is said, a decision or a commitment, mark it. In Verbale there is a Mark button on the recording screen, and a marked moment becomes a highlight in the notes afterwards. It costs one tap and saves you scrubbing through an hour of audio.
 
-![Verbale's recording screen with a running timer, a waveform, a red stop button and Pause and Mark buttons at the bottom](/static/shots/recording.webp)
+![Meeting recorder app screen: a running timer, a waveform, a red stop button and Pause and Mark buttons](/static/shots/recording.webp)
 
 *The recording screen: a running timer, a Pause button and a Mark button for flagging a moment.*
 

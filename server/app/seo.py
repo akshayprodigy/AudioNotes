@@ -75,6 +75,8 @@ def robots_txt() -> str:
 class SitemapEntry:
     path: str
     lastmod: str | None = None  # YYYY-MM-DD
+    #: Site paths of images that belong on this page (Google's image sitemap extension).
+    images: tuple[str, ...] = ()
 
 
 _STATIC_PAGES = ["/", "/privacy", "/terms", "/delete-account"]
@@ -95,14 +97,29 @@ def sitemap_entries(providers: list[SitemapProvider] | None = None) -> list[Site
     entries = [SitemapEntry(p) for p in _STATIC_PAGES]
     for provider in providers or []:
         entries.extend(provider())
-    return entries
+    # A page may be listed twice (the home page is a static entry that the landing module adds
+    # its images to). Merge rather than emit two <url> rows for one address, which crawlers flag.
+    merged: dict[str, SitemapEntry] = {}
+    for e in entries:
+        prior = merged.get(e.path)
+        if prior is None:
+            merged[e.path] = e
+        else:
+            images = prior.images + tuple(i for i in e.images if i not in prior.images)
+            merged[e.path] = SitemapEntry(e.path, prior.lastmod or e.lastmod, images)
+    return list(merged.values())
 
 
 def sitemap_xml(providers: list[SitemapProvider] | None = None) -> str:
     rows = ""
     for e in sitemap_entries(providers):
         lastmod = f"<lastmod>{html.escape(e.lastmod)}</lastmod>" if e.lastmod else ""
-        rows += f"<url><loc>{html.escape(absolute(e.path))}</loc>{lastmod}</url>\n"
+        # Only <image:loc>: Google stopped reading image:caption and image:title.
+        images = "".join(
+            f"<image:image><image:loc>{html.escape(absolute(i))}</image:loc></image:image>"
+            for i in e.images)
+        rows += f"<url><loc>{html.escape(absolute(e.path))}</loc>{lastmod}{images}</url>\n"
     return ('<?xml version="1.0" encoding="UTF-8"?>\n'
-            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" '
+            'xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n'
             f"{rows}</urlset>\n")

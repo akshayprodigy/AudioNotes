@@ -4,7 +4,7 @@ description: On-device or cloud transcription? Compare privacy, signal, speed, a
 date: 2026-10-24
 tags: Privacy, Guides
 cover: on-device-vs-cloud
-cover_alt: Brand gradient cover titled "On-device vs cloud transcription: the honest trade-offs" with a phone showing the decisions screen of a meeting.
+cover_alt: On-device vs cloud meeting transcription: Verbale showing a meeting's decisions list on a phone
 shot: decisions
 ---
 On-device transcription is better when privacy, working without signal and avoiding accounts matter most; cloud transcription is better when you need results fast, the audio is poor, or you want live captions and heavy processing without draining your phone. Neither is universally superior. The right choice depends on what the meeting contains and where you are holding it.
@@ -67,7 +67,7 @@ Ask three questions.
 
 Often the answer is both: on-device for sensitive meetings, cloud for the routine ones where speed and sharing matter more.
 
-![Verbale's decisions list for a client call, each decision tagged with a type and a play marker showing the moment it was said](/static/shots/decisions.webp)
+![Meeting decisions in Verbale, each tagged with a type and a play marker for the moment it was said](/static/shots/decisions.webp)
 
 *On-device output: each decision is linked to the moment in the recording where it was said.*
 
