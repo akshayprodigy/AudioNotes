@@ -17,6 +17,24 @@
 
   var reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
 
+  /* ------------------------------------------------------------------ screenshot strip */
+
+  /*
+    Below 900px the strip scrolls sideways, and a scroll container is only reachable by keyboard
+    if it can take focus. On desktop it is a plain grid, where a tab stop would be noise.
+  */
+  function shots() {
+    var el = document.querySelector('.shots');
+    if (!el || !window.matchMedia) return;
+    var mq = window.matchMedia('(max-width: 900px)');
+    function sync() {
+      if (mq.matches) el.setAttribute('tabindex', '0');
+      else el.removeAttribute('tabindex');
+    }
+    sync();
+    if (mq.addEventListener) mq.addEventListener('change', sync);
+  }
+
   /* ------------------------------------------------------------------ reveals */
 
   /*
@@ -279,7 +297,7 @@
 
   function boot() {
     // Each part is independent: a throw in the hero must not cost the page its scroll reveals.
-    [reveals, nav, phone, hero].forEach(function (fn) {
+    [reveals, shots, nav, phone, hero].forEach(function (fn) {
       try { fn(); } catch (e) { /* decoration only */ }
     });
   }

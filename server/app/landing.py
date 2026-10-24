@@ -220,7 +220,12 @@ FOOTER_LINKS = [("About", "/about"), ("FAQ", "/faq"), ("Blog", "/blog"), ("Priva
 
 
 def money(period: str, cur: str) -> str:
-    """One price as the page shows it, from PRICES: rupees with Indian grouping, dollars as is."""
+    """
+    One price as the page shows it, from PRICES.
+
+    Rupees use Western thousands grouping (2,499), which is also what Indian grouping gives below
+    ₹99,999; a price past that would need lakh grouping (1,00,000) and so a helper of its own.
+    """
     amount = PRICES[period][cur]
     if cur == "INR":
         return "&#8377;" + f"{int(amount):,}"
@@ -238,7 +243,7 @@ SHOTS = [
     ("decisions", "Every decision, with proof", False,
      "The Decisions list, each with a play button that jumps to the moment it was said"),
     ("actions", "Who owes what, by when", False,
-     "The Actions tab listing each action item with its owner and due date"),
+     "The Actions tab: action items with owners, and dates where one was said"),
     ("ask", "Ask the meeting anything", True,
      "The Ask screen: answers that each cite the part of the meeting they came from"),
 ]
@@ -247,7 +252,7 @@ SHOTS = [
 def shots_section() -> str:
     figs = "".join(
         f"""
-      <figure class="shot rise d{i % 3}">
+      <figure class="shot rise d{i % 3}" role="listitem">
         <div class="shot-frame"><img src="/static/shots/{f}.webp" alt="{html.escape(alt)}"
              width="540" height="1135" loading="lazy" decoding="async"></div>
         <figcaption>{html.escape(cap)}{' <span class="pro-pill">Pro</span>' if pro else ''}</figcaption>
@@ -261,7 +266,7 @@ def shots_section() -> str:
       <h2>See it on a real meeting</h2>
       <p class="sub">Screens from the app itself.</p>
     </div>
-    <div class="shots">{figs}
+    <div class="shots" role="list" aria-label="App screenshots">{figs}
     </div>
   </div>
 </section>
@@ -270,10 +275,10 @@ def shots_section() -> str:
 
 def blog_section(cards: list[str]) -> str:
     """
-    The newest posts as cards. `cards` is the blog's own card markup, passed in rather than
-    imported: blog.py already imports this module, and sharing one card means the teaser can never
-    drift from the index. Empty when there are no posts, so the page never shows a heading over
-    nothing.
+    The newest posts as cards. `cards` is markup from blog.post_card(), passed in rather than
+    imported here (blog.py imports this module, so importing it back would be circular); one card
+    renderer means the teaser cannot drift from the index. Returns "" when there are no cards, so
+    the page never shows a heading over nothing.
     """
     if not cards:
         return ""

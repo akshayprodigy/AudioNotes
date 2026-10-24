@@ -48,6 +48,8 @@ def test_screenshot_strip(client):
     strip = re.search(r'<section id="see".*?</section>', home(client), re.S).group(0)
     imgs = re.findall(r"<img [^>]*>", strip)
     assert len(imgs) >= 4
+    assert 'role="list"' in strip and 'aria-label="App screenshots"' in strip
+    assert strip.count('role="listitem"') == len(imgs)
     for tag in imgs:
         src = re.search(r'src="(/static/shots/[^"]+)"', tag).group(1)
         assert (STATIC / src.removeprefix("/static/")).is_file()
@@ -58,9 +60,10 @@ def test_screenshot_strip(client):
 
 def test_from_the_blog_lists_three_newest(client):
     posts = blog.load_posts(blog.DEFAULT_DIR)
+    assert len(posts) >= blog.HOME_POSTS
     section = re.search(r'<section id="from-blog".*?</section>', home(client), re.S).group(0)
     hrefs = re.findall(r'<a class="post-card" href="([^"]+)"', section)
-    assert hrefs == [p.path for p in posts[:3]]
+    assert hrefs == [p.path for p in posts[:blog.HOME_POSTS]]
     assert 'href="/blog"' in section
 
 
@@ -73,21 +76,13 @@ def _pricing(c):
     return re.search(r'<section id="pricing".*?</section>', home(c), re.S).group(0)
 
 
-def _fmt(amount, cur):
-    sym = "₹" if cur == "INR" else "$"
-    return sym + (f"{int(amount):,}" if cur == "INR" else amount)
-
-
-def test_pricing_comes_from_prices(client):
+def test_pricing_shows_every_price(client):
     sec = html_mod.unescape(_pricing(client))
-    for period in ("monthly", "yearly"):
-        for cur in ("INR", "USD"):
-            assert _fmt(landing.PRICES[period][cur], cur) in sec
-    assert "₹0" in sec and "$0" in sec
-    # Every currency figure in the section must be one PRICES produced.
-    allowed = {_fmt(v, c) for d in landing.PRICES.values() for c, v in d.items()}
-    found = set(re.findall(r"[₹$][\d,.]+\d|[₹$]\d", sec.replace("&#8377;", "₹")))
-    assert found <= allowed, found - allowed
+    for shown in ("\u20b90", "$0", "\u20b9299", "\u20b92,499", "$4.99", "$39.99"):
+        assert shown in sec
+    # No currency figure on the card that PRICES did not produce.
+    found = set(re.findall(r"[\u20b9$]\d[\d,.]*\d|[\u20b9$]\d", sec))
+    assert found == {"\u20b90", "$0", "\u20b9299", "\u20b92,499", "$4.99", "$39.99"}
 
 
 def test_prices_change_follows_single_source(client, monkeypatch):
@@ -115,16 +110,32 @@ def test_reveal_is_gated_on_js():
     assert "classList.add('js')" in HEAD_SCRIPT
 
 
-def test_blog_index_first_row_is_eager(client):
-    h = client.get("/blog").text
-    cards = re.findall(r'<a class="post-card".*?</a>', h, re.S)
-    assert len(cards) >= 4
-    for c in cards[:3]:
-        assert 'loading="lazy"' not in c
+def test_blog_index_first_row_is_eager(store, signing_key, tmp_path):
+    for i in range(blog.EAGER_CARDS + 1):
+        (tmp_path / f"p{i}.md").write_text(
+            f"---\ntitle: T{i}\ndescription: D\ndate: 2026-01-0{i + 1}\ncover: c\n---\nBody\n")
+    c = TestClient(create_app(store=store, signing_key=signing_key, blog_dir=tmp_path))
+    cards = re.findall(r'<a class="post-card".*?</a>', c.get("/blog").text, re.S)
+    assert len(cards) == blog.EAGER_CARDS + 1
+    for card in cards[:blog.EAGER_CARDS]:
+        assert 'loading="lazy"' not in card
     assert 'fetchpriority="high"' in cards[0]
-    assert 'loading="lazy"' in cards[3]
+    assert 'fetchpriority' not in cards[1]
+    assert 'loading="lazy"' in cards[blog.EAGER_CARDS]
 
 
 def test_home_blog_cards_stay_lazy(client):
     section = re.search(r'<section id="from-blog".*?</section>', home(client), re.S).group(0)
-    assert section.count('loading="lazy"') == 3
+    assert section.count('loading="lazy"') == blog.HOME_POSTS
+
+
+def test_card_css_has_one_source():
+    cards = (STATIC / "cards.css").read_text()
+    assert ".post-card-title" in cards and "(hover: hover)" in cards
+    for name in ("landing.css", "blog.css"):
+        assert ".post-card" not in (STATIC / name).read_text(), name
+
+
+def test_both_pages_link_cards_css(client):
+    for path in ("/", "/blog"):
+        assert 'href="/static/cards.css"' in client.get(path).text

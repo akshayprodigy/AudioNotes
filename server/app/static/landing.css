@@ -30,6 +30,9 @@
   --green: #0E9F6E;
   --green-soft: #E7F6F0;
 
+  /* the surface behind a screenshot's transparent corners */
+  --shot-bg: #E9ECF7;
+  --shot-edge: var(--line);
   --radius: 18px;
   --radius-lg: 26px;
   --maxw: 1080px;
@@ -52,6 +55,8 @@
   --primary: #7C87F0;
   --primary-2: #A98CF5;
   --primary-soft: #1B2040;
+  --shot-bg: #2A3050;
+  --shot-edge: #3A4166;
   --green: #34C79A;
   --green-soft: #10281F;
 
@@ -273,10 +278,9 @@ h2 { font-size: clamp(29px, 4.2vw, 44px); line-height: 1.1; letter-spacing: -.03
 .shots { display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; margin-top: 48px; }
 .shot { margin: 0; text-align: center; }
 .shot-frame {
-  border-radius: 26px; overflow: hidden; background: #E9ECF7; line-height: 0;
-  border: 1px solid var(--line); box-shadow: var(--shadow-lg);
+  border-radius: 26px; overflow: hidden; background: var(--shot-bg); line-height: 0;
+  border: 1px solid var(--shot-edge); box-shadow: var(--shadow-lg);
 }
-:root[data-theme="dark"] .shot-frame { background: #2A3050; border-color: #3A4166; }
 .shot img { width: 100%; height: auto; display: block; }
 .shot figcaption { margin-top: 16px; font-size: 15px; font-weight: 600; color: var(--ink-2);
                    letter-spacing: -.01em; line-height: 1.35; }
@@ -290,30 +294,13 @@ h2 { font-size: clamp(29px, 4.2vw, 44px); line-height: 1.1; letter-spacing: -.03
   .shot { flex: 0 0 62%; max-width: 260px; scroll-snap-align: start; }
 }
 
-/* from the blog: the blog's own card markup, restyled here so the home page loads one stylesheet */
+/* from the blog: card styles live in cards.css */
 .blog-head-row { display: flex; justify-content: space-between; align-items: baseline;
                  gap: 16px; max-width: none; }
 .all-posts { font-weight: 600; font-size: 15.5px; white-space: nowrap; }
 .from-blog { display: grid; gap: 22px; grid-template-columns: repeat(3, 1fr); margin-top: 40px; }
-@media (max-width: 860px) { .from-blog { grid-template-columns: 1fr; } }
-.from-blog a.post-card {
-  display: flex; flex-direction: column; overflow: hidden; color: var(--ink);
-  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
-  transition: transform .2s cubic-bezier(.2,.7,.3,1), box-shadow .2s ease, border-color .2s ease;
-}
-.from-blog a.post-card:hover { text-decoration: none; transform: translateY(-3px);
-                               box-shadow: var(--shadow-lg); border-color: var(--primary); }
-.post-card-media { display: block; aspect-ratio: 16 / 9; overflow: hidden;
-                   background: linear-gradient(135deg, var(--primary-soft), var(--bg-2)); }
-.post-card-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.post-card-body { display: flex; flex-direction: column; gap: 8px; padding: 18px 20px 20px; flex: 1; }
-.tag { align-self: flex-start; padding: 3px 11px; border-radius: 999px; background: var(--primary-soft);
-       color: var(--primary); font-size: 12.5px; font-weight: 600; }
-.post-card-title { font-size: 18.5px; line-height: 1.3; font-weight: 700; letter-spacing: -.015em; }
-.post-card-desc { color: var(--ink-2); font-size: 15px; line-height: 1.55; }
-.post-card-meta { margin-top: auto; padding-top: 6px; color: var(--dim); font-size: 13.5px; }
-
+@media (max-width: 860px) { .from-blog { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 720px) { .from-blog { grid-template-columns: 1fr; } }
 .price-usd { margin: 0; font-size: 14.5px; color: var(--dim); }
 
 /* faq */
@@ -366,3 +353,5 @@ html.js .rise.in { opacity: 1; transform: none; transition: opacity .7s ease, tr
 /* Two un-banded sections in a row would stack 184px of padding between them. */
 #see, #from-blog { padding-bottom: 40px; }
 .shot figcaption { text-wrap: balance; }
+
+.shots:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; border-radius: 12px; }

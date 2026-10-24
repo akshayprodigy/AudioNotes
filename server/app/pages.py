@@ -24,7 +24,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import landing, seo
 from .about import LLMS_LINK, register_about
-from .blog import _card as blog_card, register_blog
+from .blog import HOME_POSTS, post_card, register_blog
 from .branding import CONTACT_EMAIL, PRODUCT_NAME
 from .legal import register_legal
 from .store import DEVICE_LIMIT, Store
@@ -195,11 +195,12 @@ def register_pages(app: FastAPI, store: Store, blog_dir: Path | str | None = Non
         return HTMLResponse(
             layout(
                 "Meeting notes that never leave your phone",
-                landing.body(DEVICE_LIMIT, [blog_card(p) for p in app.state.blog.posts()[:3]]),
+                landing.body(DEVICE_LIMIT, [post_card(p) for p in app.state.blog.posts()[:HOME_POSTS]]),
                 path="/",
                 jsonld=landing.home_jsonld(seo.site_url()),
                 head_extra=(
                     '<link rel="stylesheet" href="/static/landing.css">\n'
+                    '<link rel="stylesheet" href="/static/cards.css">\n'
                     '<script src="/static/landing.js" defer></script>\n'
                 ),
                 wrap=False,

@@ -1,0 +1,36 @@
+/*
+  The post card, shared by the blog index, the related-posts row and the home page's "From the
+  blog". One stylesheet so the three can never drift; each page already defines the colour tokens
+  it reads (--card, --line, --ink, --ink-2, --dim, --primary, --primary-soft, --bg-2, --shadow-*).
+  Linked after the page's own stylesheet so its link-hover underline rule loses to ours.
+*/
+
+.tag { display: inline-block; padding: 3px 11px; border-radius: 999px; background: var(--primary-soft);
+       color: var(--primary); font-size: 12.5px; font-weight: 600; letter-spacing: .01em; }
+
+a.post-card {
+  display: flex; flex-direction: column; overflow: hidden; color: var(--ink);
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow-sm); text-decoration: none;
+  transition: transform .18s cubic-bezier(.2,.7,.3,1), box-shadow .18s ease, border-color .18s ease;
+}
+a.post-card:hover { text-decoration: none; }
+/* Lift only where there is a pointer: on touch, :hover sticks after a tap and leaves the card raised. */
+@media (hover: hover) {
+  a.post-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg);
+                      border-color: var(--primary); }
+}
+a.post-card:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+.post-card-media { display: block; aspect-ratio: 16 / 9; overflow: hidden;
+                   background: linear-gradient(135deg, var(--primary-soft), var(--bg-2) 55%, var(--primary-soft)); }
+.post-card-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.post-card-body { display: flex; flex-direction: column; gap: 8px; padding: 18px 20px 20px; flex: 1; }
+.post-card-body .tag { align-self: flex-start; }
+.post-card-title { font-size: 19px; line-height: 1.3; font-weight: 700; letter-spacing: -.015em; }
+.post-card-desc { color: var(--ink-2); font-size: 15.5px; line-height: 1.55; }
+.post-card-meta { margin-top: auto; padding-top: 6px; color: var(--dim); font-size: 13.5px; }
+
+@media (prefers-reduced-motion: reduce) {
+  a.post-card { transition: none; }
+  a.post-card:hover { transform: none; }
+}

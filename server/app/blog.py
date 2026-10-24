@@ -250,21 +250,28 @@ def _pretty_date(iso: str) -> str:
 def _head_links(extra: str = "") -> str:
     return (
         '<link rel="stylesheet" href="/static/blog.css">\n'
+        '<link rel="stylesheet" href="/static/cards.css">\n'
         f'<link rel="alternate" type="application/rss+xml" title="{html.escape(BLOG_TITLE)}" '
         'href="/blog/feed.xml">\n' + extra
     )
 
 
-def _card(post: Post, loading: str = "lazy") -> str:
+#: How many cards of the index sit in the first viewport row; those load eagerly.
+EAGER_CARDS = 3
+#: How many of the newest posts the home page teases.
+HOME_POSTS = 3
+
+
+def post_card(post: Post, *, eager: bool = False, priority: bool = False) -> str:
     """
     A post card. The cover's alt is empty: the title beside it already says what the post is.
 
-    `loading` is "lazy" below the fold. The first row of the index is in the viewport on load, so
-    it passes "eager" (the very first also gets fetchpriority=high) -- lazy-loading the largest
-    paint on the page is what delays LCP.
+    Lazy by default. The first row of the index is in the viewport on load, so it passes
+    `eager=True` (and the very first `priority=True`, which adds fetchpriority=high) --
+    lazy-loading the largest paint on the page is what delays LCP.
     """
-    hint = ' fetchpriority="high"' if loading == "high" else ""
-    attr = "eager" if loading == "high" else loading
+    hint = ' fetchpriority="high"' if priority else ""
+    attr = "eager" if eager or priority else "lazy"
     media = (
         f'<img src="{html.escape(post.cover_webp)}" alt="" width="{COVER_W}" height="{COVER_H}" '
         f'loading="{attr}"{hint} decoding="async">' if post.cover else ""
@@ -320,7 +327,7 @@ def _cta() -> str:
 def render_index(posts: list[Post]) -> str:
     if posts:
         grid = '<div class="post-grid">' + "".join(
-            _card(p, "high" if i == 0 else "eager" if i < 3 else "lazy")
+            post_card(p, eager=i < EAGER_CARDS, priority=i == 0)
             for i, p in enumerate(posts)) + "</div>"
     else:
         grid = ('<p class="empty">First posts coming soon. In the meantime, '
@@ -356,7 +363,7 @@ def render_article(post: Post, related: list[Post]) -> str:
     more = ""
     if related:
         more = ('<section class="related"><h2>Keep reading</h2><div class="post-grid">'
-                + "".join(_card(p) for p in related) + "</div></section>")
+                + "".join(post_card(p) for p in related) + "</div></section>")
     return (
         site_header(html.escape(PRODUCT_NAME))
         + '<main class="blog-wrap"><article class="post">'
