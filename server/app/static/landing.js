@@ -208,16 +208,16 @@
     var uB = gl.getUniformLocation(prog, 'uB');
     var uDark = gl.getUniformLocation(prog, 'uDark');
 
-    var dark = window.matchMedia('(prefers-color-scheme: dark)');
+    var root = document.documentElement;
     function palette() {
       var a = cssColor('--primary', '#4A56D2');
       var b = cssColor('--primary-2', '#7A5AE0');
       gl.uniform3f(uA, a[0], a[1], a[2]);
       gl.uniform3f(uB, b[0], b[1], b[2]);
-      gl.uniform1f(uDark, dark.matches ? 1.0 : 0.0);
+      gl.uniform1f(uDark, root.dataset.theme === 'dark' ? 1.0 : 0.0);
     }
     palette();
-    if (dark.addEventListener) dark.addEventListener('change', palette);
+    new MutationObserver(palette).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
 
     /* Capped at 1.5x. A shader this fill-heavy at native density on a 3x phone screen costs far
        more battery than the effect is worth, and the ribbons are soft enough that nobody can see

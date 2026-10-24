@@ -18,6 +18,7 @@ from __future__ import annotations
 import html
 
 from .branding import PRODUCT_NAME
+from .theme import TOGGLE
 
 #: Where the Play listing will live. Empty until the app is published — the hero then shows an
 #: honest "coming to Google Play" line instead of a button that 404s, which is the one thing worse
@@ -103,6 +104,7 @@ def body(device_limit: int) -> str:
       <a class="hide-sm" href="#how">How it works</a>
       <a class="hide-sm" href="#pricing">Pricing</a>
       <a class="hide-sm" href="/privacy">Privacy</a>
+      {TOGGLE}
     </div>
   </div>
 </nav>

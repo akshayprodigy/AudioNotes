@@ -24,15 +24,15 @@ from fastapi.staticfiles import StaticFiles
 from . import mailer
 from . import landing
 from .branding import CONTACT_EMAIL, PRODUCT_NAME
+from .theme import HEAD_SCRIPT, site_header
 from .legal import register_legal
 from .store import DEVICE_LIMIT, Store
 
 CSS = """
-  :root { color-scheme: light dark; --ink:#16192C; --dim:#6B7185; --line:#E4E7F1;
+  :root { color-scheme: light; --ink:#16192C; --dim:#6B7185; --line:#E4E7F1;
           --primary:#4A56D2; --card:#fff; --bg:#F4F6FB; }
-  @media (prefers-color-scheme: dark) {
-    :root { --ink:#F2F4FA; --dim:#A2A8BC; --line:#2A2F45; --card:#191D2E; --bg:#11131F; }
-  }
+  :root[data-theme="dark"] { color-scheme: dark; --ink:#F2F4FA; --dim:#A2A8BC; --line:#2A2F45;
+          --card:#191D2E; --bg:#11131F; }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--ink); font: 16px/1.6 -apple-system,
          BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -53,6 +53,20 @@ CSS = """
   .ok { color:#12A870; font-size:14px; margin-top:12px; }
   .muted { font-size:13px; color:var(--dim); }
   ul { color: var(--dim); padding-left: 20px; }
+  button.theme-toggle { width:36px; height:36px; margin:0; padding:0; flex:none; display:inline-flex;
+          align-items:center; justify-content:center; border-radius:50%; background:transparent;
+          color:var(--ink); border:1px solid var(--line); cursor:pointer; }
+  button.theme-toggle:hover { border-color:var(--primary); color:var(--primary); }
+  button.theme-toggle:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
+  .theme-toggle .ic-moon { display:none; }
+  :root[data-theme="dark"] .theme-toggle .ic-sun { display:none; }
+  :root[data-theme="dark"] .theme-toggle .ic-moon { display:block; }
+  .site-header-in { max-width:560px; margin:0 auto; padding:14px 20px 0; display:flex;
+          align-items:center; justify-content:space-between; }
+  .site-brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:18px;
+          letter-spacing:-.02em; color:var(--ink); text-decoration:none; }
+  .site-brand img { width:28px; height:28px; display:block; }
+  .site-header + .wrap { padding-top:24px; }
 """
 
 
@@ -99,9 +113,12 @@ def layout(title: str, body: str, description: str | None = None, *,
         "<meta property=\"og:image:width\" content=\"1200\">\n"
         "<meta property=\"og:image:height\" content=\"630\">\n"
         "<meta name=\"twitter:card\" content=\"summary_large_image\">\n"
+        f"{HEAD_SCRIPT}\n"
         f"<style>{CSS}</style>\n"
+        "<script src=\"/static/theme.js\" defer></script>\n"
         f"{head_extra}"
         "</head><body>"
+        + ("" if not wrap else site_header(html.escape(PRODUCT_NAME)))
         + (f'<div class="wrap">{body}</div>' if wrap else body)
         + "</body></html>"
     )
