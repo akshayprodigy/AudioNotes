@@ -179,6 +179,7 @@ Every claim checked against the Facts sheet by the spec reviewer.
   size stays out of new copy (see open questions).
 - Reveal-on-scroll must not hide content without JS: `.rise { opacity:0 }` applies today even when
   JS never runs. Gate it on a class the head script sets (e.g. `html.js .rise`).
+- Blog index: the first row of cards (above the fold) must not be `loading="lazy"` (LCP).
 - Tests for the new sections and links. Screenshots in both themes at 390 and 1280.
 
 ## Task 8 — ASO + founder handoff doc
