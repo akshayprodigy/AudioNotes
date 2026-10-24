@@ -34,6 +34,11 @@ def play_url() -> str:
     return os.environ.get("PLAY_URL", "").strip()
 
 
+#: The publisher, for the Organization structured data.
+ORG_NAME = "InnoCore Labs"
+ORG_URL = "https://innocorelabs.com"
+ORG_ADDRESS = {"@type": "PostalAddress", "addressLocality": "Kolkata", "addressCountry": "IN"}
+
 #: What Pro costs, in one place. The structured data reads it now and the pricing card will too, so
 #: a price change is one edit rather than a search for every number that quotes it.
 PRICES = {
@@ -43,7 +48,7 @@ PRICES = {
 }
 
 #: The questions people ask, as (question, answer-html) pairs. One list so the landing page,
-#: the /faq page and the FAQPage structured data can never disagree about what the answers are.
+#: a future /faq page and the FAQPage structured data can never disagree about what the answers are.
 FAQ: list[tuple[str, str]] = [
     ("Is my audio really never uploaded?",
      "Yes. Transcription, speaker separation and the minutes all run on the device. The "
@@ -138,15 +143,22 @@ def _faq(q: str, a: str) -> str:
 
 
 def faq_html() -> str:
+    """The FAQ as <details> blocks, in list order."""
     return "".join(_faq(q, a) for q, a in FAQ)
 
 
 def _plain(answer_html: str) -> str:
-    """An FAQ answer as the plain text structured data wants: no tags, entities decoded."""
+    """
+    An FAQ answer as the plain text structured data wants: no tags, entities decoded.
+
+    Regex tag-stripping is only safe because FAQ is trusted static markup written in this file;
+    never feed it user input.
+    """
     return html.unescape(re.sub(r"<[^>]+>", "", answer_html))
 
 
 def faq_jsonld() -> dict:
+    """schema.org FAQPage built from FAQ, so the markup and the structured data cannot drift."""
     return {
         "@context": "https://schema.org",
         "@type": "FAQPage",
@@ -190,11 +202,10 @@ def home_jsonld(site: str) -> list[dict]:
     if play_url():
         app["downloadUrl"] = app["installUrl"] = play_url()
     return [
-        {"@context": "https://schema.org", "@type": "Organization", "name": "InnoCore Labs",
-         "url": "https://innocorelabs.com", "logo": f"{site}/static/logo.svg",
+        {"@context": "https://schema.org", "@type": "Organization", "name": ORG_NAME,
+         "url": ORG_URL, "logo": f"{site}/static/logo.svg",
          "email": "admin@innocorelabs.com",
-         "address": {"@type": "PostalAddress", "addressLocality": "Kolkata",
-                     "addressCountry": "IN"}},
+         "address": ORG_ADDRESS},
         {"@context": "https://schema.org", "@type": "WebSite", "name": PRODUCT_NAME,
          "url": f"{site}/"},
         app,

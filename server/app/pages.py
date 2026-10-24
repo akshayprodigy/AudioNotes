@@ -14,17 +14,15 @@ from __future__ import annotations
 
 import html
 from datetime import datetime, timezone
-
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import HTMLResponse, PlainTextResponse, Response
-from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import landing
-from . import seo
+from . import landing, seo
 from .branding import CONTACT_EMAIL, PRODUCT_NAME
 from .legal import register_legal
 from .store import DEVICE_LIMIT, Store
@@ -142,6 +140,7 @@ def _date(seconds: int) -> str:
 def register_pages(app: FastAPI, store: Store) -> None:
     # Play requires a privacy policy at a public URL, and a subscription sold direct needs terms.
     register_legal(app, layout)
+    app.state.sitemap_providers = []
 
     app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
@@ -153,7 +152,7 @@ def register_pages(app: FastAPI, store: Store) -> None:
 
     @app.get("/sitemap.xml")
     def sitemap() -> Response:
-        return Response(seo.sitemap_xml(), media_type="application/xml")
+        return Response(seo.sitemap_xml(app.state.sitemap_providers), media_type="application/xml")
 
     @app.exception_handler(StarletteHTTPException)
     async def not_found(request: Request, exc: StarletteHTTPException):
@@ -161,9 +160,13 @@ def register_pages(app: FastAPI, store: Store) -> None:
         A styled 404 for browsers; everything else keeps FastAPI's default.
 
         Only unmatched routes reach here -- the admin console and the like return their own 404
-        responses rather than raising -- and /api/ stays JSON because its callers are programs.
+        responses rather than raising. /api (bare or nested) stays JSON because its callers are
+        programs, and /static/ keeps the default so a missing image is not a page of HTML. A route
+        outside those that raises its own HTTPException(404) would get the HTML page too.
         """
-        if exc.status_code != 404 or request.url.path.startswith("/api/"):
+        path = request.url.path
+        if (exc.status_code != 404 or path == "/api" or path.startswith("/api/")
+                or path.startswith("/static/")):
             return await http_exception_handler(request, exc)
         return _page(
             "Page not found",

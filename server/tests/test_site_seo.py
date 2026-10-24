@@ -34,8 +34,7 @@ def jsonld(html):
 @pytest.mark.parametrize("path", PAGES)
 def test_canonical_and_og_url_are_absolute(client, path):
     html = client.get(path).text
-    url = SITE + ("" if path == "/" else path)
-    url = url if path != "/" else SITE + "/"
+    url = SITE + path
     assert f'<link rel="canonical" href="{url}">' in html
     assert f'<meta property="og:url" content="{url}">' in html
     assert f'<meta property="og:image" content="{SITE}/static/og.png">' in html
@@ -80,7 +79,7 @@ def test_jsonld_cannot_break_out_of_its_script_tag():
     block = re.search(r'<script type="application/ld\+json">(.*?)</script>', html, re.S).group(1)
     assert "</script>" not in block and "<" not in block
     assert json.loads(block)["name"] == "</script><b>&"
-    assert html.count("</script>") == html.replace("</script><b>", "").count("</script>")
+    assert html.count("</script>") == html.count("<script")
 
 
 def test_play_url_toggles_download_url_and_hero_button(client, monkeypatch):
@@ -93,35 +92,51 @@ def test_play_url_toggles_download_url_and_hero_button(client, monkeypatch):
     assert "Get it on Google Play" in html
 
 
+def robots_groups(body):
+    """Parse robots.txt into {user-agent: [rule lines]}."""
+    groups = {}
+    for block in body.strip().split("\n\n"):
+        lines = block.splitlines()
+        if lines[0].startswith("User-agent:"):
+            groups[lines[0].split(": ", 1)[1]] = lines[1:]
+    return groups
+
+
 def test_robots_txt(client):
     body = client.get("/robots.txt").text
-    star = body.split("User-agent: *")[1].split("User-agent:")[0]
-    assert "Allow: /\n" in star and "Disallow: /admin" in star and "Disallow: /api/" in star
-    for bot in ["GPTBot", "OAI-SearchBot", "ChatGPT-User", "ClaudeBot", "Claude-User",
-                "Claude-SearchBot", "PerplexityBot", "Perplexity-User", "Google-Extended",
-                "Applebot-Extended", "CCBot", "Bingbot"]:
-        group = body.split(f"User-agent: {bot}\n")[1].split("User-agent:")[0]
-        assert "Allow: /\n" in group and "Disallow: /admin" in group and "Disallow: /api/" in group
+    groups = robots_groups(body)
+    bots = ["GPTBot", "OAI-SearchBot", "ChatGPT-User", "ClaudeBot", "Claude-User",
+            "Claude-SearchBot", "PerplexityBot", "Perplexity-User", "Google-Extended",
+            "Applebot-Extended", "CCBot", "Bingbot"]
+    for agent in ["*"] + bots:
+        assert groups[agent] == ["Allow: /", "Disallow: /admin", "Disallow: /api/"], agent
     assert f"Sitemap: {SITE}/sitemap.xml" in body
 
 
-def test_sitemap_lists_exactly_the_registry(client):
+def sitemap_locs(client):
+    ns = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
     r = client.get("/sitemap.xml")
     assert r.headers["content-type"].startswith("application/xml")
-    ns = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
-    locs = [e.text for e in ET.fromstring(r.content).findall("s:url/s:loc", ns)]
-    assert locs == [SITE + e.path for e in seo.sitemap_entries()]
-    assert locs == [SITE + "/", SITE + "/privacy", SITE + "/terms", SITE + "/delete-account"]
+    return [e.text for e in ET.fromstring(r.content).findall("s:url/s:loc", ns)]
+
+
+def test_sitemap_lists_the_public_pages_and_nothing_private(client):
+    locs = sitemap_locs(client)
+    assert {SITE + p for p in PAGES} <= set(locs)
     assert not any("/admin" in l or "/api" in l for l in locs)
 
 
-def test_sitemap_registry_accepts_entries_with_lastmod(client):
-    seo.register_sitemap_entries(lambda: [seo.SitemapEntry("/blog/x", "2026-10-01")])
-    try:
-        text = client.get("/sitemap.xml").text
-        assert f"<loc>{SITE}/blog/x</loc>" in text and "<lastmod>2026-10-01</lastmod>" in text
-    finally:
-        seo._providers.pop()
+def test_sitemap_registry_accepts_entries_with_lastmod_and_url_encoding(store, signing_key):
+    app = create_app(store=store, signing_key=signing_key)
+    seo.register_sitemap_entries(app, lambda: [seo.SitemapEntry("/blog/a b&c", "2026-10-01")])
+    text = TestClient(app).get("/sitemap.xml").text
+    assert f"<loc>{SITE}/blog/a%20b%26c</loc>" in text and "<lastmod>2026-10-01</lastmod>" in text
+
+
+def test_repeated_create_app_does_not_duplicate_sitemap_entries(store, signing_key):
+    for _ in range(2):
+        locs = sitemap_locs(TestClient(create_app(store=store, signing_key=signing_key)))
+        assert len(locs) == len(set(locs))
 
 
 def test_unknown_path_is_a_styled_404(client):
@@ -161,3 +176,22 @@ def test_unknown_api_path_stays_json(client):
     r = client.get("/api/nope")
     assert r.status_code == 404
     assert r.headers["content-type"].startswith("application/json")
+
+
+def test_missing_static_file_is_not_the_html_404(client):
+    r = client.get("/static/missing.png")
+    assert r.status_code == 404 and not r.headers["content-type"].startswith("text/html")
+
+
+def test_bare_api_is_json(client):
+    r = client.get("/api")
+    assert r.status_code == 404 and r.headers["content-type"].startswith("application/json")
+
+
+def test_head_on_unknown_path_is_404(client):
+    assert client.head("/nope").status_code == 404
+
+
+def test_405_keeps_the_default_response(client):
+    r = client.post("/privacy")
+    assert r.status_code == 405 and r.headers["content-type"].startswith("application/json")

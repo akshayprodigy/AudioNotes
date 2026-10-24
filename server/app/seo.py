@@ -11,8 +11,11 @@ from __future__ import annotations
 import html
 import json
 import os
+from urllib.parse import quote
 from dataclasses import dataclass
 from typing import Callable
+
+from fastapi import FastAPI
 
 #: The production origin. Canonical URLs must be absolute and must not depend on the Host header
 #: of whoever asked, so this is the fallback when PUBLIC_BASE_URL is unset (as in tests and dev).
@@ -20,12 +23,20 @@ DEFAULT_SITE_URL = "https://verbale.innocorelabs.com"
 
 
 def site_url() -> str:
-    """The absolute origin of the site, without a trailing slash."""
+    """
+    The absolute origin of the site, without a trailing slash.
+
+    Deliberately not `mailer.public_base_url`: that one has no fallback, because a reset email
+    must never carry a guessed origin. Canonical and Open Graph URLs are the opposite case -- a
+    wrong-but-stable production origin is better than a relative or missing one -- so this falls
+    back to the production site.
+    """
     return (os.environ.get("PUBLIC_BASE_URL") or DEFAULT_SITE_URL).rstrip("/")
 
 
 def absolute(path: str) -> str:
-    return site_url() + path
+    """An absolute URL for a site path; the path is percent-encoded (`/` kept) so it is URL-safe."""
+    return site_url() + quote(path, safe="/")
 
 
 def jsonld_script(data: dict) -> str:
@@ -43,7 +54,7 @@ def jsonld_script(data: dict) -> str:
 
 #: Crawlers that get an explicit group. A named group overrides `*` entirely, so each repeats the
 #: disallows -- otherwise naming a bot here would quietly let it into /admin and /api/.
-AI_BOTS = [
+NAMED_CRAWLERS = [
     "GPTBot", "OAI-SearchBot", "ChatGPT-User", "ClaudeBot", "Claude-User", "Claude-SearchBot",
     "PerplexityBot", "Perplexity-User", "Google-Extended", "Applebot-Extended", "CCBot",
     "Bingbot",
@@ -51,11 +62,12 @@ AI_BOTS = [
 
 
 def robots_txt() -> str:
+    """robots.txt: the `*` group, one explicit group per named crawler, and the sitemap line."""
     rules = "Allow: /\nDisallow: /admin\nDisallow: /api/\n"
     # The marketing site is meant to be found and quoted, by search engines and by AI assistants
     # answering "what app records meetings on-device". Say so explicitly rather than leaving it to
     # each crawler's default. Only the admin console and the API are kept out.
-    groups = "".join(f"User-agent: {bot}\n{rules}\n" for bot in AI_BOTS)
+    groups = "".join(f"User-agent: {bot}\n{rules}\n" for bot in NAMED_CRAWLERS)
     return f"User-agent: *\n{rules}\n{groups}Sitemap: {absolute('/sitemap.xml')}\n"
 
 
@@ -66,24 +78,29 @@ class SitemapEntry:
 
 
 _STATIC_PAGES = ["/", "/privacy", "/terms", "/delete-account"]
-_providers: list[Callable[[], list[SitemapEntry]]] = []
+SitemapProvider = Callable[[], list[SitemapEntry]]
 
 
-def register_sitemap_entries(provider: Callable[[], list[SitemapEntry]]) -> None:
-    """Add a source of sitemap entries (e.g. the blog's posts). Called when building the sitemap."""
-    _providers.append(provider)
+def register_sitemap_entries(app: FastAPI, provider: SitemapProvider) -> None:
+    """
+    Add a source of sitemap entries (e.g. the blog's posts) to this app.
+
+    Held on the app rather than in a module global so that building several apps in one process
+    (every test does) cannot pile up duplicate entries.
+    """
+    app.state.sitemap_providers.append(provider)
 
 
-def sitemap_entries() -> list[SitemapEntry]:
+def sitemap_entries(providers: list[SitemapProvider] | None = None) -> list[SitemapEntry]:
     entries = [SitemapEntry(p) for p in _STATIC_PAGES]
-    for provider in _providers:
+    for provider in providers or []:
         entries.extend(provider())
     return entries
 
 
-def sitemap_xml() -> str:
+def sitemap_xml(providers: list[SitemapProvider] | None = None) -> str:
     rows = ""
-    for e in sitemap_entries():
+    for e in sitemap_entries(providers):
         lastmod = f"<lastmod>{html.escape(e.lastmod)}</lastmod>" if e.lastmod else ""
         rows += f"<url><loc>{html.escape(absolute(e.path))}</loc>{lastmod}</url>\n"
     return ('<?xml version="1.0" encoding="UTF-8"?>\n'

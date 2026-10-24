@@ -21,6 +21,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 
 from . import admin_auth
+import functools
+
 from . import pages
 from .pages import _date, esc
 from .store import AdminRow, Store
@@ -100,9 +102,8 @@ TABLE_CSS = """
 """
 
 
-def _page(*args, **kwargs):
-    """The console is never for a search index: every admin page carries noindex."""
-    return pages._page(*args, noindex=True, **kwargs)
+#: The console is never for a search index: every admin page carries noindex.
+_page = functools.partial(pages._page, noindex=True)
 
 
 def register_admin(app: FastAPI, store: Store) -> None:
