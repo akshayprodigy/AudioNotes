@@ -60,7 +60,7 @@ _TAG = re.compile(r"<[^>]+>")
 
 
 def _money(amount: str, cur: str) -> str:
-    """'2499' -> '₹2,499'; '4.99' -> '$4.99'. The symbol and grouping people expect."""
+    """'2500' -> '₹2,500'; '4.99' -> '$4.99'. The symbol and grouping people expect."""
     whole, _, frac = amount.partition(".")
     grouped = f"{int(whole):,}" + (f".{frac}" if frac else "")
     return ("₹" if cur == "INR" else "$") + grouped
@@ -125,7 +125,9 @@ def sections() -> list[tuple[str, list[str | list[str]]]]:
         ("Pricing", _pricing()),
         ("Requirements", [
             "An Android phone with a 64-bit processor. Some Pro features need 4 GB of memory; "
-            "the app checks your phone first and says what it cannot run. " + availability,
+            "the app checks your phone first and says what it cannot run. The first download is "
+            "about 96 MB; Pro adds larger models, about 1.3 GB, fetched in the background. "
+            + availability,
         ]),
         ("Privacy", [
             "Recordings, transcripts and notes stay on the phone. The app uses the network "

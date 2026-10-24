@@ -114,8 +114,8 @@ Keyword ideas for the next posts: `docs/store/aso-keywords.md`.
 
 - When a fact on the site changes, update `ABOUT_UPDATED` in `server/app/about.py`.
 - `PRICES` in `server/app/landing.py` is the only place prices live. Change it there.
-- Two open questions need your call:
-  1. Model download size: the Play full description says about 96 MB, other notes say about
-     114 MB. The site states no size for now. Decide, then use the same figure everywhere.
-  2. India price: the site shows ₹299 / ₹2,499, Play rounds to ₹300 / ₹2,500. Pick one; the site
-     and the listing should match.
+- Settled facts (founder-confirmed 24 Oct 2026), the same on the site and the Play listing:
+  - Download size: about 96 MB for the four required models; Pro adds about 1.3 GB of larger
+    models, downloaded in the background when someone subscribes or starts the trial.
+  - India price: ₹300 / month and ₹2,500 / year (Play's rounding, kept); USD $4.99 / $39.99.
+    Single source: `PRICES` in `server/app/landing.py`.

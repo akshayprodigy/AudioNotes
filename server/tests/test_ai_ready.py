@@ -43,7 +43,7 @@ def test_about_has_h1_definition_and_prices(client):
     assert "<h1>What is Verbale?</h1>" in r.text
     assert "Verbale is an Android app by InnoCore Labs that" in r.text
     assert html.escape(about.DEFINITION) in r.text
-    for price in ("299", "2,499", "4.99", "39.99"):
+    for price in ("300", "2,500", "4.99", "39.99"):
         assert price in r.text
     assert f'<link rel="canonical" href="{SITE}/about">' in r.text
     assert "Last updated" in r.text

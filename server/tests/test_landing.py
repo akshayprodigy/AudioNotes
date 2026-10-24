@@ -78,11 +78,11 @@ def _pricing(c):
 
 def test_pricing_shows_every_price(client):
     sec = html_mod.unescape(_pricing(client))
-    for shown in ("\u20b90", "$0", "\u20b9299", "\u20b92,499", "$4.99", "$39.99"):
+    for shown in ("\u20b90", "$0", "\u20b9300", "\u20b92,500", "$4.99", "$39.99"):
         assert shown in sec
     # No currency figure on the card that PRICES did not produce.
     found = set(re.findall(r"[\u20b9$]\d[\d,.]*\d|[\u20b9$]\d", sec))
-    assert found == {"\u20b90", "$0", "\u20b9299", "\u20b92,499", "$4.99", "$39.99"}
+    assert found == {"\u20b90", "$0", "\u20b9300", "\u20b92,500", "$4.99", "$39.99"}
 
 
 def test_prices_change_follows_single_source(client, monkeypatch):
@@ -90,14 +90,21 @@ def test_prices_change_follows_single_source(client, monkeypatch):
     monkeypatch.setitem(landing.PRICES["yearly"], "USD", "55.55")
     sec = html_mod.unescape(_pricing(client))
     assert "₹777" in sec and "$55.55" in sec
-    assert "₹299" not in sec and "$39.99" not in sec
+    assert "₹300" not in sec and "$39.99" not in sec
 
 
-def test_faq_has_no_download_sizes(client):
+def test_faq_states_the_real_download_sizes(client):
     h = home(client)
-    faq = h[h.index("Questions people actually ask"):]
-    assert not re.search(r"\b(MB|GB)\b", faq)
-    assert not any(re.search(r"\b(MB|GB)\b", a) for _, a in landing.FAQ)
+    faq = html_mod.unescape(h[h.index("Questions people actually ask"):])
+    assert "96 MB" in faq and "1.3 GB" in faq
+    assert "if you ask for it" not in faq
+    assert "114 MB" not in faq and "1.1 GB" not in faq
+
+
+def test_llms_txt_states_the_indian_prices(client):
+    t = client.get("/llms.txt").text
+    assert "\u20b9300" in t and "\u20b92,500" in t
+    assert "299" not in t and "2,499" not in t
 
 
 def test_reveal_is_gated_on_js():

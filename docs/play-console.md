@@ -140,8 +140,8 @@ who already subscribed — managing an existing Play subscription, not acquiring
 |---|---|
 | Type | Subscription |
 | Product ID | `verbale_pro_1m` (name "Verbale Pro") — must match `playSubscriptionId` in `android/gradle.properties` exactly. It carries BOTH plans; "1m" is history, Play ids are permanent |
-| Base plan `verbale-pro-1m` | Monthly, auto-renewing. ₹299 in India, $4.99 in the United States |
-| Base plan `verbale-pro-12m` | Yearly, auto-renewing. ₹2,499 in India, $39.99 in the United States |
+| Base plan `verbale-pro-1m` | Monthly, auto-renewing. ₹300 in India, $4.99 in the United States |
+| Base plan `verbale-pro-12m` | Yearly, auto-renewing. ₹2,500 in India, $39.99 in the United States |
 | Offers `starter-offer-001` (monthly), `starter-annual-offer-001` (yearly) | Free trial, 1 week. Eligibility: *New customer acquisition → Never had any subscription* — one trial per Google account, across both plans |
 | Other markets | Let Play convert from USD unless a market needs a hand-set figure |
 
@@ -293,8 +293,8 @@ Avoid going to exactly 80; Play's counting and yours will not always agree.
 > • Up to 3 devices on one subscription
 >
 > **How it works**
-> The speech models download once, on first run — about 96 MB. Pro adds about 1.1 GB for the
-> writer. Everything after that happens on the device. Recording continues when you switch apps or
+> The speech models download once, on first run — about 96 MB. Pro adds about 1.3 GB of larger
+> models, downloaded in the background when you subscribe. Everything after that happens on the device. Recording continues when you switch apps or
 > lock the screen. Long meetings keep processing in the background and tell you when the notes are
 > ready. Some Pro features need a phone with 4 GB of memory; Verbale checks and tells you before
 > anything is downloaded or bought.

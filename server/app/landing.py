@@ -43,8 +43,8 @@ ORG_ADDRESS = {"@type": "PostalAddress", "addressLocality": "Kolkata", "addressC
 #: a price change is one edit rather than a search for every number that quotes it.
 PRICES = {
     "free": {"INR": "0", "USD": "0"},
-    "monthly": {"INR": "299", "USD": "4.99"},
-    "yearly": {"INR": "2499", "USD": "39.99"},
+    "monthly": {"INR": "300", "USD": "4.99"},
+    "yearly": {"INR": "2500", "USD": "39.99"},
 }
 
 #: The questions people ask, as (question, answer-html) pairs. One list so the landing page,
@@ -64,9 +64,10 @@ FAQ: list[tuple[str, str]] = [
      "is the one thing the network screen cannot count. It says so, there, in those words."),
     ("Why is there a download when I first open it?",
      "The speech models are not bundled into the app, which would otherwise be far too "
-     "large for the store. They download once and then the app works with no connection "
-     "at all. Starting a Pro trial adds a larger writer model, which is only fetched if "
-     "you ask for it."),
+     "large for the store. They are about 96 MB, download once, and then the app works "
+     "with no connection at all. Pro adds larger models, about 1.3 GB in all, which "
+     "download in the background as soon as you subscribe or start the trial; you can "
+     "keep using the app while they do."),
     ("What happens if I stop paying?",
      "Recording, transcripts, speakers, copying and the rule-based minutes keep working "
      "&mdash; those are the free tier and they do not expire, and every meeting you have "
@@ -223,7 +224,7 @@ def money(period: str, cur: str) -> str:
     """
     One price as the page shows it, from PRICES.
 
-    Rupees use Western thousands grouping (2,499), which is also what Indian grouping gives below
+    Rupees use Western thousands grouping (2,500), which is also what Indian grouping gives below
     ₹99,999; a price past that would need lakh grouping (1,00,000) and so a helper of its own.
     """
     amount = PRICES[period][cur]

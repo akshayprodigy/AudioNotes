@@ -60,7 +60,7 @@ def test_home_jsonld_has_the_four_types(client):
     assert app["operatingSystem"] == "Android"
     assert app["applicationCategory"] == "BusinessApplication"
     prices = {(o["priceCurrency"], o["price"]) for o in app["offers"]}
-    assert {("INR", "0"), ("INR", "299"), ("INR", "2499"),
+    assert {("INR", "0"), ("INR", "300"), ("INR", "2500"),
             ("USD", "4.99"), ("USD", "39.99")} <= prices
     org = next(d for d in data if d["@type"] == "Organization")
     assert org["logo"] == f"{SITE}/static/logo.svg"
