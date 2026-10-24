@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import landing, seo
+from .blog import register_blog
 from .branding import CONTACT_EMAIL, PRODUCT_NAME
 from .legal import register_legal
 from .store import DEVICE_LIMIT, Store
@@ -137,10 +138,11 @@ def _date(seconds: int) -> str:
     return datetime.fromtimestamp(seconds, tz=timezone.utc).strftime("%-d %B %Y")
 
 
-def register_pages(app: FastAPI, store: Store) -> None:
+def register_pages(app: FastAPI, store: Store, blog_dir: Path | str | None = None) -> None:
     # Play requires a privacy policy at a public URL, and a subscription sold direct needs terms.
     register_legal(app, layout)
     app.state.sitemap_providers = []
+    register_blog(app, layout, blog_dir)
 
     app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 

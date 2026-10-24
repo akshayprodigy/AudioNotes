@@ -243,6 +243,7 @@ def body(device_limit: int) -> str:
     <div class="nav-links">
       <a class="hide-sm" href="#how">How it works</a>
       <a class="hide-sm" href="#pricing">Pricing</a>
+      <a class="hide-sm" href="/blog">Blog</a>
       <a class="hide-sm" href="/privacy">Privacy</a>
       {TOGGLE}
     </div>

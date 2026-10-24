@@ -11,9 +11,9 @@ from __future__ import annotations
 import html
 import json
 import os
-from urllib.parse import quote
 from dataclasses import dataclass
 from typing import Callable
+from urllib.parse import quote
 
 from fastapi import FastAPI
 

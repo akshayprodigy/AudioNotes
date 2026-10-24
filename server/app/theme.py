@@ -44,6 +44,7 @@ def site_header(name: str) -> str:
     return (
         '<header class="site-header"><div class="site-header-in">'
         f'<a class="site-brand" href="/"><img src="/static/logo.svg" alt="">{name}</a>'
+        '<span class="site-header-spacer"></span><a class="site-link" href="/blog">Blog</a>'
         + TOGGLE + '</div></header>'
     )
 
@@ -61,6 +62,9 @@ THEME_CSS = """
           align-items:center; justify-content:space-between; }
   .site-brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:18px;
           letter-spacing:-.02em; color:var(--ink); text-decoration:none; }
+  .site-header-spacer { flex:1; }
+  .site-link { color:var(--ink); font-size:15px; font-weight:500; text-decoration:none; margin-right:16px; }
+  .site-link:hover { color:var(--primary); }
   .site-brand img { width:28px; height:28px; display:block; }
   .site-header + .wrap { padding-top:24px; }
 """

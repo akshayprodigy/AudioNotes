@@ -11,6 +11,7 @@ a title or a count of anything the user made. See store.py.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -41,6 +42,7 @@ async def _json_body(request: Request) -> dict[str, Any]:
 def create_app(
     store: Store | None = None,
     signing_key: ec.EllipticCurvePrivateKey | None = None,
+    blog_dir: Path | str | None = None,
 ) -> FastAPI:
     """
     Build the app.
@@ -173,7 +175,7 @@ def create_app(
 
     # ---- web pages ----
 
-    register_pages(app, store)
+    register_pages(app, store, blog_dir)
 
     # The admin console. Mounted always, but every route inside answers 404 until
     # ADMIN_SESSION_SECRET and VERBALE_ADMIN_EMAILS are both set — so turning it on is a restart,

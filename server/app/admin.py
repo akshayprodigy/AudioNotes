@@ -14,6 +14,7 @@ Not 403: a disabled console should not tell a stranger that there is a console.
 from __future__ import annotations
 
 import csv
+import functools
 import io
 import time
 
@@ -21,8 +22,6 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 
 from . import admin_auth
-import functools
-
 from . import pages
 from .pages import _date, esc
 from .store import AdminRow, Store
