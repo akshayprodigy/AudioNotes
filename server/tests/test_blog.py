@@ -334,3 +334,28 @@ def test_sitemap_lists_blog_and_posts(client):
 def test_nav_links_to_blog(client):
     assert 'href="/blog"' in client.get("/").text
     assert 'href="/blog"' in client.get("/privacy").text
+
+
+BANNED_WORDS = ["whisper", "qwen", "llama", "gpt", "otter", "fireflies", "game-changer", "unlock"]
+
+
+def test_real_posts_meet_the_content_bar():
+    import re
+    from pathlib import Path
+
+    posts = sorted((Path(blog.__file__).parent / "content" / "blog").glob("*.md"))
+    assert len(posts) >= 5
+    for path in posts:
+        raw = path.read_text(encoding="utf-8")
+        meta, body = blog._split_front_matter(raw, path.name)
+        where = path.name
+        assert len(meta["description"]) <= 160, where
+        assert len(re.findall(r"^## ", body, re.M)) >= 3, where
+        assert re.search(r"^## FAQ\s*$", body, re.M), where
+        assert "/static/shots/" in body, where
+        assert len(set(re.findall(r"\]\(/blog/[\w-]+\)", body))) >= 2, where
+        words = len(re.findall(r"\S+", body))
+        assert 900 <= words <= 1600, f"{where}: {words} words"
+        low = raw.lower()
+        for bad in BANNED_WORDS:
+            assert bad not in low, f"{where}: banned word {bad!r}"
