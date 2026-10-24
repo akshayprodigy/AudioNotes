@@ -175,7 +175,9 @@ body {
                      border-radius: 14px; -webkit-overflow-scrolling: touch; }
 .prose table { width: 100%; border-collapse: collapse; margin: 0; font-size: 16px; }
 .prose th, .prose td { padding: 11px 16px; text-align: left; border-bottom: 1px solid var(--line);
-                       white-space: nowrap; }
+                       vertical-align: top; }
+.prose th { white-space: nowrap; }
+.prose td { min-width: 12ch; }
 .prose th { color: var(--ink); font-size: 14px; font-weight: 650; background: var(--bg-2); }
 .prose tbody tr:nth-child(even) td { background: var(--bg-2); }
 .prose tr:last-child td { border-bottom: 0; }

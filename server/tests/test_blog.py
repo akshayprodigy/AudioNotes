@@ -124,6 +124,22 @@ def test_real_content_dir_starts_empty_and_loads():
         p.slug for p in blog.load_posts(blog.DEFAULT_DIR))
 
 
+@pytest.mark.parametrize("text,title,tags", [
+    ("---\r\ntitle: T\r\ndescription: D\r\ndate: 2026-01-02\r\ntags: a, b\r\n---\r\nBody", "T", ["a", "b"]),
+    ("\ufeff---\ntitle: T\ndescription: D\ndate: 2026-01-02\n---\nBody", "T", []),
+    ('---\ntitle: "Quoted"\ndescription: D\ndate: 2026-01-02\n---\nBody', "Quoted", []),
+    ("---\ntitle: 'Single'\ndescription: D\ndate: 2026-01-02\n---\nBody", "Single", []),
+    ("---\ntitle: Note: a colon\ndescription: D\ndate: 2026-01-02\n---\nBody", "Note: a colon", []),
+    ("---\ntitle: T\ndescription: D\ndate: 2026-01-02\ntags:\n---\nBody", "T", []),
+    ("---\ntitle: T\ndescription: D\ndate: 2026-01-02\ntags: a,, b ,\n---\nBody", "T", ["a", "b"]),
+], ids=["crlf", "bom", "double-quoted", "single-quoted", "colon", "empty-tags", "ragged-tags"])
+def test_front_matter_edge_cases(tmp_path, text, title, tags):
+    write(tmp_path, "p.md", text)
+    (post,) = blog.load_posts(tmp_path)
+    assert post.title == title and post.tags == tags
+    assert not post.raw.startswith("\ufeff")
+
+
 # ---- index ----
 
 def test_index_lists_newest_first(client):
@@ -203,8 +219,10 @@ def test_body_images_are_lazy(client):
 
 def test_tables_are_wrapped_for_scrolling(client):
     html = client.get(f"/blog/{MIDDLE}").text
-    assert html.count('<div class="table-wrap"><table>') == 2
-    assert html.count("</table></div>") == 2
+    wraps = re.findall(r'<div class="table-wrap">(.*?)</div>', html, re.S)
+    assert len(wraps) == 2
+    assert all("<table" in w and "</table>" in w for w in wraps)
+    assert html.count("<table") == 2
 
 
 def test_cover_image_is_not_lazy(client):
@@ -255,6 +273,8 @@ def test_markdown_route_returns_source(client):
     assert r.headers["content-type"] == "text/markdown; charset=utf-8"
     assert r.text == (FIXTURES / f"{MIDDLE}.md").read_text()
     assert r.text.startswith("---\ntitle:")
+    assert r.headers["link"] == f'<{SITE}/blog/{MIDDLE}>; rel="canonical"'
+    assert "noindex" not in r.headers.get("x-robots-tag", "")
 
 
 # ---- feed ----

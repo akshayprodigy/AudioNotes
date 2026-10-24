@@ -99,6 +99,13 @@ def reading_minutes(text: str) -> int:
     return max(1, math.ceil(len(text.split()) / WORDS_PER_MINUTE))
 
 
+def _unquote(value: str) -> str:
+    """Drop one matching pair of surrounding quotes, as authors write `title: "A: B"` out of habit."""
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    return value
+
+
 def _split_front_matter(raw: str, name: str) -> tuple[dict[str, str], str]:
     """
     Parse the block between the leading `---` lines as simple `key: value` lines.
@@ -120,7 +127,7 @@ def _split_front_matter(raw: str, name: str) -> tuple[dict[str, str], str]:
         key, sep, value = line.partition(":")
         if not sep or not key.strip():
             raise BlogError(f"{name}: line {n} of the front matter is not 'key: value'")
-        meta[key.strip().lower()] = value.strip()
+        meta[key.strip().lower()] = _unquote(value.strip())
     return meta, "\n".join(lines[end + 1:]).strip() + "\n"
 
 
@@ -135,7 +142,12 @@ def _check_date(value: str, label: str, name: str) -> str:
 
 
 def _lazy_images(rendered: str) -> str:
-    """Add loading=lazy and decoding=async to every <img> that does not already say otherwise."""
+    """
+    Add loading=lazy and decoding=async to every <img> that does not already say otherwise.
+
+    Regex, not an HTML parser: it assumes markdown-generated markup, where an <img> is a single
+    tag with escaped attribute values (so no `>` inside an attribute, as raw HTML could write).
+    """
     def patch(m: re.Match) -> str:
         attrs, slash = m.group(1), m.group(2)
         for attr, val in (("loading", "lazy"), ("decoding", "async")):
@@ -152,6 +164,9 @@ def _wrap_tables(rendered: str) -> str:
     A table cannot scroll itself without shrinking to its content, so the wrapper carries the
     overflow, border and radius: a table that fits stays full width, a wide one scrolls inside
     the column instead of being clipped by the page.
+
+    Regex, so it assumes markdown-generated markup: tables are never nested (raw HTML with a table
+    inside a table would be wrapped wrongly).
     """
     return _TABLE.sub(r'<div class="table-wrap">\1</div>', rendered)
 
@@ -170,7 +185,7 @@ def _load(path: Path) -> Post:
     if not SLUG_RE.match(slug):
         raise BlogError(f"{name}: file name must be a lowercase slug like 'my-first-post' "
                         "(letters, digits, single hyphens)")
-    raw = path.read_text(encoding="utf-8")
+    raw = path.read_text(encoding="utf-8").lstrip("\ufeff")
     meta, body = _split_front_matter(raw, name)
     for key in ("title", "description", "date"):
         if not meta.get(key):
@@ -220,7 +235,8 @@ class Blog:
         others = [p for p in self._posts if p.slug != post.slug]
         shared = [(len(set(p.tags) & set(post.tags)), p) for p in others]
         picked = [p for n, p in sorted(shared, key=lambda x: -x[0]) if n > 0]  # stable: newest first
-        picked += [p for p in others if p not in picked]
+        chosen = {p.slug for p in picked}
+        picked += [p for p in others if p.slug not in chosen]
         return picked[:RELATED_COUNT]
 
 
@@ -431,7 +447,10 @@ def register_blog(app: FastAPI, layout: Callable[..., str],
         if post is None:
             raise HTTPException(status_code=404)
         if raw_wanted:
-            return Response(post.raw, media_type="text/markdown; charset=utf-8")
+            # Indexable on purpose (AI crawlers are meant to read it), but the canonical header
+            # tells search engines the HTML article is the page that should rank.
+            return Response(post.raw, media_type="text/markdown; charset=utf-8",
+                            headers={"Link": f'<{seo.absolute(post.path)}>; rel="canonical"'})
         head = (
             f'<meta property="article:published_time" content="{post.date}">\n'
             + (f'<meta property="article:modified_time" content="{post.updated}">\n'
