@@ -53,6 +53,9 @@ BLOG_DESCRIPTION = (
     f"from the team behind {PRODUCT_NAME}."
 )
 
+#: Blog HTML changes only on a deploy; ten minutes keeps a fresh post visible quickly.
+PAGE_CACHE = {"Cache-Control": "public, max-age=600"}
+
 _IMG_TAG = re.compile(r"<img\b([^>]*?)(/?)>", re.I)
 _TABLE = re.compile(r"(<table\b.*?</table>)", re.I | re.S)
 
@@ -338,7 +341,7 @@ def render_index(posts: list[Post]) -> str:
         + breadcrumb([("Home", "/"), ("Blog", None)])
         + f'<header class="blog-head"><h1>Blog</h1><p>{html.escape(BLOG_INTRO)}</p>'
           '<a class="rss" href="/blog/feed.xml">RSS feed</a></header>'
-        + grid + "</main>"
+        + grid + "</main>" + landing.site_footer()
     )
 
 
@@ -372,7 +375,7 @@ def render_article(post: Post, related: list[Post]) -> str:
           f'<p class="byline"><time datetime="{post.date}">{_pretty_date(post.date)}</time>'
           f'{updated} &middot; {post.minutes} min read</p></header>'
         + cover + toc
-        + f'<div class="prose">{post.html}</div>' + _cta() + "</article>" + more + "</main>"
+        + f'<div class="prose">{post.html}</div>' + _cta() + "</article>" + more + "</main>" + landing.site_footer()
     )
 
 
@@ -433,7 +436,7 @@ def register_blog(app: FastAPI, layout: Callable[..., str],
     @app.get("/blog", response_class=HTMLResponse)
     def index() -> HTMLResponse:
         posts = blog.posts()
-        return HTMLResponse(layout(
+        return HTMLResponse(headers=PAGE_CACHE, content=layout(
             "Blog", render_index(posts), BLOG_DESCRIPTION, path="/blog",
             head_extra=_head_links(), wrap=False,
             jsonld=[
@@ -488,7 +491,7 @@ def register_blog(app: FastAPI, layout: Callable[..., str],
             posting["image"] = post.og_image
         if post.tags:
             posting["keywords"] = ", ".join(post.tags)
-        return HTMLResponse(layout(
+        return HTMLResponse(headers=PAGE_CACHE, content=layout(
             post.title, render_article(post, blog.related(post)), post.description,
             path=post.path, og_type="article", image=post.og_image,
             head_extra=_head_links(head), wrap=False,

@@ -19,7 +19,7 @@ import html
 import os
 import re
 
-from .branding import PRODUCT_NAME
+from .branding import COMPANY_NAME, PRODUCT_NAME
 from .theme import TOGGLE
 
 
@@ -297,6 +297,19 @@ def blog_section(cards: list[str]) -> str:
 
 def footer_links() -> str:
     return "\n    ".join(f'<a href="{h}">{html.escape(t)}</a>' for t, h in FOOTER_LINKS)
+
+
+def site_footer() -> str:
+    """
+    The footer for every page except the landing page (which lays its own out): one set of links
+    on /blog, the posts, /about, /faq and the legal pages, styled by theme.THEME_CSS.
+    """
+    return (
+        '<footer class="site-foot"><div class="site-foot-in">'
+        f"<span>&copy; {html.escape(COMPANY_NAME)}</span>"
+        + "".join(f'<a href="{h}">{html.escape(t)}</a>' for t, h in FOOTER_LINKS)
+        + "</div></footer>"
+    )
 
 
 def hero_cta() -> str:

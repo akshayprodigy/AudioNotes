@@ -17,6 +17,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
+from . import landing
 from .branding import COMPANY_NAME, CONTACT_EMAIL, LEGAL_UPDATED, PRODUCT_NAME
 from .store import DEVICE_LIMIT
 
@@ -222,7 +223,4 @@ def register_legal(app: FastAPI, layout) -> None:
 
 
 def _footer() -> str:
-    return """<p class="muted" style="margin-top:32px">
-       <a href="/">Home</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> ·
-       <a href="/delete-account">Delete your account</a>
-     </p>"""
+    return landing.site_footer()

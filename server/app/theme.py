@@ -70,4 +70,14 @@ THEME_CSS = """
   .site-link:hover { color:var(--primary); }
   .site-brand img { width:28px; height:28px; display:block; }
   .site-header + .wrap { padding-top:24px; }
+  .site-foot { border-top:1px solid var(--line); margin-top:56px; padding:32px 0 48px; color:var(--dim);
+          font-size:14.5px; }
+  .site-foot-in { max-width:1080px; margin:0 auto; padding:0 24px; display:flex; flex-wrap:wrap;
+          gap:8px 20px; align-items:center; }
+  .wrap .site-foot-in { padding:0; max-width:none; }
+  .site-foot-in span { margin-right:auto; }
+  .site-foot a { color:var(--dim); text-decoration:none; }
+  .site-foot a:hover { color:var(--ink); text-decoration:underline; }
+  @media (max-width:600px) { .site-foot-in { padding:0 16px; } .wrap .site-foot-in { padding:0; }
+          .site-foot-in span { flex-basis:100%; } }
 """

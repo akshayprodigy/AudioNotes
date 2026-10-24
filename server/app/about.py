@@ -177,16 +177,6 @@ def _blocks_md(blocks: list[str | list[str]]) -> str:
         for b in blocks)
 
 
-def prose_footer() -> str:
-    """The footer for the reading-style pages; the same links as the landing page's."""
-    return (
-        '<footer class="site-foot"><div class="site-foot-in">'
-        f"<span>&copy; {html.escape(COMPANY_NAME)}</span>"
-        + "".join(f'<a href="{h}">{html.escape(t)}</a>' for t, h in landing.FOOTER_LINKS)
-        + "</div></footer>"
-    )
-
-
 def _head() -> str:
     return '<link rel="stylesheet" href="/static/blog.css">\n'
 
@@ -201,7 +191,7 @@ def render_about() -> str:
           f'<p class="byline">Last updated <time datetime="{ABOUT_UPDATED}">'
           f"{_pretty(ABOUT_UPDATED)}</time></p></header>"
         + f'<div class="prose"><p class="definition">{html.escape(DEFINITION)}</p>{body}</div>'
-        + "</article></main>" + prose_footer()
+        + "</article></main>" + landing.site_footer()
     )
 
 
@@ -215,7 +205,7 @@ def render_faq() -> str:
           f'<p class="byline">About {html.escape(PRODUCT_NAME)}, privacy and pricing. '
           'See also <a href="/about">what it is</a> and <a href="/blog">the blog</a>.</p></header>'
         + f'<div class="prose">{items}</div>'
-        + "</article></main>" + prose_footer()
+        + "</article></main>" + landing.site_footer()
     )
 
 

@@ -168,3 +168,25 @@ def test_about_pages_are_cacheable(client):
 
 def test_about_text_links_are_restricted_to_safe_targets():
     assert about._inline_html("[x](javascript:evil) [y](/a)") == 'x <a href="/a">y</a>'
+
+
+def test_every_public_page_has_one_shared_footer(client):
+    slug = _posts(client)[0].slug
+    for p in ("/", "/blog", f"/blog/{slug}", "/about", "/faq", "/privacy", "/terms",
+              "/delete-account"):
+        t = client.get(p).text
+        assert t.count("<footer") == 1, p
+        foot = t[t.index("<footer"):t.index("</footer>")]
+        assert 'href="/privacy"' in foot and 'href="/terms"' in foot, p
+
+
+def test_cache_headers(client):
+    slug = _posts(client)[0].slug
+    cc = lambda p: client.get(p).headers.get("cache-control")  # noqa: E731
+    assert cc("/blog") == cc(f"/blog/{slug}") == "public, max-age=600"
+    assert cc("/static/blog.css") == "public, max-age=3600"
+    assert cc("/static/logo.svg") == "public, max-age=3600"
+    img = next(p.cover_webp for p in _posts(client) if p.cover)
+    assert cc(img) == "public, max-age=604800"
+    assert cc("/static/shots/mom.webp") == "public, max-age=604800"
+    assert client.get("/static/nope.png").headers.get("cache-control") is None

@@ -9,6 +9,12 @@ It rsyncs the code, runs `docker compose up -d --build` and waits for `/healthz`
 the server's `.env` or the database. This release adds the Python package `markdown==3.11.2`
 (`server/requirements.txt`); the image rebuild installs it, nothing to do by hand.
 
+Before deploying, run `cd server && .venv/bin/pytest -q`. Posts are parsed at startup, so a
+malformed post would stop the whole server (and the app's licence API) from booting.
+
+nginx rate-limits `/static` under the general 60 r/m + burst 20 zone. That is fine for now; if
+503s appear in the logs, loosen it with a dedicated `/static` location.
+
 Smoke test (each should return 200 and sensible content):
 
 ```

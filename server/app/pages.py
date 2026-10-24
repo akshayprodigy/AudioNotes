@@ -125,6 +125,26 @@ def layout(title: str, body: str, description: str | None = None, *,
     )
 
 
+class CachedStatic(StaticFiles):
+    """
+    Static files with a Cache-Control the app sets itself (no proxy change needed).
+
+    Blog and screenshot images only change when someone regenerates them, so a week is safe.
+    CSS, JS, the logo and og.png are not content-hashed, so they get an hour: a fix reaches
+    visitors the same day without every page view re-downloading them.
+    """
+
+    LONG = "public, max-age=604800"
+    SHORT = "public, max-age=3600"
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        if response.status_code in (200, 304):
+            long = path.startswith(("blog/", "shots/"))
+            response.headers["Cache-Control"] = self.LONG if long else self.SHORT
+        return response
+
+
 def esc(s: str) -> str:
     return html.escape(s, quote=True)
 
@@ -147,7 +167,7 @@ def register_pages(app: FastAPI, store: Store, blog_dir: Path | str | None = Non
     register_blog(app, layout, blog_dir)
     register_about(app, layout)
 
-    app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+    app.mount("/static", CachedStatic(directory=Path(__file__).parent / "static"), name="static")
 
     @app.get("/robots.txt", response_class=PlainTextResponse)
     def robots() -> PlainTextResponse:
@@ -229,6 +249,6 @@ def register_pages(app: FastAPI, store: Store, blog_dir: Path | str | None = Non
                 with your Google Play order number. We will confirm within seven days.</p>
              <p>Uninstalling the app removes everything it held on the device. Cancelling the
                 subscription itself is done in Google Play, under Subscriptions.</p>
-             <p><a href="/">Back</a></p>""",
+             <p><a href="/">Back</a></p>""" + landing.site_footer(),
             path="/delete-account",
         )
