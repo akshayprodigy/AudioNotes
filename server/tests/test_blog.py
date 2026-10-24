@@ -201,6 +201,12 @@ def test_body_images_are_lazy(client):
     assert 'decoding="async"' in html
 
 
+def test_tables_are_wrapped_for_scrolling(client):
+    html = client.get(f"/blog/{MIDDLE}").text
+    assert html.count('<div class="table-wrap"><table>') == 2
+    assert html.count("</table></div>") == 2
+
+
 def test_cover_image_is_not_lazy(client):
     # The cover is the largest paint on the page; lazy-loading it would delay LCP.
     html = client.get(f"/blog/{MIDDLE}").text

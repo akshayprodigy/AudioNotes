@@ -31,3 +31,7 @@ Everything, including the **speaker labels**.
 ```
 no upload
 ```
+
+| Step | Engine | Runs on | Needs network | Stores audio | Stores text | Shared |
+|---|---|---|---|---|---|---|
+| Transcribe | Speech model | Phone | No | Phone only | Phone only | Never |

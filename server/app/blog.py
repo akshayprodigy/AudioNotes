@@ -54,6 +54,7 @@ BLOG_DESCRIPTION = (
 )
 
 _IMG_TAG = re.compile(r"<img\b([^>]*?)(/?)>", re.I)
+_TABLE = re.compile(r"(<table\b.*?</table>)", re.I | re.S)
 
 
 class BlogError(ValueError):
@@ -144,6 +145,17 @@ def _lazy_images(rendered: str) -> str:
     return _IMG_TAG.sub(patch, rendered)
 
 
+def _wrap_tables(rendered: str) -> str:
+    """
+    Wrap each <table> in a scroll container.
+
+    A table cannot scroll itself without shrinking to its content, so the wrapper carries the
+    overflow, border and radius: a table that fits stays full width, a wide one scrolls inside
+    the column instead of being clipped by the page.
+    """
+    return _TABLE.sub(r'<div class="table-wrap">\1</div>', rendered)
+
+
 def _h2s(tokens: list[dict]) -> list[tuple[str, str]]:
     found: list[tuple[str, str]] = []
     for t in tokens:
@@ -172,7 +184,7 @@ def _load(path: Path) -> Post:
         extensions=["extra", "toc", "sane_lists"],
         extension_configs={"toc": {"permalink": False, "toc_depth": "2-3"}},
     )
-    rendered = _lazy_images(md.convert(body))
+    rendered = _wrap_tables(_lazy_images(md.convert(body)))
     return Post(
         slug=slug, title=meta["title"], description=meta["description"], date=published,
         updated=updated,
