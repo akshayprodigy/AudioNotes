@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import landing, seo
+from .about import LLMS_LINK, register_about
 from .blog import register_blog
 from .branding import CONTACT_EMAIL, PRODUCT_NAME
 from .legal import register_legal
@@ -114,6 +115,7 @@ def layout(title: str, body: str, description: str | None = None, *,
         f"<style>{CSS}{THEME_CSS}</style>\n"
         "<noscript><style>.theme-toggle{display:none}</style></noscript>\n"
         "<script src=\"/static/theme.js\" defer></script>\n"
+        f"{LLMS_LINK}"
         + "".join(seo.jsonld_script(d) for d in jsonld or [])
         + f"{head_extra}"
         "</head><body>"
@@ -143,6 +145,7 @@ def register_pages(app: FastAPI, store: Store, blog_dir: Path | str | None = Non
     register_legal(app, layout)
     app.state.sitemap_providers = []
     register_blog(app, layout, blog_dir)
+    register_about(app, layout)
 
     app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 

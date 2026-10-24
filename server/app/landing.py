@@ -431,8 +431,12 @@ def body(device_limit: int) -> str:
   <div class="shell foot-in">
     <span>&copy; InnoCore Labs</span>
     <span class="nav-spacer"></span>
+    <a href="/about">About</a>
+    <a href="/faq">FAQ</a>
+    <a href="/blog">Blog</a>
     <a href="/privacy">Privacy</a>
     <a href="/terms">Terms</a>
+    <a href="/llms.txt">LLM summary</a>
     <a href="/delete-account">Delete your account</a>
   </div>
 </footer>
