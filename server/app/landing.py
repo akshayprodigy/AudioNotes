@@ -16,14 +16,77 @@ likely to check are the people most likely to buy.
 from __future__ import annotations
 
 import html
+import os
+import re
 
 from .branding import PRODUCT_NAME
 from .theme import TOGGLE
 
-#: Where the Play listing will live. Empty until the app is published — the hero then shows an
-#: honest "coming to Google Play" line instead of a button that 404s, which is the one thing worse
-#: than having no button at all.
-PLAY_URL = ""
+
+def play_url() -> str:
+    """
+    Where the Play listing lives, from the PLAY_URL environment variable.
+
+    Empty until the app is published — the hero then shows an honest "coming to Google Play" line
+    instead of a button that 404s, which is the one thing worse than having no button at all. Read
+    at call time so going live is an env change and a restart, not a code change.
+    """
+    return os.environ.get("PLAY_URL", "").strip()
+
+
+#: What Pro costs, in one place. The structured data reads it now and the pricing card will too, so
+#: a price change is one edit rather than a search for every number that quotes it.
+PRICES = {
+    "free": {"INR": "0", "USD": "0"},
+    "monthly": {"INR": "299", "USD": "4.99"},
+    "yearly": {"INR": "2499", "USD": "39.99"},
+}
+
+#: The questions people ask, as (question, answer-html) pairs. One list so the landing page,
+#: the /faq page and the FAQPage structured data can never disagree about what the answers are.
+FAQ: list[tuple[str, str]] = [
+    ("Is my audio really never uploaded?",
+     "Yes. Transcription, speaker separation and the minutes all run on the device. The "
+     "app uses the network for three things: downloading the speech models the first time "
+     "you open it, checking a subscription if you have one, and sending a crash report if "
+     "you switched those on. None of the three carries any of your content, and the app "
+     "has a screen that counts every call it makes so you can check rather than trust."),
+    ("Does it report crashes?",
+     "Only if you say yes. You are asked once, it is off until then, and you can withdraw "
+     "at any time in Settings. A report carries the stack trace of the failure, the app "
+     "version and the model of phone &mdash; never your audio, transcripts or notes. It "
+     "goes to Google Crashlytics, and because Crashlytics sends it rather than the app, it "
+     "is the one thing the network screen cannot count. It says so, there, in those words."),
+    ("Why is there a download when I first open it?",
+     "The speech models are around 114 MB and are not bundled into the app, which would "
+     "otherwise be far too large for the store. They download once and then the app works "
+     "with no connection at all. Starting a Pro trial adds a larger writer model, about "
+     "1.1 GB, and that one is only fetched if you ask for it."),
+    ("What happens if I stop paying?",
+     "Recording, transcripts, speakers, copying and the rule-based minutes keep working "
+     "&mdash; those are the free tier and they do not expire, and every meeting you have "
+     "already recorded stays exactly as it is, at whatever length it was. New recordings go "
+     "back to the free allowance of five meetings a month, up to an hour each, and search by "
+     "meaning goes back to Pro. Searching for a word stays free."),
+    ("Why is Free limited to five meetings a month?",
+     "Because the alternative was advertising, and an app that reads your meetings should "
+     "not also be selling your attention. Five meetings of up to an hour each is roughly "
+     "one a week, enough to see the whole thing work &mdash; transcript, speakers, "
+     "minutes &mdash; on your own meetings before deciding. Imports and "
+     "dictations count as meetings. A recording that reaches the hour stops there and is "
+     "still transcribed in full, and when the month's five are used your saved meetings "
+     "stay open to listen to, search, edit and copy. Nothing you recorded is ever thrown "
+     "away. The count starts again on the first of the month."),
+    ("Do I need an account?",
+     "No. There is nothing to sign up for. Subscribing happens in the app through Google "
+     "Play, and the account that carries it between your devices is created by the "
+     "purchase itself. To have it deleted, see "
+     '<a href="/delete-account">deleting your account</a>.'),
+    ("Which phones does it work on?",
+     "Android, on 64-bit devices. It is doing real speech recognition locally, so a "
+     "recent mid-range phone or better will be noticeably quicker than an old one."),
+]
+
 
 
 def _icon(path: str) -> str:
@@ -74,11 +137,69 @@ def _faq(q: str, a: str) -> str:
       </details>"""
 
 
+def faq_html() -> str:
+    return "".join(_faq(q, a) for q, a in FAQ)
+
+
+def _plain(answer_html: str) -> str:
+    """An FAQ answer as the plain text structured data wants: no tags, entities decoded."""
+    return html.unescape(re.sub(r"<[^>]+>", "", answer_html))
+
+
+def faq_jsonld() -> dict:
+    return {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+            {"@type": "Question", "name": q,
+             "acceptedAnswer": {"@type": "Answer", "text": _plain(a)}}
+            for q, a in FAQ
+        ],
+    }
+
+
+def home_jsonld(site: str) -> list[dict]:
+    """
+    Structured data for the home page: who makes it, what the site is, what the app is and costs,
+    and the FAQ. `site` is the absolute origin, because schema.org consumers ignore relative URLs.
+    """
+    offers = [{"@type": "Offer", "price": PRICES["free"]["INR"], "priceCurrency": "INR",
+               "name": "Free"}]
+    for period, label in (("monthly", "Pro monthly"), ("yearly", "Pro yearly")):
+        for cur in ("INR", "USD"):
+            offers.append({"@type": "Offer", "name": label, "price": PRICES[period][cur],
+                           "priceCurrency": cur})
+    app = {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": PRODUCT_NAME,
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Android",
+        "description": "Records meetings and writes the minutes entirely on your phone: "
+                       "transcript, speakers, decisions and action items, with no upload.",
+        "offers": offers,
+    }
+    if play_url():
+        app["downloadUrl"] = app["installUrl"] = play_url()
+    return [
+        {"@context": "https://schema.org", "@type": "Organization", "name": "InnoCore Labs",
+         "url": "https://innocorelabs.com", "logo": f"{site}/static/logo.svg",
+         "email": "admin@innocorelabs.com",
+         "address": {"@type": "PostalAddress", "addressLocality": "Kolkata",
+                     "addressCountry": "IN"}},
+        {"@context": "https://schema.org", "@type": "WebSite", "name": PRODUCT_NAME,
+         "url": f"{site}/"},
+        app,
+        faq_jsonld(),
+    ]
+
+
 def hero_cta() -> str:
     """The primary call to action, which depends on whether there is an app to send anyone to."""
-    if PLAY_URL:
+    url = play_url()
+    if url:
         return (
-            f'<a class="btn btn-primary" href="{html.escape(PLAY_URL)}">Get it on Google Play</a>'
+            f'<a class="btn btn-primary" href="{html.escape(url)}">Get it on Google Play</a>'
             '<a class="btn btn-ghost" href="#how">See how it works</a>'
         )
     # No Play listing yet, and nothing else to send anyone to: the app is the only way in, and
@@ -88,7 +209,7 @@ def hero_cta() -> str:
 
 
 def hero_note() -> str:
-    if PLAY_URL:
+    if play_url():
         return "Free to use, with no account. Android."
     return "Coming to Google Play. The free tier needs no account at all."
 
@@ -273,46 +394,7 @@ def body(device_limit: int) -> str:
   <div class="shell">
     <div class="section-head rise"><h2>Questions people actually ask</h2></div>
     <div class="rise d1" style="margin-top:26px">
-      {_faq("Is my audio really never uploaded?",
-            "Yes. Transcription, speaker separation and the minutes all run on the device. The "
-            "app uses the network for three things: downloading the speech models the first time "
-            "you open it, checking a subscription if you have one, and sending a crash report if "
-            "you switched those on. None of the three carries any of your content, and the app "
-            "has a screen that counts every call it makes so you can check rather than trust.")}
-      {_faq("Does it report crashes?",
-            "Only if you say yes. You are asked once, it is off until then, and you can withdraw "
-            "at any time in Settings. A report carries the stack trace of the failure, the app "
-            "version and the model of phone &mdash; never your audio, transcripts or notes. It "
-            "goes to Google Crashlytics, and because Crashlytics sends it rather than the app, it "
-            "is the one thing the network screen cannot count. It says so, there, in those words.")}
-      {_faq("Why is there a download when I first open it?",
-            "The speech models are around 114 MB and are not bundled into the app, which would "
-            "otherwise be far too large for the store. They download once and then the app works "
-            "with no connection at all. Starting a Pro trial adds a larger writer model, about "
-            "1.1 GB, and that one is only fetched if you ask for it.")}
-      {_faq("What happens if I stop paying?",
-            "Recording, transcripts, speakers, copying and the rule-based minutes keep working "
-            "&mdash; those are the free tier and they do not expire, and every meeting you have "
-            "already recorded stays exactly as it is, at whatever length it was. New recordings go "
-            "back to the free allowance of five meetings a month, up to an hour each, and search by "
-            "meaning goes back to Pro. Searching for a word stays free.")}
-      {_faq("Why is Free limited to five meetings a month?",
-            "Because the alternative was advertising, and an app that reads your meetings should "
-            "not also be selling your attention. Five meetings of up to an hour each is roughly "
-            "one a week, enough to see the whole thing work &mdash; transcript, speakers, "
-            "minutes &mdash; on your own meetings before deciding. Imports and "
-            "dictations count as meetings. A recording that reaches the hour stops there and is "
-            "still transcribed in full, and when the month's five are used your saved meetings "
-            "stay open to listen to, search, edit and copy. Nothing you recorded is ever thrown "
-            "away. The count starts again on the first of the month.")}
-      {_faq("Do I need an account?",
-            "No. There is nothing to sign up for. Subscribing happens in the app through Google "
-            "Play, and the account that carries it between your devices is created by the "
-            "purchase itself. To have it deleted, see "
-            '<a href="/delete-account">deleting your account</a>.')}
-      {_faq("Which phones does it work on?",
-            "Android, on 64-bit devices. It is doing real speech recognition locally, so a "
-            "recent mid-range phone or better will be noticeably quicker than an old one.")}
+      {faq_html()}
     </div>
   </div>
 </section>

@@ -206,7 +206,7 @@ def test_robots_keeps_crawlers_off_the_admin_console_and_the_api(client):
     """There is nothing to sign in to on the site; the console is the only thing worth hiding."""
     body = client.get("/robots.txt").text
     assert "Disallow: /admin" in body and "Disallow: /api/" in body
-    assert "Allow: /privacy" in body and "Allow: /delete-account" in body
+    assert "Allow: /\n" in body
 
 
 # ---- the shape of the website ----

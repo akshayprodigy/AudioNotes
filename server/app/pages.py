@@ -17,12 +17,14 @@ from datetime import datetime, timezone
 
 from pathlib import Path
 
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi import FastAPI, Request
+from fastapi.exception_handlers import http_exception_handler
+from fastapi.responses import HTMLResponse, PlainTextResponse, Response
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.staticfiles import StaticFiles
 
 from . import landing
-from . import mailer
+from . import seo
 from .branding import CONTACT_EMAIL, PRODUCT_NAME
 from .legal import register_legal
 from .store import DEVICE_LIMIT, Store
@@ -66,6 +68,8 @@ DEFAULT_DESCRIPTION = (
 
 
 def layout(title: str, body: str, description: str | None = None, *,
+           path: str = "/", og_type: str = "website", image: str | None = None,
+           jsonld: list[dict] | None = None,
            head_extra: str = "", wrap: bool = True) -> str:
     """
     One page shell.
@@ -73,7 +77,10 @@ def layout(title: str, body: str, description: str | None = None, *,
     The Open Graph block is not decoration: this URL gets pasted into WhatsApp and Slack, and
     without it the preview is a bare link, which converts far worse than a card. og:image is an
     absolute path because relative ones are ignored by most crawlers — PUBLIC_BASE_URL is what
-    makes it absolute, and is the same setting the reset emails need.
+    makes it absolute (defaulting to the production origin, so dev and tests render the same URLs).
+    `path` feeds the canonical link and og:url: without a canonical, search engines pick among
+    www/http/query-string variants themselves and split the page's standing between them.
+    `jsonld` is a list of schema.org objects, one script block each.
 
     `wrap` and `head_extra` exist for the landing page, which needs the full width of the window
     and its own stylesheet. Everything above the <body> tag is shared regardless: the OG card, the
@@ -81,8 +88,8 @@ def layout(title: str, body: str, description: str | None = None, *,
     one page a wider column is how two subtly different sets of meta tags start to exist.
     """
     description = description or DEFAULT_DESCRIPTION
-    base = mailer.public_base_url("")
-    image = f"{base}/static/og.png" if base else "/static/og.png"
+    url = seo.absolute(path)
+    image = image or seo.absolute("/static/og.png")
     full_title = f"{title} · {PRODUCT_NAME}"
     return (
         "<!doctype html>\n<html lang=\"en\"><head>\n"
@@ -90,10 +97,12 @@ def layout(title: str, body: str, description: str | None = None, *,
         f"<title>{html.escape(full_title)}</title>\n"
         f"<meta name=\"description\" content=\"{html.escape(description)}\">\n"
         "<meta name=\"theme-color\" content=\"#FAFBFE\">\n"
+        f"<link rel=\"canonical\" href=\"{html.escape(url)}\">\n"
         "<link rel=\"icon\" href=\"/static/logo.svg\" type=\"image/svg+xml\">\n"
         f"<meta property=\"og:title\" content=\"{html.escape(full_title)}\">\n"
         f"<meta property=\"og:description\" content=\"{html.escape(description)}\">\n"
-        "<meta property=\"og:type\" content=\"website\">\n"
+        f"<meta property=\"og:type\" content=\"{html.escape(og_type)}\">\n"
+        f"<meta property=\"og:url\" content=\"{html.escape(url)}\">\n"
         f"<meta property=\"og:site_name\" content=\"{html.escape(PRODUCT_NAME)}\">\n"
         f"<meta property=\"og:image\" content=\"{html.escape(image)}\">\n"
         "<meta property=\"og:image:width\" content=\"1200\">\n"
@@ -103,7 +112,8 @@ def layout(title: str, body: str, description: str | None = None, *,
         f"<style>{CSS}{THEME_CSS}</style>\n"
         "<noscript><style>.theme-toggle{display:none}</style></noscript>\n"
         "<script src=\"/static/theme.js\" defer></script>\n"
-        f"{head_extra}"
+        + "".join(seo.jsonld_script(d) for d in jsonld or [])
+        + f"{head_extra}"
         "</head><body>"
         + ("" if not wrap else site_header(html.escape(PRODUCT_NAME)))
         + (f'<div class="wrap">{body}</div>' if wrap else body)
@@ -116,8 +126,8 @@ def esc(s: str) -> str:
 
 
 def _page(title: str, body: str, status: int = 200,
-          description: str | None = None) -> HTMLResponse:
-    return HTMLResponse(layout(title, body, description), status_code=status)
+          description: str | None = None, path: str = "/") -> HTMLResponse:
+    return HTMLResponse(layout(title, body, description, path=path), status_code=status)
 
 
 def _date(seconds: int) -> str:
@@ -132,17 +142,32 @@ def register_pages(app: FastAPI, store: Store) -> None:
 
     @app.get("/robots.txt", response_class=PlainTextResponse)
     def robots() -> PlainTextResponse:
-        # There is nothing to sign in to on this site, so the only thing worth keeping out of
-        # search results is the admin console — which answers 404 to anyone who is not signed in,
-        # but should not be advertised in a search index either.
-        return PlainTextResponse(
-            "User-agent: *\n"
-            "Allow: /$\n"
-            "Allow: /privacy\n"
-            "Allow: /terms\n"
-            "Allow: /delete-account\n"
-            "Disallow: /admin\n"
-            "Disallow: /api/\n"
+        # The admin console answers 404 to anyone not signed in and the API is not for browsing, so
+        # those stay out of search indexes; everything else is meant to be found. See seo.py.
+        return PlainTextResponse(seo.robots_txt())
+
+    @app.get("/sitemap.xml")
+    def sitemap() -> Response:
+        return Response(seo.sitemap_xml(), media_type="application/xml")
+
+    @app.exception_handler(StarletteHTTPException)
+    async def not_found(request: Request, exc: StarletteHTTPException):
+        """
+        A styled 404 for browsers; everything else keeps FastAPI's default.
+
+        Only unmatched routes reach here -- the admin console and the like return their own 404
+        responses rather than raising -- and /api/ stays JSON because its callers are programs.
+        """
+        if exc.status_code != 404 or request.url.path.startswith("/api/"):
+            return await http_exception_handler(request, exc)
+        return _page(
+            "Page not found",
+            """<h1>Page not found</h1>
+             <p>There is nothing at this address. It may have moved, or the link may be mistyped.</p>
+             <p><a href="/">Back to the home page</a></p>""",
+            status=404,
+            description=f"That page does not exist on {PRODUCT_NAME}.",
+            path="/",  # no canonical for a URL that does not exist
         )
 
     @app.get("/", response_class=HTMLResponse)
@@ -158,6 +183,8 @@ def register_pages(app: FastAPI, store: Store) -> None:
             layout(
                 "Meeting notes that never leave your phone",
                 landing.body(DEVICE_LIMIT),
+                path="/",
+                jsonld=landing.home_jsonld(seo.site_url()),
                 head_extra=(
                     '<link rel="stylesheet" href="/static/landing.css">\n'
                     '<script src="/static/landing.js" defer></script>\n'
@@ -189,4 +216,5 @@ def register_pages(app: FastAPI, store: Store) -> None:
              <p>Uninstalling the app removes everything it held on the device. Cancelling the
                 subscription itself is done in Google Play, under Subscriptions.</p>
              <p><a href="/">Back</a></p>""",
+            path="/delete-account",
         )

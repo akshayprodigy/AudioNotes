@@ -208,6 +208,7 @@ def register_legal(app: FastAPI, layout) -> None:
             "Privacy", _privacy() + _footer(),
             f"What {PRODUCT_NAME} holds, which is an email address and whether you have paid. "
             "Your recordings, transcripts and minutes never leave your phone.",
+            path="/privacy",
         ))
 
     @app.get("/terms", response_class=HTMLResponse)
@@ -216,6 +217,7 @@ def register_legal(app: FastAPI, layout) -> None:
             "Terms", _terms() + _footer(),
             f"The terms for using {PRODUCT_NAME}: what the subscription covers, what the notes "
             "are worth, and whose responsibility it is to tell the room it is being recorded.",
+            path="/terms",
         ))
 
 
