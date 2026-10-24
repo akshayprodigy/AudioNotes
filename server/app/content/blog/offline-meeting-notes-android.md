@@ -1,10 +1,10 @@
 ---
-title: Meeting notes on Android without internet: how to do it
-description: You can take full meeting notes on Android with no signal, if the transcribing happens on the phone. Here is what works offline, what doesn't, and how.
+title: Offline meeting notes on Android: no internet needed
+description: Offline meeting notes on Android work when transcription runs on the phone. What works with no signal, what doesn't, and a step-by-step way to do it.
 date: 2026-10-24
 tags: Guides, Android
 cover: offline-meeting-notes
-cover_alt: Brand gradient cover titled "Meeting notes on Android without internet" with a phone showing the summary screen of a finished meeting.
+cover_alt: Brand gradient cover titled "Offline meeting notes on Android: no internet needed" with a phone showing the summary screen of a finished meeting.
 shot: summary
 ---
 Yes, you can take meeting notes on an Android phone with no internet at all, but only if the app that writes the notes runs on the phone itself. Most meeting apps send your audio to a server and wait for text to come back, so they stop working the moment your signal does. An on-device app records, transcribes and writes the minutes locally, which means a basement boardroom, a train or a site visit in the countryside makes no difference.
@@ -28,7 +28,7 @@ This guide covers what actually works offline, what doesn't, and a step-by-step 
 - Downloading the speech and language models the first time. Apps that run on the phone have to get their models from somewhere, once.
 - Anything that depends on a cloud service by design: live captions streamed from a server, or a bot that joins a call.
 
-The honest summary: offline note-taking is a property of where the processing happens, not of the app's marketing. If the transcript only appears after an upload, it is not offline, however good the recorder is.
+In short: offline note-taking is a property of where the processing happens, not of the app's marketing. If the transcript only appears after an upload, it is not offline, however good the recorder is.
 
 ## Step by step: offline notes with Verbale
 
@@ -45,7 +45,7 @@ The honest summary: offline note-taking is a property of where the processing ha
 
 *A finished meeting: the summary on top, with counts of actions, decisions and open questions underneath (the written summary is part of Pro; the transcript, decisions and actions are free).*
 
-For a closer look at the flow, see [how it works](/#how).
+The full flow is on the [Verbale home page](/#how).
 
 ## Tips for good offline notes
 
@@ -59,7 +59,7 @@ For a closer look at the flow, see [how it works](/#how).
 
 **Write your own two lines at the end.** Even good machine notes benefit from a human adding what was meant rather than said.
 
-## Honest limits
+## Limits of offline meeting notes on Android
 
 - **English only.** Verbale transcribes meetings held in English.
 - **Android only, and 64-bit phones.** Some Pro features need 4 GB of memory; the app checks before it downloads or sells you anything.
@@ -76,12 +76,12 @@ Yes, with an app whose speech-to-text runs on the phone. Recording alone never n
 
 ### Does Android have a built-in way to transcribe meetings offline?
 
-Android phones include a basic voice recorder and voice typing, and some models offer more. Those tools tend to be built for short dictation rather than multi-speaker meetings, so you often get a block of text with no speaker labels and no action items. For meetings, a dedicated on-device app is a better fit.
+Many Android phones include a basic voice recorder and voice typing. Those tools are often built for short dictation rather than multi-speaker meetings, so you may get a block of text with no speaker labels and no action items. For meetings, a dedicated on-device app is a better fit.
 
 ### Is offline transcription less accurate than cloud transcription?
 
-It can be, in some situations, particularly with heavy accents or a noisy room. Quality depends mostly on the audio you give it. Verbale's Pro plan adds a larger transcriber aimed at accents and bad rooms. The [honest comparison](/blog/on-device-vs-cloud-transcription) goes through where each approach wins.
+Sometimes. On clear audio the difference is small; with heavy accents or a noisy room, large cloud models can do better. Verbale's Pro plan adds a larger transcriber aimed at accents and bad rooms. The [on-device versus cloud comparison](/blog/on-device-vs-cloud-transcription) goes through where each approach wins.
 
 ### What do I still need internet for?
 
-A one-time model download, the subscription check if you are on Pro, and sharing the notes afterwards. Opt-in crash reports are the only other traffic; they are sent by Google's crash reporter and never include meeting content.
+A one-time model download, the subscription check if you are on Pro, and sharing the notes afterwards. What the app sends, and what it never does, is set out in [why meeting notes should stay on your phone](/blog/why-meeting-notes-should-stay-on-your-phone).

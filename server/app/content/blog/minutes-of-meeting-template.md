@@ -1,13 +1,13 @@
 ---
-title: Minutes of meeting (MOM): how to write them, free template
-description: What minutes of meeting are, what to include, and a free copy-paste MOM template with a filled example. Plus how to draft them from a recording.
+title: Minutes of meeting (MOM) template: free, with an example
+description: What meeting minutes (MOM) are, what to include, and a free copy-paste template with a filled example. Plus how to draft them from a recording.
 date: 2026-10-24
 tags: Templates, Meetings, Guides
 cover: mom-template
-cover_alt: Brand gradient cover titled "Minutes of meeting (MOM): how to write them, free template" with a phone showing the minutes screen of a client call.
+cover_alt: Brand gradient cover titled "Minutes of meeting (MOM) template: free, with an example" with a phone showing the minutes screen of a client call.
 shot: mom
 ---
-Minutes of meeting (MOM) are a short, factual written record of what was discussed, what was decided and who has to do what by when. Good minutes fit on one page, are sent within a day, and let someone who wasn't there understand the outcome without asking a single question. Below is a free template you can copy, a filled example, and the mistakes that make most minutes useless.
+Minutes of meeting (MOM) are a short, factual written record of what was discussed, what was decided and who has to do what by when. Good meeting minutes fit on one page, are sent within a day, and let someone who wasn't there understand the outcome without asking a single question. Below is a free template you can copy, a filled example, and the mistakes that make most minutes useless.
 
 ## What minutes of meeting are for
 
@@ -19,7 +19,7 @@ People often call them MOM, especially in Indian business English, and the purpo
 
 If your minutes answer those, they have done their job. Everything else is optional.
 
-## What to include
+## What to include in minutes of a meeting
 
 **The basics.** Meeting title, date, time, place or call link, and who attended. Note who sent apologies. This is the "who was in the room" record, which matters later if anyone disputes what was agreed.
 
@@ -35,9 +35,9 @@ If your minutes answer those, they have done their job. Everything else is optio
 
 **Next meeting.** Date, if there is one.
 
-## A free template to copy
+## Minutes of meeting template (copy and paste)
 
-Copy this into any notes app. It is Markdown, so it also pastes cleanly into most documents.
+This version is written in Markdown. The `#`, `**` and `|` marks turn into headings, bold text and a table in notes apps that support Markdown. In Word or an email they just show as symbols, so delete them or use the plain-text version below.
 
 ```markdown
 # Meeting minutes: [Title]
@@ -73,9 +73,42 @@ Copy this into any notes app. It is Markdown, so it also pastes cleanly into mos
 [Date, time, and what it will cover]
 ```
 
-## A filled example
+**Plain-text version**, for Word, email or a chat message:
 
-Here is the same template for a short client call.
+```
+MEETING MINUTES: [Title]
+Date: [DD Month YYYY]
+Time: [start] to [end]
+Place / link: [location or call link]
+Attendees: [names]
+Apologies: [names, or "none"]
+Minutes by: [name]
+
+PURPOSE
+[One line: why we met.]
+
+DISCUSSION
+- [Topic 1: key points]
+- [Topic 2: key points]
+
+DECISIONS
+1. [Decision, as a full sentence]
+2. [Decision]
+
+ACTION ITEMS (owner - action - due)
+- [Name] - [What they will do] - [Date]
+- [Name] - [What they will do] - [Date]
+
+OPEN QUESTIONS
+- [Question] (who will find out: [name])
+
+NEXT MEETING
+[Date, time, and what it will cover]
+```
+
+## Minutes of meeting example
+
+The same template, filled in for a short client call.
 
 ```markdown
 # Meeting minutes: Phased rollout call
@@ -107,7 +140,7 @@ Agree how the new version reaches the client's users.
 | Dan | Book a room for the demo recording | Monday |
 
 ## Open questions
-- Why does the licence server return errors during refresh? (Rahul to investigate)
+- Which user groups go into the first 10%? (Asha to confirm by Wednesday)
 
 ## Next meeting
 Monday, to record the demo.
@@ -131,7 +164,7 @@ Monday, to record the demo.
 
 Writing minutes by hand means you spend the meeting half-listening and half-typing. An alternative is to record, then draft from the recording and edit.
 
-[Verbale](/) records English meetings and writes the transcript, speakers and minutes on the phone, with nothing uploaded. Decisions, action items and open questions each link back to the moment they were said, so you can tap one and hear the original words before you trust it. Pro writes the minutes in plain English, shaped to the meeting type: a stand-up reads differently from an interview.
+[Verbale](/) can draft these for you, on the phone. Decisions, action items and open questions each link back to the moment they were said, so you can tap one and hear the original words before you trust it. Pro writes the minutes in plain English, shaped to the meeting type: a stand-up reads differently from an interview.
 
 ![Verbale's minutes screen for a client call, with sections for what the client asked for, what was committed to, risks and open points, and next steps](/static/shots/mom.webp)
 

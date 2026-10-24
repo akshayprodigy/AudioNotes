@@ -25,8 +25,8 @@ Most poor transcripts come from poor placement, not poor software.
 
 - **Put it in the middle of the table, microphone side up.** Phones usually have a microphone at the bottom edge; don't cover it with a notebook or a hand.
 - **Keep it close to the people talking.** Distance is the biggest enemy. A phone two metres away from the quietest speaker will lose them.
-- **Stop it sitting on something that vibrates.** A laptop that is typing or a table you drum on shows up as noise. A folded napkin or a notebook underneath helps.
-- **Face the room, not the wall.** In a larger group, a phone near the middle beats one in a corner.
+- **Keep it off anything that vibrates.** A laptop being typed on or a table you drum on shows up as noise. A folded napkin or a notebook underneath helps.
+- **Keep it clear of walls and corners, where voices bounce back.** In a larger group, a phone near the middle beats one at the edge.
 - **Turn off notifications and set Do Not Disturb.** A buzz can drown a sentence.
 
 ## Handle the room
@@ -69,7 +69,7 @@ Do these within a day.
 4. **Send it out.** Minutes sent the same day get read and acted on.
 5. **Delete what you no longer need.** The fewer copies of a recording, the better, especially for sensitive meetings.
 
-If you want everything to stay on the device while you do this, read [why meeting notes should stay on your phone](/blog/why-meeting-notes-should-stay-on-your-phone). [Verbale](/) is built for this: English only, Android only, with the transcript, speakers and minutes written on the phone and nothing uploaded. The free plan covers 5 meetings a month of up to an hour each. See [how it works](/#how).
+If you want everything to stay on the device while you do this, read [why meeting notes should stay on your phone](/blog/why-meeting-notes-should-stay-on-your-phone). The advice above applies to any phone; [Verbale](/) itself is English only and Android only. Its free plan covers 5 meetings a month of up to an hour each, and the [home page](/#how) shows how it fits together.
 
 ## FAQ
 
@@ -87,4 +87,4 @@ Recording is fairly light. Turning a long recording into notes on the phone is h
 
 ### Can I keep recording if I switch apps or lock the screen?
 
-That depends on the app. Verbale keeps recording with the screen off, in other apps, and in a small floating window. Test whichever app you use before an important meeting.
+That depends on the app, so test whichever one you use before an important meeting. The section on keeping it recording says what to check.

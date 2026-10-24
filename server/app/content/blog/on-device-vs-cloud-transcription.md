@@ -1,6 +1,6 @@
 ---
 title: On-device vs cloud transcription: the honest trade-offs
-description: On-device or cloud transcription? A fair comparison on privacy, signal, speed, accuracy, battery, cost and accounts, and when cloud is the better choice.
+description: On-device or cloud transcription? Compare privacy, signal, speed, accuracy, battery, cost and accounts, and when cloud is the better choice.
 date: 2026-10-24
 tags: Privacy, Guides
 cover: on-device-vs-cloud
@@ -19,7 +19,7 @@ We make an on-device app, so we have a bias. This article tries to set it aside 
 
 ## The comparison
 
-| | On-device | Cloud |
+| Factor | On-device | Cloud |
 |---|---|---|
 | Privacy | Audio stays on the phone | Audio is uploaded and processed on someone else's servers |
 | Works without signal | Yes, after a one-time model download | No, it needs a connection to process |
@@ -44,8 +44,6 @@ Treat these as tendencies, not guarantees. Individual products vary, and both te
 **Predictable cost.** The vendor isn't paying for a server every minute you record, which is why a free plan can be genuinely free.
 
 ## Where cloud wins
-
-Being fair means saying this plainly.
 
 **Speed.** A server can transcribe an hour of audio far faster than a phone. If you need the text within minutes of finishing, cloud has the edge.
 
@@ -75,7 +73,7 @@ Often the answer is both: on-device for sensitive meetings, cloud for the routin
 
 ## What Verbale does
 
-[Verbale](/) is the on-device option. It records English meetings and writes the transcript, speakers and minutes entirely on the phone. Nothing is uploaded, and the app has a screen that counts every network call the app itself makes. Long meetings process in the background and it notifies you when notes are ready. It takes time, and we say so. The [how it works](/#how) section shows the flow.
+[Verbale](/) is an on-device option, built for English meetings on Android. It has a screen that counts every network call the app itself makes, and long meetings process in the background with a notification when the notes are ready. That takes time, which is the price of keeping it local. The [walkthrough on the home page](/#how) shows the flow.
 
 If you are drafting minutes from either kind of transcript, the [minutes of meeting template](/blog/minutes-of-meeting-template) will help.
 
@@ -95,4 +93,4 @@ It does while processing, because the phone is doing work a server would otherwi
 
 ### Can on-device transcription work offline?
 
-Yes. After a one-time model download, the whole job runs on the phone with no signal.
+Yes. The steps are in [offline meeting notes on Android](/blog/offline-meeting-notes-android).

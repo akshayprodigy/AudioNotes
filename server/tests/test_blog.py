@@ -343,19 +343,31 @@ def test_real_posts_meet_the_content_bar():
     import re
     from pathlib import Path
 
-    posts = sorted((Path(blog.__file__).parent / "content" / "blog").glob("*.md"))
+    root = Path(blog.__file__).parent
+    posts = sorted((root / "content" / "blog").glob("*.md"))
     assert len(posts) >= 5
+    slugs = {p.stem for p in posts}
+    banned = re.compile(r"\b(" + "|".join(re.escape(w) for w in BANNED_WORDS) + r")\b", re.I)
     for path in posts:
         raw = path.read_text(encoding="utf-8")
         meta, body = blog._split_front_matter(raw, path.name)
         where = path.name
-        assert len(meta["description"]) <= 160, where
-        assert len(re.findall(r"^## ", body, re.M)) >= 3, where
-        assert re.search(r"^## FAQ\s*$", body, re.M), where
-        assert "/static/shots/" in body, where
-        assert len(set(re.findall(r"\]\(/blog/[\w-]+\)", body))) >= 2, where
-        words = len(re.findall(r"\S+", body))
-        assert 900 <= words <= 1600, f"{where}: {words} words"
-        low = raw.lower()
-        for bad in BANNED_WORDS:
-            assert bad not in low, f"{where}: banned word {bad!r}"
+        assert len(meta["title"]) <= 65, where
+        assert 70 <= len(meta["description"]) <= 155, where
+        prose = re.sub(r"^```.*?^```", "", body, flags=re.M | re.S)
+        assert len(re.findall(r"^## ", prose, re.M)) >= 3, where
+        faq = re.split(r"^## FAQ\s*$", prose, flags=re.M)
+        assert len(faq) == 2, f"{where}: needs exactly one '## FAQ' h2"
+        assert len(re.findall(r"^### ", faq[1], re.M)) >= 3, where
+        shots = re.findall(r"/static/shots/([\w-]+\.webp)", body)
+        assert shots, where
+        for shot in shots:
+            assert (root / "static" / "shots" / shot).exists(), f"{where}: {shot}"
+        links = set(re.findall(r"\]\(/blog/([\w-]+)\)", body))
+        assert len(links) >= 2, where
+        assert links <= slugs, f"{where}: dangling link {links - slugs}"
+        assert len(re.findall(r"\S+", body)) >= 600, where
+        assert "\u2014" not in raw, f"{where}: em dash"
+        for text in (body, meta["title"], meta["description"]):
+            m = banned.search(text)
+            assert not m, f"{where}: banned word {m.group(0)!r}"

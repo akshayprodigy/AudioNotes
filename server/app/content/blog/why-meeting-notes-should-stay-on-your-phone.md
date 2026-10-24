@@ -1,13 +1,13 @@
 ---
-title: Why your meeting recordings shouldn't leave your phone
-description: Cloud meeting assistants upload your audio to process it. Here is what that risks for client, HR, legal and health talks, and how on-device notes avoid it.
+title: Keep meeting recordings on your phone: the privacy case
+description: Cloud meeting assistants upload your audio to process it. What that risks for client, HR, legal and health talks, and how on-device notes avoid it.
 date: 2026-10-24
 tags: Privacy, Meetings
 cover: meeting-privacy
-cover_alt: Brand gradient cover titled "Why your meeting recordings shouldn't leave your phone" with a phone showing the privacy screen: No upload, Encrypted, You delete.
+cover_alt: Brand gradient cover titled "Keep meeting recordings on your phone: the privacy case" with a phone showing the privacy screen: No upload, Encrypted, You delete.
 shot: privacy
 ---
-Your meeting recordings shouldn't leave your phone because a recording is the most complete record of what was said, and once it is on someone else's server you are relying on their policies, their security and their staff rather than on your own control. For a casual team stand-up that may be an acceptable trade. For a client negotiation, a disciplinary conversation, a legal briefing or a health discussion, it often isn't.
+Your meeting recordings shouldn't leave your phone because a recording is the most complete record of what was said. Once it sits on someone else's server, you depend on their policies, their security and their staff. That may be fine for a team stand-up. For a client negotiation, an HR case, a legal briefing or a health conversation, it often isn't.
 
 The alternative is simple to describe: do the transcribing and the note-writing on the phone, so there is nothing to upload in the first place.
 
@@ -24,7 +24,7 @@ That is not sinister. It is how the technology was built when phones couldn't do
 
 None of that applies to every product. The point is that you have to check, for each one.
 
-## Where it matters most
+## Which meetings are too sensitive for a cloud note-taker?
 
 **Client confidentiality.** Consultants, agencies and freelancers hear things clients haven't told the market. Many contracts restrict sharing that information with third parties. Uploading the recording is arguably exactly that.
 
@@ -36,7 +36,7 @@ None of that applies to every product. The point is that you have to check, for 
 
 **Early-stage business.** Pricing, fundraising and product plans are the kind of thing you'd rather not have stored elsewhere.
 
-## What on-device changes
+## How does on-device processing keep a meeting private?
 
 When the model runs on your phone, the sentence "we never see your audio" stops being a policy and becomes a fact about the architecture. There is no server copy to protect, retain, subpoena or leak, because none was made.
 
@@ -48,16 +48,16 @@ When the model runs on your phone, the sentence "we never see your audio" stops 
 
 On-device has trade-offs, and we set them out in [on-device versus cloud transcription](/blog/on-device-vs-cloud-transcription): processing takes longer on a phone, and a very noisy room can be harder. We would rather you know that now.
 
-## How to verify a privacy claim
+## How to check whether a meeting app really keeps audio private
 
-A promise is cheap. Here is how to test one, for any app:
+A promise is cheap. You can test one, for any app:
 
 1. **Read what it says it sends.** Look for plain statements about audio and transcripts, not just "we take privacy seriously".
 2. **Try airplane mode.** Record a short meeting with the radios off. If the notes still appear, the processing is local. If it waits for a connection, it isn't.
-3. **Look for an inventory of network calls.** Verbale has a screen that counts every network call the app itself makes: the one-time model download and the subscription check. Crash reports, if you switch them on, are sent by Google's crash reporter and carry no meeting content; the screen says plainly that it can't count those.
+3. **Look for an inventory of network calls.** Verbale has a screen that counts every network call the app itself makes: the one-time model download and the subscription check. The FAQ below covers the one thing it cannot count.
 4. **Check the account question.** An app that needs no account has fewer places to attach your data. The free plan needs none.
 
-## Be fair to everyone in the room
+## Ask everyone in the room first
 
 Keeping a recording on your phone does not remove the need for consent. Recording-consent laws vary by country and state, so ask everyone before you record, and say what the recording is for. The [guide to recording a meeting on your phone](/blog/how-to-record-a-meeting-on-your-phone) has wording that works.
 
