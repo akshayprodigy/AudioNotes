@@ -244,7 +244,7 @@ SHOTS = [
     ("decisions", "Every decision, with proof", False,
      "Meeting decisions list, each linked to the moment it was said in the recording"),
     ("actions", "Who owes what, by when", False,
-     "Action items from a meeting with owners and due dates, extracted by the Verbale meeting notes app"),
+     "Meeting action items listing owners, and due dates where one was said, from the Verbale meeting notes app"),
     ("ask", "Ask the meeting anything", True,
      "Ask a meeting a question: answers cite the part of the meeting transcript they came from"),
 ]
@@ -343,7 +343,7 @@ def body(device_limit: int, blog_cards: list[str] | None = None) -> str:
     return f"""
 <nav class="nav">
   <div class="shell nav-in">
-    <a class="brand" href="/"><img src="/static/logo.svg" alt="Verbale meeting notes app logo">{name}</a>
+    <a class="brand" href="/" aria-label="Verbale meeting notes app, home"><img src="/static/logo.svg" alt="Verbale meeting notes app logo">{name}</a>
     <span class="nav-spacer"></span>
     <div class="nav-links">
       <a class="hide-sm" href="#how">How it works</a>

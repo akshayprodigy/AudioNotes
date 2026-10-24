@@ -95,6 +95,23 @@ def test_sitemap_declares_image_namespace(client):
     assert 'xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"' in client.get("/sitemap.xml").text
 
 
+def test_sitemap_locs_are_unique(client):
+    root = ET.fromstring(client.get("/sitemap.xml").content)
+    locs = [u.find(f"{SM_NS}loc").text for u in root.findall(f"{SM_NS}url")]
+    assert len(locs) == len(set(locs))
+
+
+def test_sitemap_merges_entries_for_one_path():
+    from app import seo
+    entries = seo.sitemap_entries([
+        lambda: [seo.SitemapEntry("/", images=("/a.png", "/b.png"))],
+        lambda: [seo.SitemapEntry("/", "2026-01-01", ("/b.png", "/c.png"))]])
+    home = [e for e in entries if e.path == "/"]
+    assert len(home) == 1
+    assert home[0].images == ("/a.png", "/b.png", "/c.png")
+    assert home[0].lastmod == "2026-01-01"
+
+
 def test_sitemap_home_lists_shots_and_og(client):
     imgs = _sitemap(client)["https://verbale.innocorelabs.com/"]
     assert len(imgs) >= 6

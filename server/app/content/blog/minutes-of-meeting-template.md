@@ -4,7 +4,7 @@ description: What meeting minutes (MOM) are, what to include, and a free copy-pa
 date: 2026-10-24
 tags: Templates, Meetings, Guides
 cover: mom-template
-cover_alt: Minutes of meeting (MOM) template and example: Verbale meeting minutes screen for a client call on a phone
+cover_alt: Minutes of meeting (MOM) template and example: Verbale meeting minutes screen on a phone
 shot: mom
 ---
 Minutes of meeting (MOM) are a short, factual written record of what was discussed, what was decided and who has to do what by when. Good meeting minutes fit on one page, are sent within a day, and let someone who wasn't there understand the outcome without asking a single question. Below is a free template you can copy, a filled example, and the mistakes that make most minutes useless.
@@ -166,7 +166,7 @@ Writing minutes by hand means you spend the meeting half-listening and half-typi
 
 [Verbale](/) can draft these for you, on the phone. Decisions, action items and open questions each link back to the moment they were said, so you can tap one and hear the original words before you trust it. Pro writes the minutes in plain English, shaped to the meeting type: a stand-up reads differently from an interview.
 
-![Meeting minutes (MOM) screen in Verbale for a client call: asks, commitments, risks and next steps](/static/shots/mom.webp)
+![Meeting minutes (MOM) screen in Verbale: what the client asked for, commitments, risks and next steps](/static/shots/mom.webp)
 
 *Minutes drafted from a recording, with a Copy button so they can go straight into an email.*
 
