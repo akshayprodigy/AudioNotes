@@ -78,17 +78,18 @@ def test_theme_js_is_served_and_updates_storage_and_meta(client):
 
 NODE = shutil.which("node")
 HARNESS = """
-const [search, stored, throws] = JSON.parse(process.argv[2]);
+const [search, stored, throws] = JSON.parse(process.env.ARGS);
 const writes = {};
+const data = stored === null ? {} : {'verbale-theme': stored};
 const meta = {content: ''};
 globalThis.location = {search};
 globalThis.localStorage = {
-  getItem(k) { if (throws) throw new Error('blocked'); return k === 'verbale-theme' ? stored : null; },
-  setItem(k, v) { if (throws) throw new Error('blocked'); writes[k] = v; },
+  getItem(k) { if (throws) throw new Error('blocked'); return k in data ? data[k] : null; },
+  setItem(k, v) { if (throws) throw new Error('blocked'); writes[k] = v; data[k] = v; },
 };
 const root = {dataset: {}};
 globalThis.document = {documentElement: root, querySelector: () => meta};
-eval(process.argv[3]);
+eval(process.env.SCRIPT);
 console.log(JSON.stringify({theme: root.dataset.theme, writes, meta: meta.content}));
 """
 
@@ -97,8 +98,8 @@ def run_head(search="", stored=None, throws=False):
     if not NODE:
         pytest.skip("node is not installed")
     script = HEAD_SCRIPT.removeprefix("<script>").removesuffix("</script>")
-    out = subprocess.run([NODE, "-e", HARNESS, json.dumps([search, stored, throws]), script],
-                         capture_output=True, text=True, check=True).stdout
+    out = subprocess.run([NODE, "-e", HARNESS], capture_output=True, text=True, check=True,
+                         env={"ARGS": json.dumps([search, stored, throws]), "SCRIPT": script}).stdout
     return json.loads(out)
 
 
