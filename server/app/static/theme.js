@@ -13,8 +13,6 @@
     var buttons = document.querySelectorAll('[data-theme-toggle]');
     for (var i = 0; i < buttons.length; i++) {
       buttons[i].setAttribute('aria-pressed', t === 'dark' ? 'true' : 'false');
-      buttons[i].setAttribute('aria-label',
-        t === 'dark' ? 'Switch to light theme' : 'Switch to dark theme');
     }
   }
 
@@ -23,7 +21,7 @@
     if (!b) return;
     var next = current() === 'dark' ? 'light' : 'dark';
     root.dataset.theme = next;
-    try { localStorage.setItem('theme', next); } catch (err) {}
+    try { localStorage.setItem('verbale-theme', next); } catch (err) {}
     paint();
   });
 

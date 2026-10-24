@@ -21,12 +21,12 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import mailer
 from . import landing
+from . import mailer
 from .branding import CONTACT_EMAIL, PRODUCT_NAME
-from .theme import HEAD_SCRIPT, site_header
 from .legal import register_legal
 from .store import DEVICE_LIMIT, Store
+from .theme import HEAD_SCRIPT, THEME_CSS, site_header
 
 CSS = """
   :root { color-scheme: light; --ink:#16192C; --dim:#6B7185; --line:#E4E7F1;
@@ -53,20 +53,6 @@ CSS = """
   .ok { color:#12A870; font-size:14px; margin-top:12px; }
   .muted { font-size:13px; color:var(--dim); }
   ul { color: var(--dim); padding-left: 20px; }
-  button.theme-toggle { width:36px; height:36px; margin:0; padding:0; flex:none; display:inline-flex;
-          align-items:center; justify-content:center; border-radius:50%; background:transparent;
-          color:var(--ink); border:1px solid var(--line); cursor:pointer; }
-  button.theme-toggle:hover { border-color:var(--primary); color:var(--primary); }
-  button.theme-toggle:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
-  .theme-toggle .ic-moon { display:none; }
-  :root[data-theme="dark"] .theme-toggle .ic-sun { display:none; }
-  :root[data-theme="dark"] .theme-toggle .ic-moon { display:block; }
-  .site-header-in { max-width:560px; margin:0 auto; padding:14px 20px 0; display:flex;
-          align-items:center; justify-content:space-between; }
-  .site-brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:18px;
-          letter-spacing:-.02em; color:var(--ink); text-decoration:none; }
-  .site-brand img { width:28px; height:28px; display:block; }
-  .site-header + .wrap { padding-top:24px; }
 """
 
 
@@ -103,7 +89,7 @@ def layout(title: str, body: str, description: str | None = None, *,
         "<meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
         f"<title>{html.escape(full_title)}</title>\n"
         f"<meta name=\"description\" content=\"{html.escape(description)}\">\n"
-        "<meta name=\"theme-color\" content=\"#4A56D2\">\n"
+        "<meta name=\"theme-color\" content=\"#FAFBFE\">\n"
         "<link rel=\"icon\" href=\"/static/logo.svg\" type=\"image/svg+xml\">\n"
         f"<meta property=\"og:title\" content=\"{html.escape(full_title)}\">\n"
         f"<meta property=\"og:description\" content=\"{html.escape(description)}\">\n"
@@ -114,7 +100,8 @@ def layout(title: str, body: str, description: str | None = None, *,
         "<meta property=\"og:image:height\" content=\"630\">\n"
         "<meta name=\"twitter:card\" content=\"summary_large_image\">\n"
         f"{HEAD_SCRIPT}\n"
-        f"<style>{CSS}</style>\n"
+        f"<style>{CSS}{THEME_CSS}</style>\n"
+        "<noscript><style>.theme-toggle{display:none}</style></noscript>\n"
         "<script src=\"/static/theme.js\" defer></script>\n"
         f"{head_extra}"
         "</head><body>"

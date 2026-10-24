@@ -14,8 +14,8 @@ from __future__ import annotations
 HEAD_SCRIPT = (
     "<script>(function(){var t='light';try{"
     "var q=new URLSearchParams(location.search).get('theme');"
-    "if(q==='dark'||q==='light'){localStorage.setItem('theme',q);}"
-    "var s=localStorage.getItem('theme');"
+    "if(q==='dark'||q==='light'){localStorage.setItem('verbale-theme',q);}"
+    "var s=localStorage.getItem('verbale-theme');"
     "if(s==='dark'||s==='light'){t=s;}"
     "}catch(e){}"
     "document.documentElement.dataset.theme=t;"
@@ -35,7 +35,7 @@ _MOON = ('<svg class="ic-moon" viewBox="0 0 24 24" width="18" height="18" fill="
 #: Shown in light (label says what a press will do). theme.js rewrites label and aria-pressed.
 TOGGLE = (
     '<button type="button" class="theme-toggle" data-theme-toggle '
-    'aria-label="Switch to dark theme" aria-pressed="false">' + _SUN + _MOON + '</button>'
+    'aria-label="Dark theme" aria-pressed="false">' + _SUN + _MOON + '</button>'
 )
 
 
@@ -46,3 +46,21 @@ def site_header(name: str) -> str:
         f'<a class="site-brand" href="/"><img src="/static/logo.svg" alt="">{name}</a>'
         + TOGGLE + '</div></header>'
     )
+
+
+THEME_CSS = """
+  button.theme-toggle { width:36px; height:36px; margin:0; padding:0; flex:none; display:inline-flex;
+          align-items:center; justify-content:center; border-radius:50%; background:transparent;
+          color:var(--ink); border:1px solid var(--line); cursor:pointer; }
+  button.theme-toggle:hover { border-color:var(--primary); color:var(--primary); }
+  button.theme-toggle:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
+  .theme-toggle .ic-moon { display:none; }
+  :root[data-theme="dark"] .theme-toggle .ic-sun { display:none; }
+  :root[data-theme="dark"] .theme-toggle .ic-moon { display:block; }
+  .site-header-in { max-width:560px; margin:0 auto; padding:14px 20px 0; display:flex;
+          align-items:center; justify-content:space-between; }
+  .site-brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:18px;
+          letter-spacing:-.02em; color:var(--ink); text-decoration:none; }
+  .site-brand img { width:28px; height:28px; display:block; }
+  .site-header + .wrap { padding-top:24px; }
+"""
